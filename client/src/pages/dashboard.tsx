@@ -35,10 +35,24 @@ export default function Dashboard() {
 
   const activeJobsCount = activeJobs.length;
 
-  const handleComingSoon = (feature: string) => {
+  const handleEnrichmentClick = () => {
     toast({
-      title: `${feature} Coming Soon`,
-      description: `The ${feature.toLowerCase()} feature will be available in the next release.`,
+      title: "Enrichment Features",
+      description: "Select prospects below and use the 'Get Emails (Lusha)' or 'Enrich Selected' buttons to enrich your data.",
+    });
+  };
+
+  const handleAnalyticsClick = () => {
+    toast({
+      title: "Analytics Dashboard",
+      description: "Analytics features are being developed. Track your prospects in the table below for now.",
+    });
+  };
+
+  const handleSettingsClick = () => {
+    toast({
+      title: "Settings",
+      description: "Configure API keys (APOLLO_API_KEY, LUSHA_API_KEY, REDIS_URL) in your Replit Secrets panel.",
     });
   };
 
@@ -99,7 +113,7 @@ export default function Dashboard() {
           <Button
             variant="ghost"
             className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
-            onClick={() => handleComingSoon("Enrichment")}
+            onClick={handleEnrichmentClick}
             data-testid="nav-enrichment"
           >
             <SparklesIcon className="w-4 h-4" />
@@ -109,7 +123,7 @@ export default function Dashboard() {
           <Button
             variant="ghost"
             className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
-            onClick={() => handleComingSoon("Analytics")}
+            onClick={handleAnalyticsClick}
             data-testid="nav-analytics"
           >
             <BarChart3Icon className="w-4 h-4" />
@@ -121,7 +135,7 @@ export default function Dashboard() {
           <Button
             variant="ghost"
             className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
-            onClick={() => handleComingSoon("Settings")}
+            onClick={handleSettingsClick}
             data-testid="nav-settings"
           >
             <SettingsIcon className="w-4 h-4" />
