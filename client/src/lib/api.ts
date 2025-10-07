@@ -148,4 +148,14 @@ export const api = {
     const response = await apiRequest("GET", "/api/searches");
     return response.json();
   },
+
+  // Apollo Search and Save
+  async apolloSearchAndSave(apolloFilters: any, page: number = 1, per_page: number = 50) {
+    const response = await apiRequest("POST", "/api/apollo-search-and-save", { 
+      apolloFilters, 
+      page, 
+      per_page 
+    });
+    return response.json();
+  },
 };
