@@ -4,6 +4,7 @@ import { storage } from "./storage";
 import { aiService } from "./services/ai.service";
 import { apolloService } from "./services/apollo.service";
 import { jobService } from "./services/job.service";
+import { lushaService } from "./services/lusha.service";
 import { 
   aiSearchSchema, 
   enrichmentRequestSchema, 
@@ -247,6 +248,102 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Enrichment error:", error);
       res.status(500).json({ 
         error: error instanceof Error ? error.message : "Failed to start enrichment" 
+      });
+    }
+  });
+
+  // Lusha email enrichment
+  app.post("/api/lusha-enrich", async (req, res) => {
+    try {
+      const { prospectIds } = z.object({ 
+        prospectIds: z.array(z.string()).min(1) 
+      }).parse(req.body);
+
+      if (!lushaService.isConfigured()) {
+        return res.status(503).json({ 
+          error: "Lusha API key not configured. Please set LUSHA_API_KEY environment variable to enable email enrichment.",
+          needsConfig: true
+        });
+      }
+
+      const results = [];
+      
+      for (const prospectId of prospectIds) {
+        const prospect = await storage.getProspect(prospectId);
+        
+        if (!prospect) {
+          results.push({ id: prospectId, success: false, error: "Prospect not found" });
+          continue;
+        }
+
+        // Only enrich if email is locked or missing
+        if (prospect.primaryEmail && !lushaService.isEmailLocked(prospect.primaryEmail)) {
+          results.push({ 
+            id: prospectId, 
+            success: false, 
+            error: "Email already available",
+            skipped: true 
+          });
+          continue;
+        }
+
+        // Call Lusha API
+        const lushaData = await lushaService.enrichPerson({
+          fullName: prospect.fullName || undefined,
+          company: prospect.companyName || undefined,
+          linkedinUrl: prospect.linkedinUrl || undefined,
+        });
+
+        if (!lushaData) {
+          results.push({ 
+            id: prospectId, 
+            success: false, 
+            error: "Lusha enrichment failed" 
+          });
+          continue;
+        }
+
+        // Extract email and phone
+        const email = lushaService.getBestEmail(lushaData);
+        const phone = lushaService.getBestPhone(lushaData);
+
+        // Update prospect
+        const updates: any = {
+          enrichmentStatus: 'enriched' as const,
+          enrichmentData: {
+            ...prospect.enrichmentData,
+            lusha: lushaData,
+            lushaEnrichedAt: new Date().toISOString(),
+          }
+        };
+
+        if (email) {
+          updates.primaryEmail = email;
+        }
+        if (phone && !prospect.phoneNumber) {
+          updates.phoneNumber = phone;
+        }
+
+        const updated = await storage.updateProspect(prospectId, updates);
+        results.push({ 
+          id: prospectId, 
+          success: true, 
+          emailFound: !!email,
+          phoneFound: !!phone,
+          prospect: updated
+        });
+      }
+
+      res.json({ 
+        results,
+        total: results.length,
+        enriched: results.filter(r => r.success).length,
+        configured: lushaService.isConfigured()
+      });
+    } catch (error) {
+      console.error("Lusha enrichment error:", error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Lusha enrichment failed" 
       });
     }
   });
