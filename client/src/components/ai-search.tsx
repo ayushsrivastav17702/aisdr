@@ -60,8 +60,8 @@ export default function AISearch() {
 
       setActiveFilters(filters);
       
-      // If job queue is not available (warning present), execute Apollo search immediately
-      if (data.warning && data.apolloFilters) {
+      // If job queue is not available (no job created), execute Apollo search immediately
+      if (!data.job && data.apolloFilters) {
         apolloSearchMutation.mutate(data.apolloFilters);
       } else if (data.job) {
         // Job queue is available - prospects will appear when job completes
