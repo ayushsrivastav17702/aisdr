@@ -26,7 +26,7 @@ export default function Dashboard() {
   const [isJobDrawerOpen, setIsJobDrawerOpen] = useState(false);
 
   // Get active jobs for the jobs button badge
-  const { data: activeJobs = [] } = useQuery({
+  const { data: activeJobs = [] } = useQuery<any[]>({
     queryKey: ["/api/jobs/active"],
     refetchInterval: 5000, // Poll every 5 seconds
   });

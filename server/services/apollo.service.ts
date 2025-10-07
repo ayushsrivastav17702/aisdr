@@ -65,13 +65,14 @@ class ApolloService {
   private baseUrl = 'https://api.apollo.io/v1';
 
   constructor() {
-    this.apiKey = process.env.APOLLO_API_KEY || process.env.APOLLO_API_KEY_ENV_VAR || '';
-    if (!this.apiKey) {
-      throw new Error('Apollo API key is required. Set APOLLO_API_KEY environment variable.');
-    }
+    this.apiKey = process.env.APOLLO_API_KEY || '';
   }
 
   async searchContacts(params: ApolloSearchParams): Promise<ApolloSearchResponse> {
+    if (!this.apiKey) {
+      throw new Error('Apollo API key not configured. Please set APOLLO_API_KEY environment variable.');
+    }
+
     const url = `${this.baseUrl}/mixed_people/search`;
     
     const requestBody = {

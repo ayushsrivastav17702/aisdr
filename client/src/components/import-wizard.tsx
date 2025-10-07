@@ -546,7 +546,7 @@ export default function ImportWizard({ open, onClose }: ImportWizardProps) {
           <label className="flex items-start gap-3 cursor-pointer">
             <Checkbox 
               checked={skipDuplicates} 
-              onCheckedChange={setSkipDuplicates}
+              onCheckedChange={(checked) => setSkipDuplicates(checked === true)}
               data-testid="checkbox-skip-duplicates"
             />
             <div>
@@ -559,7 +559,7 @@ export default function ImportWizard({ open, onClose }: ImportWizardProps) {
           <label className="flex items-start gap-3 cursor-pointer">
             <Checkbox 
               checked={autoEnrich} 
-              onCheckedChange={setAutoEnrich}
+              onCheckedChange={(checked) => setAutoEnrich(checked === true)}
               data-testid="checkbox-auto-enrich"
             />
             <div>

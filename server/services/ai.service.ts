@@ -164,7 +164,12 @@ class AIService {
       ],
     });
 
-    const result = JSON.parse(response.content[0].text);
+    const textContent = response.content.find(block => block.type === 'text');
+    if (!textContent || textContent.type !== 'text') {
+      throw new Error('No text response from Anthropic');
+    }
+
+    const result = JSON.parse(textContent.text);
     return {
       aiFilters: result.aiFilters || {},
       apolloFilters: this.convertToApolloFilters(result.aiFilters || {})

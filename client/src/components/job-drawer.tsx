@@ -33,7 +33,7 @@ export default function JobDrawer({ open, onClose }: JobDrawerProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  const { data: jobs = [], isLoading } = useQuery({
+  const { data: jobs = [], isLoading } = useQuery<JobResponse[]>({
     queryKey: ["/api/jobs"],
     refetchInterval: 5000, // Poll every 5 seconds for real-time updates
     enabled: open,
@@ -57,9 +57,9 @@ export default function JobDrawer({ open, onClose }: JobDrawerProps) {
     },
   });
 
-  const activeJobs = jobs.filter(job => job.status === "running" || job.status === "queued");
-  const completedJobs = jobs.filter(job => job.status === "completed");
-  const failedJobs = jobs.filter(job => job.status === "failed");
+  const activeJobs = jobs.filter((job: JobResponse) => job.status === "running" || job.status === "queued");
+  const completedJobs = jobs.filter((job: JobResponse) => job.status === "completed");
+  const failedJobs = jobs.filter((job: JobResponse) => job.status === "failed");
 
   const getJobIcon = (type: string) => {
     switch (type) {
