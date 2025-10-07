@@ -77,13 +77,14 @@ class AIService {
     Convert the user's query into structured filters for finding business prospects.
     
     Extract and structure the following information:
-    - Job titles and roles (CEO, CTO, VP Engineering, etc.)
+    - Job titles and roles (CEO, CTO, VP Engineering, merchandiser, etc.)
     - Seniority levels (C-Level, VP, Director, Manager, etc.)
     - Departments (Engineering, Marketing, Sales, etc.)
     - Industries (Fintech, Healthcare, SaaS, etc.)
+    - Company names (Nike, Google, Apple, etc.) - VERY IMPORTANT: Always include company names in keywords
     - Company size (employee ranges)
     - Locations (cities, states, countries)
-    - Keywords for additional search terms
+    - Keywords for additional search terms (MUST include company names, job titles, and other relevant terms)
     
     Respond with JSON in this exact format:
     {
@@ -134,13 +135,14 @@ class AIService {
     Convert the user's query into structured filters for finding business prospects.
     
     Extract and structure the following information:
-    - Job titles and roles (CEO, CTO, VP Engineering, etc.)
+    - Job titles and roles (CEO, CTO, VP Engineering, merchandiser, etc.)
     - Seniority levels (C-Level, VP, Director, Manager, etc.)
     - Departments (Engineering, Marketing, Sales, etc.)
     - Industries (Fintech, Healthcare, SaaS, etc.)
+    - Company names (Nike, Google, Apple, etc.) - VERY IMPORTANT: Always include company names in keywords
     - Company size (employee ranges)
     - Locations (cities, states, countries)
-    - Keywords for additional search terms
+    - Keywords for additional search terms (MUST include company names, job titles, and other relevant terms)
     
     Respond with JSON in this exact format:
     {
