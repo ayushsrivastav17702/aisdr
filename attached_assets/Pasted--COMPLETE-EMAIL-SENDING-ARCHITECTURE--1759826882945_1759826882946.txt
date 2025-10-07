@@ -1,0 +1,1023 @@
+/ ============================================
+// COMPLETE EMAIL SENDING ARCHITECTURE
+// ============================================
+
+// ============================================
+// 1. DATABASE SCHEMA FOR MAILBOXES (Add to shared/schema.ts)
+// ============================================
+
+import { pgTable, serial, text, integer, boolean, timestamp, jsonb } from 'drizzle-orm/pg-core';
+
+// Email Mailboxes Table
+export const emailMailboxes = pgTable('email_mailboxes', {
+  id: serial('id').primaryKey(),
+  name: text('name').notNull(),
+  email: text('email').notNull().unique(),
+  provider: text('provider').notNull(), // 'gmail' | 'outlook' | 'smtp' | 'sendgrid'
+  
+  // SMTP Settings
+  smtpHost: text('smtp_host'),
+  smtpPort: integer('smtp_port'),
+  smtpUser: text('smtp_user'),
+  smtpPassword: text('smtp_password'), // Encrypted
+  smtpSecure: boolean('smtp_secure').default(true),
+  
+  // SendGrid/API Settings
+  apiKey: text('api_key'), // Encrypted
+  
+  // OAuth Settings (for Gmail/Outlook)
+  refreshToken: text('refresh_token'), // Encrypted
+  accessToken: text('access_token'),
+  tokenExpiry: timestamp('token_expiry'),
+  
+  // Mailbox Health
+  status: text('status').default('active'), // 'active' | 'paused' | 'error' | 'warming'
+  dailyLimit: integer('daily_limit').default(200),
+  dailySent: integer('daily_sent').default(0),
+  lastResetAt: timestamp('last_reset_at').defaultNow(),
+  
+  // Reputation
+  bounceRate: integer('bounce_rate').default(0),
+  spamScore: integer('spam_score').default(0),
+  warmupStage: integer('warmup_stage').default(0), // 0-5 stages
+  
+  // Assignment
+  isDefault: boolean('is_default').default(false),
+  roundRobinOrder: integer('round_robin_order').default(0),
+  
+  // Metadata
+  lastUsedAt: timestamp('last_used_at'),
+  createdAt: timestamp('created_at').notNull().defaultNow(),
+  updatedAt: timestamp('updated_at').notNull().defaultNow()
+});
+
+// Email Queue Table
+export const emailQueue = pgTable('email_queue', {
+  id: serial('id').primaryKey(),
+  emailId: integer('email_id').notNull().references(() => emails.id, { onDelete: 'cascade' }),
+  mailboxId: integer('mailbox_id').notNull().references(() => emailMailboxes.id),
+  sequenceId: integer('sequence_id').references(() => sequences.id),
+  prospectId: integer('prospect_id').notNull().references(() => prospects.id),
+  
+  status: text('status').default('pending'), // 'pending' | 'sending' | 'sent' | 'failed' | 'scheduled'
+  priority: integer('priority').default(5), // 1-10, higher = more important
+  
+  scheduledFor: timestamp('scheduled_for').notNull(),
+  sentAt: timestamp('sent_at'),
+  failedAt: timestamp('failed_at'),
+  
+  attempts: integer('attempts').default(0),
+  maxAttempts: integer('max_attempts').default(3),
+  lastError: text('last_error'),
+  
+  // Email Content (denormalized for queue processing)
+  subject: text('subject').notNull(),
+  body: text('body').notNull(),
+  fromName: text('from_name'),
+  replyTo: text('reply_to'),
+  
+  createdAt: timestamp('created_at').notNull().defaultNow()
+});
+
+// Email Send Log Table
+export const emailSendLog = pgTable('email_send_log', {
+  id: serial('id').primaryKey(),
+  queueId: integer('queue_id').references(() => emailQueue.id),
+  mailboxId: integer('mailbox_id').notNull().references(() => emailMailboxes.id),
+  
+  status: text('status').notNull(), // 'success' | 'failed' | 'bounced'
+  messageId: text('message_id'), // From email provider
+  
+  sentAt: timestamp('sent_at'),
+  deliveredAt: timestamp('delivered_at'),
+  
+  error: text('error'),
+  responseCode: integer('response_code'),
+  responseMessage: text('response_message'),
+  
+  createdAt: timestamp('created_at').notNull().defaultNow()
+});
+
+// ============================================
+// 2. MAILBOX SERVICE (backend/src/services/email/mailboxService.ts)
+// ============================================
+
+import { db } from '../../db';
+import { emailMailboxes } from '../../../../shared/schema';
+import { eq, and, lt, sql } from 'drizzle-orm';
+import crypto from 'crypto';
+
+export class MailboxService {
+  private encryptionKey = process.env.ENCRYPTION_KEY || 'default-key-change-in-prod';
+
+  /**
+   * Add new email mailbox
+   */
+  async addMailbox(mailboxData: {
+    name: string;
+    email: string;
+    provider: 'gmail' | 'outlook' | 'smtp' | 'sendgrid';
+    smtpHost?: string;
+    smtpPort?: number;
+    smtpUser?: string;
+    smtpPassword?: string;
+    apiKey?: string;
+  }) {
+    try {
+      // Encrypt sensitive data
+      const encrypted = {
+        ...mailboxData,
+        smtpPassword: mailboxData.smtpPassword ? this.encrypt(mailboxData.smtpPassword) : null,
+        apiKey: mailboxData.apiKey ? this.encrypt(mailboxData.apiKey) : null
+      };
+
+      const [mailbox] = await db.insert(emailMailboxes).values({
+        ...encrypted,
+        status: 'warming', // Start in warming stage
+        warmupStage: 1,
+        dailyLimit: this.getWarmupLimit(1),
+        createdAt: new Date(),
+        updatedAt: new Date()
+      }).returning();
+
+      console.log(`✅ Added mailbox: ${mailbox.email}`);
+      return mailbox;
+    } catch (error) {
+      console.error('Failed to add mailbox:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get next available mailbox using round-robin
+   */
+  async getNextMailbox(): Promise<any> {
+    // Get active mailboxes that haven't hit daily limit
+    const availableMailboxes = await db
+      .select()
+      .from(emailMailboxes)
+      .where(
+        and(
+          eq(emailMailboxes.status, 'active'),
+          lt(emailMailboxes.dailySent, sql`${emailMailboxes.dailyLimit}`)
+        )
+      )
+      .orderBy(emailMailboxes.roundRobinOrder);
+
+    if (availableMailboxes.length === 0) {
+      throw new Error('No available mailboxes');
+    }
+
+    // Get next in round-robin
+    const mailbox = availableMailboxes[0];
+
+    // Update round-robin order
+    await db.update(emailMailboxes)
+      .set({ 
+        roundRobinOrder: sql`${emailMailboxes.roundRobinOrder} + 1`,
+        lastUsedAt: new Date()
+      })
+      .where(eq(emailMailboxes.id, mailbox.id));
+
+    return mailbox;
+  }
+
+  /**
+   * Increment daily sent count
+   */
+  async incrementDailySent(mailboxId: number) {
+    await db.update(emailMailboxes)
+      .set({ 
+        dailySent: sql`${emailMailboxes.dailySent} + 1`,
+        lastUsedAt: new Date()
+      })
+      .where(eq(emailMailboxes.id, mailboxId));
+  }
+
+  /**
+   * Reset daily counters (run daily via cron)
+   */
+  async resetDailyCounters() {
+    await db.update(emailMailboxes)
+      .set({ 
+        dailySent: 0,
+        lastResetAt: new Date()
+      });
+    console.log('✅ Reset daily mailbox counters');
+  }
+
+  /**
+   * Get warmup limit based on stage
+   */
+  private getWarmupLimit(stage: number): number {
+    const limits = {
+      1: 10,   // Day 1-3: 10 emails/day
+      2: 20,   // Day 4-7: 20 emails/day
+      3: 50,   // Day 8-14: 50 emails/day
+      4: 100,  // Day 15-21: 100 emails/day
+      5: 200   // Day 22+: 200 emails/day (fully warmed)
+    };
+    return limits[stage] || 200;
+  }
+
+  /**
+   * Advance warmup stage (call daily)
+   */
+  async advanceWarmup(mailboxId: number) {
+    const [mailbox] = await db
+      .select()
+      .from(emailMailboxes)
+      .where(eq(emailMailboxes.id, mailboxId));
+
+    if (mailbox.warmupStage < 5) {
+      const newStage = mailbox.warmupStage + 1;
+      await db.update(emailMailboxes)
+        .set({
+          warmupStage: newStage,
+          dailyLimit: this.getWarmupLimit(newStage),
+          status: newStage >= 5 ? 'active' : 'warming'
+        })
+        .where(eq(emailMailboxes.id, mailboxId));
+      
+      console.log(`📈 Mailbox ${mailbox.email} advanced to warmup stage ${newStage}`);
+    }
+  }
+
+  /**
+   * Encrypt sensitive data
+   */
+  private encrypt(text: string): string {
+    const cipher = crypto.createCipher('aes-256-cbc', this.encryptionKey);
+    let encrypted = cipher.update(text, 'utf8', 'hex');
+    encrypted += cipher.final('hex');
+    return encrypted;
+  }
+
+  /**
+   * Decrypt sensitive data
+   */
+  decrypt(encrypted: string): string {
+    const decipher = crypto.createDecipher('aes-256-cbc', this.encryptionKey);
+    let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+    return decrypted;
+  }
+
+  /**
+   * Get all mailboxes
+   */
+  async getAllMailboxes() {
+    return await db.select().from(emailMailboxes);
+  }
+
+  /**
+   * Update mailbox status
+   */
+  async updateStatus(mailboxId: number, status: string) {
+    await db.update(emailMailboxes)
+      .set({ status, updatedAt: new Date() })
+      .where(eq(emailMailboxes.id, mailboxId));
+  }
+
+  /**
+   * Delete mailbox
+   */
+  async deleteMailbox(mailboxId: number) {
+    await db.delete(emailMailboxes).where(eq(emailMailboxes.id, mailboxId));
+  }
+}
+
+export const mailboxService = new MailboxService();
+
+// ============================================
+// 3. EMAIL SENDING SERVICE (backend/src/services/email/emailSendingService.ts)
+// ============================================
+
+import nodemailer from 'nodemailer';
+import { MailboxService } from './mailboxService';
+
+export class EmailSendingService {
+  private mailboxService = new MailboxService();
+
+  /**
+   * Send email using specified mailbox
+   */
+  async sendEmail(params: {
+    mailboxId: number;
+    to: string;
+    subject: string;
+    body: string;
+    fromName?: string;
+    trackingId?: string;
+  }): Promise<{ success: boolean; messageId?: string; error?: string }> {
+    try {
+      // Get mailbox credentials
+      const [mailbox] = await db
+        .select()
+        .from(emailMailboxes)
+        .where(eq(emailMailboxes.id, params.mailboxId));
+
+      if (!mailbox) {
+        throw new Error('Mailbox not found');
+      }
+
+      // Check if mailbox is available
+      if (mailbox.status !== 'active' && mailbox.status !== 'warming') {
+        throw new Error(`Mailbox is ${mailbox.status}`);
+      }
+
+      // Check daily limit
+      if (mailbox.dailySent >= mailbox.dailyLimit) {
+        throw new Error('Daily limit reached');
+      }
+
+      // Create transporter based on provider
+      const transporter = await this.createTransporter(mailbox);
+
+      // Add tracking pixel if trackingId provided
+      let emailBody = params.body;
+      if (params.trackingId) {
+        const trackingPixel = `<img src="${process.env.API_BASE_URL}/webhooks/pixel/${params.trackingId}" width="1" height="1" />`;
+        emailBody = emailBody + trackingPixel;
+      }
+
+      // Send email
+      const info = await transporter.sendMail({
+        from: `"${params.fromName || mailbox.name}" <${mailbox.email}>`,
+        to: params.to,
+        subject: params.subject,
+        html: emailBody,
+        replyTo: mailbox.email
+      });
+
+      // Increment daily sent count
+      await this.mailboxService.incrementDailySent(params.mailboxId);
+
+      console.log(`✅ Email sent: ${info.messageId}`);
+
+      return {
+        success: true,
+        messageId: info.messageId
+      };
+    } catch (error) {
+      console.error('Email sending failed:', error);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Create email transporter based on provider
+   */
+  private async createTransporter(mailbox: any) {
+    const { provider } = mailbox;
+
+    if (provider === 'smtp' || provider === 'gmail' || provider === 'outlook') {
+      // Decrypt password
+      const password = this.mailboxService.decrypt(mailbox.smtpPassword);
+
+      return nodemailer.createTransport({
+        host: mailbox.smtpHost,
+        port: mailbox.smtpPort,
+        secure: mailbox.smtpSecure,
+        auth: {
+          user: mailbox.smtpUser || mailbox.email,
+          pass: password
+        }
+      });
+    } else if (provider === 'sendgrid') {
+      const apiKey = this.mailboxService.decrypt(mailbox.apiKey);
+      return nodemailer.createTransport({
+        host: 'smtp.sendgrid.net',
+        port: 587,
+        auth: {
+          user: 'apikey',
+          pass: apiKey
+        }
+      });
+    }
+
+    throw new Error(`Unsupported provider: ${provider}`);
+  }
+
+  /**
+   * Test mailbox connection
+   */
+  async testMailbox(mailboxId: number): Promise<boolean> {
+    try {
+      const [mailbox] = await db
+        .select()
+        .from(emailMailboxes)
+        .where(eq(emailMailboxes.id, mailboxId));
+
+      const transporter = await this.createTransporter(mailbox);
+      await transporter.verify();
+      
+      console.log(`✅ Mailbox ${mailbox.email} verified`);
+      return true;
+    } catch (error) {
+      console.error('Mailbox verification failed:', error);
+      return false;
+    }
+  }
+}
+
+export const emailSendingService = new EmailSendingService();
+
+// ============================================
+// 4. EMAIL QUEUE SERVICE (backend/src/services/email/emailQueueService.ts)
+// ============================================
+
+import { db } from '../../db';
+import { emailQueue, emails, sequences, sequenceProspects } from '../../../../shared/schema';
+import { eq, and, lte, gte } from 'drizzle-orm';
+import { EmailSendingService } from './emailSendingService';
+import { MailboxService } from './mailboxService';
+
+export class EmailQueueService {
+  private emailSendingService = new EmailSendingService();
+  private mailboxService = new MailboxService();
+
+  /**
+   * Add email to queue
+   */
+  async queueEmail(params: {
+    emailId: number;
+    prospectId: number;
+    sequenceId?: number;
+    scheduledFor: Date;
+    priority?: number;
+  }) {
+    try {
+      // Get email content
+      const [email] = await db
+        .select()
+        .from(emails)
+        .where(eq(emails.id, params.emailId));
+
+      // Get next available mailbox
+      const mailbox = await this.mailboxService.getNextMailbox();
+
+      // Add to queue
+      const [queued] = await db.insert(emailQueue).values({
+        emailId: params.emailId,
+        mailboxId: mailbox.id,
+        sequenceId: params.sequenceId,
+        prospectId: params.prospectId,
+        status: 'scheduled',
+        priority: params.priority || 5,
+        scheduledFor: params.scheduledFor,
+        subject: email.subject,
+        body: email.content,
+        createdAt: new Date()
+      }).returning();
+
+      console.log(`📬 Queued email ${queued.id} for ${params.scheduledFor}`);
+      return queued;
+    } catch (error) {
+      console.error('Failed to queue email:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Process queue - send emails that are scheduled
+   */
+  async processQueue() {
+    try {
+      // Get emails scheduled for now or earlier
+      const pendingEmails = await db
+        .select()
+        .from(emailQueue)
+        .where(
+          and(
+            eq(emailQueue.status, 'scheduled'),
+            lte(emailQueue.scheduledFor, new Date())
+          )
+        )
+        .orderBy(emailQueue.priority, emailQueue.scheduledFor)
+        .limit(50); // Process 50 at a time
+
+      console.log(`📧 Processing ${pendingEmails.length} queued emails`);
+
+      for (const queuedEmail of pendingEmails) {
+        await this.processQueuedEmail(queuedEmail);
+        
+        // Add small delay to avoid rate limiting
+        await this.delay(100);
+      }
+    } catch (error) {
+      console.error('Queue processing error:', error);
+    }
+  }
+
+  /**
+   * Process single queued email
+   */
+  private async processQueuedEmail(queuedEmail: any) {
+    try {
+      // Update status to sending
+      await db.update(emailQueue)
+        .set({ status: 'sending' })
+        .where(eq(emailQueue.id, queuedEmail.id));
+
+      // Get prospect details
+      const [prospect] = await db
+        .select()
+        .from(prospects)
+        .where(eq(prospects.id, queuedEmail.prospectId));
+
+      // Get tracking ID
+      const [email] = await db
+        .select()
+        .from(emails)
+        .where(eq(emails.id, queuedEmail.emailId));
+
+      // Personalize subject and body
+      const personalizedSubject = this.personalize(queuedEmail.subject, prospect);
+      const personalizedBody = this.personalize(queuedEmail.body, prospect);
+
+      // Send email
+      const result = await this.emailSendingService.sendEmail({
+        mailboxId: queuedEmail.mailboxId,
+        to: prospect.email,
+        subject: personalizedSubject,
+        body: personalizedBody,
+        trackingId: email.trackingId
+      });
+
+      if (result.success) {
+        // Update queue status
+        await db.update(emailQueue)
+          .set({ 
+            status: 'sent',
+            sentAt: new Date()
+          })
+          .where(eq(emailQueue.id, queuedEmail.id));
+
+        // Update email record
+        await db.update(emails)
+          .set({ 
+            sentAt: new Date(),
+            status: 'sent'
+          })
+          .where(eq(emails.id, queuedEmail.emailId));
+
+        // Update sequence prospect
+        if (queuedEmail.sequenceId) {
+          await db.update(sequenceProspects)
+            .set({ lastContactedAt: new Date() })
+            .where(
+              and(
+                eq(sequenceProspects.sequenceId, queuedEmail.sequenceId),
+                eq(sequenceProspects.prospectId, queuedEmail.prospectId)
+              )
+            );
+        }
+
+        console.log(`✅ Sent email ${queuedEmail.id} to ${prospect.email}`);
+      } else {
+        // Handle failure
+        await this.handleFailure(queuedEmail, result.error);
+      }
+    } catch (error) {
+      await this.handleFailure(queuedEmail, error.message);
+    }
+  }
+
+  /**
+   * Handle failed email
+   */
+  private async handleFailure(queuedEmail: any, error: string) {
+    const attempts = queuedEmail.attempts + 1;
+    
+    if (attempts >= queuedEmail.maxAttempts) {
+      // Max attempts reached - mark as failed
+      await db.update(emailQueue)
+        .set({ 
+          status: 'failed',
+          failedAt: new Date(),
+          lastError: error,
+          attempts
+        })
+        .where(eq(emailQueue.id, queuedEmail.id));
+
+      console.error(`❌ Email ${queuedEmail.id} failed after ${attempts} attempts`);
+    } else {
+      // Retry later
+      const nextAttemptTime = new Date(Date.now() + (attempts * 5 * 60 * 1000)); // 5 min * attempt number
+      
+      await db.update(emailQueue)
+        .set({ 
+          status: 'scheduled',
+          scheduledFor: nextAttemptTime,
+          lastError: error,
+          attempts
+        })
+        .where(eq(emailQueue.id, queuedEmail.id));
+
+      console.log(`🔄 Email ${queuedEmail.id} retry scheduled for ${nextAttemptTime}`);
+    }
+  }
+
+  /**
+   * Personalize email with prospect variables
+   */
+  private personalize(text: string, prospect: any): string {
+    return text
+      .replace(/\{\{firstName\}\}/g, prospect.firstName || '')
+      .replace(/\{\{lastName\}\}/g, prospect.lastName || '')
+      .replace(/\{\{company\}\}/g, prospect.company || '')
+      .replace(/\{\{jobTitle\}\}/g, prospect.jobTitle || '')
+      .replace(/\{\{email\}\}/g, prospect.email || '');
+  }
+
+  /**
+   * Delay helper
+   */
+  private delay(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+}
+
+export const emailQueueService = new EmailQueueService();
+
+// ============================================
+// 5. SEQUENCE SCHEDULER (backend/src/services/email/sequenceScheduler.ts)
+// ============================================
+
+import cron from 'node-cron';
+import { db } from '../../db';
+import { sequences, sequenceSteps, sequenceProspects, emails } from '../../../../shared/schema';
+import { eq, and } from 'drizzle-orm';
+import { EmailQueueService } from './emailQueueService';
+
+export class SequenceScheduler {
+  private emailQueueService = new EmailQueueService();
+  private isRunning = false;
+
+  /**
+   * Initialize scheduler - run every 5 minutes
+   */
+  initialize() {
+    console.log('🚀 Initializing Sequence Scheduler');
+
+    // Run every 5 minutes
+    cron.schedule('*/5 * * * *', async () => {
+      if (!this.isRunning) {
+        await this.processActiveSequences();
+      }
+    });
+
+    // Also run immediately on startup
+    this.processActiveSequences();
+  }
+
+  /**
+   * Process all active sequences
+   */
+  async processActiveSequences() {
+    this.isRunning = true;
+    
+    try {
+      console.log('🔄 Processing active sequences...');
+
+      // Get all active sequences
+      const activeSequences = await db
+        .select()
+        .from(sequences)
+        .where(eq(sequences.status, 'active'));
+
+      for (const sequence of activeSequences) {
+        await this.processSequence(sequence);
+      }
+
+      console.log(`✅ Processed ${activeSequences.length} sequences`);
+    } catch (error) {
+      console.error('Sequence processing error:', error);
+    } finally {
+      this.isRunning = false;
+    }
+  }
+
+  /**
+   * Process single sequence
+   */
+  private async processSequence(sequence: any) {
+    try {
+      // Get active prospects in this sequence
+      const activeProspects = await db
+        .select()
+        .from(sequenceProspects)
+        .where(
+          and(
+            eq(sequenceProspects.sequenceId, sequence.id),
+            eq(sequenceProspects.status, 'active')
+          )
+        );
+
+      for (const enrollment of activeProspects) {
+        await this.processProspectInSequence(sequence, enrollment);
+      }
+    } catch (error) {
+      console.error(`Error processing sequence ${sequence.id}:`, error);
+    }
+  }
+
+  /**
+   * Process prospect in sequence - determine next email to send
+   */
+  private async processProspectInSequence(sequence: any, enrollment: any) {
+    try {
+      // Get sequence steps
+      const steps = await db
+        .select()
+        .from(sequenceSteps)
+        .where(eq(sequenceSteps.sequenceId, sequence.id))
+        .orderBy(sequenceSteps.stepOrder);
+
+      // Determine current step
+      const currentStepIndex = enrollment.currentStepId 
+        ? steps.findIndex(s => s.id === enrollment.currentStepId)
+        : -1;
+
+      const nextStep = steps[currentStepIndex + 1];
+
+      if (!nextStep) {
+        // Sequence completed
+        await db.update(sequenceProspects)
+          .set({ 
+            status: 'completed',
+            completedAt: new Date()
+          })
+          .where(eq(sequenceProspects.id, enrollment.id));
+        
+        console.log(`✅ Prospect ${enrollment.prospectId} completed sequence ${sequence.id}`);
+        return;
+      }
+
+      // Check if we should send the next step
+      const shouldSend = await this.shouldSendNextStep(enrollment, nextStep);
+
+      if (shouldSend) {
+        await this.scheduleStepEmail(sequence, enrollment, nextStep);
+      }
+    } catch (error) {
+      console.error('Error processing prospect:', error);
+    }
+  }
+
+  /**
+   * Determine if next step should be sent
+   */
+  private async shouldSendNextStep(enrollment: any, step: any): Promise<boolean> {
+    // If no previous email, send immediately
+    if (!enrollment.lastContactedAt) {
+      return true;
+    }
+
+    // Calculate when next email should be sent
+    const lastContactDate = new Date(enrollment.lastContactedAt);
+    const delayMs = step.delayDays * 24 * 60 * 60 * 1000;
+    const nextSendDate = new Date(lastContactDate.getTime() + delayMs);
+
+    // Check if it's time to send
+    return new Date() >= nextSendDate;
+  }
+
+  /**
+   * Schedule step email
+   */
+  private async scheduleStepEmail(sequence: any, enrollment: any, step: any) {
+    try {
+      // Create email record
+      const [email] = await db.insert(emails).values({
+        prospectId: enrollment.prospectId,
+        sequenceId: sequence.id,
+        subject: step.subject,
+        content: step.body,
+        status: 'scheduled',
+        aiGenerated: step.aiGenerated,
+        scheduledFor: new Date(),
+        trackingId: `trk_${Math.random().toString(36).substr(2, 16)}`,
+        createdAt: new Date()
+      }).returning();
+
+      // Add to queue
+      await this.emailQueueService.queueEmail({
+        emailId: email.id,
+        prospectId: enrollment.prospectId,
+        sequenceId: sequence.id,
+        scheduledFor: new Date(), // Send immediately
+        priority: 5
+      });
+
+      // Update enrollment current step
+      await db.update(sequenceProspects)
+        .set({ currentStepId: step.id })
+        .where(eq(sequenceProspects.id, enrollment.id));
+
+      console.log(`📧 Scheduled step ${step.stepOrder} for prospect ${enrollment.prospectId}`);
+    } catch (error) {
+      console.error('Error scheduling step email:', error);
+    }
+  }
+}
+
+export const sequenceScheduler = new SequenceScheduler();
+
+// ============================================
+// 6. API ROUTES FOR MAILBOXES (backend/src/routes/mailboxes.ts)
+// ============================================
+
+import { Router } from 'express';
+import { mailboxService } from '../services/email/mailboxService';
+import { emailSendingService } from '../services/email/emailSendingService';
+
+const router = Router();
+
+// Get all mailboxes
+router.get('/mailboxes', async (req, res) => {
+  try {
+    const mailboxes = await mailboxService.getAllMailboxes();
+    // Don't send passwords/keys to frontend
+    const safe = mailboxes.map(m => ({
+      ...m,
+      smtpPassword: m.smtpPassword ? '***' : null,
+      apiKey: m.apiKey ? '***' : null
+    }));
+    res.json(safe);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to fetch mailboxes' });
+  }
+});
+
+// Add mailbox
+router.post('/mailboxes', async (req, res) => {
+  try {
+    const mailbox = await mailboxService.addMailbox(req.body);
+    res.json(mailbox);
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to add mailbox' });
+  }
+});
+
+// Test mailbox connection
+router.post('/mailboxes/:id/test', async (req, res) => {
+  try {
+    const mailboxId = parseInt(req.params.id);
+    const isValid = await emailSendingService.testMailbox(mailboxId);
+    res.json({ valid: isValid });
+  } catch (error) {
+    res.status(500).json({ error: 'Test failed' });
+  }
+});
+
+// Update mailbox status
+router.patch('/mailboxes/:id/status', async (req, res) => {
+  try {
+    const mailboxId = parseInt(req.params.id);
+    const { status } = req.body;
+    await mailboxService.updateStatus(mailboxId, status);
+    res.json({ message: 'Status updated' });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to update status' });
+  }
+});
+
+// Delete mailbox
+router.delete('/mailboxes/:id', async (req, res) => {
+  try {
+    const mailboxId = parseInt(req.params.id);
+    await mailboxService.deleteMailbox(mailboxId);
+    res.json({ message: 'Mailbox deleted' });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to delete mailbox' });
+  }
+});
+
+export default router;
+
+// ============================================
+// 7. UPDATE MAIN SERVER TO INCLUDE EMAIL SERVICES
+// Add to backend/src/index.ts
+// ============================================
+
+import mailboxRoutes from './routes/mailboxes';
+import { sequenceScheduler } from './services/email/sequenceScheduler';
+import { emailQueueService } from './services/email/emailQueueService';
+import { mailboxService } from './services/email/mailboxService';
+import cron from 'node-cron';
+
+// Add routes
+app.use('/api', mailboxRoutes);
+
+// Initialize schedulers on server start
+async function initializeSchedulers() {
+  console.log('🚀 Initializing email schedulers...');
+  
+  // Initialize sequence scheduler (processes sequences)
+  sequenceScheduler.initialize();
+  
+  // Process email queue every minute
+  cron.schedule('* * * * *', async () => {
+    await emailQueueService.processQueue();
+  });
+  
+  // Reset daily counters at midnight
+  cron.schedule('0 0 * * *', async () => {
+    await mailboxService.resetDailyCounters();
+  });
+  
+  console.log('✅ Email schedulers initialized');
+}
+
+// Call after database connection
+initializeSchedulers();
+
+// ============================================
+// 8. MIGRATION SQL FOR NEW TABLES
+// Add to backend/src/db/migrate.ts
+// ============================================
+
+const emailSystemMigration = `
+-- Email Mailboxes Table
+CREATE TABLE IF NOT EXISTS email_mailboxes (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  email TEXT NOT NULL UNIQUE,
+  provider TEXT NOT NULL,
+  smtp_host TEXT,
+  smtp_port INTEGER,
+  smtp_user TEXT,
+  smtp_password TEXT,
+  smtp_secure BOOLEAN DEFAULT true,
+  api_key TEXT,
+  refresh_token TEXT,
+  access_token TEXT,
+  token_expiry TIMESTAMP,
+  status TEXT DEFAULT 'active',
+  daily_limit INTEGER DEFAULT 200,
+  daily_sent INTEGER DEFAULT 0,
+  last_reset_at TIMESTAMP DEFAULT NOW(),
+  bounce_rate INTEGER DEFAULT 0,
+  spam_score INTEGER DEFAULT 0,
+  warmup_stage INTEGER DEFAULT 0,
+  is_default BOOLEAN DEFAULT false,
+  round_robin_order INTEGER DEFAULT 0,
+  last_used_at TIMESTAMP,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- Email Queue Table
+CREATE TABLE IF NOT EXISTS email_queue (
+  id SERIAL PRIMARY KEY,
+  email_id INTEGER NOT NULL REFERENCES emails(id) ON DELETE CASCADE,
+  mailbox_id INTEGER NOT NULL REFERENCES email_mailboxes(id),
+  sequence_id INTEGER REFERENCES sequences(id),
+  prospect_id INTEGER NOT NULL REFERENCES prospects(id),
+  status TEXT DEFAULT 'pending',
+  priority INTEGER DEFAULT 5,
+  scheduled_for TIMESTAMP NOT NULL,
+  sent_at TIMESTAMP,
+  failed_at TIMESTAMP,
+  attempts INTEGER DEFAULT 0,
+  max_attempts INTEGER DEFAULT 3,
+  last_error TEXT,
+  subject TEXT NOT NULL,
+  body TEXT NOT NULL,
+  from_name TEXT,
+  reply_to TEXT,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- Email Send Log Table
+CREATE TABLE IF NOT EXISTS email_send_log (
+  id SERIAL PRIMARY KEY,
+  queue_id INTEGER REFERENCES email_queue(id),
+  mailbox_id INTEGER NOT NULL REFERENCES email_mailboxes(id),
+  status TEXT NOT NULL,
+  message_id TEXT,
+  sent_at TIMESTAMP,
+  delivered_at TIMESTAMP,
+  error TEXT,
+  response_code INTEGER,
+  response_message TEXT,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- Create indexes
+CREATE INDEX IF NOT EXISTS idx_email_mailboxes_status ON email_mailboxes(status);
+CREATE INDEX IF NOT EXISTS idx_email_mailboxes_email ON email_mailboxes(email);
+CREATE INDEX IF NOT EXISTS idx_email_queue_status ON email_queue(status);
+CREATE INDEX IF NOT EXISTS idx_email_queue_scheduled ON email_queue(scheduled_for);
+CREATE INDEX IF NOT EXISTS idx_email_queue_mailbox ON email_queue(mailbox_id);
+CREATE INDEX IF NOT EXISTS idx_email_send_log_mailbox ON email_send_log(mailbox_id);
+`;
+
+// ============================================
+// END OF EMAIL SENDING ARCHITECTURE
+// ============================================
