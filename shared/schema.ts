@@ -207,7 +207,7 @@ export const emails = pgTable("emails", {
   personalizationScore: integer("personalization_score"),
   aiGenerated: boolean("ai_generated").default(false),
   isFollowUp: boolean("is_follow_up").default(false),
-  parentEmailId: varchar("parent_email_id").references(() => emails.id),
+  parentEmailId: varchar("parent_email_id"),
   scheduledFor: timestamp("scheduled_for"),
   sentAt: timestamp("sent_at"),
   openedAt: timestamp("opened_at"),
