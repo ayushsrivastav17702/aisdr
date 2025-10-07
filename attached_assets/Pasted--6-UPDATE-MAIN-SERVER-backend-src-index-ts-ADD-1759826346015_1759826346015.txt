@@ -1,0 +1,77 @@
+/ ============================================
+// 6. UPDATE MAIN SERVER (backend/src/index.ts - ADD THESE)
+// ============================================
+
+import mailboxRoutes from './routes/mailboxes';
+import { emailQueueProcessor } from './services/email/emailQueueProcessor';
+
+// Add routes
+app.use('/api', mailboxRoutes);
+
+// Start email queue processor
+emailQueueProcessor.start();
+
+// ============================================
+// 7. DATABASE MIGRATION SQL (Add to existing migration)
+// ============================================
+
+const mailboxMigrationSQL = `
+-- Create Mailboxes table
+CREATE TABLE IF NOT EXISTS mailboxes (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  email TEXT NOT NULL UNIQUE,
+  provider TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active',
+  smtp_host TEXT,
+  smtp_port INTEGER,
+  smtp_username TEXT,
+  smtp_password TEXT,
+  smtp_secure BOOLEAN DEFAULT true,
+  api_key TEXT,
+  api_endpoint TEXT,
+  daily_limit INTEGER DEFAULT 500,
+  hourly_limit INTEGER DEFAULT 50,
+  emails_sent_today INTEGER DEFAULT 0,
+  emails_sent_this_hour INTEGER DEFAULT 0,
+  last_health_check TIMESTAMP,
+  last_successful_send TIMESTAMP,
+  last_error TEXT,
+  consecutive_failures INTEGER DEFAULT 0,
+  total_emails_sent INTEGER DEFAULT 0,
+  total_emails_failed INTEGER DEFAULT 0,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- Create Email Queue table
+CREATE TABLE IF NOT EXISTS email_queue (
+  id SERIAL PRIMARY KEY,
+  email_id INTEGER NOT NULL REFERENCES emails(id) ON DELETE CASCADE,
+  prospect_id INTEGER NOT NULL REFERENCES prospects(id),
+  sequence_id INTEGER REFERENCES sequences(id),
+  mailbox_id INTEGER REFERENCES mailboxes(id),
+  status TEXT NOT NULL DEFAULT 'queued',
+  priority INTEGER DEFAULT 5,
+  scheduled_for TIMESTAMP NOT NULL,
+  sent_at TIMESTAMP,
+  failed_at TIMESTAMP,
+  retry_count INTEGER DEFAULT 0,
+  max_retries INTEGER DEFAULT 3,
+  last_error TEXT,
+  metadata JSONB,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- Create indexes
+CREATE INDEX IF NOT EXISTS idx_mailboxes_email ON mailboxes(email);
+CREATE INDEX IF NOT EXISTS idx_mailboxes_status ON mailboxes(status);
+CREATE INDEX IF NOT EXISTS idx_email_queue_status ON email_queue(status);
+CREATE INDEX IF NOT EXISTS idx_email_queue_scheduled ON email_queue(scheduled_for);
+CREATE INDEX IF NOT EXISTS idx_email_queue_mailbox ON email_queue(mailbox_id);
+`;
+
+// ============================================
+// END OF EMAIL INFRASTRUCTURE
+// ====================================

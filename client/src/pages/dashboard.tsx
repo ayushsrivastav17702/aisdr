@@ -10,6 +10,7 @@ import AISearch from "@/components/ai-search";
 import ProspectsTable from "@/components/prospects-table";
 import ImportWizard from "@/components/import-wizard";
 import JobDrawer from "@/components/job-drawer";
+import { Link } from "wouter";
 import { 
   BrainIcon, 
   UsersIcon, 
@@ -18,7 +19,8 @@ import {
   BarChart3Icon, 
   SettingsIcon,
   ListTodo,
-  PlusIcon
+  PlusIcon,
+  Mail
 } from "lucide-react";
 
 export default function Dashboard() {
@@ -109,6 +111,17 @@ export default function Dashboard() {
             <UploadIcon className="w-4 h-4" />
             <span>Import</span>
           </Button>
+          
+          <Link href="/sequences">
+            <Button
+              variant="ghost"
+              className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
+              data-testid="nav-sequences"
+            >
+              <Mail className="w-4 h-4" />
+              <span>Sequences</span>
+            </Button>
+          </Link>
           
           <Button
             variant="ghost"
