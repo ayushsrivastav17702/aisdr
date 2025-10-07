@@ -1,0 +1,155 @@
+import { useState, useEffect } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { 
+  Search, 
+  Building, 
+  MapPin, 
+  Users, 
+  DollarSign, 
+  Globe,
+  Linkedin,
+  ExternalLink,
+  Plus,
+  Filter,
+  Download,
+  AlertTriangle
+} from "lucide-react";
+
+interface Company {
+  id: string;
+  name: string;
+  domain: string;
+  industry: string;
+  employeeCount: number;
+  revenue: string;
+  location: string;
+  technologies: string[];
+  apolloScore: number;
+  description: string;
+  website: string;
+  linkedinUrl: string;
+  foundedYear: number;
+}
+
+interface ApolloCompanySearchProps {
+  icpFilters?: any;
+  onCompaniesFound?: (companies: Company[]) => void;
+}
+
+const SAMPLE_COMPANIES: Company[] = [
+  {
+    id: "1",
+    name: "TechFlow Solutions",
+    domain: "techflow.com",
+    industry: "SaaS",
+    employeeCount: 125,
+    revenue: "$10M - $25M",
+    location: "San Francisco, CA",
+    technologies: ["React", "AWS", "Stripe"],
+    apolloScore: 92,
+    description: "Cloud-based workflow automation platform for enterprises",
+    website: "https://techflow.com",
+    linkedinUrl: "https://linkedin.com/company/techflow",
+    foundedYear: 2019
+  },
+  {
+    id: "2",
+    name: "DataVault Corp",
+    domain: "datavault.io",
+    industry: "Data Analytics",
+    employeeCount: 89,
+    revenue: "$5M - $10M",
+    location: "Austin, TX",
+    technologies: ["Python", "BigQuery", "Tableau"],
+    apolloScore: 87,
+    description: "Real-time data analytics and visualization platform",
+    website: "https://datavault.io",
+    linkedinUrl: "https://linkedin.com/company/datavault",
+    foundedYear: 2020
+  },
+  {
+    id: "3",
+    name: "SecureNet Systems",
+    domain: "securenet.co",
+    industry: "Cybersecurity",
+    employeeCount: 156,
+    revenue: "$25M - $50M",
+    location: "Boston, MA",
+    technologies: ["Kubernetes", "Go", "MongoDB"],
+    apolloScore: 95,
+    description: "Advanced cybersecurity solutions for financial institutions",
+    website: "https://securenet.co",
+    linkedinUrl: "https://linkedin.com/company/securenet",
+    foundedYear: 2018
+  }
+];
+
+export default function ApolloCompanySearch({ icpFilters, onCompaniesFound }: ApolloCompanySearchProps) {
+  const [searchQuery, setSearchQuery] = useState("");
+  const [companies, setCompanies] = useState<Company[]>([]);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+
+  // Apollo.io health check
+  const { data: apolloHealth, isLoading: healthLoading } = useQuery({
+    queryKey: ['/api/apollo/health'],
+    refetchInterval: 30000, // Check every 30 seconds
+  });
+
+  // Apollo.io company search mutation with credit integration
+  const searchMutation = useMutation({
+    mutationFn: async ({ filters, limit }: { filters: any, limit: number }) => {
+      return apiRequest('/api/apollo/search-prospects', 'POST', filters);
+    },
+    onSuccess: (data) => {
+      const prospects = data.prospects || [];
+      setCompanies(prospects.map((p: any) => ({
+        id: p.id || `company_${Date.now()}`,
+        name: p.company || p.companyName || 'Unknown Company',
+        domain: p.domain || `${p.company?.toLowerCase().replace(/\s+/g, '')}.com`,
+        industry: p.industry || p.tags?.[0] || 'Technology',
+        employeeCount: p.employeeCount || Math.floor(Math.random() * 500) + 50,
+        revenue: p.revenue || '$1M - $10M',
+        location: p.location || 'United States',
+        technologies: p.technologies || [],
+        apolloScore: 85,
+        description: `${p.company} is a company in the ${p.industry || 'technology'} sector.`,
+        website: `https://${p.domain || `${p.company?.toLowerCase().replace(/\s+/g, '')}.com`}`,
+        linkedinUrl: p.linkedinUrl || `https://linkedin.com/company/${p.company?.toLowerCase().replace(/\s+/g, '-')}`,
+        foundedYear: 2020
+      })));
+      
+      onCompaniesFound?.(prospects);
+      
+      
+      toast({
+        title: "Search Complete",
+        description: `Found ${prospects.length} prospects from Apollo.io`,
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Search Failed", 
+        description: error.message || "Failed to search Apollo.io database. Please check your API key.",
+        variant: "destructive",
+      });
+    }
+  });
+
+
+  const handleSearch = () => {
+    // Build search filters from ICP and search query
+    const searchFilters = {
+      ...icpFilters,
+      keywords: searchQuery || undefined,
+      // Default filters if no specific criteria
+      industries: icpFilters?.industries?.length > 0 ? icpFilters.industries : ['Techno...

@@ -1,0 +1,166 @@
+/**
+ * Apollo Enrichment with Real-time Activity Updates
+ * Enhanced Apollo prospect discovery with live activity monitoring and progress feedback
+ */
+
+import { useState, useEffect } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Separator } from '@/components/ui/separator';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { 
+  Search, 
+  Users, 
+  Eye, 
+  Building, 
+  MapPin, 
+  AlertTriangle,
+  CheckCircle,
+  RefreshCw,
+  Zap,
+  Activity,
+  Wifi,
+  WifiOff,
+  CircleDot
+} from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+import { useWebSocketContext } from '@/providers/WebSocketProvider';
+import { useToast } from '@/hooks/use-toast';
+
+interface ApolloSearchParams {
+  jobTitles: string[];
+  industries: string[];
+  companySize: { min: number; max: number };
+  locations: string[];
+  prospectLimit: number;
+}
+
+interface Prospect {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  company: string;
+  jobTitle: string;
+  location: string;
+  linkedinUrl?: string;
+}
+
+interface EnrichmentResult {
+  totalFound: number;
+  totalEnriched: number;
+  totalErrors: number;
+  prospects: Prospect[];
+}
+
+
+export function ApolloEnrichmentRealtime({ className = "" }: { className?: string }) {
+  const [searchParams, setSearchParams] = useState<ApolloSearchParams>({
+    jobTitles: ['CEO', 'CTO', 'VP of Engineering'],
+    industries: ['Technology', 'Software'],
+    companySize: { min: 10, max: 500 },
+    locations: ['United States'],
+    prospectLimit: 25
+  });
+  
+  const [enrichmentProgress, setEnrichmentProgress] = useState(0);
+  const [isEnriching, setIsEnriching] = useState(false);
+  const [lastActivityUpdate, setLastActivityUpdate] = useState<Date | null>(null);
+  
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  // Real-time WebSocket connection
+  const webSocket = useWebSocketContext();
+  const [connectionState, setConnectionState] = useState(() => webSocket.getConnectionState());
+  
+  useEffect(() => {
+    const unsubscribe = webSocket.subscribe({
+      onActivityUpdate: (data) => {
+        console.log('🔍 Apollo real-time activity update:', data);
+        
+        // Update activity timestamp
+        setLastActivityUpdate(new Date());
+        
+        // Show notification for enrichment activities
+        if (data.description.toLowerCase().includes('enrichment') || data.description.toLowerCase().includes('apollo')) {
+          toast({
+            title: "📊 Prospect Enrichment",
+            description: `Prospect discovery in progress`,
+            duration: 3000,
+          });
+        }
+        
+        // Update enrichment progress based on activity
+        if (isEnriching && data.actionType === 'email_enrichment') {
+          setEnrichmentProgress(prev => Math.min(prev + 10, 95));
+        }
+        
+        setConnectionState(webSocket.getConnectionState());
+      },
+      onError: (error) => {
+        console.error('❌ Apollo WebSocket error:', error);
+      },
+      onConnectionChange: () => {
+        setConnectionState(webSocket.getConnectionState());
+      }
+    });
+    return unsubscribe;
+  }, [webSocket, isEnriching, toast]);
+
+  const { isConnected: wsConnected } = connectionState;
+  const connectionStats = { messagesReceived: connectionState.messagesReceived, lastPingTime: connectionState.lastPingTime };
+
+
+  // Apollo enrichment mutation
+  const enrichmentMutation = useMutation({
+    mutationFn: async (params: ApolloSearchParams) => {
+      setIsEnriching(true);
+      setEnrichmentProgress(10);
+      
+      const response = await apiRequest('/api/apollo/enrich-prospects', 'POST', params);
+      return response;
+    },
+    onSuccess: (data: EnrichmentResult) => {
+      setEnrichmentProgress(100);
+      
+      toast({
+        title: "🎉 Enrichment Complete!",
+        description: `Found ${data.totalEnriched} prospects successfully`,
+        duration: 5000,
+      });
+      
+      // Reset after delay
+      setTimeout(() => {
+        setIsEnriching(false);
+        setEnrichmentProgress(0);
+      }, 2000);
+      
+    },
+    onError: (error: any) => {
+      setIsEnriching(false);
+      setEnrichmentProgress(0);
+      
+      toast({
+        title: "❌ Enrichment Failed",
+        description: error.message || "Failed to enrich prospects",
+        variant: "destructive",
+      });
+    }
+  });
+
+  const canProceed = true; // Always allow enrichment
+
+  const handleEnrichment = () => {
+    if (!canProceed) {
+      toast({
+        title: "⚠️ Cannot Proceed",
+        description: `Enrichment temporarily unavailable`,
+        variant: "destructive",
+      });
+...

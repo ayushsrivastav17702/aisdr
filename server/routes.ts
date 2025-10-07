@@ -353,6 +353,86 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Apollo bulk enrichment
+  app.post("/api/apollo-bulk-enrich", async (req, res) => {
+    try {
+      const { prospectIds } = z.object({ 
+        prospectIds: z.array(z.string()).min(1) 
+      }).parse(req.body);
+
+      // Fetch prospects from database
+      const prospects = [];
+      for (const id of prospectIds) {
+        const prospect = await storage.getProspect(id);
+        if (prospect) {
+          prospects.push(prospect);
+        }
+      }
+
+      if (prospects.length === 0) {
+        return res.status(400).json({ error: "No valid prospects found" });
+      }
+
+      // Prepare contacts for Apollo bulk match
+      const contacts = prospects.map(p => ({
+        email: p.primaryEmail || undefined,
+        first_name: p.firstName || undefined,
+        last_name: p.lastName || undefined,
+        organization_name: p.companyName || undefined,
+        linkedin_url: p.linkedinUrl || undefined,
+      })).filter(c => c.email || c.linkedin_url); // Need at least email or LinkedIn
+
+      if (contacts.length === 0) {
+        return res.status(400).json({ 
+          error: "No prospects with email or LinkedIn URL found" 
+        });
+      }
+
+      // Call Apollo bulk match API
+      const bulkResult = await apolloService.bulkEnrichContacts(contacts);
+
+      // Update prospects with enriched data
+      const results = [];
+      for (let i = 0; i < bulkResult.matches.length; i++) {
+        const match = bulkResult.matches[i];
+        const prospect = prospects[i];
+        
+        if (!prospect) continue;
+
+        const enrichedData = apolloService.convertApolloContactToProspect(match);
+        
+        const updated = await storage.updateProspect(prospect.id, {
+          ...enrichedData,
+          enrichmentStatus: 'enriched' as const,
+          enrichmentData: {
+            ...(prospect.enrichmentData || {}),
+            apollo: match,
+            apolloEnrichedAt: new Date().toISOString(),
+          }
+        });
+
+        results.push({
+          id: prospect.id,
+          success: true,
+          prospect: updated,
+        });
+      }
+
+      res.json({
+        results,
+        total: bulkResult.totalRequested,
+        enriched: bulkResult.uniqueEnriched,
+        missing: bulkResult.missingRecords,
+        creditsConsumed: bulkResult.creditsConsumed,
+      });
+    } catch (error) {
+      console.error("Apollo bulk enrichment error:", error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Apollo bulk enrichment failed" 
+      });
+    }
+  });
+
   // CSV upload and import
   app.post("/api/import/csv", upload.single('file'), async (req, res) => {
     try {
