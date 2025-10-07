@@ -78,6 +78,81 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
     },
   });
 
+  const lushaEnrichMutation = useMutation({
+    mutationFn: api.lushaEnrichProspects,
+    onSuccess: (result: any) => {
+      const enriched = result.enriched || 0;
+      const total = result.total || 0;
+      const results = result.results || [];
+      
+      // Check if API key is not configured
+      if (result.configured === false) {
+        toast({
+          variant: "destructive",
+          title: "Lusha Not Configured",
+          description: result.error || "Please add LUSHA_API_KEY to your secrets to enable email enrichment.",
+        });
+        onSelectionChange([]);
+        return;
+      }
+      
+      // Check if there were any errors in individual results
+      const errors = results.filter((r: any) => !r.success && !r.skipped);
+      if (errors.length > 0 && enriched === 0) {
+        toast({
+          variant: "destructive",
+          title: "Enrichment Failed",
+          description: `Failed to enrich ${errors.length} prospects. ${errors[0]?.error || 'Unknown error'}`,
+        });
+        onSelectionChange([]);
+        queryClient.invalidateQueries({ queryKey: ["/api/prospects"] });
+        return;
+      }
+      
+      // Success cases
+      if (enriched > 0) {
+        const skipped = results.filter((r: any) => r.skipped).length;
+        const failed = results.filter((r: any) => !r.success && !r.skipped).length;
+        
+        let description = `Successfully enriched ${enriched} of ${total} prospects with email addresses`;
+        if (skipped > 0) {
+          description += `. ${skipped} already had emails`;
+        }
+        if (failed > 0) {
+          description += `. ${failed} failed`;
+        }
+        
+        toast({
+          title: "Email Enrichment Complete",
+          description,
+        });
+      } else {
+        const skipped = results.filter((r: any) => r.skipped).length;
+        if (skipped === total) {
+          toast({
+            title: "All Prospects Already Have Emails",
+            description: "All selected prospects already have valid email addresses",
+          });
+        } else {
+          toast({
+            title: "No Emails Found",
+            description: "Lusha couldn't find email addresses for the selected prospects",
+          });
+        }
+      }
+      
+      onSelectionChange([]);
+      queryClient.invalidateQueries({ queryKey: ["/api/prospects"] });
+    },
+    onError: (error) => {
+      toast({
+        variant: "destructive",
+        title: "Lusha Enrichment Failed",
+        description: error.message,
+      });
+    },
+  });
+
   const handleSelectAll = (checked: boolean) => {
     if (checked && data) {
       const allIds = data.prospects.map((p: any) => p.id);
@@ -106,6 +181,19 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
     }
     
     enrichMutation.mutate(selectedIds);
+  };
+
+  const handleLushaEnrich = () => {
+    if (selectedIds.length === 0) {
+      toast({
+        variant: "destructive",
+        title: "No Selection",
+        description: "Please select prospects to enrich with Lusha",
+      });
+      return;
+    }
+    
+    lushaEnrichMutation.mutate(selectedIds);
   };
 
   const getStatusBadge = (status: string) => {
@@ -231,6 +319,16 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
                 <Button variant="outline" size="sm" data-testid="button-export">
                   <DownloadIcon className="w-4 h-4 mr-2" />
                   Export
+                </Button>
+                <Button 
+                  variant="outline"
+                  size="sm"
+                  onClick={handleLushaEnrich}
+                  disabled={lushaEnrichMutation.isPending}
+                  data-testid="button-lusha-enrich"
+                >
+                  <SparklesIcon className="w-4 h-4 mr-2" />
+                  {lushaEnrichMutation.isPending ? "Finding Emails..." : "Get Emails (Lusha)"}
                 </Button>
                 <Button 
                   size="sm"

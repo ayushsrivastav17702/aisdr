@@ -260,9 +260,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }).parse(req.body);
 
       if (!lushaService.isConfigured()) {
-        return res.status(503).json({ 
-          error: "Lusha API key not configured. Please set LUSHA_API_KEY environment variable to enable email enrichment.",
-          needsConfig: true
+        return res.json({ 
+          results: [],
+          total: 0,
+          enriched: 0,
+          configured: false,
+          error: "Lusha API key not configured. Please set LUSHA_API_KEY environment variable to enable email enrichment."
         });
       }
 
@@ -337,7 +340,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ 
         results,
         total: results.length,
-        enriched: results.filter(r => r.success).length,
+        enriched: results.filter(r => r.emailFound).length,
         configured: lushaService.isConfigured()
       });
     } catch (error) {
