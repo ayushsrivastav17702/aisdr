@@ -16,6 +16,7 @@ import { z } from "zod";
 import { parse } from "csv-parse/sync";
 import { readFileSync } from "fs";
 import sequenceRoutes from "./sequences-routes";
+import mailboxRoutes from "./mailbox-routes";
 
 const upload = multer({ dest: 'uploads/' });
 
@@ -315,7 +316,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const updates: any = {
           enrichmentStatus: 'enriched' as const,
           enrichmentData: {
-            ...prospect.enrichmentData,
+            ...(prospect.enrichmentData || {}),
             lusha: lushaData,
             lushaEnrichedAt: new Date().toISOString(),
           }
@@ -522,6 +523,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Sequence module routes
   app.use("/api", sequenceRoutes);
+
+  // Mailbox module routes
+  app.use("/api", mailboxRoutes);
 
   // Health check
   app.get("/api/health", (req, res) => {
