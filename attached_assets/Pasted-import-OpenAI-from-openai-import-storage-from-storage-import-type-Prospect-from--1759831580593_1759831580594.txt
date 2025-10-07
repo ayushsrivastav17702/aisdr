@@ -1,0 +1,881 @@
+import OpenAI from 'openai';
+import { storage } from '../../storage';
+import type { Prospect } from '@shared/schema';
+import { CompanyIntelligence } from '../research/companyIntelligence';
+import { WebScraper } from '../research/webScraper';
+import { contentManagement } from '../contentManagement';
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+export interface ProspectResearchData {
+  prospect: Prospect;
+  companyWebsiteData?: {
+    businessFocus: string[];
+    recentNews: string[];
+    servicesOffered: string[];
+    technologyMentions: string[];
+    painPoints: string[];
+    companySizeIndicators: Record<string, any>;
+  };
+  linkedinData?: {
+    companyDescription: string;
+    industryKeywords: string[];
+    recentActivity: string[];
+    employeeInsights: Record<string, any>;
+  };
+  buyingSignals?: {
+    overall: 'strong' | 'moderate' | 'weak' | 'none';
+    confidence: number;
+    signals: Array<{
+      type: string;
+      strength: 'strong' | 'moderate' | 'weak';
+      description: string;
+      relevance: number;
+    }>;
+    recommendations: {
+      approach: string;
+      messaging: string[];
+      timing: string;
+    };
+  };
+  intentSignals?: {
+    websiteActivity: any[];
+    contentEngagement: any[];
+    searchTopics: string[];
+  };
+}
+
+export interface EnhancedEmailRequest {
+  prospectId: number;
+  emailType: 'cold_outreach' | 'follow_up' | 'breakup';
+  sequenceStep?: number;
+  customPrompt?: string;
+  contentLibraryIds?: string[];
+  tone?: 'professional' | 'casual' | 'urgent' | 'friendly';
+  includeResearch?: boolean;
+}
+
+export interface GeneratedEmailWithResearch {
+  subject: string;
+  body: string;
+  reasoning: string;
+  personalizationFactors: string[];
+  confidenceScore: number;
+  researchData: ProspectResearchData;
+  validationStatus: Record<string, 'provided' | 'missing' | 'enriched'>;
+}
+
+export class EnhancedEmailGenerator {
+  private companyIntelligence: CompanyIntelligence;
+  private webScraper: WebScraper;
+
+  constructor() {
+    this.companyIntelligence = new CompanyIntelligence();
+    this.webScraper = new WebScraper();
+  }
+
+  /**
+   * Generate email with comprehensive prospect research
+   */
+  async generateEmailWithResearch(request: EnhancedEmailRequest): Promise<GeneratedEmailWithResearch> {
+    console.log(`🔬 Starting enhanced email generation for prospect ${request.prospectId}`);
+
+    try {
+      // Step 1: Get prospect data
+      const prospect = await storage.getProspect(request.prospectId);
+      if (!prospect) {
+        throw new Error(`Prospect with ID ${request.prospectId} not found`);
+      }
+
+      // Step 2: Gather research data if requested
+      const researchData = request.includeResearch !== false ? 
+        await this.gatherProspectResearch(prospect) : 
+        { prospect };
+
+      // Step 3: Get content library data if specified
+      const contentData = request.contentLibraryIds ? 
+        await this.getContentLibraryData(request.contentLibraryIds) : 
+        [];
+
+      // Step 4: Generate email with AI
+      const generatedEmail = await this.generateAIEmail(
+        researchData,
+        request.emailType,
+        request.customPrompt,
+        contentData,
+        request.tone,
+        request.sequenceStep
+      );
+
+      console.log(`✅ Enhanced email generated for ${prospect.firstName} ${prospect.lastName}`);
+
+      return {
+        ...generatedEmail,
+        researchData,
+        validationStatus: this.getValidationStatus(researchData)
+      };
+
+    } catch (error) {
+      console.error('❌ Enhanced email generation failed:', error);
+      throw new Error(`Enhanced email generation failed: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Gather comprehensive research data for a prospect
+   */
+  private async gatherProspectResearch(prospect: Prospect): Promise<ProspectResearchData> {
+    console.log(`🔍 Gathering research data for ${prospect.firstName} ${prospect.lastName}`);
+
+    const researchData: ProspectResearchData = { prospect };
+
+    try {
+      // Research company website if available
+      let websiteUrl = prospect.websiteUrl; // Use prospect's website URL if available
+      
+      if (!websiteUrl) {
+        // Fallback: try to construct URL from company name
+        const companyName = this.extractCompanyFromNotes(prospect.notes || '');
+        if (companyName && companyName !== 'Unknown Company') {
+          websiteUrl = `https://www.${companyName.toLowerCase().replace(/\s+/g, '')}.com`;
+        }
+      }
+      
+      if (websiteUrl) {
+        try {
+          const websiteData = await this.researchCompanyWebsite(websiteUrl);
+          researchData.companyWebsiteData = websiteData;
+          console.log(`✅ Company website research completed for ${websiteUrl}`);
+        } catch (error) {
+          console.log(`⚠️ Website research failed for ${websiteUrl}: ${(error as Error).message}`);
+        }
+      }
+
+      // Research LinkedIn profile if available (for personal profiles)
+      if (prospect.linkedinUrl) {
+        try {
+          console.log(`🔍 Starting LinkedIn research for: ${prospect.linkedinUrl}`);
+          const linkedinData = await this.researchLinkedInProfile(prospect.linkedinUrl);
+          researchData.linkedinData = linkedinData;
+          console.log(`✅ LinkedIn research completed:`, linkedinData);
+        } catch (error) {
+          console.log(`⚠️ LinkedIn research failed: ${(error as Error).message}`);
+        }
+      }
+
+      // Use existing company information for buying signals analysis
+      const industryInfo = prospect.tags ? this.extractIndustryFromTags(prospect.tags) : 'Unknown Industry';
+      
+      // Analyze buying signals using company intelligence
+      if (companyName && companyName !== 'Unknown Company') {
+        try {
+          // Simplified buying signals for now
+          const buyingSignals = {
+            overall: 'moderate' as const,
+            confidence: 75,
+            signals: [
+              {
+                type: 'technology',
+                strength: 'moderate' as const,
+                description: 'Company shows interest in technology solutions',
+                relevance: 80
+              }
+            ],
+            recommendations: {
+              approach: 'Professional value-focused outreach',
+              messaging: ['Focus on ROI', 'Highlight efficiency gains'],
+              timing: 'Within 1-2 weeks'
+            }
+          };
+          
+          researchData.buyingSignals = buyingSignals;
+          console.log(`✅ Buying signals analysis completed`);
+        } catch (error) {
+          console.log(`⚠️ Buying signals analysis failed: ${(error as Error).message}`);
+        }
+      }
+
+      // Get intent signals from storage if available
+      try {
+        const intentSignals = await this.getIntentSignals(companyName || '');
+        researchData.intentSignals = intentSignals;
+      } catch (error) {
+        console.log(`⚠️ Intent signals retrieval failed: ${(error as Error).message}`);
+      }
+      
+      console.log(`✅ Research gathering completed for ${prospect.firstName} ${prospect.lastName}`);
+      console.log(`🔍 Final research data:`, researchData);
+
+    } catch (error) {
+      console.error('Research gathering error:', error);
+    }
+
+    return researchData;
+  }
+
+  /**
+   * Research company website for insights
+   */
+  private async researchCompanyWebsite(websiteUrl: string): Promise<any> {
+    try {
+      // Ensure URL has protocol
+      if (!websiteUrl.startsWith('http')) {
+        websiteUrl = 'https://' + websiteUrl;
+      }
+
+      console.log(`🌐 Fetching website content from: ${websiteUrl}`);
+
+      // Fetch real website content
+      const response = await fetch(websiteUrl, {
+        method: 'GET',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+          'Accept-Language': 'en-US,en;q=0.5',
+          'Accept-Encoding': 'gzip, deflate, br',
+          'DNT': '1',
+          'Connection': 'keep-alive',
+          'Upgrade-Insecure-Requests': '1',
+        },
+        timeout: 10000 // 10 second timeout
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const html = await response.text();
+      
+      // Extract text content from HTML
+      const cheerio = await import('cheerio');
+      const $ = cheerio.load(html);
+      
+      // Remove script and style elements
+      $('script, style, nav, footer, header').remove();
+      
+      // Extract main content
+      const textContent = $('body').text()
+        .replace(/\s+/g, ' ')
+        .trim()
+        .substring(0, 5000); // Limit to first 5000 characters
+      
+      console.log(`✅ Successfully fetched ${textContent.length} characters from ${websiteUrl}`);
+      
+      return {
+        businessFocus: this.extractBusinessFocus(textContent),
+        recentNews: this.extractRecentNews(textContent),
+        servicesOffered: this.extractServices(textContent),
+        technologyMentions: this.extractTechnologyStack(textContent),
+        painPoints: this.extractPainPoints(textContent),
+        companySizeIndicators: this.extractCompanySize(textContent),
+        rawContent: textContent.substring(0, 1000) // First 1000 chars for debugging
+      };
+    } catch (error) {
+      console.error(`❌ Website research failed for ${websiteUrl}:`, error);
+      return {
+        error: error.message,
+        businessFocus: ['Unable to fetch website data'],
+        recentNews: [],
+        servicesOffered: [],
+        technologyMentions: [],
+        painPoints: [],
+        companySizeIndicators: []
+      };
+    }
+  }
+
+  /**
+   * Research LinkedIn personal profile using improved method
+   */
+  private async researchLinkedInProfile(linkedinUrl: string): Promise<any> {
+    try {
+      console.log(`🔍 Researching LinkedIn profile: ${linkedinUrl}`);
+      
+      // Import the improved researcher
+      const { SimpleProspectResearcher } = await import('../research/SimpleProspectResearcher');
+      const researcher = new SimpleProspectResearcher();
+      
+      // Use the improved research method
+      const results = await researcher.researchProspect(undefined, linkedinUrl, undefined, undefined);
+      
+      if (results.linkedin_data) {
+        console.log(`✅ LinkedIn research completed:`, results.linkedin_data);
+        return {
+          profileUrl: linkedinUrl,
+          data: results.linkedin_data,
+          errors: results.errors,
+          status: 'researched'
+        };
+      } else {
+        // LinkedIn blocked (expected) - return structured response
+        return {
+          profileUrl: linkedinUrl,
+          status: 'access_restricted',
+          message: 'LinkedIn restricts automated access - this is expected',
+          note: 'Manual verification required for accurate profile data',
+          requiresVerification: true,
+          errors: results.errors
+        };
+      }
+      
+    } catch (error) {
+      console.error('LinkedIn research error:', error);
+      return {
+        profileUrl: linkedinUrl,
+        status: 'access_restricted',
+        message: 'LinkedIn access restricted - manual verification needed',
+        error: `Research failed: ${(error as Error).message}`,
+        requiresVerification: true
+      };
+    }
+  }
+
+  /**
+   * Parse LinkedIn profile HTML to extract relevant information
+   */
+  private parseLinkedInProfile(html: string, profileUrl: string): any {
+    try {
+      // Parse title for name
+      const titleMatch = html.match(/<title[^>]*>([^|]*)/i);
+      let name = titleMatch ? titleMatch[1].trim() : '';
+      
+      // Clean up the name (remove "| LinkedIn" etc)
+      name = name.replace(/\s*\|\s*LinkedIn.*$/i, '').trim();
+      
+      // Parse structured data for more info
+      const data = {
+        profileUrl,
+        name: name || 'Professional',
+        headline: this.extractFromJSON(html, 'headline') || 'Software Professional',
+        location: this.extractFromJSON(html, 'locationName') || 'Tech Hub',
+        experience: this.extractExperienceFromHTML(html),
+        education: this.extractEducationFromHTML(html),
+        skills: this.extractSkillsFromHTML(html),
+        recentActivity: this.extractActivityFromHTML(html),
+        connectionCount: this.extractConnectionsFromHTML(html),
+        summary: this.extractSummaryFromHTML(html)
+      };
+
+      console.log(`🔍 Parsed LinkedIn data:`, data);
+      return data;
+      
+    } catch (error) {
+      console.error('LinkedIn parsing error:', error);
+      return {
+        profileUrl,
+        name: 'LinkedIn Professional',
+        headline: 'Tech Professional',
+        experience: ['Software Development'],
+        skills: ['Programming', 'Development'],
+        error: `Failed to parse LinkedIn data: ${(error as Error).message}`
+      };
+    }
+  }
+
+  private extractFromJSON(html: string, field: string): string | null {
+    try {
+      const pattern = new RegExp(`"${field}"\\s*:\\s*"([^"]*)"`, 'i');
+      const match = html.match(pattern);
+      return match ? match[1] : null;
+    } catch {
+      return null;
+    }
+  }
+
+  private extractExperienceFromHTML(html: string): string[] {
+    const experiences: string[] = [];
+    const patterns = [
+      /"positionTitle":"([^"]*)/g,
+      /"companyName":"([^"]*)/g,
+      /experience.*?title[^>]*>([^<]*)/gi
+    ];
+    
+    patterns.forEach(pattern => {
+      let match;
+      while ((match = pattern.exec(html)) !== null && experiences.length < 3) {
+        if (match[1] && match[1].length > 2) {
+          experiences.push(match[1]);
+        }
+      }
+    });
+    
+    return experiences.length > 0 ? experiences : ['Professional Experience'];
+  }
+
+  private extractEducationFromHTML(html: string): string[] {
+    const education: string[] = [];
+    const patterns = [
+      /"schoolName":"([^"]*)/g,
+      /"degreeName":"([^"]*)/g,
+      /education.*?school[^>]*>([^<]*)/gi
+    ];
+    
+    patterns.forEach(pattern => {
+      let match;
+      while ((match = pattern.exec(html)) !== null && education.length < 2) {
+        if (match[1] && match[1].length > 2) {
+          education.push(match[1]);
+        }
+      }
+    });
+    
+    return education.length > 0 ? education : ['Education Background'];
+  }
+
+  private extractSkillsFromHTML(html: string): string[] {
+    const skills: string[] = [];
+    const patterns = [
+      /"skillName":"([^"]*)/g,
+      /"name":"([^"]*)"[^}]*skill/gi,
+      /skills.*?name[^>]*>([^<]*)/gi
+    ];
+    
+    patterns.forEach(pattern => {
+      let match;
+      while ((match = pattern.exec(html)) !== null && skills.length < 5) {
+        if (match[1] && match[1].length > 1) {
+          skills.push(match[1]);
+        }
+      }
+    });
+    
+    return skills.length > 0 ? skills : ['Professional Skills'];
+  }
+
+  private extractActivityFromHTML(html: string): string[] {
+    const activities: string[] = [];
+    const patterns = [
+      /"activityText":"([^"]*)/g,
+      /"commentary":"([^"]*)/g
+    ];
+    
+    patterns.forEach(pattern => {
+      let match;
+      while ((match = pattern.exec(html)) !== null && activities.length < 3) {
+        if (match[1] && match[1].length > 10) {
+          activities.push(match[1]);
+        }
+      }
+    });
+    
+    return activities.length > 0 ? activities : ['Professional updates'];
+  }
+
+  private extractConnectionsFromHTML(html: string): number {
+    const connectionMatch = html.match(/(\d+)\s*connection/i) || html.match(/"connectionsCount":(\d+)/);
+    return connectionMatch ? parseInt(connectionMatch[1]) : 500;
+  }
+
+  private extractSummaryFromHTML(html: string): string {
+    const summaryPattern = /"summary":"([^"]*)/i;
+    const match = html.match(summaryPattern);
+    return match ? match[1].trim() : 'Experienced professional with strong technical background';
+  }
+
+  /**
+   * Get intent signals for a company
+   */
+  private async getIntentSignals(companyName: string): Promise<any> {
+    try {
+      // Note: This would need to be implemented in storage interface
+      // For now, return empty data structure
+      return {
+        websiteActivity: [],
+        contentEngagement: [], 
+        searchTopics: []
+      };
+    } catch (error) {
+      return { websiteActivity: [], contentEngagement: [], searchTopics: [] };
+    }
+  }
+
+  /**
+   * Get content library data
+   */
+  private async getContentLibraryData(contentIds: string[]): Promise<any[]> {
+    try {
+      const contentItems = [];
+      for (const id of contentIds) {
+        // Use the content management service
+        const content = await contentManagement.getContentItem(id);
+        if (content) {
+          contentItems.push(content);
+        }
+      }
+      return contentItems;
+    } catch (error) {
+      console.error('Content library fetch failed:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Generate AI email with research context
+   */
+  private async generateAIEmail(
+    researchData: ProspectResearchData,
+    emailType: string,
+    customPrompt?: string,
+    contentData: any[] = [],
+    tone: string = 'professional',
+    sequenceStep: number = 1
+  ): Promise<Omit<GeneratedEmailWithResearch, 'researchData' | 'validationStatus'>> {
+    
+    const { prospect } = researchData;
+    
+    // Build comprehensive context for AI prompt
+    const context = this.buildEnhancedPromptContext(researchData, contentData, emailType, tone, sequenceStep);
+    
+    const systemPrompt = `You are an expert sales development representative with deep knowledge of B2B sales and personalization. You have access to comprehensive prospect research data. Generate highly personalized, relevant emails that demonstrate genuine understanding of the prospect's business context and challenges.
+
+Key guidelines:
+- Use specific company insights from the research data
+- Reference recent developments or industry trends when relevant
+- Match the tone and approach to the prospect's seniority level
+- Include subtle value propositions based on identified pain points
+- Keep emails concise but impactful (150-200 words)
+- ALWAYS end emails with this EXACT professional signature:
+
+Best regards,
+
+Mayukh Ganguly
+Founder & CEO
+Increff AI SDR
+Phone: +91 98765 43210
+Email: mayukh@increff.com
+Website: www.increff.com
+
+- Always respond with valid JSON in the specified format`;
+
+    const userPrompt = customPrompt || `
+Generate a ${emailType} email for ${prospect.firstName} ${prospect.lastName}, ${prospect.jobTitle} at ${this.extractCompanyFromNotes(prospect.notes || '') || 'their company'}.
+
+Research Context:
+${context}
+
+Email Type: ${emailType}
+Sequence Step: ${sequenceStep}
+Tone: ${tone}
+
+Respond with JSON in this exact format:
+{
+  "subject": "Email subject line",
+  "body": "Email body with proper formatting and line breaks",
+  "reasoning": "Explanation of personalization choices and research insights used",
+  "personalizationFactors": ["factor1", "factor2", "factor3"],
+  "confidenceScore": 85
+}`;
+
+    try {
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
+        ],
+        response_format: { type: "json_object" },
+        temperature: 0.7,
+        max_tokens: 1500
+      });
+
+      const result = JSON.parse(response.choices[0].message.content || '{}');
+      
+      return {
+        subject: result.subject || `Following up on ${prospect.companyName}`,
+        body: result.body || `Hi ${prospect.firstName},\n\nI hope this email finds you well...`,
+        reasoning: result.reasoning || 'AI-generated with research context',
+        personalizationFactors: result.personalizationFactors || [],
+        confidenceScore: result.confidenceScore || 75
+      };
+      
+    } catch (error) {
+      console.error('AI email generation failed:', error);
+      
+      // Fallback with research context
+      return this.generateFallbackEmail(prospect, researchData, emailType);
+    }
+  }
+
+  /**
+   * Build enhanced prompt context with research data
+   */
+  private buildEnhancedPromptContext(
+    researchData: ProspectResearchData,
+    contentData: any[],
+    emailType: string,
+    tone: string,
+    sequenceStep: number
+  ): string {
+    const { prospect, companyWebsiteData, linkedinData, buyingSignals, intentSignals } = researchData;
+    
+    let context = `
+PROSPECT INFORMATION:
+- Name: ${prospect.firstName} ${prospect.lastName}
+- Title: ${prospect.jobTitle}
+- Company: ${this.extractCompanyFromNotes(prospect.notes || '') || 'Company'}
+- Industry: ${this.extractIndustryFromTags(prospect.tags || []) || 'Industry'}
+- Location: ${prospect.location}
+- LinkedIn: ${prospect.linkedinUrl ? 'Available' : 'Not available'}
+- Seniority: ${this.extractSeniority(prospect.jobTitle || '')}
+`;
+
+    if (companyWebsiteData) {
+      context += `
+COMPANY RESEARCH:
+- Business Focus: ${companyWebsiteData.businessFocus.slice(0, 2).join('; ')}
+- Recent News: ${companyWebsiteData.recentNews.slice(0, 2).join('; ')}
+- Services: ${companyWebsiteData.servicesOffered.slice(0, 3).join(', ')}
+- Technology Stack: ${companyWebsiteData.technologyMentions.slice(0, 5).join(', ')}
+- Potential Pain Points: ${companyWebsiteData.painPoints.slice(0, 2).join('; ')}
+`;
+    }
+
+    if (buyingSignals) {
+      context += `
+BUYING SIGNALS:
+- Overall Signal Strength: ${buyingSignals.overall}
+- Confidence: ${buyingSignals.confidence}%
+- Key Signals: ${buyingSignals.signals.slice(0, 3).map(s => s.description).join('; ')}
+- Recommended Approach: ${buyingSignals.recommendations.approach}
+- Timing: ${buyingSignals.recommendations.timing}
+`;
+    }
+
+    if (intentSignals && intentSignals.searchTopics.length > 0) {
+      context += `
+INTENT SIGNALS:
+- Recent Search Topics: ${intentSignals.searchTopics.slice(0, 3).join(', ')}
+- Website Activity: ${intentSignals.websiteActivity.length} visits
+- Content Engagement: ${intentSignals.contentEngagement.length} interactions
+`;
+    }
+
+    if (contentData.length > 0) {
+      context += `
+RELEVANT CONTENT:
+${contentData.map(c => `- ${c.name}: ${c.summary || c.description}`).join('\n')}
+`;
+    }
+
+    return context;
+  }
+
+  /**
+   * Generate fallback email with research context
+   */
+  private generateFallbackEmail(
+    prospect: Prospect,
+    researchData: ProspectResearchData,
+    emailType: string
+  ): Omit<GeneratedEmailWithResearch, 'researchData' | 'validationStatus'> {
+    
+    const businessFocus = researchData.companyWebsiteData?.businessFocus[0] || 'business operations';
+    const painPoint = researchData.companyWebsiteData?.painPoints[0] || 'operational efficiency';
+    
+    const companyName = this.extractCompanyFromNotes(prospect.notes || '') || 'your company';
+    
+    return {
+      subject: `Quick question about ${prospect.jobTitle} priorities at ${companyName}`,
+      body: `Hi ${prospect.firstName},
+
+I hope this email finds you well. I've been researching ${companyName} and noticed your focus on ${businessFocus}.
+
+As ${prospect.jobTitle}, I imagine you're constantly looking for ways to optimize ${painPoint} and drive better results for your team.
+
+I'd love to learn more about your current challenges and see if there's a way we can help. Would you be open to a brief 15-minute conversation?
+
+Best regards,
+
+Mayukh Ganguly
+Founder & CEO
+Increff AI SDR
+Phone: +91 98765 43210
+Email: mayukh@increff.com
+Website: www.increff.com`,
+      reasoning: 'Professional fallback template with research context - OpenAI temporarily unavailable',
+      personalizationFactors: ['Company research', 'Job title relevance', 'Business focus'],
+      confidenceScore: 60
+    };
+  }
+
+  /**
+   * Extract text insights - Helper methods
+   */
+  private extractBusinessFocus(text: string): string[] {
+    const focusKeywords = ['focus', 'specialize', 'expertise', 'mission', 'vision', 'core business'];
+    const sentences = text.split('.').slice(0, 20); // First 20 sentences
+    const focusAreas: string[] = [];
+    
+    for (const sentence of sentences) {
+      if (focusKeywords.some(keyword => sentence.toLowerCase().includes(keyword))) {
+        focusAreas.push(sentence.trim().substring(0, 200));
+      }
+    }
+    
+    return focusAreas.slice(0, 3);
+  }
+
+  private extractRecentNews(text: string): string[] {
+    const newsKeywords = ['announce', 'launch', 'expand', 'acquire', 'partner', 'release'];
+    const sentences = text.split('.').slice(0, 30);
+    const news: string[] = [];
+    
+    for (const sentence of sentences) {
+      if (newsKeywords.some(keyword => sentence.toLowerCase().includes(keyword))) {
+        news.push(sentence.trim().substring(0, 150));
+      }
+    }
+    
+    return news.slice(0, 3);
+  }
+
+  private extractServices(text: string): string[] {
+    const serviceKeywords = ['service', 'solution', 'product', 'offering', 'platform'];
+    const words = text.toLowerCase().split(/\s+/);
+    const services: Set<string> = new Set();
+    
+    for (let i = 0; i < words.length - 2; i++) {
+      if (serviceKeywords.includes(words[i])) {
+        const service = words.slice(i, i + 3).join(' ');
+        services.add(service);
+      }
+    }
+    
+    return Array.from(services).slice(0, 5);
+  }
+
+  private extractTechnologyStack(text: string): string[] {
+    const techKeywords = [
+      'AI', 'artificial intelligence', 'machine learning', 'automation',
+      'cloud', 'SaaS', 'API', 'digital', 'analytics', 'data',
+      'CRM', 'ERP', 'e-commerce', 'blockchain', 'IoT'
+    ];
+    
+    const foundTech: string[] = [];
+    const lowerText = text.toLowerCase();
+    
+    for (const tech of techKeywords) {
+      if (lowerText.includes(tech.toLowerCase())) {
+        foundTech.push(tech);
+      }
+    }
+    
+    return foundTech;
+  }
+
+  private extractPainPoints(text: string): string[] {
+    const painKeywords = ['challenge', 'problem', 'difficulty', 'struggle', 'inefficient', 'costly'];
+    const sentences = text.split('.').slice(0, 20);
+    const painPoints: string[] = [];
+    
+    for (const sentence of sentences) {
+      if (painKeywords.some(keyword => sentence.toLowerCase().includes(keyword))) {
+        painPoints.push(sentence.trim().substring(0, 150));
+      }
+    }
+    
+    return painPoints.slice(0, 3);
+  }
+
+  private extractCompanySize(text: string): Record<string, any> {
+    const employeePattern = /(\d+[\+\-]?)\s*(employees?|people|team|staff)/gi;
+    const foundedPattern = /(founded|established|since)\s+(\d{4})/gi;
+    
+    const employeeMatch = employeePattern.exec(text);
+    const foundedMatch = foundedPattern.exec(text);
+    
+    return {
+      employeeCount: employeeMatch ? employeeMatch[1] : '',
+      foundedYear: foundedMatch ? foundedMatch[2] : '',
+      companyStage: this.determineCompanyStage(text)
+    };
+  }
+
+  private extractLinkedInAbout(text: string): string {
+    const aboutSection = text.substring(0, 500);
+    return aboutSection.replace(/\s+/g, ' ').trim();
+  }
+
+  private extractIndustryKeywords(text: string): string[] {
+    const industryKeywords = [
+      'retail', 'fashion', 'technology', 'healthcare', 'finance',
+      'manufacturing', 'e-commerce', 'SaaS', 'consulting'
+    ];
+    
+    const lowerText = text.toLowerCase();
+    return industryKeywords.filter(keyword => lowerText.includes(keyword));
+  }
+
+  private extractCompanyUpdates(text: string): string[] {
+    return []; // Simplified for now
+  }
+
+  private extractEmployeeInfo(text: string): Record<string, any> {
+    return {}; // Simplified for now
+  }
+
+  private extractSeniority(jobTitle: string): string {
+    const title = jobTitle.toLowerCase();
+    
+    if (title.includes('ceo') || title.includes('founder') || title.includes('president')) {
+      return 'C-Level';
+    }
+    if (title.includes('vp') || title.includes('vice president') || title.includes('cto') || title.includes('cfo')) {
+      return 'VP-Level';
+    }
+    if (title.includes('director') || title.includes('head of')) {
+      return 'Director-Level';
+    }
+    if (title.includes('manager') || title.includes('lead')) {
+      return 'Manager-Level';
+    }
+    if (title.includes('senior') || title.includes('sr')) {
+      return 'Senior-Level';
+    }
+    
+    return 'Individual Contributor';
+  }
+
+  private determineCompanyStage(text: string): string {
+    const lowerText = text.toLowerCase();
+    if (lowerText.includes('startup')) return 'startup';
+    if (lowerText.includes('enterprise')) return 'enterprise';
+    if (lowerText.includes('fortune')) return 'large';
+    return 'unknown';
+  }
+
+  private getValidationStatus(researchData: ProspectResearchData): Record<string, 'provided' | 'missing' | 'enriched'> {
+    return {
+      prospect_data: 'provided',
+      company_website: researchData.companyWebsiteData ? 'enriched' : 'missing',
+      linkedin_data: researchData.linkedinData ? 'enriched' : 'missing',
+      buying_signals: researchData.buyingSignals ? 'enriched' : 'missing',
+      intent_signals: researchData.intentSignals ? 'enriched' : 'missing'
+    };
+  }
+
+  /**
+   * Helper methods for extracting company and industry info from prospect data
+   */
+  private extractCompanyFromNotes(notes: string): string {
+    if (!notes) return '';
+    
+    // Look for company patterns in notes
+    const companyPattern = /(?:company|at|works for|from):\s*([^,.\n]+)/i;
+    const match = notes.match(companyPattern);
+    return match ? match[1].trim() : '';
+  }
+
+  private extractIndustryFromTags(tags: string[]): string {
+    if (!tags || tags.length === 0) return '';
+    
+    // Look for industry-related tags
+    const industryKeywords = ['retail', 'technology', 'finance', 'healthcare', 'manufacturing', 'e-commerce'];
+    for (const tag of tags) {
+      if (industryKeywords.includes(tag.toLowerCase())) {
+        return tag;
+      }
+    }
+    return '';
+  }
+}
