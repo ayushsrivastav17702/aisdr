@@ -4,16 +4,26 @@ import { storage } from '../storage';
 import { apolloService } from './apollo.service';
 import { type Job, type Prospect, type InsertProspect } from '@shared/schema';
 
-// Redis connection
-const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
-  enableReadyCheck: false,
-  maxRetriesPerRequest: null,
-});
+// Check if Redis is configured
+const REDIS_ENABLED = !!process.env.REDIS_URL;
 
-// Job queues
-const enrichmentQueue = new Queue('enrichment', { connection: redis });
-const importQueue = new Queue('import', { connection: redis });
-const searchQueue = new Queue('search', { connection: redis });
+// Redis connection (only if configured)
+let redis: Redis | null = null;
+let enrichmentQueue: Queue | null = null;
+let importQueue: Queue | null = null;
+let searchQueue: Queue | null = null;
+
+if (REDIS_ENABLED) {
+  redis = new Redis(process.env.REDIS_URL!, {
+    enableReadyCheck: false,
+    maxRetriesPerRequest: null,
+  });
+
+  // Job queues
+  enrichmentQueue = new Queue('enrichment', { connection: redis });
+  importQueue = new Queue('import', { connection: redis });
+  searchQueue = new Queue('search', { connection: redis });
+}
 
 // Job data interfaces
 interface EnrichmentJobData {
@@ -43,6 +53,11 @@ class JobService {
   }
 
   private setupWorkers() {
+    if (!REDIS_ENABLED || !redis) {
+      console.log('Redis not configured - job queue features disabled');
+      return;
+    }
+
     // Enrichment worker
     new Worker('enrichment', async (job: BullJob<EnrichmentJobData>) => {
       return await this.processEnrichmentJob(job);
@@ -69,6 +84,10 @@ class JobService {
   }
 
   async createEnrichmentJob(prospectIds: string[]): Promise<Job> {
+    if (!REDIS_ENABLED || !enrichmentQueue) {
+      throw new Error('Job queue not available. Please configure Redis to enable background job processing.');
+    }
+
     // Create job record in database
     const job = await storage.createJob({
       type: 'enrichment',
@@ -94,6 +113,10 @@ class JobService {
     fieldMappings: Record<string, string>,
     options: { skipDuplicates?: boolean; autoEnrich?: boolean } = {}
   ): Promise<Job> {
+    if (!REDIS_ENABLED || !importQueue) {
+      throw new Error('Job queue not available. Please configure Redis to enable background job processing.');
+    }
+
     const job = await storage.createJob({
       type: 'import',
       title: 'CSV Import',
@@ -115,6 +138,10 @@ class JobService {
   }
 
   async createSearchJob(query: string, apolloFilters: any, maxResults = 1000): Promise<Job> {
+    if (!REDIS_ENABLED || !searchQueue) {
+      throw new Error('Job queue not available. Please configure Redis to enable background job processing.');
+    }
+
     const job = await storage.createJob({
       type: 'search',
       title: 'Apollo Search',
