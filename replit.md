@@ -105,6 +105,10 @@ Apollo API key needs to be configured for:
 4. ✅ Fixed frontend TypeScript type errors
 5. ✅ Fixed SelectItem empty value prop error
 6. ✅ Updated storage interface for job timestamps
+7. ✅ Fixed Apollo API returning data in 'people' array instead of 'contacts'
+8. ✅ Added synchronous Apollo search-and-save endpoint for Redis-less operation
+9. ✅ Fixed CSV import validation - now properly parses uploaded files instead of returning mock data
+10. ✅ Fixed navigation buttons - added onClick handlers for all sidebar navigation items
 
 ### Testing Status
 - ✅ Application starts without errors

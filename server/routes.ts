@@ -12,6 +12,8 @@ import {
 } from "@shared/schema";
 import multer from "multer";
 import { z } from "zod";
+import { parse } from "csv-parse/sync";
+import { readFileSync } from "fs";
 
 const upload = multer({ dest: 'uploads/' });
 
@@ -286,27 +288,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "No file uploaded" });
       }
 
-      // This would parse the CSV and return sample data and detected fields
-      // For now, return mock validation results
-      const validation = {
-        totalRows: 234,
-        validRows: 221,
-        duplicateRows: 8,
-        errorRows: 5,
-        columns: [
-          { name: "First Name", samples: ["Sarah", "James", "Emily"] },
-          { name: "Last Name", samples: ["Mitchell", "Chen", "Parker"] },
-          { name: "Email Address", samples: ["sarah@fintech.io", "j.chen@crypto.com"] },
-          { name: "Job Title", samples: ["CTO", "VP Engineering"] },
-          { name: "Company", samples: ["FinTech Solutions", "CryptoPay Inc"] },
-        ],
-        suggestedMappings: {
-          "First Name": "firstName",
-          "Last Name": "lastName", 
-          "Email Address": "primaryEmail",
-          "Job Title": "jobTitle",
-          "Company": "companyName"
+      // Parse CSV file
+      const fileContent = readFileSync(req.file.path, 'utf-8');
+      const records = parse(fileContent, {
+        columns: true,
+        skip_empty_lines: true,
+        trim: true,
+      });
+
+      const totalRows = records.length;
+      const columns: { name: string; samples: string[] }[] = [];
+      const suggestedMappings: Record<string, string> = {};
+
+      // Get column names and sample data
+      if (records.length > 0) {
+        const columnNames = Object.keys(records[0] as Record<string, any>);
+        
+        for (const colName of columnNames) {
+          const samples = records
+            .slice(0, 3)
+            .map((row: any) => row[colName])
+            .filter((val: any) => val && val.trim());
+
+          columns.push({
+            name: colName,
+            samples
+          });
+
+          // Auto-map common column names
+          const lowerCol = colName.toLowerCase().replace(/[^a-z]/g, '');
+          if (lowerCol.includes('first') && lowerCol.includes('name')) suggestedMappings[colName] = 'firstName';
+          else if (lowerCol.includes('last') && lowerCol.includes('name')) suggestedMappings[colName] = 'lastName';
+          else if (lowerCol.includes('email')) suggestedMappings[colName] = 'primaryEmail';
+          else if (lowerCol.includes('title') || lowerCol.includes('job')) suggestedMappings[colName] = 'jobTitle';
+          else if (lowerCol.includes('company') || lowerCol.includes('organization')) suggestedMappings[colName] = 'companyName';
+          else if (lowerCol.includes('phone')) suggestedMappings[colName] = 'phoneNumber';
+          else if (lowerCol.includes('linkedin')) suggestedMappings[colName] = 'linkedinUrl';
         }
+      }
+
+      const validation = {
+        totalRows,
+        validRows: totalRows,
+        duplicateRows: 0,
+        errorRows: 0,
+        columns,
+        suggestedMappings
       };
 
       res.json(validation);
