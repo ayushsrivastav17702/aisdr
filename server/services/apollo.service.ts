@@ -135,17 +135,28 @@ class ApolloService {
     last_name?: string;
     organization_name?: string;
     linkedin_url?: string;
-  }>): Promise<ApolloEnrichmentResponse[]> {
-    const url = `${this.baseUrl}/people/bulk_match`;
+  }>): Promise<{
+    matches: ApolloContact[];
+    totalRequested: number;
+    uniqueEnriched: number;
+    missingRecords: number;
+    creditsConsumed: number;
+  }> {
+    if (!this.apiKey) {
+      throw new Error('Apollo API key not configured. Please set APOLLO_API_KEY environment variable.');
+    }
+
+    const url = `${this.baseUrl}/people/bulk_match?reveal_personal_emails=false&reveal_phone_number=false`;
 
     const response = await fetch(url, {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
+        'accept': 'application/json',
         'Cache-Control': 'no-cache',
-        'X-Api-Key': this.apiKey,
+        'Content-Type': 'application/json',
+        'x-api-key': this.apiKey,
       },
-      body: JSON.stringify({ people: contacts }),
+      body: JSON.stringify({ details: contacts }),
     });
 
     if (!response.ok) {
@@ -154,7 +165,14 @@ class ApolloService {
     }
 
     const data = await response.json();
-    return data.people || [];
+    
+    return {
+      matches: data.matches || [],
+      totalRequested: data.total_requested_enrichments || 0,
+      uniqueEnriched: data.unique_enriched_records || 0,
+      missingRecords: data.missing_records || 0,
+      creditsConsumed: data.credits_consumed || 0,
+    };
   }
 
   // Convert Apollo contact to our prospect format
