@@ -1,0 +1,185 @@
+import { useState } from "react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Plus, Edit, BookOpen, Sparkles, X } from "lucide-react";
+import SequenceTemplateLibrary from "./sequence-template-library";
+import AIEmailGenerator from "./ai-email-generator";
+import AISequenceDialog from "./ai-sequence-dialog";
+
+interface CreateSequenceDialogProps {
+  onSelectMethod: (method: 'scratch' | 'library' | 'ai', data?: any) => void;
+}
+
+export default function CreateSequenceDialog({ onSelectMethod }: CreateSequenceDialogProps) {
+  const [open, setOpen] = useState(false);
+  const [showTemplateLibrary, setShowTemplateLibrary] = useState(false);
+  const [showAIEmailGenerator, setShowAIEmailGenerator] = useState(false);
+  const [showAIDialog, setShowAIDialog] = useState(false);
+
+  const handleMethodSelect = (method: 'scratch' | 'library' | 'ai' | 'ai-email') => {
+    if (method === 'library') {
+      setShowTemplateLibrary(true);
+      setOpen(false);
+    } else if (method === 'ai-email') {
+      setShowAIEmailGenerator(true);
+      setOpen(false);
+    } else if (method === 'ai') {
+      setShowAIDialog(true);
+      setOpen(false);
+    } else {
+      onSelectMethod(method);
+      setOpen(false);
+    }
+  };
+
+  const handleTemplateSelect = (template: any) => {
+    try {
+      console.log('Template selected in create dialog:', template);
+      if (!template || !template.id) {
+        throw new Error('Invalid template data received');
+      }
+      console.log('Calling onSelectMethod with library and template:', template);
+      onSelectMethod('library', template);
+      setShowTemplateLibrary(false);
+      setOpen(false);
+    } catch (error) {
+      console.error('Error in handleTemplateSelect:', error);
+      console.error('Template data was:', template);
+      // Reset state on error
+      setShowTemplateLibrary(false);
+    }
+  };
+
+  const handleAISequenceCreate = (sequenceData: any) => {
+    onSelectMethod('ai', sequenceData);
+    setShowAIDialog(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button data-testid="button-create-sequence">
+          <Plus className="h-4 w-4 mr-2" />
+          Create Sequence
+        </Button>
+      </DialogTrigger>
+      
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <div className="flex items-center justify-between">
+            <DialogTitle>Create Sequence</DialogTitle>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={() => setOpen(false)}
+              className="h-6 w-6 p-0"
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        </DialogHeader>
+        
+        <div className="space-y-4 pt-4">
+          <h3 className="text-center text-lg font-medium mb-6">How do you want to create your sequence?</h3>
+          
+          <div className="space-y-3">
+            {/* Create from Scratch */}
+            <Card 
+              className="cursor-pointer hover:bg-gray-50 transition-colors border-2 hover:border-blue-200"
+              onClick={() => handleMethodSelect('scratch')}
+              data-testid="button-create-from-scratch"
+            >
+              <CardContent className="p-4">
+                <div className="flex items-start space-x-3">
+                  <div className="bg-blue-100 p-2 rounded-lg">
+                    <Edit className="h-5 w-5 text-blue-600" />
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="font-medium text-gray-900">Create from Scratch</h4>
+                    <p className="text-sm text-gray-600 mt-1">Create a sequence manually by yourself</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Template Library */}
+            <Card 
+              className="cursor-pointer hover:bg-gray-50 transition-colors border-2 hover:border-green-200"
+              onClick={() => handleMethodSelect('library')}
+            >
+              <CardContent className="p-4">
+                <div className="flex items-start space-x-3">
+                  <div className="bg-green-100 p-2 rounded-lg">
+                    <BookOpen className="h-5 w-5 text-green-600" />
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="font-medium text-gray-900">Choose from Template Library</h4>
+                    <p className="text-sm text-gray-600 mt-1">Browse professional email sequence templates for instant use</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Generate with AI */}
+            <Card 
+              className="cursor-pointer hover:bg-gray-50 transition-colors border-2 hover:border-orange-200"
+              onClick={() => handleMethodSelect('ai-email')}
+            >
+              <CardContent className="p-4">
+                <div className="flex items-start space-x-3">
+                  <div className="bg-orange-100 p-2 rounded-lg">
+                    <Sparkles className="h-5 w-5 text-orange-600" />
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="font-medium text-gray-900">Generate with AI</h4>
+                    <p className="text-sm text-gray-600 mt-1">Write a prompt and let ChatGPT create your email</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Auto Create with AI */}
+            <Card 
+              className="cursor-pointer hover:bg-gray-50 transition-colors border-2 hover:border-purple-200"
+              onClick={() => handleMethodSelect('ai')}
+            >
+              <CardContent className="p-4">
+                <div className="flex items-start space-x-3">
+                  <div className="bg-purple-100 p-2 rounded-lg">
+                    <Sparkles className="h-5 w-5 text-purple-600" />
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="font-medium text-gray-900">Auto Create with AI</h4>
+                    <p className="text-sm text-gray-600 mt-1">Automatically generate best sequence using AI powered by ChatGPT</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </DialogContent>
+      
+      {/* Template Library */}
+      <SequenceTemplateLibrary
+        open={showTemplateLibrary}
+        onClose={() => setShowTemplateLibrary(false)}
+        onSelectTemplate={handleTemplateSelect}
+      />
+      
+      {/* AI Email Generator */}
+      <AIEmailGenerator
+        open={showAIEmailGenerator}
+        onClose={() => setShowAIEmailGenerator(false)}
+        onSelectTemplate={handleTemplateSelect}
+      />
+      
+      {/* AI Sequence Dialog */}
+      <AISequenceDialog
+        open={showAIDialog}
+        onClose={() => setShowAIDialog(false)}
+        onCreateSequence={handleAISequenceCreate}
+      />
+    </Dialog>
+  );
+}
