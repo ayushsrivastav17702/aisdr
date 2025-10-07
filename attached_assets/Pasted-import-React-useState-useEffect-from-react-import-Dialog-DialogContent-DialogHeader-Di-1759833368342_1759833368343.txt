@@ -1,0 +1,1110 @@
+import React, { useState, useEffect } from 'react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Progress } from '@/components/ui/progress';
+import { Separator } from '@/components/ui/separator';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useToast } from '@/hooks/use-toast';
+import { 
+  Brain, 
+  Target, 
+  Sparkles, 
+  Users, 
+  Building, 
+  TrendingUp, 
+  Search, 
+  Mail, 
+  CheckCircle,
+  AlertCircle,
+  Info,
+  Zap,
+  Eye,
+  ArrowRight,
+  Clock
+} from 'lucide-react';
+
+interface PersonalizationData {
+  prospect: any;
+  companyInsights: {
+    industry: string;
+    size: string;
+    revenue: string;
+    challenges: string[];
+    recentNews: string[];
+    competitors: string[];
+  };
+  roleInsights: {
+    responsibilities: string[];
+    painPoints: string[];
+    metrics: string[];
+    decisionMakingPower: string;
+  };
+  personalizationFactors: {
+    factor: string;
+    relevance: number;
+    source: string;
+    insight: string;
+  }[];
+  recommendations: {
+    tone: string;
+    approach: string;
+    keyMessages: string[];
+    callToAction: string;
+  };
+}
+
+interface PersonalizationWizardProps {
+  open: boolean;
+  onClose: () => void;
+  prospectId?: number;
+  onComplete: (personalizedEmail: any) => void;
+}
+
+const personalizationSteps = [
+  { id: 'select', title: 'Select Prospects', icon: Users },
+  { id: 'analyze', title: 'AI Analysis', icon: Brain },
+  { id: 'insights', title: 'Smart Insights', icon: Target },
+  { id: 'personalize', title: 'Generate Emails', icon: Sparkles },
+  { id: 'review', title: 'Review & Send', icon: Eye }
+];
+
+export function IntelligentPersonalizationWizard({ 
+  open, 
+  onClose, 
+  prospectId, 
+  onComplete 
+}: PersonalizationWizardProps) {
+  const [currentStep, setCurrentStep] = useState(0);
+  const [selectedProspectId, setSelectedProspectId] = useState(prospectId?.toString() || '');
+  const [selectedProspectIds, setSelectedProspectIds] = useState<string[]>(prospectId ? [prospectId.toString()] : []);
+  const [batchMode, setBatchMode] = useState(false);
+  const [personalizationData, setPersonalizationData] = useState<PersonalizationData | null>(null);
+  const [analysisProgress, setAnalysisProgress] = useState(0);
+  const [generatedEmail, setGeneratedEmail] = useState<any>(null);
+  const [customPrompt, setCustomPrompt] = useState('');
+  const [emailSettings, setEmailSettings] = useState({
+    tone: 'professional',
+    focus: 'value_proposition',
+    urgency: 'medium',
+    length: 'medium'
+  });
+  const [useAdvancedMode, setUseAdvancedMode] = useState(true);
+  const [advancedAnalysisData, setAdvancedAnalysisData] = useState<any>(null);
+
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  // Load prospects for selection
+  const { data: prospects = [] } = useQuery({
+    queryKey: ["/api/prospects"],
+    enabled: open
+  });
+
+  // Advanced AI analysis mutation
+  const advancedAnalyzeMutation = useMutation({
+    mutationFn: async (prospectId: string) => {
+      const response = await fetch('/api/personalization/advanced-analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prospectId })
+      });
+      if (!response.ok) throw new Error('Failed to perform advanced analysis');
+      return response.json();
+    },
+    onSuccess: (data) => {
+      setAdvancedAnalysisData(data);
+      setCurrentStep(2);
+      toast({
+        title: "Advanced Analysis Complete",
+        description: `Personalization score: ${data.personalizationScore}/100 with ${data.variables?.length || 0} data points`
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Advanced Analysis Failed",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
+  });
+
+  // Start AI analysis mutation
+  const analyzeProspectMutation = useMutation({
+    mutationFn: async (prospectId: string) => {
+      const response = await fetch('/api/personalization/analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prospectId })
+      });
+      if (!response.ok) throw new Error('Failed to analyze prospect');
+      return response.json();
+    },
+    onSuccess: (data) => {
+      setPersonalizationData(data);
+      setCurrentStep(2);
+      toast({
+        title: "Analysis Complete",
+        description: "AI has gathered comprehensive insights about your prospect"
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Analysis Failed",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
+  });
+
+  // Generate personalized email mutation
+  const generateEmailMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const response = await fetch('/api/personalization/generate-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      if (!response.ok) throw new Error('Failed to generate personalized email');
+      return response.json();
+    },
+    onSuccess: (data) => {
+      setGeneratedEmail(data);
+      setCurrentStep(4);
+      toast({
+        title: "Email Generated",
+        description: "Your personalized email is ready for review"
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Generation Failed",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
+  });
+
+  // Simulate analysis progress for both modes
+  useEffect(() => {
+    if (currentStep === 1 && (analyzeProspectMutation.isPending || advancedAnalyzeMutation.isPending)) {
+      const interval = setInterval(() => {
+        setAnalysisProgress(prev => {
+          if (prev >= 100) {
+            clearInterval(interval);
+            return 100;
+          }
+          return prev + Math.random() * 15;
+        });
+      }, 300);
+      return () => clearInterval(interval);
+    }
+  }, [currentStep, analyzeProspectMutation.isPending, advancedAnalyzeMutation.isPending]);
+
+  const handleProspectSelect = () => {
+    const prospectsToAnalyze = batchMode ? selectedProspectIds : [selectedProspectId];
+    
+    if (prospectsToAnalyze.length === 0 || (prospectsToAnalyze.length === 1 && !prospectsToAnalyze[0])) {
+      toast({
+        title: "No Prospects Selected",
+        description: batchMode ? "Please select at least one prospect to continue." : "Please select a prospect to continue.",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    if (batchMode && prospectsToAnalyze.length > 10) {
+      toast({
+        title: "Too Many Prospects",
+        description: "Please select maximum 10 prospects for batch processing.",
+        variant: "destructive"
+      });
+      return;
+    }
+    
+    setCurrentStep(1);
+    setAnalysisProgress(0);
+    
+    // For now, analyze the first prospect (can be enhanced later for true batch processing)
+    const prospectToAnalyze = prospectsToAnalyze[0];
+    setSelectedProspectId(prospectToAnalyze); // Ensure single prospect ID is set for downstream processing
+    
+    // Use advanced analysis if enabled
+    if (useAdvancedMode) {
+      advancedAnalyzeMutation.mutate(prospectToAnalyze);
+    } else {
+      analyzeProspectMutation.mutate(prospectToAnalyze);
+    }
+  };
+
+  const handleGenerateEmail = () => {
+    const dataToUse = advancedAnalysisData || personalizationData;
+    if (!dataToUse) return;
+    
+    setCurrentStep(3);
+    generateEmailMutation.mutate({
+      prospectId: selectedProspectId,
+      personalizationData: dataToUse,
+      settings: emailSettings,
+      customPrompt,
+      useAdvanced: !!advancedAnalysisData
+    });
+  };
+
+  const handleCompleteWizard = () => {
+    if (generatedEmail && selectedProspectId) {
+      // Include prospect information with the generated email
+      const emailWithProspect = {
+        ...generatedEmail,
+        prospectId: parseInt(selectedProspectId),
+        prospect: (prospects as any[]).find((p: any) => p.id === parseInt(selectedProspectId))
+      };
+      
+      onComplete(emailWithProspect);
+      onClose();
+      // Reset wizard state
+      setCurrentStep(0);
+      setSelectedProspectId('');
+      setPersonalizationData(null);
+      setGeneratedEmail(null);
+      setCustomPrompt('');
+    }
+  };
+
+  const selectedProspect = selectedProspectId ? 
+    (prospects as any[]).find((p: any) => p.id.toString() === selectedProspectId) : null;
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-6xl max-h-[95vh] flex flex-col p-0">
+        <DialogHeader className="px-6 pt-6 pb-4 border-b">
+          <DialogTitle className="flex items-center gap-3">
+            <Brain className="h-6 w-6 text-purple-600" />
+            Intelligent Email Personalization Wizard
+          </DialogTitle>
+          <DialogDescription>
+            Use AI to analyze prospects and generate highly personalized emails based on their role, company, and industry context.
+          </DialogDescription>
+        </DialogHeader>
+
+        {/* Progress Steps */}
+        <div className="px-6 py-4 bg-gray-50 border-b">
+          <div className="flex items-center justify-center space-x-4 overflow-x-auto">
+          {personalizationSteps.map((step, index) => {
+            const Icon = step.icon;
+            const isActive = index === currentStep;
+            const isCompleted = index < currentStep;
+            
+            return (
+              <div key={step.id} className="flex items-center">
+                <div className={`flex items-center justify-center w-10 h-10 rounded-full border-2 ${
+                  isCompleted 
+                    ? 'bg-green-100 border-green-500 text-green-700' 
+                    : isActive 
+                    ? 'bg-purple-100 border-purple-500 text-purple-700' 
+                    : 'bg-gray-100 border-gray-300 text-gray-500'
+                }`}>
+                  {isCompleted ? (
+                    <CheckCircle className="h-5 w-5" />
+                  ) : (
+                    <Icon className="h-5 w-5" />
+                  )}
+                </div>
+                <span className={`ml-2 text-sm font-medium whitespace-nowrap ${
+                  isActive ? 'text-purple-700' : isCompleted ? 'text-green-700' : 'text-gray-500'
+                }`}>
+                  {step.title}
+                </span>
+                {index < personalizationSteps.length - 1 && (
+                  <ArrowRight className="h-4 w-4 text-gray-400 mx-4" />
+                )}
+              </div>
+            );
+          })}
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-6 py-4">
+          {/* Step 1: Prospect Selection */}
+          {currentStep === 0 && (
+            <div className="space-y-6 max-h-full overflow-y-auto">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Users className="h-5 w-5" />
+                    Select Prospects for Personalization
+                  </CardTitle>
+                  <div className="flex items-center gap-4 mt-2">
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="radio"
+                        id="single-mode"
+                        checked={!batchMode}
+                        onChange={() => {
+                          setBatchMode(false);
+                          setSelectedProspectIds(selectedProspectId ? [selectedProspectId] : []);
+                        }}
+                        className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                      />
+                      <label htmlFor="single-mode" className="text-sm font-medium">Single Prospect</label>
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <input
+                        type="radio"
+                        id="batch-mode"
+                        checked={batchMode}
+                        onChange={() => {
+                          setBatchMode(true);
+                          setSelectedProspectIds([]);
+                          setSelectedProspectId('');
+                        }}
+                        className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                      />
+                      <label htmlFor="batch-mode" className="text-sm font-medium">Multiple Prospects</label>
+                    </div>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    {!batchMode ? (
+                      // Single prospect selection
+                      <Select value={selectedProspectId} onValueChange={(value) => {
+                        setSelectedProspectId(value);
+                        setSelectedProspectIds([value]);
+                      }}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Choose a prospect to personalize email for..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {Array.isArray(prospects) && prospects.map((prospect: any) => (
+                            <SelectItem key={prospect.id} value={prospect.id.toString()}>
+                              <div className="flex items-center gap-2">
+                                <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-sm font-medium">
+                                  {prospect.firstName?.[0]}{prospect.lastName?.[0]}
+                                </div>
+                                <div>
+                                  <div className="font-medium">
+                                    {prospect.firstName} {prospect.lastName}
+                                  </div>
+                                  <div className="text-sm text-gray-600">
+                                    {prospect.jobTitle} at {prospect.company || 'Unknown Company'}
+                                  </div>
+                                </div>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      // Multiple prospect selection
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium">Select prospects (up to 10):</span>
+                          <div className="flex gap-2">
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => {
+                                const allIds = (prospects as any[]).slice(0, 10).map(p => p.id.toString());
+                                setSelectedProspectIds(allIds);
+                              }}
+                            >
+                              Select All
+                            </Button>
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => setSelectedProspectIds([])}
+                            >
+                              Clear All
+                            </Button>
+                          </div>
+                        </div>
+                        <div className="max-h-64 overflow-y-auto border rounded-lg p-2 space-y-1">
+                          {Array.isArray(prospects) && prospects.slice(0, 20).map((prospect: any) => (
+                            <div 
+                              key={prospect.id}
+                              className={`flex items-center gap-3 p-2 rounded cursor-pointer hover:bg-gray-50 ${
+                                selectedProspectIds.includes(prospect.id.toString()) ? 'bg-purple-50 border-purple-200 border' : ''
+                              }`}
+                              onClick={() => {
+                                const prospectId = prospect.id.toString();
+                                if (selectedProspectIds.includes(prospectId)) {
+                                  setSelectedProspectIds(selectedProspectIds.filter(id => id !== prospectId));
+                                } else if (selectedProspectIds.length < 10) {
+                                  setSelectedProspectIds([...selectedProspectIds, prospectId]);
+                                }
+                              }}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedProspectIds.includes(prospect.id.toString())}
+                                onChange={() => {}} // Handled by parent div onClick
+                                className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                              />
+                              <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-sm font-medium">
+                                {prospect.firstName?.[0]}{prospect.lastName?.[0]}
+                              </div>
+                              <div>
+                                <div className="font-medium">
+                                  {prospect.firstName} {prospect.lastName}
+                                </div>
+                                <div className="text-sm text-gray-600">
+                                  {prospect.jobTitle} at {prospect.company || 'Unknown Company'}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                        {selectedProspectIds.length > 0 && (
+                          <div className="text-sm text-purple-600 font-medium">
+                            {selectedProspectIds.length} prospect{selectedProspectIds.length > 1 ? 's' : ''} selected
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {selectedProspect && (
+                      <Card className="bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200">
+                        <CardContent className="p-4">
+                          <div className="flex items-start gap-3">
+                            <div className="w-12 h-12 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white font-medium">
+                              {selectedProspect.firstName?.[0]}{selectedProspect.lastName?.[0]}
+                            </div>
+                            <div className="flex-1">
+                              <h3 className="font-semibold text-lg">
+                                {selectedProspect.firstName} {selectedProspect.lastName}
+                              </h3>
+                              <p className="text-gray-600">{selectedProspect.jobTitle}</p>
+                              <p className="text-sm text-gray-500">
+                                {selectedProspect.company || 'Company information available'}
+                              </p>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    )}
+
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between bg-blue-50 border border-blue-200 rounded-lg p-3">
+                        <div className="flex items-center space-x-3">
+                          <Zap className="h-5 w-5 text-blue-600" />
+                          <div>
+                            <span className="text-sm font-medium text-blue-800">Advanced Personalization Mode</span>
+                            <p className="text-xs text-blue-600 mt-1">
+                              Uses LinkedIn profile analysis, company website scraping, and advanced AI scoring
+                            </p>
+                          </div>
+                        </div>
+                        <input
+                          type="checkbox"
+                          checked={useAdvancedMode}
+                          onChange={(e) => setUseAdvancedMode(e.target.checked)}
+                          className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        />
+                      </div>
+
+                      <div className="flex justify-end">
+                        <Button 
+                          onClick={handleProspectSelect}
+                          disabled={batchMode ? selectedProspectIds.length === 0 : !selectedProspectId}
+                          className="bg-purple-600 hover:bg-purple-700"
+                        >
+                          <Brain className="h-4 w-4 mr-2" />
+                          {batchMode 
+                            ? `Analyze ${selectedProspectIds.length} Prospect${selectedProspectIds.length > 1 ? 's' : ''}`
+                            : (useAdvancedMode ? 'Start Advanced Analysis' : 'Start AI Analysis')
+                          }
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* Step 2: AI Analysis in Progress */}
+          {currentStep === 1 && (
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Brain className="h-5 w-5 animate-pulse text-purple-600" />
+                    AI Analysis in Progress
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-6">
+                    <div className="text-center">
+                      <div className="w-16 h-16 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full flex items-center justify-center mx-auto mb-4 animate-pulse">
+                        <Brain className="h-8 w-8 text-white" />
+                      </div>
+                      <h3 className="text-lg font-semibold mb-2">
+                        Analyzing {selectedProspect?.firstName} {selectedProspect?.lastName}
+                      </h3>
+                      <p className="text-gray-600">
+                        Our AI is gathering comprehensive insights about your prospect...
+                      </p>
+                    </div>
+
+                    <div className="space-y-3">
+                      <div className="flex justify-between text-sm">
+                        <span>Analysis Progress</span>
+                        <span>{Math.round(analysisProgress)}%</span>
+                      </div>
+                      <Progress value={analysisProgress} className="h-2" />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4 text-sm">
+                      <div className="flex items-center gap-2">
+                        <CheckCircle className="h-4 w-4 text-green-500" />
+                        Company Research
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <CheckCircle className="h-4 w-4 text-green-500" />
+                        Role Analysis
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <CheckCircle className="h-4 w-4 text-green-500" />
+                        Industry Insights
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Clock className="h-4 w-4 text-yellow-500 animate-spin" />
+                        Personalization Factors
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* Step 3: Smart Insights */}
+          {currentStep === 2 && (personalizationData || advancedAnalysisData) && (
+            <div className="space-y-6 max-h-full overflow-y-auto">
+              {/* Advanced Analysis Results */}
+              {advancedAnalysisData && (
+                <Card className="bg-gradient-to-r from-blue-50 to-purple-50 border-blue-200">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Zap className="h-5 w-5 text-blue-600" />
+                      Advanced Personalization Analysis
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-blue-600">
+                          {advancedAnalysisData.personalizationScore || 0}/100
+                        </div>
+                        <div className="text-sm text-gray-600">Personalization Score</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-green-600">
+                          {advancedAnalysisData.variables?.length || 0}
+                        </div>
+                        <div className="text-sm text-gray-600">Data Points</div>
+                      </div>
+                      <div className="text-center">
+                        <div className="text-2xl font-bold text-purple-600">
+                          {advancedAnalysisData.contentRecommendations?.length || 0}
+                        </div>
+                        <div className="text-sm text-gray-600">Content Matches</div>
+                      </div>
+                    </div>
+
+                    {/* Email Suggestions Preview */}
+                    {advancedAnalysisData.emailSuggestions && (
+                      <div className="bg-white rounded-lg p-4 border">
+                        <h4 className="font-semibold mb-3 text-gray-800">AI Email Suggestions</h4>
+                        <div className="space-y-3">
+                          <div>
+                            <Label className="text-sm font-medium text-gray-600">Subject Line</Label>
+                            <p className="text-sm text-gray-800 bg-gray-50 p-2 rounded">
+                              {advancedAnalysisData.emailSuggestions.subject}
+                            </p>
+                          </div>
+                          <div>
+                            <Label className="text-sm font-medium text-gray-600">Opening</Label>
+                            <p className="text-sm text-gray-800 bg-gray-50 p-2 rounded">
+                              {advancedAnalysisData.emailSuggestions.opening}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              <Tabs defaultValue={advancedAnalysisData ? "variables" : "company"} className="w-full">
+                <TabsList className="grid w-full grid-cols-3">
+                  {advancedAnalysisData ? (
+                    <>
+                      <TabsTrigger value="variables">Variables</TabsTrigger>
+                      <TabsTrigger value="insights">Insights</TabsTrigger>
+                      <TabsTrigger value="content">Content</TabsTrigger>
+                    </>
+                  ) : (
+                    <>
+                      <TabsTrigger value="company">Company</TabsTrigger>
+                      <TabsTrigger value="role">Role</TabsTrigger>
+                      <TabsTrigger value="factors">Factors</TabsTrigger>
+                    </>
+                  )}
+                </TabsList>
+
+                {/* Advanced Analysis Tabs */}
+                {advancedAnalysisData && (
+                  <>
+                    <TabsContent value="variables" className="mt-4">
+                      <Card>
+                        <CardHeader>
+                          <CardTitle className="flex items-center gap-2">
+                            <Target className="h-5 w-5" />
+                            Personalization Variables
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <ScrollArea className="h-64">
+                            <div className="space-y-3">
+                              {advancedAnalysisData.variables?.map((variable: any, index: number) => (
+                                <div key={index} className="border rounded-lg p-3">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <span className="font-medium text-sm">{variable.name}</span>
+                                    <Badge 
+                                      variant={variable.confidence > 80 ? "default" : variable.confidence > 60 ? "secondary" : "outline"}
+                                      className="text-xs"
+                                    >
+                                      {variable.confidence}% confidence
+                                    </Badge>
+                                  </div>
+                                  <p className="text-sm text-gray-600 mb-1">{variable.value}</p>
+                                  <div className="flex items-center gap-2">
+                                    <Badge variant="outline" className="text-xs">
+                                      {variable.source}
+                                    </Badge>
+                                  </div>
+                                </div>
+                              )) || []}
+                            </div>
+                          </ScrollArea>
+                        </CardContent>
+                      </Card>
+                    </TabsContent>
+
+                    <TabsContent value="insights" className="mt-4">
+                      <Card>
+                        <CardHeader>
+                          <CardTitle className="flex items-center gap-2">
+                            <Brain className="h-5 w-5" />
+                            AI Insights
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="space-y-4">
+                            {advancedAnalysisData.insights?.roleAnalysis && (
+                              <div>
+                                <Label className="text-sm font-medium">Role Analysis</Label>
+                                <div className="grid grid-cols-2 gap-4 mt-2">
+                                  <div>
+                                    <span className="text-xs text-gray-500">Seniority</span>
+                                    <div className="flex items-center gap-2">
+                                      <Progress value={advancedAnalysisData.insights.roleAnalysis.seniority || 0} className="h-2" />
+                                      <span className="text-xs">{advancedAnalysisData.insights.roleAnalysis.seniority || 0}%</span>
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <span className="text-xs text-gray-500">Decision Authority</span>
+                                    <div className="flex items-center gap-2">
+                                      <Progress value={advancedAnalysisData.insights.roleAnalysis.decisionAuthority || 0} className="h-2" />
+                                      <span className="text-xs">{advancedAnalysisData.insights.roleAnalysis.decisionAuthority || 0}%</span>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                            
+                            {advancedAnalysisData.insights?.painPoints && (
+                              <div>
+                                <Label className="text-sm font-medium">Pain Points</Label>
+                                <div className="flex flex-wrap gap-2 mt-2">
+                                  {advancedAnalysisData.insights.painPoints.map((pain: string, index: number) => (
+                                    <Badge key={index} variant="destructive" className="text-xs">
+                                      {pain}
+                                    </Badge>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </TabsContent>
+
+                    <TabsContent value="content" className="mt-4">
+                      <Card>
+                        <CardHeader>
+                          <CardTitle className="flex items-center gap-2">
+                            <Building className="h-5 w-5" />
+                            Content Recommendations
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <ScrollArea className="h-48">
+                            <div className="space-y-3">
+                              {advancedAnalysisData.contentRecommendations?.map((content: any, index: number) => (
+                                <div key={index} className="border rounded-lg p-3">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <span className="font-medium text-sm">{content.name}</span>
+                                    <Badge variant="secondary" className="text-xs">
+                                      {content.relevanceScore}% relevant
+                                    </Badge>
+                                  </div>
+                                  <p className="text-xs text-gray-600">{content.usage}</p>
+                                </div>
+                              )) || []}
+                            </div>
+                          </ScrollArea>
+                        </CardContent>
+                      </Card>
+                    </TabsContent>
+                  </>
+                )}
+
+                {/* Standard Analysis Tabs */}
+                {!advancedAnalysisData && personalizationData && (
+                  <>
+                    <TabsContent value="company" className="mt-4">
+                      <Card>
+                        <CardHeader>
+                          <CardTitle className="flex items-center gap-2">
+                            <Building className="h-5 w-5" />
+                            Company Insights
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <Label className="text-sm font-medium">Industry</Label>
+                              <Badge variant="secondary" className="mt-1">
+                                {personalizationData?.companyInsights?.industry || 'Not available'}
+                              </Badge>
+                            </div>
+                            <div>
+                              <Label className="text-sm font-medium">Company Size</Label>
+                              <Badge variant="secondary" className="mt-1">
+                                {personalizationData?.companyInsights?.size || 'Not available'}
+                              </Badge>
+                            </div>
+                            <div className="col-span-2">
+                              <Label className="text-sm font-medium">Key Challenges</Label>
+                              <div className="flex flex-wrap gap-2 mt-2">
+                                {personalizationData?.companyInsights?.challenges?.map((challenge: string, index: number) => (
+                                  <Badge key={index} variant="outline" className="text-xs">
+                                    {challenge}
+                                  </Badge>
+                                )) || <Badge variant="outline" className="text-xs">No data available</Badge>}
+                              </div>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </TabsContent>
+
+                    <TabsContent value="role" className="mt-4">
+                      <Card>
+                        <CardHeader>
+                          <CardTitle className="flex items-center gap-2">
+                            <Target className="h-5 w-5" />
+                            Role Analysis
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="space-y-4">
+                            <div>
+                              <Label className="text-sm font-medium">Key Responsibilities</Label>
+                              <ul className="mt-2 space-y-1">
+                                {personalizationData?.roleInsights?.responsibilities?.map((resp: string, index: number) => (
+                                  <li key={index} className="text-sm text-gray-600 flex items-start gap-2">
+                                    <CheckCircle className="h-3 w-3 text-green-500 mt-0.5 flex-shrink-0" />
+                                    {resp}
+                                  </li>
+                                )) || <li className="text-sm text-gray-600">No data available</li>}
+                              </ul>
+                            </div>
+                            <div>
+                              <Label className="text-sm font-medium">Pain Points</Label>
+                              <div className="flex flex-wrap gap-2 mt-2">
+                                {personalizationData?.roleInsights?.painPoints?.map((pain: string, index: number) => (
+                                  <Badge key={index} variant="destructive" className="text-xs">
+                                    {pain}
+                                  </Badge>
+                                )) || <Badge variant="outline" className="text-xs">No data available</Badge>}
+                              </div>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </TabsContent>
+
+                    <TabsContent value="factors" className="mt-4">
+                      <Card>
+                        <CardHeader>
+                          <CardTitle className="flex items-center gap-2">
+                            <TrendingUp className="h-5 w-5" />
+                            Personalization Factors
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <ScrollArea className="h-48">
+                            <div className="space-y-3">
+                              {personalizationData?.personalizationFactors?.map((factor: any, index: number) => (
+                                <div key={index} className="border rounded-lg p-3">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <span className="font-medium text-sm">{factor.factor}</span>
+                                    <Badge variant="secondary" className="text-xs">
+                                      {factor.relevance}% relevant
+                                    </Badge>
+                                  </div>
+                                  <p className="text-xs text-gray-600 mb-1">{factor.insight}</p>
+                                  <Badge variant="outline" className="text-xs">
+                                    {factor.source}
+                                  </Badge>
+                                </div>
+                              )) || <div className="text-center text-gray-500 py-8">No personalization factors available</div>}
+                            </div>
+                          </ScrollArea>
+                        </CardContent>
+                      </Card>
+                    </TabsContent>
+
+                  </>
+                )}
+
+                {/* Regular Personalization Tabs */}
+                {!advancedAnalysisData && personalizationData && (
+                  <>
+                    <TabsContent value="company" className="mt-4">
+                      <Card>
+                        <CardHeader>
+                          <CardTitle className="flex items-center gap-2">
+                            <Building className="h-5 w-5" />
+                            Company Analysis
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="space-y-4">
+                            <div>
+                              <Label className="text-sm font-medium">Industry</Label>
+                              <p className="text-sm text-gray-600 mt-1">{personalizationData?.companyInsights?.industry || 'Not specified'}</p>
+                            </div>
+                            <div>
+                              <Label className="text-sm font-medium">Company Size</Label>
+                              <p className="text-sm text-gray-600 mt-1">{personalizationData?.companyInsights?.size || 'Not specified'}</p>
+                            </div>
+                            <div>
+                              <Label className="text-sm font-medium">Key Focus Areas</Label>
+                              <div className="flex flex-wrap gap-2 mt-2">
+                                {personalizationData?.companyInsights?.focusAreas?.map((area: string, index: number) => (
+                                  <Badge key={index} variant="secondary" className="text-xs">
+                                    {area}
+                                  </Badge>
+                                )) || <Badge variant="outline" className="text-xs">No data available</Badge>}
+                              </div>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </TabsContent>
+
+                    <TabsContent value="role" className="mt-4">
+                      <Card>
+                        <CardHeader>
+                          <CardTitle className="flex items-center gap-2">
+                            <Target className="h-5 w-5" />
+                            Role Analysis
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <div className="space-y-4">
+                            <div>
+                              <Label className="text-sm font-medium">Key Responsibilities</Label>
+                              <ul className="mt-2 space-y-1">
+                                {personalizationData?.roleInsights?.responsibilities?.map((resp: string, index: number) => (
+                                  <li key={index} className="text-sm text-gray-600 flex items-start gap-2">
+                                    <CheckCircle className="h-3 w-3 text-green-500 mt-0.5 flex-shrink-0" />
+                                    {resp}
+                                  </li>
+                                )) || <li className="text-sm text-gray-600">No data available</li>}
+                              </ul>
+                            </div>
+                            <div>
+                              <Label className="text-sm font-medium">Pain Points</Label>
+                              <div className="flex flex-wrap gap-2 mt-2">
+                                {personalizationData?.roleInsights?.painPoints?.map((pain: string, index: number) => (
+                                  <Badge key={index} variant="destructive" className="text-xs">
+                                    {pain}
+                                  </Badge>
+                                )) || <Badge variant="outline" className="text-xs">No data available</Badge>}
+                              </div>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </TabsContent>
+
+                    <TabsContent value="factors" className="mt-4">
+                      <Card>
+                        <CardHeader>
+                          <CardTitle className="flex items-center gap-2">
+                            <TrendingUp className="h-5 w-5" />
+                            Personalization Factors
+                          </CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <ScrollArea className="h-48">
+                            <div className="space-y-3">
+                              {personalizationData?.personalizationFactors?.map((factor: any, index: number) => (
+                                <div key={index} className="border rounded-lg p-3">
+                                  <div className="flex items-center justify-between mb-2">
+                                    <span className="font-medium text-sm">{factor.factor}</span>
+                                    <Badge variant="secondary" className="text-xs">
+                                      {factor.relevance}% relevant
+                                    </Badge>
+                                  </div>
+                                  <p className="text-xs text-gray-600 mb-1">{factor.insight}</p>
+                                  <Badge variant="outline" className="text-xs">
+                                    {factor.source}
+                                  </Badge>
+                                </div>
+                              )) || <div className="text-center text-gray-500 py-8">No personalization factors available</div>}
+                            </div>
+                          </ScrollArea>
+                        </CardContent>
+                      </Card>
+                    </TabsContent>
+
+                  </>
+                )}
+              </Tabs>
+
+              <div className="flex justify-between">
+                <Button variant="outline" onClick={() => setCurrentStep(0)}>
+                  Back to Selection
+                </Button>
+                <Button onClick={handleGenerateEmail} className="bg-purple-600 hover:bg-purple-700">
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  Generate Personalized Email
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Step 4: Email Generation */}
+          {currentStep === 3 && (
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Sparkles className="h-5 w-5 animate-pulse text-purple-600" />
+                    Generating Personalized Email
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-center">
+                    <div className="w-16 h-16 bg-gradient-to-r from-purple-500 to-blue-500 rounded-full flex items-center justify-center mx-auto mb-4 animate-bounce">
+                      <Sparkles className="h-8 w-8 text-white" />
+                    </div>
+                    <h3 className="text-lg font-semibold mb-2">
+                      Crafting Your Perfect Email
+                    </h3>
+                    <p className="text-gray-600">
+                      Using AI insights to create a highly personalized message...
+                    </p>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {/* Step 5: Review & Send */}
+          {currentStep === 4 && generatedEmail && (
+            <div className="space-y-6 max-h-full overflow-y-auto">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Eye className="h-5 w-5" />
+                    Review Personalized Email
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="space-y-4">
+                    <div>
+                      <Label className="text-sm font-medium">Subject Line</Label>
+                      <div className="mt-1 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                        <p className="font-medium">{generatedEmail.subject}</p>
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <Label className="text-sm font-medium">Email Content</Label>
+                      <div className="mt-1 p-4 bg-gray-50 border rounded-lg">
+                        <div className="whitespace-pre-wrap text-sm leading-relaxed">
+                          {generatedEmail.content}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <Label className="text-sm font-medium">Personalization Score</Label>
+                      <div className="flex items-center gap-2 mt-1">
+                        <Progress value={generatedEmail.personalizationScore || 85} className="flex-1" />
+                        <span className="text-sm font-medium">{generatedEmail.personalizationScore || 85}%</span>
+                      </div>
+                    </div>
+
+                    {generatedEmail.personalizationFactors && (
+                      <div>
+                        <Label className="text-sm font-medium">Applied Personalization</Label>
+                        <div className="flex flex-wrap gap-2 mt-2">
+                          {generatedEmail.personalizationFactors.map((factor: string, index: number) => (
+                            <Badge key={index} variant="secondary" className="text-xs">
+                              {factor}
+                            </Badge>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+
+              <div className="flex justify-between">
+                <Button variant="outline" onClick={() => setCurrentStep(2)}>
+                  Back to Insights
+                </Button>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={handleGenerateEmail}>
+                    Regenerate
+                  </Button>
+                  <Button onClick={handleCompleteWizard} className="bg-green-600 hover:bg-green-700">
+                    <CheckCircle className="h-4 w-4 mr-2" />
+                    Use This Email
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}

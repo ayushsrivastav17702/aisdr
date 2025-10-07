@@ -1,0 +1,664 @@
+import { useState, useRef, useCallback } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useToast } from '@/hooks/use-toast';
+import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+import {
+  Mail,
+  Phone,
+  MessageSquare,
+  Clock,
+  GitBranch,
+  Zap,
+  Plus,
+  Trash2,
+  Settings,
+  Eye,
+  Copy,
+  Play,
+  Pause,
+  BarChart3,
+  Users,
+  Target,
+  Send,
+  Linkedin,
+  Calendar,
+  CheckCircle,
+  AlertCircle,
+  ArrowRight,
+  ArrowDown,
+  Bot
+} from 'lucide-react';
+
+interface SequenceStep {
+  id: string;
+  stepNumber: number;
+  stepType: 'email' | 'call' | 'linkedin' | 'sms' | 'whatsapp' | 'task' | 'wait';
+  name: string;
+  isActive: boolean;
+  // Email fields
+  subjectLine?: string;
+  bodyContent?: string;
+  // Multi-channel content
+  linkedinMessage?: string;
+  smsContent?: string;
+  callScript?: string;
+  // Timing
+  delayHours: number;
+  delayType: 'time' | 'behavior' | 'business_hours';
+  businessHoursOnly: boolean;
+  skipWeekends: boolean;
+  // Conditions
+  conditions?: any[];
+  branches?: any[];
+  // A/B testing
+  abTestVariant?: 'A' | 'B';
+  abTestSplit?: number;
+}
+
+interface SequenceBuilderProps {
+  sequenceId?: number;
+  onSave: (sequence: any) => void;
+  onCancel: () => void;
+}
+
+const STEP_TYPES = [
+  { value: 'email', label: 'Email', icon: Mail, color: 'bg-blue-100 text-blue-800' },
+  { value: 'call', label: 'Call', icon: Phone, color: 'bg-green-100 text-green-800' },
+  { value: 'linkedin', label: 'LinkedIn', icon: Linkedin, color: 'bg-indigo-100 text-indigo-800' },
+  { value: 'sms', label: 'SMS', icon: MessageSquare, color: 'bg-yellow-100 text-yellow-800' },
+  { value: 'wait', label: 'Wait/Delay', icon: Clock, color: 'bg-gray-100 text-gray-800' },
+  { value: 'task', label: 'Task', icon: CheckCircle, color: 'bg-purple-100 text-purple-800' },
+];
+
+export default function AdvancedSequenceBuilder({ sequenceId, onSave, onCancel }: SequenceBuilderProps) {
+  const [sequence, setSequence] = useState({
+    name: '',
+    description: '',
+    sequenceType: 'cold_outreach',
+    multiChannel: false,
+    abTestEnabled: false,
+    conditionalBranching: false,
+    targetCriteria: {},
+    deliverabilitySettings: {
+      sendTimeOptimization: true,
+      businessHoursOnly: true,
+      skipWeekends: true,
+      timezoneAware: true
+    }
+  });
+
+  const [steps, setSteps] = useState<SequenceStep[]>([]);
+  const [selectedStep, setSelectedStep] = useState<string | null>(null);
+  const [showStepDialog, setShowStepDialog] = useState(false);
+  const [editingStep, setEditingStep] = useState<SequenceStep | null>(null);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const createSequenceMutation = useMutation({
+    mutationFn: async (data: any) => {
+      return await apiRequest('/api/sequences/advanced', 'POST', data);
+    },
+    onSuccess: () => {
+      toast({ title: 'Success', description: 'Advanced sequence created successfully!' });
+      queryClient.invalidateQueries({ queryKey: ['/api/sequences'] });
+      onSave(sequence);
+    },
+    onError: () => {
+      toast({ title: 'Error', description: 'Failed to create sequence', variant: 'destructive' });
+    }
+  });
+
+  const addStep = useCallback((stepType: string) => {
+    const newStep: SequenceStep = {
+      id: `step-${Date.now()}`,
+      stepNumber: steps.length + 1,
+      stepType: stepType as any,
+      name: `${stepType.charAt(0).toUpperCase() + stepType.slice(1)} Step ${steps.length + 1}`,
+      isActive: true,
+      delayHours: stepType === 'wait' ? 24 : 0,
+      delayType: 'time',
+      businessHoursOnly: true,
+      skipWeekends: true,
+    };
+    
+    setSteps(prev => [...prev, newStep]);
+    setEditingStep(newStep);
+    setShowStepDialog(true);
+  }, [steps.length]);
+
+  const updateStep = useCallback((stepId: string, updates: Partial<SequenceStep>) => {
+    setSteps(prev => prev.map(step => 
+      step.id === stepId ? { ...step, ...updates } : step
+    ));
+  }, []);
+
+  const deleteStep = useCallback((stepId: string) => {
+    setSteps(prev => prev.filter(step => step.id !== stepId));
+  }, []);
+
+  const handleSaveSequence = async () => {
+    if (!sequence.name) {
+      toast({ title: 'Error', description: 'Please enter a sequence name', variant: 'destructive' });
+      return;
+    }
+
+    if (steps.length === 0) {
+      toast({ title: 'Error', description: 'Please add at least one step', variant: 'destructive' });
+      return;
+    }
+
+    const sequenceData = {
+      ...sequence,
+      steps,
+      stepsCount: steps.length
+    };
+
+    createSequenceMutation.mutate(sequenceData);
+  };
+
+  const StepIcon = ({ stepType }: { stepType: string }) => {
+    const stepConfig = STEP_TYPES.find(type => type.value === stepType);
+    if (!stepConfig) return <Mail className="w-4 h-4" />;
+    const IconComponent = stepConfig.icon;
+    return <IconComponent className="w-4 h-4" />;
+  };
+
+  const StepCard = ({ step }: { step: SequenceStep }) => {
+    const stepConfig = STEP_TYPES.find(type => type.value === step.stepType);
+    
+    return (
+      <Card className={`cursor-pointer transition-all ${selectedStep === step.id ? 'ring-2 ring-blue-500' : ''}`}>
+        <CardContent className="p-3">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center space-x-2">
+              <Badge className={`${stepConfig?.color} text-xs`}>
+                <StepIcon stepType={step.stepType} />
+                <span className="ml-1">{stepConfig?.label}</span>
+              </Badge>
+              <span className="text-xs text-gray-500">#{step.stepNumber}</span>
+            </div>
+            <div className="flex space-x-1">
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-6 w-6 p-0"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setEditingStep(step);
+                  setShowStepDialog(true);
+                }}
+              >
+                <Settings className="w-3 h-3" />
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-6 w-6 p-0"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  deleteStep(step.id);
+                }}
+              >
+                <Trash2 className="w-3 h-3" />
+              </Button>
+            </div>
+          </div>
+          
+          <h4 className="font-medium text-sm mb-1">{step.name}</h4>
+          
+          {step.stepType === 'email' && step.subjectLine && (
+            <p className="text-xs text-gray-600 mb-1 truncate">Subject: {step.subjectLine}</p>
+          )}
+          
+          <div className="flex items-center justify-between">
+            {step.delayHours > 0 && (
+              <div className="flex items-center space-x-1 text-xs text-gray-500">
+                <Clock className="w-3 h-3" />
+                <span>Wait {step.delayHours}h</span>
+              </div>
+            )}
+            
+            {step.conditions && step.conditions.length > 0 && (
+              <div className="flex items-center space-x-1 text-xs text-blue-600">
+                <GitBranch className="w-3 h-3" />
+                <span>{step.conditions.length}</span>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
+
+  return (
+    <div className="h-screen flex flex-col overflow-hidden">
+      {/* Compact Header */}
+      <div className="flex items-center justify-between p-4 border-b bg-white">
+        <div>
+          <h2 className="text-xl font-bold">Advanced Sequence Builder</h2>
+          <p className="text-sm text-gray-600">Create multi-channel sequences with conditional logic</p>
+        </div>
+        <div className="flex items-center space-x-3">
+          <div className="text-sm text-gray-600">
+            {steps.length} steps • {sequence.name ? '✓' : '⚠'} Name required
+          </div>
+          <div className="flex space-x-2">
+            <Button variant="outline" size="sm" onClick={onCancel}>Cancel</Button>
+            <Button 
+              size="sm" 
+              onClick={handleSaveSequence} 
+              disabled={createSequenceMutation.isPending || !sequence.name || steps.length === 0}
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+            >
+              {createSequenceMutation.isPending ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Send className="w-4 h-4 mr-2" />
+                  Save Sequence
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex-1 grid grid-cols-4 gap-4 p-4 overflow-hidden">
+        {/* Left Panel - Sequence Settings */}
+        <div className="col-span-1 space-y-3 overflow-y-auto">
+          <Card className="h-fit">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Sequence Settings</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div>
+                <Label htmlFor="name">Sequence Name</Label>
+                <Input
+                  id="name"
+                  value={sequence.name}
+                  onChange={(e) => setSequence(prev => ({ ...prev, name: e.target.value }))}
+                  placeholder="e.g., C-Level Cold Outreach"
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="description">Description</Label>
+                <Textarea
+                  id="description"
+                  value={sequence.description}
+                  onChange={(e) => setSequence(prev => ({ ...prev, description: e.target.value }))}
+                  placeholder="Describe this sequence..."
+                  rows={2}
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="sequenceType">Sequence Type</Label>
+                <Select
+                  value={sequence.sequenceType}
+                  onValueChange={(value) => setSequence(prev => ({ ...prev, sequenceType: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cold_outreach">Cold Outreach</SelectItem>
+                    <SelectItem value="follow_up">Follow Up</SelectItem>
+                    <SelectItem value="nurture">Nurture</SelectItem>
+                    <SelectItem value="re_engagement">Re-engagement</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <Separator />
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="multiChannel">Multi-Channel</Label>
+                  <Switch
+                    id="multiChannel"
+                    checked={sequence.multiChannel}
+                    onCheckedChange={(checked) => setSequence(prev => ({ ...prev, multiChannel: checked }))}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="abTest">A/B Testing</Label>
+                  <Switch
+                    id="abTest"
+                    checked={sequence.abTestEnabled}
+                    onCheckedChange={(checked) => setSequence(prev => ({ ...prev, abTestEnabled: checked }))}
+                  />
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="conditionalBranching">Conditional Logic</Label>
+                  <Switch
+                    id="conditionalBranching"
+                    checked={sequence.conditionalBranching}
+                    onCheckedChange={(checked) => setSequence(prev => ({ ...prev, conditionalBranching: checked }))}
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Step Types Palette */}
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2">
+                <Plus className="w-4 h-4" />
+                Add Steps
+              </CardTitle>
+              <p className="text-xs text-gray-600">Click to add steps to your sequence</p>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 gap-2">
+                {STEP_TYPES.map((stepType) => {
+                  const IconComponent = stepType.icon;
+                  return (
+                    <Button
+                      key={stepType.value}
+                      variant="outline"
+                      size="sm"
+                      onClick={() => addStep(stepType.value)}
+                      className="justify-start p-3 h-10 text-sm hover:bg-blue-50 hover:border-blue-300 transition-colors"
+                    >
+                      <IconComponent className="w-4 h-4 mr-2" />
+                      <span>Add {stepType.label}</span>
+                    </Button>
+                  );
+                })}
+              </div>
+              <div className="mt-3 pt-3 border-t">
+                <p className="text-xs text-gray-500 text-center">
+                  Steps: {steps.length}
+                </p>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Main Canvas - Visual Flow */}
+        <div className="col-span-3">
+          <Card className="h-full flex flex-col">
+            <CardHeader className="pb-2">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base">Sequence Flow</CardTitle>
+                <div className="flex space-x-1">
+                  <Button size="sm" variant="outline">
+                    <Eye className="w-3 h-3 mr-1" />
+                    <span className="text-xs">Preview</span>
+                  </Button>
+                  <Button size="sm" variant="outline">
+                    <BarChart3 className="w-3 h-3 mr-1" />
+                    <span className="text-xs">Analytics</span>
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="flex-1 overflow-auto p-4">
+              {steps.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full text-gray-500">
+                  <Zap className="w-8 h-8 mb-3 text-gray-300" />
+                  <h3 className="text-base font-medium mb-2">Start Building Your Sequence</h3>
+                  <p className="text-center mb-3 text-sm">Add steps from the left panel to create your automated sequence</p>
+                  <Button size="sm" onClick={() => addStep('email')}>
+                    <Plus className="w-3 h-3 mr-1" />
+                    Add First Step
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {/* Start Node */}
+                  <div className="flex justify-center">
+                    <div className="bg-green-100 text-green-800 px-3 py-1 rounded-full text-xs font-medium">
+                      <Play className="w-3 h-3 inline mr-1" />
+                      Start Sequence
+                    </div>
+                  </div>
+
+                  {/* Steps */}
+                  {steps.map((step, index) => (
+                    <div key={step.id}>
+                      {/* Connector */}
+                      {index > 0 && (
+                        <div className="flex justify-center">
+                          <ArrowDown className="w-4 h-4 text-gray-400" />
+                        </div>
+                      )}
+                      
+                      {/* Step */}
+                      <div 
+                        className="flex justify-center"
+                        onClick={() => setSelectedStep(selectedStep === step.id ? null : step.id)}
+                      >
+                        <div className="w-full max-w-sm">
+                          <StepCard step={step} />
+                        </div>
+                      </div>
+
+                      {/* Conditional Branches */}
+                      {step.branches && step.branches.length > 0 && (
+                        <div className="flex justify-center mt-2">
+                          <div className="flex space-x-4">
+                            {step.branches.map((branch: any, branchIndex: number) => (
+                              <div key={branchIndex} className="flex flex-col items-center">
+                                <ArrowRight className="w-4 h-4 text-blue-500" />
+                                <Badge variant="outline" className="text-xs">
+                                  {branch.condition}
+                                </Badge>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+
+                  {/* End Node */}
+                  <div className="flex justify-center mt-4">
+                    <div className="bg-gray-100 text-gray-800 px-3 py-1 rounded-full text-xs font-medium">
+                      <CheckCircle className="w-3 h-3 inline mr-1" />
+                      Complete
+                    </div>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+
+      {/* Step Configuration Dialog */}
+      <Dialog open={showStepDialog} onOpenChange={setShowStepDialog}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              Configure {editingStep ? STEP_TYPES.find(t => t.value === editingStep.stepType)?.label : ''} Step
+            </DialogTitle>
+            <DialogDescription>
+              Set up the content, timing, and conditions for this step
+            </DialogDescription>
+          </DialogHeader>
+
+          {editingStep && (
+            <Tabs defaultValue="content" className="w-full">
+              <TabsList className="grid w-full grid-cols-4">
+                <TabsTrigger value="content">Content</TabsTrigger>
+                <TabsTrigger value="timing">Timing</TabsTrigger>
+                <TabsTrigger value="conditions">Conditions</TabsTrigger>
+                <TabsTrigger value="testing">A/B Testing</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="content" className="space-y-4">
+                <div>
+                  <Label htmlFor="stepName">Step Name</Label>
+                  <Input
+                    id="stepName"
+                    value={editingStep.name}
+                    onChange={(e) => setEditingStep(prev => prev ? { ...prev, name: e.target.value } : null)}
+                  />
+                </div>
+
+                {editingStep.stepType === 'email' && (
+                  <>
+                    <div>
+                      <Label htmlFor="subjectLine">Subject Line</Label>
+                      <Input
+                        id="subjectLine"
+                        value={editingStep.subjectLine || ''}
+                        onChange={(e) => setEditingStep(prev => prev ? { ...prev, subjectLine: e.target.value } : null)}
+                        placeholder="Enter email subject..."
+                      />
+                    </div>
+                    <div>
+                      <Label htmlFor="bodyContent">Email Content</Label>
+                      <Textarea
+                        id="bodyContent"
+                        value={editingStep.bodyContent || ''}
+                        onChange={(e) => setEditingStep(prev => prev ? { ...prev, bodyContent: e.target.value } : null)}
+                        placeholder="Write your email content..."
+                        rows={8}
+                      />
+                    </div>
+                  </>
+                )}
+
+                {editingStep.stepType === 'linkedin' && (
+                  <div>
+                    <Label htmlFor="linkedinMessage">LinkedIn Message</Label>
+                    <Textarea
+                      id="linkedinMessage"
+                      value={editingStep.linkedinMessage || ''}
+                      onChange={(e) => setEditingStep(prev => prev ? { ...prev, linkedinMessage: e.target.value } : null)}
+                      placeholder="Write your LinkedIn message..."
+                      rows={5}
+                    />
+                  </div>
+                )}
+
+                {editingStep.stepType === 'call' && (
+                  <div>
+                    <Label htmlFor="callScript">Call Script</Label>
+                    <Textarea
+                      id="callScript"
+                      value={editingStep.callScript || ''}
+                      onChange={(e) => setEditingStep(prev => prev ? { ...prev, callScript: e.target.value } : null)}
+                      placeholder="Write your call script..."
+                      rows={8}
+                    />
+                  </div>
+                )}
+              </TabsContent>
+
+              <TabsContent value="timing" className="space-y-4">
+                <div>
+                  <Label htmlFor="delayHours">Delay Hours</Label>
+                  <Input
+                    id="delayHours"
+                    type="number"
+                    value={editingStep.delayHours}
+                    onChange={(e) => setEditingStep(prev => prev ? { ...prev, delayHours: parseInt(e.target.value) || 0 } : null)}
+                  />
+                </div>
+
+                <div>
+                  <Label htmlFor="delayType">Delay Type</Label>
+                  <Select
+                    value={editingStep.delayType}
+                    onValueChange={(value) => setEditingStep(prev => prev ? { ...prev, delayType: value as any } : null)}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="time">Time-based</SelectItem>
+                      <SelectItem value="behavior">Behavior-based</SelectItem>
+                      <SelectItem value="business_hours">Business Hours</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="businessHoursOnly">Business Hours Only</Label>
+                    <Switch
+                      id="businessHoursOnly"
+                      checked={editingStep.businessHoursOnly}
+                      onCheckedChange={(checked) => setEditingStep(prev => prev ? { ...prev, businessHoursOnly: checked } : null)}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="skipWeekends">Skip Weekends</Label>
+                    <Switch
+                      id="skipWeekends"
+                      checked={editingStep.skipWeekends}
+                      onCheckedChange={(checked) => setEditingStep(prev => prev ? { ...prev, skipWeekends: checked } : null)}
+                    />
+                  </div>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="conditions" className="space-y-4">
+                <div className="text-center py-8 text-gray-500">
+                  <GitBranch className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                  <h3 className="font-medium mb-2">Conditional Logic</h3>
+                  <p className="text-sm mb-4">Add conditions to control when this step executes</p>
+                  <Button variant="outline" size="sm">
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add Condition
+                  </Button>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="testing" className="space-y-4">
+                <div className="text-center py-8 text-gray-500">
+                  <BarChart3 className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                  <h3 className="font-medium mb-2">A/B Testing</h3>
+                  <p className="text-sm mb-4">Create variants to test different approaches</p>
+                  <Button variant="outline" size="sm">
+                    <Copy className="w-4 h-4 mr-2" />
+                    Create Variant
+                  </Button>
+                </div>
+              </TabsContent>
+            </Tabs>
+          )}
+
+          <div className="flex justify-end space-x-2 pt-4">
+            <Button variant="outline" onClick={() => setShowStepDialog(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={() => {
+                if (editingStep) {
+                  updateStep(editingStep.id, editingStep);
+                  setShowStepDialog(false);
+                  setEditingStep(null);
+                }
+              }}
+            >
+              Save Step
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
