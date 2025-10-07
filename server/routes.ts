@@ -32,14 +32,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
         apolloFilters,
       });
 
-      // Create search job for background processing
-      const job = await jobService.createSearchJob(query, apolloFilters);
+      // Try to create search job for background processing (optional)
+      let job = null;
+      let jobWarning = null;
+      try {
+        job = await jobService.createSearchJob(query, apolloFilters);
+      } catch (jobError) {
+        // Job queue not available - non-fatal, just log and continue
+        console.warn("Search job creation skipped:", jobError instanceof Error ? jobError.message : "Unknown error");
+        jobWarning = jobError instanceof Error ? jobError.message : "Job queue unavailable";
+      }
       
       res.json({ 
         search,
         job,
         aiFilters,
-        apolloFilters 
+        apolloFilters,
+        ...(jobWarning && { warning: jobWarning })
       });
     } catch (error) {
       console.error("AI search error:", error);
