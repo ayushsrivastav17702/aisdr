@@ -516,36 +516,40 @@ function SequenceStepsTab({ sequenceId, steps }: { sequenceId: string; steps: an
                 </div>
               </>
             )}
-            <div>
-              <Label>Delay (days after previous step)</Label>
-              <Input
-                type="number"
-                value={delayDays}
-                onChange={(e) => setDelayDays(e.target.value)}
-                min="0"
-                data-testid="input-step-delay"
-              />
-            </div>
-            <div className="flex gap-2 justify-end">
-              <Button variant="outline" onClick={() => setShowAddModal(false)}>
-                Cancel
-              </Button>
-              <Button
-                onClick={() => {
-                  if (subject.trim() && body.trim()) {
-                    addStepMutation.mutate({
-                      subject,
-                      body,
-                      delayDays: parseInt(delayDays) || 0
-                    });
-                  }
-                }}
-                disabled={!subject.trim() || !body.trim() || addStepMutation.isPending}
-                data-testid="button-save-step"
-              >
-                {addStepMutation.isPending ? "Adding..." : "Add Step"}
-              </Button>
-            </div>
+            {!showAIGenerator && (
+              <>
+                <div>
+                  <Label>Delay (days after previous step)</Label>
+                  <Input
+                    type="number"
+                    value={delayDays}
+                    onChange={(e) => setDelayDays(e.target.value)}
+                    min="0"
+                    data-testid="input-step-delay"
+                  />
+                </div>
+                <div className="flex gap-2 justify-end">
+                  <Button variant="outline" onClick={() => setShowAddModal(false)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      if (subject.trim() && body.trim()) {
+                        addStepMutation.mutate({
+                          subject,
+                          body,
+                          delayDays: parseInt(delayDays) || 0
+                        });
+                      }
+                    }}
+                    disabled={!subject.trim() || !body.trim() || addStepMutation.isPending}
+                    data-testid="button-save-step"
+                  >
+                    {addStepMutation.isPending ? "Adding..." : "Add Step"}
+                  </Button>
+                </div>
+              </>
+            )}
           </div>
         </DialogContent>
       </Dialog>

@@ -366,4 +366,103 @@ router.post("/sequences/followup-preview", async (req, res) => {
   }
 });
 
+// AI Email Generation - Main endpoint
+router.post("/sequences/ai-generate-email", async (req, res) => {
+  try {
+    const { generateEmail } = await import("./services/ai-email-generator.service");
+    const { prospectId, emailType, sequenceStep, tone } = req.body;
+    
+    if (!prospectId) {
+      return res.status(400).json({ error: "prospectId is required" });
+    }
+    
+    const request = {
+      prospectId,
+      emailType: emailType || 'cold_outreach',
+      sequenceStep: sequenceStep || 1,
+      tone: tone || 'professional',
+    };
+    
+    const result = await generateEmail(request);
+    
+    res.json(result);
+  } catch (error) {
+    console.error("AI email generation error:", error);
+    res.status(500).json({ 
+      error: error instanceof Error ? error.message : "Failed to generate email" 
+    });
+  }
+});
+
+// AI Email Variants - A/B testing
+router.post("/sequences/ai-generate-variants", async (req, res) => {
+  try {
+    const { generateEmailVariants } = await import("./services/ai-email-generator.service");
+    const { prospectId, emailType, sequenceStep, variantCount } = req.body;
+    
+    if (!prospectId) {
+      return res.status(400).json({ error: "prospectId is required" });
+    }
+    
+    const request = {
+      prospectId,
+      emailType: emailType || 'cold_outreach',
+      sequenceStep: sequenceStep || 1,
+      tone: 'professional' as const,
+    };
+    
+    const variants = await generateEmailVariants(request, variantCount || 2);
+    
+    res.json({ variants });
+  } catch (error) {
+    console.error("AI variant generation error:", error);
+    res.status(500).json({ 
+      error: error instanceof Error ? error.message : "Failed to generate variants" 
+    });
+  }
+});
+
+// Enhanced Personalization - Deep research
+router.post("/sequences/enhanced-personalization", async (req, res) => {
+  try {
+    const { generateEnhancedPersonalizedEmail } = await import("./services/enhanced-personalization.service");
+    const { prospectId, linkedInData, companyData } = req.body;
+    
+    if (!prospectId) {
+      return res.status(400).json({ error: "prospectId is required" });
+    }
+    
+    const result = await generateEnhancedPersonalizedEmail(prospectId, linkedInData, companyData);
+    
+    res.json(result);
+  } catch (error) {
+    console.error("Enhanced personalization error:", error);
+    res.status(500).json({ 
+      error: error instanceof Error ? error.message : "Failed to enhance personalization" 
+    });
+  }
+});
+
+// AI Follow-up Preview by Prospect ID
+router.get("/sequences/ai-followup-preview/:prospectId", async (req, res) => {
+  try {
+    const { aiFollowUpScheduler } = await import("./services/ai-followup-scheduler.service");
+    const { prospectId } = req.params;
+    
+    const preview = await aiFollowUpScheduler.generateFollowUpEmailPreview(
+      prospectId,
+      "",
+      "gentle_reminder",
+      1
+    );
+    
+    res.json(preview);
+  } catch (error) {
+    console.error("Follow-up preview error:", error);
+    res.status(500).json({ 
+      error: error instanceof Error ? error.message : "Failed to generate follow-up preview" 
+    });
+  }
+});
+
 export default router;
