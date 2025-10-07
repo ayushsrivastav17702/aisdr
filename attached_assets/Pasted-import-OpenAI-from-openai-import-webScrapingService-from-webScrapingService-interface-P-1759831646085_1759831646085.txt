@@ -1,0 +1,476 @@
+import OpenAI from 'openai';
+import { webScrapingService } from './webScrapingService';
+
+interface ProspectData {
+  id: number;
+  firstName: string;
+  lastName: string;
+  jobTitle: string;
+  company: string;
+  email: string;
+  linkedinUrl?: string;
+  websiteUrl?: string;
+  notes?: string;
+}
+
+interface PersonalizationVariable {
+  name: string;
+  value: string;
+  source: string;
+  confidence: number;
+}
+
+interface AdvancedPersonalizationResult {
+  variables: PersonalizationVariable[];
+  contentRecommendations: any[];
+  personalizationScore: number;
+  insights: {
+    roleAnalysis: any;
+    industryContext: any;
+    painPoints: string[];
+    personalityInsights: any;
+  };
+  emailSuggestions: {
+    subject: string;
+    opening: string;
+    valueProposition: string;
+    callToAction: string;
+  };
+}
+
+export class AdvancedPersonalizationService {
+  private openai: OpenAI;
+
+  constructor() {
+    if (!process.env.OPENAI_API_KEY) {
+      throw new Error("OpenAI API key not configured");
+    }
+    this.openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
+  }
+
+  async generateAdvancedPersonalization(prospect: ProspectData): Promise<AdvancedPersonalizationResult> {
+    console.log(`🔬 Starting advanced personalization for ${prospect.firstName} ${prospect.lastName}`);
+
+    try {
+      // Step 1: Gather enriched data
+      const enrichedData = await this.gatherEnrichedData(prospect);
+      
+      // Step 2: Generate personalization variables
+      const variables = await this.generatePersonalizationVariables(prospect, enrichedData);
+      
+      // Step 3: Get content recommendations
+      const contentRecommendations = await this.getContentRecommendations(prospect, enrichedData);
+      
+      // Step 4: Generate AI insights
+      const insights = await this.generateAIInsights(prospect, enrichedData);
+      
+      // Step 5: Generate email suggestions
+      const emailSuggestions = await this.generateEmailSuggestions(prospect, insights, variables);
+      
+      // Step 6: Calculate personalization score
+      const personalizationScore = this.calculatePersonalizationScore(variables, contentRecommendations, insights);
+
+      console.log(`✅ Advanced personalization completed with score: ${personalizationScore}`);
+
+      return {
+        variables,
+        contentRecommendations,
+        personalizationScore,
+        insights,
+        emailSuggestions
+      };
+
+    } catch (error) {
+      console.error("❌ Advanced personalization failed:", error);
+      return this.getDefaultPersonalization(prospect);
+    }
+  }
+
+  private async gatherEnrichedData(prospect: ProspectData) {
+    const enrichedData: any = {
+      prospect,
+      linkedinData: null,
+      companyData: null,
+      contentLibrary: null
+    };
+
+    try {
+      // Gather LinkedIn data if URL provided
+      if (prospect.linkedinUrl) {
+        enrichedData.linkedinData = await webScrapingService.scrapeLinkedInProfile(prospect.linkedinUrl, prospect);
+        console.log(`📊 LinkedIn data gathered: ${enrichedData.linkedinData.connections} connections`);
+      }
+
+      // Gather company data if website URL provided  
+      if (prospect.websiteUrl) {
+        enrichedData.companyData = await webScrapingService.scrapeCompanyWebsite(prospect.websiteUrl);
+        console.log(`🏢 Company data gathered: ${enrichedData.companyData.industry} industry`);
+      }
+
+      // Get content library data
+      enrichedData.contentLibrary = await this.getContentLibraryData();
+      console.log(`📚 Content library data gathered: ${enrichedData.contentLibrary.length} items`);
+
+    } catch (error) {
+      console.error('❌ Error gathering enriched data:', error);
+    }
+
+    return enrichedData;
+  }
+
+  private async generatePersonalizationVariables(prospect: ProspectData, enrichedData: any): Promise<PersonalizationVariable[]> {
+    const variables: PersonalizationVariable[] = [];
+
+    // Basic prospect variables
+    variables.push(
+      { name: 'prospect_name', value: `${prospect.firstName} ${prospect.lastName}`, source: 'prospect_data', confidence: 100 },
+      { name: 'first_name', value: prospect.firstName, source: 'prospect_data', confidence: 100 },
+      { name: 'last_name', value: prospect.lastName, source: 'prospect_data', confidence: 100 },
+      { name: 'company_name', value: prospect.company, source: 'prospect_data', confidence: 100 },
+      { name: 'job_title', value: prospect.jobTitle, source: 'prospect_data', confidence: 100 }
+    );
+
+    // LinkedIn-based variables
+    if (enrichedData.linkedinData) {
+      const linkedin = enrichedData.linkedinData;
+      variables.push(
+        { name: 'connections_count', value: linkedin.connections.toString(), source: 'linkedin', confidence: 85 },
+        { name: 'top_skill', value: linkedin.skills[0] || 'Strategic thinking', source: 'linkedin', confidence: 80 },
+        { name: 'recent_post_topic', value: linkedin.recentPosts[0] || 'Industry insights', source: 'linkedin', confidence: 75 },
+        { name: 'professional_experience', value: linkedin.experience[0] || 'Industry experience', source: 'linkedin', confidence: 80 }
+      );
+    }
+
+    // Company-based variables
+    if (enrichedData.companyData) {
+      const company = enrichedData.companyData;
+      variables.push(
+        { name: 'company_industry', value: company.industry, source: 'company_website', confidence: 90 },
+        { name: 'company_size', value: company.size, source: 'company_website', confidence: 85 },
+        { name: 'recent_company_news', value: company.recentNews[0] || 'Recent developments', source: 'company_website', confidence: 70 },
+        { name: 'primary_challenge', value: company.challenges[0] || 'Operational efficiency', source: 'company_website', confidence: 75 }
+      );
+    }
+
+    // AI-generated contextual variables
+    const contextualVars = await this.generateContextualVariables(prospect, enrichedData);
+    variables.push(...contextualVars);
+
+    return variables;
+  }
+
+  private async generateContextualVariables(prospect: ProspectData, enrichedData: any): Promise<PersonalizationVariable[]> {
+    try {
+      const prompt = `Based on this prospect data, generate contextual personalization variables:
+
+Prospect: ${prospect.firstName} ${prospect.lastName}
+Role: ${prospect.jobTitle}  
+Company: ${prospect.company}
+LinkedIn Data: ${JSON.stringify(enrichedData.linkedinData || {})}
+Company Data: ${JSON.stringify(enrichedData.companyData || {})}
+
+Generate 5 contextual variables that would be valuable for email personalization. Format as JSON:
+{
+  "variables": [
+    {
+      "name": "variable_name",
+      "value": "variable_value", 
+      "reasoning": "why this is relevant"
+    }
+  ]
+}`;
+
+      const response = await this.openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "system",
+            content: "You are an expert at generating contextual personalization variables for B2B sales emails. Create variables that show deep understanding of the prospect's role and challenges."
+          },
+          {
+            role: "user",
+            content: prompt
+          }
+        ],
+        response_format: { type: "json_object" },
+        temperature: 0.3,
+      });
+
+      const result = JSON.parse(response.choices[0].message.content || '{}');
+      const contextualVars: PersonalizationVariable[] = [];
+
+      if (result.variables) {
+        for (const variable of result.variables) {
+          contextualVars.push({
+            name: variable.name,
+            value: variable.value,
+            source: 'ai_generated',
+            confidence: 70
+          });
+        }
+      }
+
+      return contextualVars;
+
+    } catch (error) {
+      console.error('❌ Error generating contextual variables:', error);
+      return [];
+    }
+  }
+
+  private async getContentRecommendations(prospect: ProspectData, enrichedData: any) {
+    try {
+      const { storage } = await import('../../storage');
+      const contentItems = await storage.getContentItems();
+      
+      console.log(`📚 Found ${contentItems.length} content items for analysis`);
+      
+      // Always return content recommendations - don't filter out everything
+      const recommendations = contentItems
+        .map((item: any) => ({
+          id: item.id,
+          name: item.name,
+          type: item.type || 'content',
+          relevanceScore: this.calculateContentRelevance(item, prospect, enrichedData),
+          usage: `Reference ${item.name} when discussing ${prospect.jobTitle} challenges and strategic initiatives`
+        }))
+        .sort((a: any, b: any) => b.relevanceScore - a.relevanceScore) // Sort by relevance
+        .slice(0, 5); // Take top 5
+
+      console.log(`✅ Generated ${recommendations.length} content recommendations with scores: ${recommendations.map((r: any) => r.relevanceScore).join(', ')}`);
+      return recommendations;
+    } catch (error) {
+      console.error('❌ Error getting content recommendations:', error);
+      return [];
+    }
+  }
+
+  private calculateContentRelevance(content: any, prospect: ProspectData, enrichedData: any): number {
+    let score = 60; // Base score - everyone gets something!
+
+    const contentText = (content.content || '').toLowerCase();
+    const prospectTitle = prospect.jobTitle.toLowerCase();
+    const prospectCompany = prospect.company.toLowerCase();
+
+    // Role/title match (high value)
+    if (contentText.includes(prospectTitle) || 
+        prospectTitle.includes('buy') && contentText.includes('merchand') ||
+        prospectTitle.includes('merchand') && contentText.includes('buy')) {
+      score += 25;
+    }
+
+    // Company type match
+    if (contentText.includes(prospectCompany)) {
+      score += 20;
+    }
+
+    // Industry relevance (broader matching)
+    if (enrichedData.companyData?.industry) {
+      const industry = enrichedData.companyData.industry.toLowerCase();
+      if (contentText.includes(industry) || 
+          contentText.includes('retail') || 
+          contentText.includes('ecommerce') ||
+          contentText.includes('supply chain')) {
+        score += 15;
+      }
+    }
+
+    // Keywords relevant to buying/merchandising roles
+    const keywords = ['inventory', 'sourcing', 'vendor', 'supplier', 'procurement', 'optimization', 'analytics', 'data'];
+    const matchedKeywords = keywords.filter(keyword => contentText.includes(keyword));
+    score += matchedKeywords.length * 3;
+
+    return Math.min(score, 100);
+  }
+
+  private async generateAIInsights(prospect: ProspectData, enrichedData: any) {
+    try {
+      const prompt = `Analyze this B2B prospect for advanced sales personalization. PAY CLOSE ATTENTION TO THEIR EXACT JOB TITLE AND DO NOT MAKE ASSUMPTIONS.
+
+PROSPECT: ${prospect.firstName} ${prospect.lastName}
+EXACT ROLE: ${prospect.jobTitle} (This is their actual job title - use this precisely, do not assume a different role)
+COMPANY: ${prospect.company}
+LINKEDIN DATA: ${JSON.stringify(enrichedData.linkedinData || {})}
+COMPANY DATA: ${JSON.stringify(enrichedData.companyData || {})}
+
+IMPORTANT: If the job title contains "buying" or "buyer", they are in BUYING/MERCHANDISING, NOT procurement. Tailor your analysis to their specific role.
+
+Provide comprehensive analysis in JSON format:
+{
+  "roleAnalysis": {
+    "seniority": 0-100,
+    "decisionAuthority": 0-100,
+    "keyResponsibilities": ["resp1", "resp2"],
+    "budgetInfluence": 0-100
+  },
+  "industryContext": {
+    "relevanceScore": 0-100,
+    "currentTrends": ["trend1", "trend2"],
+    "commonChallenges": ["challenge1", "challenge2"]
+  },
+  "painPoints": ["pain1", "pain2", "pain3"],
+  "personalityInsights": {
+    "communicationStyle": "style",
+    "decisionMakingApproach": "approach",
+    "keyMotivators": ["motivator1", "motivator2"]
+  }
+}`;
+
+      const response = await this.openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "system",
+            content: "You are an expert B2B sales analyst specializing in prospect psychology and business intelligence. CRITICAL: Always use the prospect's EXACT job title and role - never assume or generalize roles. A 'Buying Manager' is different from procurement - they focus on product selection, vendor relationships, and inventory planning in retail/fashion contexts. Provide detailed, actionable insights for sales personalization based on their specific role."
+          },
+          {
+            role: "user",
+            content: prompt
+          }
+        ],
+        response_format: { type: "json_object" },
+        temperature: 0.3,
+      });
+
+      return JSON.parse(response.choices[0].message.content || '{}');
+
+    } catch (error) {
+      console.error('❌ Error generating AI insights:', error);
+      return this.getDefaultInsights(prospect);
+    }
+  }
+
+  private async generateEmailSuggestions(prospect: ProspectData, insights: any, variables: PersonalizationVariable[]) {
+    try {
+      const variableContext = variables
+        .filter(v => v.confidence > 70)
+        .map(v => `${v.name}: ${v.value} (${v.source})`)
+        .join('\n');
+
+      const prompt = `Generate email suggestions for this prospect using high-confidence personalization data:
+
+PROSPECT: ${prospect.firstName} ${prospect.lastName} - ${prospect.jobTitle} at ${prospect.company}
+
+INSIGHTS:
+- Role Seniority: ${insights.roleAnalysis?.seniority || 75}/100
+- Decision Authority: ${insights.roleAnalysis?.decisionAuthority || 70}/100
+- Primary Pain Points: ${insights.painPoints?.join(', ') || 'Operational efficiency'}
+- Communication Style: ${insights.personalityInsights?.communicationStyle || 'Professional'}
+
+PERSONALIZATION VARIABLES:
+${variableContext}
+
+Generate email components in JSON format:
+{
+  "subject": "Personalized subject line using prospect data",
+  "opening": "Personalized opening paragraph",
+  "valueProposition": "Value proposition tailored to their challenges",
+  "callToAction": "Specific, relevant CTA"
+}`;
+
+      const response = await this.openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "system",
+            content: "You are an expert email copywriter specializing in B2B sales. Create highly personalized email components that demonstrate deep understanding of the prospect's situation."
+          },
+          {
+            role: "user",
+            content: prompt
+          }
+        ],
+        response_format: { type: "json_object" },
+        temperature: 0.7,
+      });
+
+      return JSON.parse(response.choices[0].message.content || '{}');
+
+    } catch (error) {
+      console.error('❌ Error generating email suggestions:', error);
+      return this.getDefaultEmailSuggestions(prospect);
+    }
+  }
+
+  private calculatePersonalizationScore(variables: PersonalizationVariable[], content: any[], insights: any): number {
+    let score = 0;
+
+    // Variable quality score (40 points max)
+    const highConfidenceVars = variables.filter(v => v.confidence > 80);
+    score += Math.min(highConfidenceVars.length * 4, 40);
+
+    // Content relevance score (30 points max)
+    const relevantContent = content.filter(c => c.relevanceScore > 70);
+    score += Math.min(relevantContent.length * 6, 30);
+
+    // Data source diversity (20 points max)
+    const sources = new Set(variables.map(v => v.source));
+    score += Math.min(sources.size * 5, 20);
+
+    // AI insights completeness (10 points max)
+    if (insights.roleAnalysis && insights.industryContext && insights.painPoints) {
+      score += 10;
+    }
+
+    return Math.min(score, 100);
+  }
+
+  private async getContentLibraryData() {
+    try {
+      const { storage } = await import('../../storage');
+      return await storage.getContentItems();
+    } catch (error) {
+      console.error('❌ Error fetching content library:', error);
+      return [];
+    }
+  }
+
+  private getDefaultPersonalization(prospect: ProspectData): AdvancedPersonalizationResult {
+    return {
+      variables: [
+        { name: 'prospect_name', value: `${prospect.firstName} ${prospect.lastName}`, source: 'prospect_data', confidence: 100 },
+        { name: 'company_name', value: prospect.company, source: 'prospect_data', confidence: 100 },
+        { name: 'job_title', value: prospect.jobTitle, source: 'prospect_data', confidence: 100 }
+      ],
+      contentRecommendations: [],
+      personalizationScore: 50,
+      insights: this.getDefaultInsights(prospect),
+      emailSuggestions: this.getDefaultEmailSuggestions(prospect)
+    };
+  }
+
+  private getDefaultInsights(prospect: ProspectData) {
+    return {
+      roleAnalysis: {
+        seniority: 75,
+        decisionAuthority: 70,
+        keyResponsibilities: ["Strategic planning", "Team leadership", "Performance optimization"],
+        budgetInfluence: 60
+      },
+      industryContext: {
+        relevanceScore: 80,
+        currentTrends: ["Digital transformation", "Operational efficiency"],
+        commonChallenges: ["Cost optimization", "Process improvement"]
+      },
+      painPoints: ["Operational efficiency", "Cost management", "Process optimization"],
+      personalityInsights: {
+        communicationStyle: "Professional",
+        decisionMakingApproach: "Data-driven",
+        keyMotivators: ["ROI", "Efficiency", "Growth"]
+      }
+    };
+  }
+
+  private getDefaultEmailSuggestions(prospect: ProspectData) {
+    return {
+      subject: `${prospect.firstName}, optimizing ${prospect.company}'s operational efficiency`,
+      opening: `Hi ${prospect.firstName},\n\nI hope this email finds you well. As a ${prospect.jobTitle} at ${prospect.company}, I imagine you're focused on driving operational excellence and strategic growth.`,
+      valueProposition: "Our platform helps companies like yours achieve measurable improvements in efficiency and cost optimization through intelligent automation.",
+      callToAction: "Would you be open to a brief 15-minute conversation to discuss your current operational priorities?"
+    };
+  }
+}
+
+export const advancedPersonalizationService = new AdvancedPersonalizationService();
