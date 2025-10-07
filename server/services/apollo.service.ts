@@ -1,0 +1,220 @@
+interface ApolloSearchParams {
+  person_titles?: string[];
+  person_seniorities?: string[];
+  person_departments?: string[];
+  organization_industry_tag_ids?: string[];
+  organization_num_employees_ranges?: string[];
+  person_locations?: string[];
+  q_keywords?: string;
+  page?: number;
+  per_page?: number;
+}
+
+interface ApolloContact {
+  id: string;
+  first_name: string;
+  last_name: string;
+  name: string;
+  email: string;
+  title: string;
+  seniority: string;
+  departments: string[];
+  linkedin_url: string;
+  phone_numbers: Array<{ raw_number: string; sanitized_number: string }>;
+  organization: {
+    id: string;
+    name: string;
+    website_url: string;
+    industry: string;
+    num_employees: number;
+    estimated_num_employees: number;
+    primary_phone: { number: string };
+    headquarters_location: {
+      name: string;
+      street_address: string;
+      city: string;
+      state: string;
+      country: string;
+    };
+  };
+  employment_history: Array<{
+    _id: string;
+    company_name: string;
+    title: string;
+    start_date: string;
+    end_date: string;
+  }>;
+}
+
+interface ApolloSearchResponse {
+  contacts: ApolloContact[];
+  pagination: {
+    page: number;
+    per_page: number;
+    total_entries: number;
+    total_pages: number;
+  };
+}
+
+interface ApolloEnrichmentResponse {
+  contact: ApolloContact;
+}
+
+class ApolloService {
+  private apiKey: string;
+  private baseUrl = 'https://api.apollo.io/v1';
+
+  constructor() {
+    this.apiKey = process.env.APOLLO_API_KEY || process.env.APOLLO_API_KEY_ENV_VAR || '';
+    if (!this.apiKey) {
+      throw new Error('Apollo API key is required. Set APOLLO_API_KEY environment variable.');
+    }
+  }
+
+  async searchContacts(params: ApolloSearchParams): Promise<ApolloSearchResponse> {
+    const url = `${this.baseUrl}/mixed_people/search`;
+    
+    const requestBody = {
+      ...params,
+      per_page: params.per_page || 50,
+      page: params.page || 1,
+    };
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache',
+        'X-Api-Key': this.apiKey,
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Apollo API error: ${response.status} ${response.statusText}: ${errorText}`);
+    }
+
+    const data = await response.json();
+    return data;
+  }
+
+  async enrichContact(params: { 
+    email?: string; 
+    first_name?: string; 
+    last_name?: string; 
+    organization_name?: string;
+    linkedin_url?: string;
+  }): Promise<ApolloEnrichmentResponse> {
+    const url = `${this.baseUrl}/people/match`;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache',
+        'X-Api-Key': this.apiKey,
+      },
+      body: JSON.stringify(params),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Apollo enrichment error: ${response.status} ${response.statusText}: ${errorText}`);
+    }
+
+    const data = await response.json();
+    return data;
+  }
+
+  async bulkEnrichContacts(contacts: Array<{
+    email?: string;
+    first_name?: string;
+    last_name?: string;
+    organization_name?: string;
+    linkedin_url?: string;
+  }>): Promise<ApolloEnrichmentResponse[]> {
+    const url = `${this.baseUrl}/people/bulk_match`;
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-cache',
+        'X-Api-Key': this.apiKey,
+      },
+      body: JSON.stringify({ people: contacts }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Apollo bulk enrichment error: ${response.status} ${response.statusText}: ${errorText}`);
+    }
+
+    const data = await response.json();
+    return data.people || [];
+  }
+
+  // Convert Apollo contact to our prospect format
+  convertApolloContactToProspect(contact: ApolloContact) {
+    const phoneNumber = contact.phone_numbers?.[0]?.sanitized_number || 
+                       contact.phone_numbers?.[0]?.raw_number || '';
+
+    return {
+      apolloId: contact.id,
+      firstName: contact.first_name,
+      lastName: contact.last_name,
+      fullName: contact.name,
+      primaryEmail: contact.email,
+      jobTitle: contact.title,
+      seniority: contact.seniority,
+      department: contact.departments?.[0] || '',
+      companyName: contact.organization?.name || '',
+      companyDomain: this.extractDomainFromUrl(contact.organization?.website_url || ''),
+      companySize: this.formatEmployeeCount(contact.organization?.num_employees || contact.organization?.estimated_num_employees || 0),
+      companyIndustry: contact.organization?.industry || '',
+      companyLocation: this.formatLocation(contact.organization?.headquarters_location),
+      phoneNumber,
+      linkedinUrl: contact.linkedin_url,
+      enrichmentStatus: 'enriched' as const,
+      enrichmentData: {
+        apollo: contact,
+        enrichedAt: new Date().toISOString(),
+      }
+    };
+  }
+
+  private extractDomainFromUrl(url: string): string {
+    try {
+      const urlObj = new URL(url.startsWith('http') ? url : `https://${url}`);
+      return urlObj.hostname.replace('www.', '');
+    } catch {
+      return url.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0];
+    }
+  }
+
+  private formatEmployeeCount(count: number): string {
+    if (count <= 10) return '1-10';
+    if (count <= 50) return '11-50';
+    if (count <= 200) return '51-200';
+    if (count <= 500) return '201-500';
+    if (count <= 1000) return '501-1000';
+    if (count <= 5000) return '1001-5000';
+    if (count <= 10000) return '5001-10000';
+    return '10000+';
+  }
+
+  private formatLocation(location: any): string {
+    if (!location) return '';
+    
+    const parts = [
+      location.city,
+      location.state,
+      location.country
+    ].filter(Boolean);
+    
+    return parts.join(', ');
+  }
+}
+
+export const apolloService = new ApolloService();
