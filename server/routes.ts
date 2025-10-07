@@ -620,12 +620,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ error: "Prospect not found" });
       }
 
-      let scrapedData = null;
-      if (includeWebScraping && prospect.linkedinUrl) {
-        scrapedData = await webScrapingService.scrapeLinkedInProfile(prospect.linkedinUrl);
-      }
+      // Get AI analysis from intelligent personalization service
+      const insights = await intelligentPersonalizationService.analyzeProspect(prospectId);
 
-      const analysis = await intelligentPersonalizationService.analyzeProspect(prospect, scrapedData);
+      // Transform to match frontend expectations
+      const personalizationFactorValues = insights.personalizationFactors.map(f => f.relevance);
+      const avgRelevance = personalizationFactorValues.reduce((a, b) => a + b, 0) / personalizationFactorValues.length;
+
+      const analysis = {
+        personalizationScore: Math.round(avgRelevance),
+        keyInsights: insights.personalizationFactors.map(f => f.insight),
+        recommendedApproach: `${insights.recommendations.approach} - ${insights.recommendations.keyMessages.join('. ')}`,
+        personalizationFactors: {
+          roleRelevance: insights.personalizationFactors.find(f => f.source.includes('Role'))?.relevance || 75,
+          companyFit: insights.personalizationFactors.find(f => f.source.includes('Company'))?.relevance || 75,
+          timingScore: 80,
+          painPointAlignment: insights.roleInsights.painPoints.length > 0 ? 85 : 70,
+        },
+        companyInsights: insights.companyInsights,
+        roleInsights: insights.roleInsights,
+      };
 
       // Save personalization result
       await storage.createPersonalizationResult({

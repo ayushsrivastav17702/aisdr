@@ -61,7 +61,7 @@ export function PersonalizationWizard({
         'POST',
         '/api/personalization/analyze',
         { prospectId, includeWebScraping }
-      ) as PersonalizationAnalysis;
+      ) as unknown as PersonalizationAnalysis;
       setAnalysis(result);
       setStep(3);
     } catch (error) {
