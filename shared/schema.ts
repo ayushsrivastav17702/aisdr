@@ -145,3 +145,226 @@ export const csvImportSchema = z.object({
 export type AISearchRequest = z.infer<typeof aiSearchSchema>;
 export type EnrichmentRequest = z.infer<typeof enrichmentRequestSchema>;
 export type CSVImportRequest = z.infer<typeof csvImportSchema>;
+
+// ============================================
+// SEQUENCE BUILDER MODULE - NEW TABLES
+// ============================================
+
+// Sequences table
+export const sequences = pgTable("sequences", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  description: text("description"),
+  type: text("type").notNull().default("outbound"),
+  status: text("status").notNull().default("draft"),
+  aiPersonalizationEnabled: boolean("ai_personalization_enabled").default(false),
+  totalProspects: integer("total_prospects").default(0),
+  activeProspects: integer("active_prospects").default(0),
+  completedProspects: integer("completed_prospects").default(0),
+  settings: jsonb("settings"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Sequence steps table
+export const sequenceSteps = pgTable("sequence_steps", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sequenceId: varchar("sequence_id").notNull().references(() => sequences.id, { onDelete: "cascade" }),
+  subject: text("subject").notNull(),
+  body: text("body").notNull(),
+  stepOrder: integer("step_order").notNull(),
+  delayDays: integer("delay_days").notNull().default(0),
+  stepType: text("step_type").notNull().default("email"),
+  aiGenerated: boolean("ai_generated").default(false),
+  variables: jsonb("variables"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Sequence prospects (bridge table)
+export const sequenceProspects = pgTable("sequence_prospects", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sequenceId: varchar("sequence_id").notNull().references(() => sequences.id, { onDelete: "cascade" }),
+  prospectId: varchar("prospect_id").notNull().references(() => prospects.id, { onDelete: "cascade" }),
+  currentStepId: varchar("current_step_id").references(() => sequenceSteps.id),
+  status: text("status").notNull().default("active"),
+  enrolledAt: timestamp("enrolled_at").notNull().defaultNow(),
+  lastContactedAt: timestamp("last_contacted_at"),
+  completedAt: timestamp("completed_at"),
+  replies: integer("replies").default(0),
+  opens: integer("opens").default(0),
+  clicks: integer("clicks").default(0),
+});
+
+// Emails table
+export const emails = pgTable("emails", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  prospectId: varchar("prospect_id").notNull().references(() => prospects.id, { onDelete: "cascade" }),
+  sequenceId: varchar("sequence_id").references(() => sequences.id, { onDelete: "set null" }),
+  subject: text("subject").notNull(),
+  content: text("content").notNull(),
+  status: text("status").notNull().default("draft"),
+  personalizationScore: integer("personalization_score"),
+  aiGenerated: boolean("ai_generated").default(false),
+  isFollowUp: boolean("is_follow_up").default(false),
+  parentEmailId: varchar("parent_email_id").references(() => emails.id),
+  scheduledFor: timestamp("scheduled_for"),
+  sentAt: timestamp("sent_at"),
+  openedAt: timestamp("opened_at"),
+  clickedAt: timestamp("clicked_at"),
+  repliedAt: timestamp("replied_at"),
+  deliveredAt: timestamp("delivered_at"),
+  bouncedAt: timestamp("bounced_at"),
+  trackingId: text("tracking_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Email replies table
+export const emailReplies = pgTable("email_replies", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  emailId: varchar("email_id").notNull().references(() => emails.id, { onDelete: "cascade" }),
+  prospectId: varchar("prospect_id").notNull().references(() => prospects.id, { onDelete: "cascade" }),
+  replyContent: text("reply_content").notNull(),
+  sentiment: text("sentiment").default("neutral"),
+  receivedAt: timestamp("received_at").notNull().defaultNow(),
+  aiSummary: text("ai_summary"),
+  nextAction: text("next_action"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// AI follow-up jobs table
+export const aiFollowupJobs = pgTable("ai_followup_jobs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sequenceId: varchar("sequence_id").notNull().references(() => sequences.id, { onDelete: "cascade" }),
+  active: boolean("active").notNull().default(false),
+  daysBetween: integer("days_between").notNull().default(3),
+  maxFollowups: integer("max_followups").notNull().default(3),
+  followupType: text("followup_type").notNull().default("gentle"),
+  triggerCondition: text("trigger_condition").notNull().default("no_response"),
+  totalSent: integer("total_sent").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Personalization results table
+export const personalizationResults = pgTable("personalization_results", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  prospectId: varchar("prospect_id").notNull().references(() => prospects.id, { onDelete: "cascade" }),
+  personalizationScore: integer("personalization_score").notNull(),
+  variables: jsonb("variables"),
+  insights: jsonb("insights"),
+  emailSuggestions: jsonb("email_suggestions"),
+  contentRecommendations: jsonb("content_recommendations"),
+  linkedinData: jsonb("linkedin_data"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Content library table
+export const contentLibrary = pgTable("content_library", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  type: text("type").notNull(),
+  description: text("description"),
+  content: text("content").notNull(),
+  tags: jsonb("tags"),
+  industry: text("industry"),
+  role: text("role"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Sequence module relations
+export const sequencesRelations = relations(sequences, ({ many }) => ({
+  steps: many(sequenceSteps),
+  sequenceProspects: many(sequenceProspects),
+  aiFollowupJobs: many(aiFollowupJobs),
+}));
+
+export const sequenceStepsRelations = relations(sequenceSteps, ({ one }) => ({
+  sequence: one(sequences, {
+    fields: [sequenceSteps.sequenceId],
+    references: [sequences.id],
+  }),
+}));
+
+export const sequenceProspectsRelations = relations(sequenceProspects, ({ one }) => ({
+  sequence: one(sequences, {
+    fields: [sequenceProspects.sequenceId],
+    references: [sequences.id],
+  }),
+  prospect: one(prospects, {
+    fields: [sequenceProspects.prospectId],
+    references: [prospects.id],
+  }),
+}));
+
+export const emailsRelations = relations(emails, ({ one, many }) => ({
+  prospect: one(prospects, {
+    fields: [emails.prospectId],
+    references: [prospects.id],
+  }),
+  sequence: one(sequences, {
+    fields: [emails.sequenceId],
+    references: [sequences.id],
+  }),
+  replies: many(emailReplies),
+}));
+
+export const emailRepliesRelations = relations(emailReplies, ({ one }) => ({
+  email: one(emails, {
+    fields: [emailReplies.emailId],
+    references: [emails.id],
+  }),
+  prospect: one(prospects, {
+    fields: [emailReplies.prospectId],
+    references: [prospects.id],
+  }),
+}));
+
+export const personalizationResultsRelations = relations(personalizationResults, ({ one }) => ({
+  prospect: one(prospects, {
+    fields: [personalizationResults.prospectId],
+    references: [prospects.id],
+  }),
+}));
+
+// Sequence module types
+export type Sequence = typeof sequences.$inferSelect;
+export type InsertSequence = typeof sequences.$inferInsert;
+export type SequenceStep = typeof sequenceSteps.$inferSelect;
+export type InsertSequenceStep = typeof sequenceSteps.$inferInsert;
+export type SequenceProspect = typeof sequenceProspects.$inferSelect;
+export type InsertSequenceProspect = typeof sequenceProspects.$inferInsert;
+export type Email = typeof emails.$inferSelect;
+export type InsertEmail = typeof emails.$inferInsert;
+export type EmailReply = typeof emailReplies.$inferSelect;
+export type InsertEmailReply = typeof emailReplies.$inferInsert;
+export type AIFollowupJob = typeof aiFollowupJobs.$inferSelect;
+export type InsertAIFollowupJob = typeof aiFollowupJobs.$inferInsert;
+export type PersonalizationResult = typeof personalizationResults.$inferSelect;
+export type InsertPersonalizationResult = typeof personalizationResults.$inferInsert;
+export type ContentLibraryItem = typeof contentLibrary.$inferSelect;
+export type InsertContentLibraryItem = typeof contentLibrary.$inferInsert;
+
+// Sequence module schemas
+export const insertSequenceSchema = createInsertSchema(sequences).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertSequenceStepSchema = createInsertSchema(sequenceSteps).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertSequenceProspectSchema = createInsertSchema(sequenceProspects).omit({
+  id: true,
+  enrolledAt: true,
+});
+
+export const insertPersonalizationResultSchema = createInsertSchema(personalizationResults).omit({
+  id: true,
+  createdAt: true,
+});
