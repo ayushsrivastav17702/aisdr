@@ -1,0 +1,1094 @@
+mport { useState, useEffect } from "react";
+import { useParams } from "react-router-dom";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Progress } from "@/components/ui/progress";
+import { useToast } from "@/hooks/use-toast";
+import { 
+  Users, MessageSquare, Zap, BarChart3, Settings, Plus, RefreshCw, 
+  Sparkles, X, CheckCircle, Trash2, Edit3, Mail, Send, Eye, Target,
+  Clock, TrendingUp, Play, Pause, Save, Upload, FileText, User,
+  Building2, Briefcase, Globe, ChevronDown, ChevronUp, Calendar
+} from "lucide-react";
+
+// API helper
+const apiRequest = async (url: string, method = 'GET', data?: any) => {
+  const options: RequestInit = {
+    method,
+    headers: { 'Content-Type': 'application/json' }
+  };
+  if (data) options.body = JSON.stringify(data);
+  
+  const response = await fetch(url, options);
+  if (!response.ok) throw new Error(`API Error: ${response.statusText}`);
+  return response.json();
+};
+
+export default function ProductionSequenceBuilder() {
+  const { id: sequenceId = "1" } = useParams();
+  const [activeTab, setActiveTab] = useState('prospects');
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  // Fetch sequence data
+  const { data: sequence, isLoading: sequenceLoading } = useQuery({
+    queryKey: ['/api/sequences', sequenceId],
+    queryFn: () => apiRequest(`/api/sequences/${sequenceId}`),
+  });
+
+  // Fetch prospects in sequence
+  const { data: prospectsData, isLoading: prospectsLoading } = useQuery({
+    queryKey: ['/api/sequences', sequenceId, 'prospects'],
+    queryFn: () => apiRequest(`/api/sequences/${sequenceId}/prospects`),
+  });
+
+  // Fetch email tracking stats
+  const { data: trackingStats } = useQuery({
+    queryKey: ['/api/sequences', sequenceId, 'tracking'],
+    queryFn: () => apiRequest(`/api/sequences/${sequenceId}/tracking`),
+  });
+
+  // Fetch replies
+  const { data: repliesData } = useQuery({
+    queryKey: ['/api/sequences', sequenceId, 'replies'],
+    queryFn: () => apiRequest(`/api/sequences/${sequenceId}/replies`),
+    refetchInterval: 30000, // Refresh every 30 seconds
+  });
+
+  if (sequenceLoading) {
+    return (
+      <div className="p-6 space-y-6">
+        <div className="animate-pulse">
+          <div className="h-8 bg-gray-200 rounded w-1/4 mb-6"></div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="h-24 bg-gray-200 rounded"></div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const tabs = [
+    { id: 'sequence', label: 'Email Steps', icon: Mail },
+    { id: 'prospects', label: 'Prospects', icon: Users, count: prospectsData?.total || 0 },
+    { id: 'replies', label: 'Replies', icon: MessageSquare, count: repliesData?.total || 0 },
+    { id: 'ai-followup', label: 'AI Follow-up', icon: Zap },
+    { id: 'tracking', label: 'Email Tracking', icon: BarChart3 },
+    { id: 'settings', label: 'Settings', icon: Settings }
+  ];
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
+      <div className="max-w-7xl mx-auto p-6 space-y-6">
+        {/* Header */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-3xl font-bold">{sequence?.name || 'Sequence Builder'}</CardTitle>
+                <CardDescription className="text-base mt-2">
+                  {sequence?.description || 'Manage your outreach sequence'}
+                </CardDescription>
+              </div>
+              <div className="flex items-center gap-3">
+                <Badge variant={sequence?.status === 'active' ? 'default' : 'secondary'} className="text-sm px-3 py-1">
+                  {sequence?.status || 'Draft'}
+                </Badge>
+                <Button variant="outline" size="sm">
+                  <Settings className="w-4 h-4 mr-2" />
+                  Configure
+                </Button>
+              </div>
+            </div>
+          </CardHeader>
+        </Card>
+
+        {/* Stats Overview */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Total Prospects</p>
+                  <p className="text-3xl font-bold">{prospectsData?.total || 0}</p>
+                </div>
+                <Users className="h-8 w-8 text-blue-600" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Emails Sent</p>
+                  <p className="text-3xl font-bold">{trackingStats?.sent || 0}</p>
+                </div>
+                <Send className="h-8 w-8 text-green-600" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Open Rate</p>
+                  <p className="text-3xl font-bold">{trackingStats?.openRate || 0}%</p>
+                </div>
+                <Eye className="h-8 w-8 text-purple-600" />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm text-muted-foreground">Replies</p>
+                  <p className="text-3xl font-bold">{repliesData?.total || 0}</p>
+                </div>
+                <MessageSquare className="h-8 w-8 text-orange-600" />
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Tabs */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+          <Card>
+            <div className="overflow-x-auto">
+              <TabsList className="w-full justify-start h-auto p-1 bg-transparent">
+                {tabs.map((tab) => {
+                  const Icon = tab.icon;
+                  return (
+                    <TabsTrigger
+                      key={tab.id}
+                      value={tab.id}
+                      className="flex items-center gap-2 px-6 py-3 data-[state=active]:bg-white data-[state=active]:shadow-sm"
+                    >
+                      <Icon className="w-4 h-4" />
+                      {tab.label}
+                      {tab.count !== undefined && tab.count > 0 && (
+                        <Badge variant="secondary" className="ml-1 text-xs">
+                          {tab.count}
+                        </Badge>
+                      )}
+                    </TabsTrigger>
+                  );
+                })}
+              </TabsList>
+            </div>
+          </Card>
+
+          {/* Tab Content */}
+          <TabsContent value="sequence">
+            <SequenceStepsTab sequenceId={sequenceId} />
+          </TabsContent>
+
+          <TabsContent value="prospects">
+            <ProspectsTab 
+              sequenceId={sequenceId} 
+              prospects={prospectsData?.prospects || []} 
+              isLoading={prospectsLoading}
+            />
+          </TabsContent>
+
+          <TabsContent value="replies">
+            <RepliesTab sequenceId={sequenceId} replies={repliesData?.replies || []} />
+          </TabsContent>
+
+          <TabsContent value="ai-followup">
+            <AIFollowupTab sequenceId={sequenceId} />
+          </TabsContent>
+
+          <TabsContent value="tracking">
+            <EmailTrackingTab sequenceId={sequenceId} stats={trackingStats} />
+          </TabsContent>
+
+          <TabsContent value="settings">
+            <SettingsTab sequenceId={sequenceId} sequence={sequence} />
+          </TabsContent>
+        </Tabs>
+      </div>
+    </div>
+  );
+}
+
+// ============================================
+// SEQUENCE STEPS TAB
+// ============================================
+function SequenceStepsTab({ sequenceId }: { sequenceId: string }) {
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [editingStep, setEditingStep] = useState<any>(null);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const { data: steps = [], isLoading } = useQuery({
+    queryKey: ['/api/sequences', sequenceId, 'steps'],
+    queryFn: () => apiRequest(`/api/sequences/${sequenceId}`).then(data => data.steps || []),
+  });
+
+  const addStepMutation = useMutation({
+    mutationFn: (data: any) => apiRequest(`/api/sequences/${sequenceId}/steps`, 'POST', data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/sequences', sequenceId] });
+      setShowAddModal(false);
+      toast({ title: "Success", description: "Email step added successfully" });
+    },
+  });
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Email Sequence Steps</CardTitle>
+              <CardDescription>Create and manage your email sequence flow</CardDescription>
+            </div>
+            <Button onClick={() => setShowAddModal(true)}>
+              <Plus className="w-4 h-4 mr-2" />
+              Add Step
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="text-center py-8">
+              <RefreshCw className="w-8 h-8 animate-spin mx-auto text-gray-400" />
+              <p className="text-gray-500 mt-2">Loading steps...</p>
+            </div>
+          ) : steps.length === 0 ? (
+            <div className="text-center py-12">
+              <Mail className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+              <h3 className="text-lg font-semibold mb-2">No email steps yet</h3>
+              <p className="text-gray-600 mb-4">Add your first email step to start the sequence</p>
+              <Button onClick={() => setShowAddModal(true)}>
+                <Plus className="w-4 h-4 mr-2" />
+                Create First Step
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {steps.map((step: any, index: number) => (
+                <Card key={step.id} className="border-l-4 border-l-blue-500">
+                  <CardContent className="pt-6">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-2">
+                          <Badge>Step {index + 1}</Badge>
+                          {step.delayDays > 0 && (
+                            <Badge variant="outline">
+                              <Clock className="w-3 h-3 mr-1" />
+                              Wait {step.delayDays} day{step.delayDays > 1 ? 's' : ''}
+                            </Badge>
+                          )}
+                          {step.aiGenerated && (
+                            <Badge variant="secondary">
+                              <Sparkles className="w-3 h-3 mr-1" />
+                              AI Generated
+                            </Badge>
+                          )}
+                        </div>
+                        <h4 className="font-semibold text-lg">{step.subject}</h4>
+                        <p className="text-gray-600 text-sm mt-2 line-clamp-2">{step.body}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button variant="outline" size="sm" onClick={() => setEditingStep(step)}>
+                          <Edit3 className="w-4 h-4" />
+                        </Button>
+                        <Button variant="outline" size="sm" className="text-red-600">
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Add/Edit Step Modal */}
+      <AddStepModal
+        open={showAddModal || !!editingStep}
+        onClose={() => {
+          setShowAddModal(false);
+          setEditingStep(null);
+        }}
+        onSave={(data) => addStepMutation.mutate(data)}
+        step={editingStep}
+        isPending={addStepMutation.isPending}
+      />
+    </div>
+  );
+}
+
+// ============================================
+// ADD STEP MODAL
+// ============================================
+function AddStepModal({ open, onClose, onSave, step, isPending }: any) {
+  const [formData, setFormData] = useState({
+    subject: step?.subject || '',
+    body: step?.body || '',
+    stepOrder: step?.stepOrder || 1,
+    delayDays: step?.delayDays || 0,
+  });
+
+  useEffect(() => {
+    if (step) {
+      setFormData({
+        subject: step.subject,
+        body: step.body,
+        stepOrder: step.stepOrder,
+        delayDays: step.delayDays,
+      });
+    }
+  }, [step]);
+
+  if (!open) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>{step ? 'Edit Email Step' : 'Add Email Step'}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label>Step Order</Label>
+              <Input
+                type="number"
+                value={formData.stepOrder}
+                onChange={(e) => setFormData({ ...formData, stepOrder: parseInt(e.target.value) })}
+              />
+            </div>
+            <div>
+              <Label>Delay (Days)</Label>
+              <Input
+                type="number"
+                value={formData.delayDays}
+                onChange={(e) => setFormData({ ...formData, delayDays: parseInt(e.target.value) })}
+              />
+            </div>
+          </div>
+          <div>
+            <Label>Subject Line</Label>
+            <Input
+              value={formData.subject}
+              onChange={(e) => setFormData({ ...formData, subject: e.target.value })}
+              placeholder="Enter email subject..."
+            />
+          </div>
+          <div>
+            <Label>Email Body</Label>
+            <Textarea
+              value={formData.body}
+              onChange={(e) => setFormData({ ...formData, body: e.target.value })}
+              placeholder="Enter email content..."
+              rows={10}
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Use variables: {'{firstName}'}, {'{lastName}'}, {'{company}'}, {'{jobTitle}'}
+            </p>
+          </div>
+          <div className="flex gap-3 pt-4 border-t">
+            <Button variant="outline" onClick={onClose} className="flex-1">Cancel</Button>
+            <Button onClick={() => onSave(formData)} disabled={isPending} className="flex-1">
+              {isPending ? 'Saving...' : 'Save Step'}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ============================================
+// PROSPECTS TAB
+// ============================================
+function ProspectsTab({ sequenceId, prospects, isLoading }: any) {
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [showPersonalizationModal, setShowPersonalizationModal] = useState(false);
+  const [selectedProspect, setSelectedProspect] = useState<any>(null);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const addProspectMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const prospect = await apiRequest('/api/prospects', 'POST', data);
+      await apiRequest(`/api/sequences/${sequenceId}/prospects`, 'POST', { 
+        prospectIds: [prospect.id] 
+      });
+      return prospect;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/sequences', sequenceId, 'prospects'] });
+      setShowAddModal(false);
+      toast({ title: "Success", description: "Prospect added successfully" });
+    },
+  });
+
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Prospects ({prospects.length})</CardTitle>
+              <CardDescription>Manage prospects enrolled in this sequence</CardDescription>
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setShowPersonalizationModal(true)}>
+                <Sparkles className="w-4 h-4 mr-2" />
+                AI Personalize
+              </Button>
+              <Button onClick={() => setShowAddModal(true)}>
+                <Plus className="w-4 h-4 mr-2" />
+                Add Prospects
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {isLoading ? (
+            <div className="text-center py-8">
+              <RefreshCw className="w-8 h-8 animate-spin mx-auto text-gray-400" />
+              <p className="text-gray-500 mt-2">Loading prospects...</p>
+            </div>
+          ) : prospects.length === 0 ? (
+            <div className="text-center py-12 border-2 border-dashed rounded-lg">
+              <Users className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+              <h3 className="text-lg font-semibold mb-2">No prospects enrolled</h3>
+              <p className="text-gray-600 mb-4">Add prospects to start your outreach campaign</p>
+              <Button onClick={() => setShowAddModal(true)}>
+                <Plus className="w-4 h-4 mr-2" />
+                Add Your First Prospects
+              </Button>
+            </div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="text-left py-3 px-4 font-semibold text-sm">Name</th>
+                    <th className="text-left py-3 px-4 font-semibold text-sm">Email</th>
+                    <th className="text-left py-3 px-4 font-semibold text-sm">Company</th>
+                    <th className="text-left py-3 px-4 font-semibold text-sm">Title</th>
+                    <th className="text-left py-3 px-4 font-semibold text-sm">Status</th>
+                    <th className="text-left py-3 px-4 font-semibold text-sm">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {prospects.map((item: any) => (
+                    <tr key={item.id} className="border-t hover:bg-gray-50">
+                      <td className="py-3 px-4">
+                        <div className="flex items-center gap-2">
+                          <User className="w-4 h-4 text-gray-400" />
+                          <span className="font-medium">
+                            {item.prospect?.firstName} {item.prospect?.lastName}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="py-3 px-4 text-sm text-gray-600">
+                        {item.prospect?.email}
+                      </td>
+                      <td className="py-3 px-4 text-sm">
+                        <div className="flex items-center gap-1">
+                          <Building2 className="w-3 h-3 text-gray-400" />
+                          {item.prospect?.company}
+                        </div>
+                      </td>
+                      <td className="py-3 px-4 text-sm">
+                        <div className="flex items-center gap-1">
+                          <Briefcase className="w-3 h-3 text-gray-400" />
+                          {item.prospect?.jobTitle}
+                        </div>
+                      </td>
+                      <td className="py-3 px-4">
+                        <Badge variant="default">{item.status}</Badge>
+                      </td>
+                      <td className="py-3 px-4">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setSelectedProspect(item.prospect);
+                            setShowPersonalizationModal(true);
+                          }}
+                        >
+                          <Sparkles className="w-3 h-3 mr-1" />
+                          Personalize
+                        </Button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Add Prospect Modal */}
+      <AddProspectModal
+        open={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        onSave={(data) => addProspectMutation.mutate(data)}
+        isPending={addProspectMutation.isPending}
+      />
+
+      {/* Personalization Modal */}
+      <LinkedInPersonalizationModal
+        open={showPersonalizationModal}
+        onClose={() => {
+          setShowPersonalizationModal(false);
+          setSelectedProspect(null);
+        }}
+        prospect={selectedProspect}
+        sequenceId={sequenceId}
+      />
+    </div>
+  );
+}
+
+// ============================================
+// ADD PROSPECT MODAL
+// ============================================
+function AddProspectModal({ open, onClose, onSave, isPending }: any) {
+  const [formData, setFormData] = useState({
+    firstName: '',
+    lastName: '',
+    email: '',
+    company: '',
+    jobTitle: '',
+    industry: '',
+    phone: '',
+    linkedinUrl: '',
+  });
+
+  if (!open) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-2xl">
+        <DialogHeader>
+          <DialogTitle>Add New Prospect</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label>First Name *</Label>
+              <Input
+                value={formData.firstName}
+                onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+                placeholder="John"
+              />
+            </div>
+            <div>
+              <Label>Last Name *</Label>
+              <Input
+                value={formData.lastName}
+                onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
+                placeholder="Doe"
+              />
+            </div>
+          </div>
+          <div>
+            <Label>Email *</Label>
+            <Input
+              type="email"
+              value={formData.email}
+              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+              placeholder="john@company.com"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label>Company</Label>
+              <Input
+                value={formData.company}
+                onChange={(e) => setFormData({ ...formData, company: e.target.value })}
+                placeholder="Acme Corp"
+              />
+            </div>
+            <div>
+              <Label>Job Title</Label>
+              <Input
+                value={formData.jobTitle}
+                onChange={(e) => setFormData({ ...formData, jobTitle: e.target.value })}
+                placeholder="VP of Sales"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label>Industry</Label>
+              <Input
+                value={formData.industry}
+                onChange={(e) => setFormData({ ...formData, industry: e.target.value })}
+                placeholder="Technology"
+              />
+            </div>
+            <div>
+              <Label>Phone</Label>
+              <Input
+                value={formData.phone}
+                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                placeholder="+1 555-0123"
+              />
+            </div>
+          </div>
+          <div>
+            <Label>LinkedIn URL</Label>
+            <Input
+              value={formData.linkedinUrl}
+              onChange={(e) => setFormData({ ...formData, linkedinUrl: e.target.value })}
+              placeholder="https://linkedin.com/in/johndoe"
+            />
+          </div>
+          <div className="flex gap-3 pt-4 border-t">
+            <Button variant="outline" onClick={onClose} className="flex-1">Cancel</Button>
+            <Button 
+              onClick={() => onSave(formData)} 
+              disabled={isPending || !formData.firstName || !formData.email}
+              className="flex-1"
+            >
+              {isPending ? 'Adding...' : 'Add Prospect'}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ============================================
+// LINKEDIN PERSONALIZATION MODAL
+// ============================================
+function LinkedInPersonalizationModal({ open, onClose, prospect, sequenceId }: any) {
+  const [step, setStep] = useState(1);
+  const [linkedInData, setLinkedInData] = useState({
+    profileText: '',
+    recentPosts: [''],
+  });
+  const [result, setResult] = useState<any>(null);
+  const { toast } = useToast();
+
+  const personalizeMutation = useMutation({
+    mutationFn: (data: any) => apiRequest('/api/personalization/manual-linkedin', 'POST', data),
+    onSuccess: (data) => {
+      setResult(data);
+      setStep(3);
+      toast({ title: "Success", description: "Personalization complete!" });
+    },
+  });
+
+  const handleGenerate = () => {
+    if (!prospect?.id) {
+      toast({ title: "Error", description: "No prospect selected", variant: "destructive" });
+      return;
+    }
+    setStep(2);
+    personalizeMutation.mutate({
+      prospectId: prospect.id,
+      linkedInData,
+    });
+  };
+
+  if (!open) return null;
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>AI Personalization with LinkedIn Data</DialogTitle>
+          {prospect && (
+            <p className="text-sm text-gray-500">
+              Prospect: {prospect.firstName} {prospect.lastName} - {prospect.company}
+            </p>
+          )}
+        </DialogHeader>
+
+        <div className="space-y-4">
+          {step === 1 && (
+            <>
+              <Card className="bg-blue-50 border-blue-200">
+                <CardContent className="pt-6">
+                  <div className="flex items-start gap-3">
+                    <Sparkles className="w-5 h-5 text-blue-600 mt-0.5" />
+                    <div>
+                      <h3 className="font-semibold text-blue-900 mb-1">How it works</h3>
+                      <p className="text-sm text-blue-800">
+                        Paste LinkedIn profile data below. Our AI analyzes it using GPT-4 to generate highly personalized emails with 85-95% personalization scores.
+                      </p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <div>
+                <Label>LinkedIn Profile / About Section</Label>
+                <Textarea
+                  value={linkedInData.profileText}
+                  onChange={(e) => setLinkedInData({ ...linkedInData, profileText: e.target.value })}
+                  placeholder="Paste their LinkedIn About section here..."
+                  rows={6}
+                />
+              </div>
+
+              <div>
+                <Label>Recent LinkedIn Posts (Optional)</Label>
+                <Textarea
+                  value={linkedInData.recentPosts[0]}
+                  onChange={(e) => {
+                    const newPosts = [...linkedInData.recentPosts];
+                    newPosts[0] = e.target.value;
+                    setLinkedInData({ ...linkedInData, recentPosts: newPosts });
+                  }}
+                  placeholder="Paste a recent post they made..."
+                  rows={4}
+                />
+              </div>
+
+              <div className="flex gap-3 pt-4 border-t">
+                <Button variant="outline" onClick={onClose} className="flex-1">Cancel</Button>
+                <Button
+                  onClick={handleGenerate}
+                  disabled={!linkedInData.profileText && !linkedInData.recentPosts[0]}
+                  className="flex-1 bg-gradient-to-r from-blue-600 to-purple-600"
+                >
+                  <Sparkles className="w-4 h-4 mr-2" />
+                  Generate AI Personalization
+                </Button>
+              </div>
+            </>
+          )}
+
+          {step === 2 && (
+            <div className="text-center py-12">
+              <div className="inline-block animate-spin rounded-full h-16 w-16 border-4 border-blue-600 border-t-transparent mb-4"></div>
+              <h3 className="text-xl font-semibold mb-2">Analyzing with OpenAI...</h3>
+              <p className="text-gray-600">Creating personalized email content</p>
+            </div>
+          )}
+
+          {step === 3 && result && (
+            <>
+              <Card className="bg-green-50 border-green-200">
+                <CardContent className="pt-6">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="w-5 h-5 text-green-600" />
+                    <span className="font-medium">
+                      Personalization Complete! Score: <span className="text-green-700">{result.personalizationScore}%</span>
+                    </span>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <div>
+                <h3 className="font-semibold mb-3">Generated Email</h3>
+                <div className="space-y-4">
+                  <div>
+                    <Label className="text-sm text-gray-700 mb-2">Subject Line</Label>
+                    <div className="p-3 bg-gray-50 rounded border">{result.email?.subject}</div>
+                  </div>
+                  <div>
+                    <Label className="text-sm text-gray-700 mb-2">Email Body</Label>
+                    <div className="p-3 bg-gray-50 rounded border whitespace-pre-wrap">
+                      {result.email?.body}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <Button onClick={onClose} className="w-full">Done</Button>
+            </>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ============================================
+// REPLIES TAB
+// ============================================
+function RepliesTab({ sequenceId, replies }: any) {
+  const [autoRefresh, setAutoRefresh] = useState(true);
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle>Email Replies ({replies.length})</CardTitle>
+            <CardDescription>Monitor and respond to prospect replies</CardDescription>
+          </div>
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-2 text-sm">
+              <Checkbox checked={autoRefresh} onCheckedChange={setAutoRefresh} />
+              Auto-refresh (30s)
+            </label>
+            <Button variant="outline" size="sm">
+              <RefreshCw className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {replies.length === 0 ? (
+          <div className="text-center py-12 border-2 border-dashed rounded-lg">
+            <MessageSquare className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+            <h3 className="text-lg font-semibold mb-2">No Replies Yet</h3>
+            <p className="text-gray-600">Replies will appear here in real-time</p>
+            {autoRefresh && <p className="text-green-600 text-sm mt-2">✓ Auto-refresh enabled</p>}
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {replies.map((reply: any) => (
+              <Card key={reply.id} className="border-l-4 border-l-green-500">
+                <CardContent className="pt-6">
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center">
+                        <User className="w-5 h-5 text-blue-600" />
+                      </div>
+                      <div>
+                        <p className="font-semibold">{reply.prospect?.firstName} {reply.prospect?.lastName}</p>
+                        <p className="text-sm text-gray-500">{reply.prospect?.company}</p>
+                      </div>
+                    </div>
+                    <span className="text-sm text-gray-500">
+                      {new Date(reply.receivedAt).toLocaleString()}
+                    </span>
+                  </div>
+                  <div className="bg-gray-50 rounded p-3 mb-2">
+                    <p className="text-gray-700">{reply.replyContent}</p>
+                  </div>
+                  {reply.sentiment && (
+                    <Badge variant={reply.sentiment === 'positive' ? 'default' : 'outline'}>
+                      {reply.sentiment}
+                    </Badge>
+                  )}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ============================================
+// AI FOLLOW-UP TAB
+// ============================================
+function AIFollowupTab({ sequenceId }: any) {
+  const [active, setActive] = useState(false);
+  const [config, setConfig] = useState({
+    daysBetween: 3,
+    maxFollowups: 3,
+    followupType: 'gentle',
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>AI Follow-up Configuration</CardTitle>
+        <CardDescription>Automatically send follow-ups based on prospect behavior</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <Card className="bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-semibold mb-2">AI Follow-up Scheduler</h3>
+                <p className="text-gray-600">Automatically sends follow-ups when prospects don't respond</p>
+              </div>
+              <Button
+                onClick={() => setActive(!active)}
+                variant={active ? 'default' : 'outline'}
+                className={active ? 'bg-green-600' : ''}
+              >
+                {active ? (
+                  <>
+                    <CheckCircle className="w-4 h-4 mr-2" />
+                    Active
+                  </>
+                ) : (
+                  <>
+                    <Play className="w-4 h-4 mr-2" />
+                    Activate
+                  </>
+                )}
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="space-y-4">
+          <div>
+            <Label>Days Between Follow-ups</Label>
+            <Select value={config.daysBetween.toString()} onValueChange={(v) => setConfig({ ...config, daysBetween: parseInt(v) })}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="1">1 day</SelectItem>
+                <SelectItem value="2">2 days</SelectItem>
+                <SelectItem value="3">3 days</SelectItem>
+                <SelectItem value="5">5 days</SelectItem>
+                <SelectItem value="7">7 days</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label>Maximum Follow-ups</Label>
+            <Select value={config.maxFollowups.toString()} onValueChange={(v) => setConfig({ ...config, maxFollowups: parseInt(v) })}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="1">1 follow-up</SelectItem>
+                <SelectItem value="2">2 follow-ups</SelectItem>
+                <SelectItem value="3">3 follow-ups</SelectItem>
+                <SelectItem value="5">5 follow-ups</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div>
+            <Label>Follow-up Type</Label>
+            <Select value={config.followupType} onValueChange={(v) => setConfig({ ...config, followupType: v })}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="gentle">Gentle Reminder</SelectItem>
+                <SelectItem value="value">Value Add</SelectItem>
+                <SelectItem value="urgent">Urgent</SelectItem>
+                <SelectItem value="breakup">Breakup Email</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <Button className="w-full">
+            <Save className="w-4 h-4 mr-2" />
+            Save Configuration
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ============================================
+// EMAIL TRACKING TAB
+// ============================================
+function EmailTrackingTab({ sequenceId, stats }: any) {
+  const trackingData = [
+    { label: 'Total Sent', value: stats?.sent || 0, color: 'bg-gray-500' },
+    { label: 'Delivered', value: stats?.delivered || 0, rate: stats?.deliveryRate || 0, color: 'bg-green-500' },
+    { label: 'Opened', value: stats?.opened || 0, rate: stats?.openRate || 0, color: 'bg-blue-500' },
+    { label: 'Replied', value: stats?.replied || 0, rate: stats?.replyRate || 0, color: 'bg-purple-500' },
+  ];
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle>Email Tracking Statistics</CardTitle>
+            <CardDescription>Monitor email performance and engagement</CardDescription>
+          </div>
+          <Button variant="outline" size="sm">
+            <RefreshCw className="w-4 h-4" />
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+          {trackingData.map((item) => (
+            <Card key={item.label}>
+              <CardContent className="pt-6">
+                <div className={`w-2 h-2 rounded-full ${item.color} mb-2`}></div>
+                <p className="text-sm text-gray-600 mb-1">{item.label}</p>
+                <p className="text-3xl font-bold">{item.value.toLocaleString()}</p>
+                {item.rate !== undefined && (
+                  <p className="text-sm text-gray-500 mt-1">{item.rate}% rate</p>
+                )}
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ============================================
+// SETTINGS TAB
+// ============================================
+function SettingsTab({ sequenceId, sequence }: any) {
+  const [settings, setSettings] = useState({
+    name: sequence?.name || '',
+    description: sequence?.description || '',
+    dailyLimit: 50,
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Sequence Settings</CardTitle>
+        <CardDescription>Configure sequence parameters and limits</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <div>
+          <Label>Sequence Name</Label>
+          <Input
+            value={settings.name}
+            onChange={(e) => setSettings({ ...settings, name: e.target.value })}
+            placeholder="Enter sequence name"
+          />
+        </div>
+        <div>
+          <Label>Description</Label>
+          <Textarea
+            value={settings.description}
+            onChange={(e) => setSettings({ ...settings, description: e.target.value })}
+            placeholder="Enter sequence description"
+            rows={3}
+          />
+        </div>
+        <div>
+          <Label>Daily Send Limit</Label>
+          <Input
+            type="number"
+            value={settings.dailyLimit}
+            onChange={(e) => setSettings({ ...settings, dailyLimit: parseInt(e.target.value) })}
+          />
+        </div>
+        <Button className="w-full">
+          <Save className="w-4 h-4 mr-2" />
+          Save Settings
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
