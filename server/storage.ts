@@ -3,6 +3,12 @@ import {
   searches, 
   jobs, 
   importRecords,
+  sequences,
+  sequenceSteps,
+  sequenceProspects,
+  emails,
+  emailReplies,
+  personalizationResults,
   type Prospect, 
   type InsertProspect,
   type Search,
@@ -10,7 +16,19 @@ import {
   type Job,
   type InsertJob,
   type ImportRecord,
-  type InsertImportRecord
+  type InsertImportRecord,
+  type Sequence,
+  type InsertSequence,
+  type SequenceStep,
+  type InsertSequenceStep,
+  type SequenceProspect,
+  type InsertSequenceProspect,
+  type Email,
+  type InsertEmail,
+  type EmailReply,
+  type InsertEmailReply,
+  type PersonalizationResult,
+  type InsertPersonalizationResult
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, inArray, and, or, ilike, count } from "drizzle-orm";
@@ -48,6 +66,28 @@ export interface IStorage {
   getImportRecord(id: string): Promise<ImportRecord | undefined>;
   createImportRecord(record: InsertImportRecord): Promise<ImportRecord>;
   updateImportRecord(id: string, updates: Partial<InsertImportRecord>): Promise<ImportRecord>;
+  
+  // Sequences
+  getSequences(limit?: number): Promise<Sequence[]>;
+  getSequence(id: string): Promise<Sequence | undefined>;
+  createSequence(sequence: InsertSequence): Promise<Sequence>;
+  updateSequence(id: string, updates: Partial<Sequence>): Promise<Sequence>;
+  
+  // Sequence Steps
+  getSequenceSteps(sequenceId: string): Promise<SequenceStep[]>;
+  createSequenceStep(step: InsertSequenceStep): Promise<SequenceStep>;
+  
+  // Sequence Prospects
+  getSequenceProspects(sequenceId: string): Promise<Array<SequenceProspect & { prospect?: Prospect }>>;
+  enrollProspects(sequenceId: string, prospectIds: string[]): Promise<SequenceProspect[]>;
+  
+  // Email Replies
+  getEmailReplies(sequenceId: string): Promise<Array<EmailReply & { prospect?: Prospect }>>;
+  createEmailReply(reply: InsertEmailReply): Promise<EmailReply>;
+  
+  // Personalization
+  createPersonalizationResult(result: InsertPersonalizationResult): Promise<PersonalizationResult>;
+  getPersonalizationResult(prospectId: string): Promise<PersonalizationResult | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -265,6 +305,136 @@ export class DatabaseStorage implements IStorage {
       .where(eq(importRecords.id, id))
       .returning();
     return updated;
+  }
+
+  // Sequences
+  async getSequences(limit = 20): Promise<Sequence[]> {
+    return await db
+      .select()
+      .from(sequences)
+      .orderBy(desc(sequences.createdAt))
+      .limit(limit);
+  }
+
+  async getSequence(id: string): Promise<Sequence | undefined> {
+    const [sequence] = await db.select().from(sequences).where(eq(sequences.id, id));
+    return sequence || undefined;
+  }
+
+  async createSequence(sequence: InsertSequence): Promise<Sequence> {
+    const [created] = await db
+      .insert(sequences)
+      .values({ ...sequence, updatedAt: new Date() })
+      .returning();
+    return created;
+  }
+
+  async updateSequence(id: string, updates: Partial<Sequence>): Promise<Sequence> {
+    const [updated] = await db
+      .update(sequences)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(sequences.id, id))
+      .returning();
+    return updated;
+  }
+
+  // Sequence Steps
+  async getSequenceSteps(sequenceId: string): Promise<SequenceStep[]> {
+    return await db
+      .select()
+      .from(sequenceSteps)
+      .where(eq(sequenceSteps.sequenceId, sequenceId))
+      .orderBy(sequenceSteps.stepOrder);
+  }
+
+  async createSequenceStep(step: InsertSequenceStep): Promise<SequenceStep> {
+    const [created] = await db
+      .insert(sequenceSteps)
+      .values({ ...step, updatedAt: new Date() })
+      .returning();
+    return created;
+  }
+
+  // Sequence Prospects
+  async getSequenceProspects(sequenceId: string): Promise<Array<SequenceProspect & { prospect?: Prospect }>> {
+    return await db
+      .select({
+        id: sequenceProspects.id,
+        sequenceId: sequenceProspects.sequenceId,
+        prospectId: sequenceProspects.prospectId,
+        currentStepId: sequenceProspects.currentStepId,
+        status: sequenceProspects.status,
+        enrolledAt: sequenceProspects.enrolledAt,
+        lastContactedAt: sequenceProspects.lastContactedAt,
+        completedAt: sequenceProspects.completedAt,
+        replies: sequenceProspects.replies,
+        opens: sequenceProspects.opens,
+        clicks: sequenceProspects.clicks,
+        prospect: prospects
+      })
+      .from(sequenceProspects)
+      .leftJoin(prospects, eq(sequenceProspects.prospectId, prospects.id))
+      .where(eq(sequenceProspects.sequenceId, sequenceId));
+  }
+
+  async enrollProspects(sequenceId: string, prospectIds: string[]): Promise<SequenceProspect[]> {
+    const enrolled: SequenceProspect[] = [];
+    for (const prospectId of prospectIds) {
+      const [result] = await db
+        .insert(sequenceProspects)
+        .values({
+          sequenceId,
+          prospectId,
+          status: "active",
+          enrolledAt: new Date()
+        })
+        .returning();
+      enrolled.push(result);
+    }
+    return enrolled;
+  }
+
+  // Email Replies
+  async getEmailReplies(sequenceId: string): Promise<Array<EmailReply & { prospect?: Prospect }>> {
+    return await db
+      .select({
+        id: emailReplies.id,
+        emailId: emailReplies.emailId,
+        prospectId: emailReplies.prospectId,
+        replyContent: emailReplies.replyContent,
+        sentiment: emailReplies.sentiment,
+        receivedAt: emailReplies.receivedAt,
+        aiSummary: emailReplies.aiSummary,
+        nextAction: emailReplies.nextAction,
+        createdAt: emailReplies.createdAt,
+        prospect: prospects
+      })
+      .from(emailReplies)
+      .leftJoin(prospects, eq(emailReplies.prospectId, prospects.id))
+      .leftJoin(emails, eq(emailReplies.emailId, emails.id))
+      .where(eq(emails.sequenceId, sequenceId))
+      .orderBy(desc(emailReplies.receivedAt));
+  }
+
+  async createEmailReply(reply: InsertEmailReply): Promise<EmailReply> {
+    const [created] = await db.insert(emailReplies).values(reply).returning();
+    return created;
+  }
+
+  // Personalization
+  async createPersonalizationResult(result: InsertPersonalizationResult): Promise<PersonalizationResult> {
+    const [created] = await db.insert(personalizationResults).values(result).returning();
+    return created;
+  }
+
+  async getPersonalizationResult(prospectId: string): Promise<PersonalizationResult | undefined> {
+    const [result] = await db
+      .select()
+      .from(personalizationResults)
+      .where(eq(personalizationResults.prospectId, prospectId))
+      .orderBy(desc(personalizationResults.createdAt))
+      .limit(1);
+    return result || undefined;
   }
 }
 
