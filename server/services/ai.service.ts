@@ -298,6 +298,39 @@ class AIService {
     
     return '1+';
   }
+
+  // Generate text using AI
+  async generateText(prompt: string, maxTokens: number = 1000): Promise<string> {
+    const provider = process.env.AI_PROVIDER || (this.openai ? 'openai' : 'anthropic');
+    
+    try {
+      if (provider === 'openai' && this.openai) {
+        const response = await this.openai.chat.completions.create({
+          model: DEFAULT_OPENAI_MODEL,
+          messages: [
+            { role: "user", content: prompt }
+          ],
+          max_completion_tokens: maxTokens,
+        });
+        return response.choices[0].message.content || '';
+      } else if (provider === 'anthropic' && this.anthropic) {
+        const response = await this.anthropic.messages.create({
+          model: DEFAULT_ANTHROPIC_MODEL,
+          max_tokens: maxTokens,
+          messages: [
+            { role: "user", content: prompt }
+          ]
+        });
+        const textContent = response.content.find(block => block.type === 'text');
+        return textContent && 'text' in textContent ? textContent.text : '';
+      } else {
+        throw new Error('No AI provider available');
+      }
+    } catch (error) {
+      console.error('AI text generation failed:', error);
+      throw error;
+    }
+  }
 }
 
 export const aiService = new AIService();
