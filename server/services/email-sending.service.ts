@@ -27,7 +27,7 @@ export class EmailSendingService {
         throw new Error(`Mailbox is ${mailbox.status}`);
       }
 
-      if (mailbox.dailySent >= mailbox.dailyLimit) {
+      if (mailbox.dailySent !== null && mailbox.dailyLimit !== null && mailbox.dailySent >= mailbox.dailyLimit) {
         throw new Error("Daily limit reached");
       }
 
