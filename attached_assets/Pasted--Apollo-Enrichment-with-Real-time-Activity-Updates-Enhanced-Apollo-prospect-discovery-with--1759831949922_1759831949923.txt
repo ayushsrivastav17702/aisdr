@@ -1,0 +1,366 @@
+/**
+ * Apollo Enrichment with Real-time Activity Updates
+ * Enhanced Apollo prospect discovery with live activity monitoring and progress feedback
+ */
+
+import { useState, useEffect } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Separator } from '@/components/ui/separator';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { 
+  Search, 
+  Users, 
+  Eye, 
+  Building, 
+  MapPin, 
+  AlertTriangle,
+  CheckCircle,
+  RefreshCw,
+  Zap,
+  Activity,
+  Wifi,
+  WifiOff,
+  CircleDot
+} from 'lucide-react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+import { useWebSocketContext } from '@/providers/WebSocketProvider';
+import { useToast } from '@/hooks/use-toast';
+
+interface ApolloSearchParams {
+  jobTitles: string[];
+  industries: string[];
+  companySize: { min: number; max: number };
+  locations: string[];
+  prospectLimit: number;
+}
+
+interface Prospect {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  company: string;
+  jobTitle: string;
+  location: string;
+  linkedinUrl?: string;
+}
+
+interface EnrichmentResult {
+  totalFound: number;
+  totalEnriched: number;
+  totalErrors: number;
+  prospects: Prospect[];
+}
+
+
+export function ApolloEnrichmentRealtime({ className = "" }: { className?: string }) {
+  const [searchParams, setSearchParams] = useState<ApolloSearchParams>({
+    jobTitles: ['CEO', 'CTO', 'VP of Engineering'],
+    industries: ['Technology', 'Software'],
+    companySize: { min: 10, max: 500 },
+    locations: ['United States'],
+    prospectLimit: 25
+  });
+  
+  const [enrichmentProgress, setEnrichmentProgress] = useState(0);
+  const [isEnriching, setIsEnriching] = useState(false);
+  const [lastActivityUpdate, setLastActivityUpdate] = useState<Date | null>(null);
+  
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  // Real-time WebSocket connection
+  const webSocket = useWebSocketContext();
+  const [connectionState, setConnectionState] = useState(() => webSocket.getConnectionState());
+  
+  useEffect(() => {
+    const unsubscribe = webSocket.subscribe({
+      onActivityUpdate: (data) => {
+        console.log('🔍 Apollo real-time activity update:', data);
+        
+        // Update activity timestamp
+        setLastActivityUpdate(new Date());
+        
+        // Show notification for enrichment activities
+        if (data.description.toLowerCase().includes('enrichment') || data.description.toLowerCase().includes('apollo')) {
+          toast({
+            title: "📊 Prospect Enrichment",
+            description: `Prospect discovery in progress`,
+            duration: 3000,
+          });
+        }
+        
+        // Update enrichment progress based on activity
+        if (isEnriching && data.actionType === 'email_enrichment') {
+          setEnrichmentProgress(prev => Math.min(prev + 10, 95));
+        }
+        
+        setConnectionState(webSocket.getConnectionState());
+      },
+      onError: (error) => {
+        console.error('❌ Apollo WebSocket error:', error);
+      },
+      onConnectionChange: () => {
+        setConnectionState(webSocket.getConnectionState());
+      }
+    });
+    return unsubscribe;
+  }, [webSocket, isEnriching, toast]);
+
+  const { isConnected: wsConnected } = connectionState;
+  const connectionStats = { messagesReceived: connectionState.messagesReceived, lastPingTime: connectionState.lastPingTime };
+
+
+  // Apollo enrichment mutation
+  const enrichmentMutation = useMutation({
+    mutationFn: async (params: ApolloSearchParams) => {
+      setIsEnriching(true);
+      setEnrichmentProgress(10);
+      
+      const response = await apiRequest('/api/apollo/enrich-prospects', 'POST', params);
+      return response;
+    },
+    onSuccess: (data: EnrichmentResult) => {
+      setEnrichmentProgress(100);
+      
+      toast({
+        title: "🎉 Enrichment Complete!",
+        description: `Found ${data.totalEnriched} prospects successfully`,
+        duration: 5000,
+      });
+      
+      // Reset after delay
+      setTimeout(() => {
+        setIsEnriching(false);
+        setEnrichmentProgress(0);
+      }, 2000);
+      
+    },
+    onError: (error: any) => {
+      setIsEnriching(false);
+      setEnrichmentProgress(0);
+      
+      toast({
+        title: "❌ Enrichment Failed",
+        description: error.message || "Failed to enrich prospects",
+        variant: "destructive",
+      });
+    }
+  });
+
+  const canProceed = true; // Always allow enrichment
+
+  const handleEnrichment = () => {
+    if (!canProceed) {
+      toast({
+        title: "⚠️ Cannot Proceed",
+        description: `Enrichment temporarily unavailable`,
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    enrichmentMutation.mutate(searchParams);
+  };
+
+  return (
+    <Card className={`overflow-hidden ${className}`} data-testid="apollo-enrichment-realtime">
+      <CardHeader className="pb-4">
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2">
+            <Search className="w-5 h-5 text-blue-600" />
+            Apollo Prospect Discovery
+          </CardTitle>
+          <div className="flex items-center gap-2">
+            {/* Real-time Connection Status */}
+            {wsConnected && (
+              <div className="flex items-center gap-1" data-testid="apollo-live-indicator">
+                <CircleDot className="w-3 h-3 text-green-500 animate-pulse" />
+                <span className="text-xs text-green-600 font-medium">LIVE</span>
+              </div>
+            )}
+            {!wsConnected && (
+              <div className="flex items-center gap-1">
+                <WifiOff className="w-3 h-3 text-yellow-500" />
+                <span className="text-xs text-yellow-600 font-medium">OFFLINE</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </CardHeader>
+
+      <CardContent className="space-y-6">
+        {/* Real-time Activity Status */}
+        <div className="p-4 bg-gradient-to-r from-blue-50 to-green-50 border border-blue-200 rounded-lg">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-2">
+              <Activity className="w-5 h-5 text-blue-600" />
+              <span className="font-medium text-gray-900">Enrichment Status</span>
+              {lastActivityUpdate && (
+                <span className="text-xs text-gray-500">
+                  Updated {lastActivityUpdate.toLocaleTimeString()}
+                </span>
+              )}
+            </div>
+            <div className="text-lg font-bold text-blue-600">
+              Ready
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-2 gap-4 text-sm">
+            <div>
+              <div className="text-gray-600">Target prospects</div>
+              <div className="font-semibold">{searchParams.prospectLimit} prospects</div>
+            </div>
+            <div>
+              <div className="text-gray-600">Status</div>
+              <div className="font-semibold text-green-600">
+                Ready to search
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <Separator />
+
+        {/* Search Parameters */}
+        <div className="space-y-4">
+          <h4 className="font-medium text-gray-900">Search Parameters</h4>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Prospect Limit */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700">
+                Prospect Limit
+              </label>
+              <Input
+                type="number"
+                min="5"
+                max="100"
+                value={searchParams.prospectLimit}
+                onChange={(e) => setSearchParams(prev => ({
+                  ...prev,
+                  prospectLimit: parseInt(e.target.value) || 25
+                }))}
+                className="w-full"
+                data-testid="prospect-limit-input"
+              />
+              <div className="text-xs text-gray-500">
+                Number of prospects to discover
+              </div>
+            </div>
+
+            {/* Job Titles */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700">
+                Target Job Titles
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {searchParams.jobTitles.map((title, index) => (
+                  <Badge key={index} variant="secondary">
+                    {title}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Company Size */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-gray-700">
+              Company Size: {searchParams.companySize.min} - {searchParams.companySize.max} employees
+            </label>
+            <div className="grid grid-cols-2 gap-4">
+              <Input
+                type="number"
+                placeholder="Min employees"
+                value={searchParams.companySize.min}
+                onChange={(e) => setSearchParams(prev => ({
+                  ...prev,
+                  companySize: { ...prev.companySize, min: parseInt(e.target.value) || 1 }
+                }))}
+              />
+              <Input
+                type="number"
+                placeholder="Max employees"
+                value={searchParams.companySize.max}
+                onChange={(e) => setSearchParams(prev => ({
+                  ...prev,
+                  companySize: { ...prev.companySize, max: parseInt(e.target.value) || 1000 }
+                }))}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Enrichment Progress */}
+        {isEnriching && (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">Enriching Prospects...</span>
+              <span className="text-sm text-gray-600">{enrichmentProgress}%</span>
+            </div>
+            <Progress value={enrichmentProgress} className="h-2" />
+            <div className="text-xs text-gray-500 flex items-center gap-2">
+              <Activity className="w-3 h-3" />
+              Real-time progress monitoring
+            </div>
+          </div>
+        )}
+
+        {/* Action Buttons */}
+        <div className="flex items-center justify-between pt-4">
+          <div className="text-sm text-gray-600">
+            {wsConnected ? (
+              <div className="flex items-center gap-2">
+                <Wifi className="w-4 h-4 text-green-600" />
+                Real-time activity monitoring active
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <WifiOff className="w-4 h-4 text-yellow-600" />
+                Using standard monitoring
+              </div>
+            )}
+          </div>
+          
+          <Button
+            onClick={handleEnrichment}
+            disabled={!canProceed || isEnriching}
+            size="lg"
+            className="min-w-[180px]"
+            data-testid="start-enrichment-button"
+          >
+            {isEnriching ? (
+              <>
+                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                Enriching...
+              </>
+            ) : (
+              <>
+                <Eye className="w-4 h-4 mr-2" />
+                Discover Prospects
+              </>
+            )}
+          </Button>
+        </div>
+
+        {/* Real-time Connection Info */}
+        {wsConnected && connectionStats.lastPingTime && (
+          <div className="text-xs text-gray-500 pt-2 border-t">
+            <div className="flex items-center justify-between">
+              <span>Connected: {connectionStats.lastPingTime.toLocaleTimeString()}</span>
+              <span>Updates received: {connectionStats.messagesReceived}</span>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
