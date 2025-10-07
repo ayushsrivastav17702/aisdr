@@ -15,6 +15,7 @@ import multer from "multer";
 import { z } from "zod";
 import { parse } from "csv-parse/sync";
 import { readFileSync } from "fs";
+import sequenceRoutes from "./sequences-routes";
 
 const upload = multer({ dest: 'uploads/' });
 
@@ -518,6 +519,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     }
   });
+
+  // Sequence module routes
+  app.use("/api", sequenceRoutes);
 
   // Health check
   app.get("/api/health", (req, res) => {
