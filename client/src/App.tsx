@@ -13,6 +13,7 @@ function Router() {
     <Switch>
       <Route path="/" component={Dashboard} />
       <Route path="/sequences" component={Sequences} />
+      <Route path="/sequences/:id" component={Sequences} />
       <Route path="/mailboxes" component={Mailboxes} />
       <Route component={NotFound} />
     </Switch>

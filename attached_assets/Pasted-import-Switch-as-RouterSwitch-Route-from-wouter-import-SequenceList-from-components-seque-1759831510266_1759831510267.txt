@@ -1,0 +1,961 @@
+import { Switch as RouterSwitch, Route } from "wouter";
+import SequenceList from "@/components/sequences/sequence-list";
+import SequenceForm from "@/components/sequences/sequence-form";
+import AdvancedSequenceBuilder from "@/components/sequences/advanced-sequence-builder";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Separator } from "@/components/ui/separator";
+import { Switch } from "@/components/ui/switch";
+import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
+import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import { Mail, Send, Reply, TrendingUp, Settings, Users, Target, Zap, GitBranch, BarChart3, Plus, Eye, CheckCircle, AlertTriangle, Clock, Link, Linkedin, Phone, MessageSquare, ArrowRight, Play, Pause, FileText, Sparkles, Edit, Trash2, BookOpen, UserPlus, Search } from "lucide-react";
+import EmailTemplateManager from "@/components/email-template-manager";
+import EmailVariableManager from "@/components/email-variable-manager";
+import { useState } from "react";
+import { useToast } from "@/hooks/use-toast";
+import type { EmailSequence, SequenceRun, EmailTemplate } from "@shared/schema";
+
+export default function EmailSequences() {
+  const [showAdvancedBuilder, setShowAdvancedBuilder] = useState(false);
+  const [showTemplateManager, setShowTemplateManager] = useState(false);
+  const [selectedSequence, setSelectedSequence] = useState<EmailSequence | null>(null);
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  
+  const { data: sequences = [] } = useQuery<EmailSequence[]>({
+    queryKey: ["/api/sequences"],
+  });
+
+  const { data: templates = [] } = useQuery<EmailTemplate[]>({
+    queryKey: ["/api/sequence-templates"],
+  });
+
+  const { data: sequenceRuns = [] } = useQuery<SequenceRun[]>({
+    queryKey: ["/api/sequence-runs"],
+  });
+
+  const { data: prospects = [] } = useQuery<any[]>({
+    queryKey: ["/api/prospects"],
+  });
+
+  const { data: contentItems = [] } = useQuery<any[]>({
+    queryKey: ["/api/content"],
+  });
+
+  // Targeting configuration state
+  const [targetingConfig, setTargetingConfig] = useState({
+    name: "Default Targeting",
+    description: "Default targeting configuration",
+    companySize: [] as string[],
+    industries: [] as string[],
+    locations: [] as string[],
+    revenueRanges: [] as string[],
+    jobTitles: [] as string[],
+    seniorityLevels: [] as string[],
+    departments: [] as string[],
+    experienceLevels: [] as string[],
+  });
+
+  const { data: savedConfigs = [] } = useQuery<any[]>({
+    queryKey: ["/api/targeting-configurations"],
+  });
+
+  // Targeting configuration mutations
+  const saveTargetingConfigMutation = useMutation({
+    mutationFn: async (config: any) => {
+      return await apiRequest('/api/targeting-configurations', 'POST', config);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/targeting-configurations'] });
+      toast({
+        title: "Targeting Configuration Saved",
+        description: "Your targeting settings have been permanently saved to the database.",
+      });
+    },
+  });
+
+  // Template creation mutation
+  const createTemplateMutation = useMutation({
+    mutationFn: async (templateData: any) => {
+      return await apiRequest('/api/sequence-templates', 'POST', templateData);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/sequence-templates'] });
+      toast({
+        title: "Template Created",
+        description: "Email template has been successfully created.",
+      });
+    },
+  });
+
+  // Sequence execution mutation
+  const runSequenceMutation = useMutation({
+    mutationFn: async ({ sequenceId, prospectIds }: { sequenceId: number; prospectIds: number[] }) => {
+      return await apiRequest('/api/sequences/run', 'POST', { sequenceId, prospectIds });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/sequence-runs'] });
+      toast({
+        title: "Sequence Started",
+        description: "Email sequence has been started for selected prospects.",
+      });
+    },
+  });
+
+  // AI personalization mutation
+  const generatePersonalizedEmailsMutation = useMutation({
+    mutationFn: async ({ templateId, prospectIds }: { templateId: number; prospectIds: number[] }) => {
+      return await apiRequest('/api/sequence-templates/personalize', 'POST', { templateId, prospectIds });
+    },
+    onSuccess: () => {
+      toast({
+        title: "Emails Personalized",
+        description: "Personalized emails have been generated using AI.",
+      });
+    },
+  });
+
+  const stats = {
+    total: sequences.length,
+    active: sequences.filter(s => s.isActive).length,
+    totalSent: sequences.reduce((sum, s) => sum + (s.totalSent || 0), 0),
+    avgResponseRate: sequences.length > 0 
+      ? Math.round((sequences.reduce((sum, s) => sum + (parseFloat(s.responseRate?.toString() || "0") || 0), 0) / sequences.length) * 10) / 10
+      : 0,
+    multiChannel: sequences.filter(s => s.multiChannel).length,
+    withConditionalLogic: sequences.filter(s => s.conditionalBranching).length,
+    templates: templates.length,
+    activeRuns: sequenceRuns.filter(r => r.status === 'active').length,
+  };
+
+  return (
+    <div className="p-6 space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Email Sequences</h1>
+          <p className="text-gray-600">Create and manage multi-channel outreach sequences with advanced automation</p>
+        </div>
+        <div className="flex space-x-2">
+          <SequenceForm />
+          <Dialog open={showAdvancedBuilder} onOpenChange={setShowAdvancedBuilder}>
+            <DialogTrigger asChild>
+              <Button>
+                <Zap className="w-4 h-4 mr-2" />
+                Advanced Builder
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-[95vw] max-h-[95vh] p-0">
+              <AdvancedSequenceBuilder
+                onSave={() => setShowAdvancedBuilder(false)}
+                onCancel={() => setShowAdvancedBuilder(false)}
+              />
+            </DialogContent>
+          </Dialog>
+        </div>
+      </div>
+
+      {/* Stats Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Total Sequences</p>
+                <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
+              </div>
+              <GitBranch className="w-8 h-8 text-blue-600" />
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Active Sequences</p>
+                <p className="text-2xl font-bold text-green-600">{stats.active}</p>
+              </div>
+              <Play className="w-8 h-8 text-green-600" />
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Total Sent</p>
+                <p className="text-2xl font-bold text-blue-600">{stats.totalSent}</p>
+              </div>
+              <Send className="w-8 h-8 text-blue-600" />
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-gray-600">Avg Response Rate</p>
+                <p className="text-2xl font-bold text-purple-600">{stats.avgResponseRate}%</p>
+              </div>
+              <Reply className="w-8 h-8 text-purple-600" />
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Main Content Tabs */}
+      <Tabs defaultValue="sequences" className="space-y-4">
+        <TabsList className="grid w-full grid-cols-8">
+          <TabsTrigger value="sequences" className="flex items-center gap-2">
+            <GitBranch className="w-4 h-4" />
+            Sequences
+          </TabsTrigger>
+          <TabsTrigger value="templates" className="flex items-center gap-2">
+            <FileText className="w-4 h-4" />
+            Templates
+          </TabsTrigger>
+          <TabsTrigger value="variables" className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4" />
+            Variables
+          </TabsTrigger>
+          <TabsTrigger value="conditions" className="flex items-center gap-2">
+            <GitBranch className="w-4 h-4" />
+            Conditions
+          </TabsTrigger>
+          <TabsTrigger value="testing" className="flex items-center gap-2">
+            <BarChart3 className="w-4 h-4" />
+            A/B Testing
+          </TabsTrigger>
+          <TabsTrigger value="analytics" className="flex items-center gap-2">
+            <TrendingUp className="w-4 h-4" />
+            Analytics
+          </TabsTrigger>
+          <TabsTrigger value="multichannel" className="flex items-center gap-2">
+            <MessageSquare className="w-4 h-4" />
+            Multi-Channel
+          </TabsTrigger>
+          <TabsTrigger value="targeting" className="flex items-center gap-2">
+            <Target className="w-4 h-4" />
+            Targeting
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="sequences" className="space-y-4">
+          <SequenceList />
+        </TabsContent>
+
+        <TabsContent value="templates" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <FileText className="w-5 h-5 mr-2" />
+                Email Templates ({stats.templates})
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm text-gray-600">Manage your email templates with AI-powered personalization</p>
+                  <Button 
+                    onClick={() => setShowTemplateManager(true)}
+                    className="bg-blue-600 hover:bg-blue-700"
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    New Template
+                  </Button>
+                </div>
+                
+                <div className="border-t pt-4">
+                  <h4 className="font-medium mb-2">Quick Actions</h4>
+                  <div className="space-y-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="w-full justify-start"
+                      onClick={() => {
+                        console.log("Content items check:", contentItems, "Length:", contentItems.length);
+                        // Check if contentItems is loaded and has data
+                        if (!contentItems || contentItems.length === 0) {
+                          // Force refetch content to ensure we have latest data
+                          queryClient.invalidateQueries({ queryKey: ["/api/content"] });
+                          
+                          toast({
+                            title: "Checking Content",
+                            description: "Loading content items... Please try again in a moment.",
+                          });
+                          return;
+                        }
+                        
+                        // AI Template generation with content integration
+                        const sampleTemplateData = {
+                          name: "AI Generated Template",
+                          subject: "Personalized outreach based on your content",
+                          content: "Generated using available content items and AI - leveraging insights from your uploaded content",
+                          templateType: "email",
+                          category: "ai_generated",
+                          tags: ["ai-generated", "content-based"],
+                          variables: JSON.stringify([
+                            { name: "firstName", description: "Prospect's first name" },
+                            { name: "companyName", description: "Prospect's company name" }
+                          ]),
+                          contentReferences: JSON.stringify(contentItems.map(item => ({ id: item.id, name: item.name }))),
+                          industry: "technology",
+                          intentType: "product_research",
+                          aiGenerated: true,
+                          generatedByAI: true,
+                          isActive: true,
+                          delayHours: 24,
+                        };
+                        createTemplateMutation.mutate(sampleTemplateData);
+                      }}
+                      disabled={createTemplateMutation.isPending}
+                    >
+                      <Sparkles className="w-4 h-4 mr-2" />
+                      AI Template Generator
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="w-full justify-start"
+                      onClick={() => setShowTemplateManager(true)}
+                    >
+                      <Eye className="w-4 h-4 mr-2" />
+                      View All Templates
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="variables" className="space-y-4">
+          <EmailVariableManager />
+        </TabsContent>
+
+        <TabsContent value="conditions" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Conditional Logic</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-gray-600 mb-4">Set up conditional branching based on prospect responses and actions</p>
+              <div className="text-center py-8 text-gray-500">
+                Conditional logic builder coming soon
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="testing" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>A/B Testing</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-gray-600 mb-4">Test different versions of your sequences to optimize performance</p>
+              <div className="text-center py-8 text-gray-500">
+                A/B testing interface coming soon
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="analytics" className="space-y-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Performance Overview */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <TrendingUp className="w-5 h-5 mr-2" />
+                  Performance Overview
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-600">Emails Sent</span>
+                    <span className="font-semibold">{sequenceRuns.reduce((sum, run) => sum + ((run as any).emailsSent || 0), 0)}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-600">Open Rate</span>
+                    <span className="font-semibold">{sequenceRuns.length > 0 
+                      ? Math.round((sequenceRuns.reduce((sum, run) => sum + ((run as any).openRate || 0), 0) / sequenceRuns.length) * 10) / 10
+                      : 0}%</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-600">Response Rate</span>
+                    <span className="font-semibold">{sequenceRuns.length > 0 
+                      ? Math.round((sequenceRuns.reduce((sum, run) => sum + ((run as any).responseRate || 0), 0) / sequenceRuns.length) * 10) / 10
+                      : 0}%</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-gray-600">Meeting Booked Rate</span>
+                    <span className="font-semibold">{sequenceRuns.length > 0 
+                      ? Math.round((sequenceRuns.reduce((sum, run) => sum + ((run as any).meetingBookedRate || 0), 0) / sequenceRuns.length) * 10) / 10
+                      : 0}%</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Recent Activity */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Clock className="w-5 h-5 mr-2" />
+                  Recent Activity
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  {sequenceRuns.slice(0, 5).map((run) => (
+                    <div key={run.id} className="flex items-center justify-between p-2 border rounded">
+                      <div className="flex items-center space-x-2">
+                        <Badge variant={run.status === 'active' ? 'default' : 'secondary'}>
+                          {run.status}
+                        </Badge>
+                        <span className="text-sm">
+                          {(run as any).emailsSent || 0} sent, {(run as any).openRate || 0}% open, {(run as any).responseRate || 0}% response
+                        </span>
+                      </div>
+                      <span className="text-xs text-gray-500">
+                        {run.createdAt ? new Date(run.createdAt).toLocaleDateString() : 'N/A'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Detailed Analytics */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Sequence Performance Breakdown</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {sequences.map((sequence) => {
+                  const sequenceRun = sequenceRuns.find(run => run.sequenceId === sequence.id);
+                  return (
+                    <div key={sequence.id} className="border rounded-lg p-4">
+                      <div className="flex items-center justify-between mb-2">
+                        <h4 className="font-semibold">{sequence.name}</h4>
+                        <Badge variant={sequence.isActive ? 'default' : 'secondary'}>
+                          {sequence.isActive ? 'Active' : 'Inactive'}
+                        </Badge>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                        <div>
+                          <span className="text-gray-600">Response Rate:</span>
+                          <span className="ml-2 font-semibold">{(sequenceRun as any)?.responseRate || 0}%</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-600">Last Activity:</span>
+                          <span className="ml-2">{sequenceRun?.updatedAt ? new Date(sequenceRun.updatedAt).toLocaleDateString() : 'N/A'}</span>
+                        </div>
+                        <div>
+                          <span className="text-gray-600">Next Send:</span>
+                          <span className="ml-2">{sequenceRun?.nextSendAt ? new Date(sequenceRun.nextSendAt).toLocaleDateString() : 'N/A'}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="multichannel" className="space-y-4">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Email Channel */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Mail className="w-5 h-5 mr-2" />
+                  Email Channel
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="flex items-center space-x-2">
+                    <CheckCircle className="w-5 h-5 text-green-600" />
+                    <span className="text-sm">Primary outreach channel</span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <AlertTriangle className="w-5 h-5 text-yellow-600" />
+                    <span className="text-sm">AI-powered personalization active</span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Settings className="w-5 h-5 text-blue-600" />
+                    <span className="text-sm">Automated follow-up sequences</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* LinkedIn Channel */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Linkedin className="w-5 h-5 mr-2" />
+                  LinkedIn Channel
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <UserPlus className="w-6 h-6 text-blue-600" />
+                    <Switch />
+                  </div>
+                  <p className="text-sm text-gray-600">
+                    Connect and message prospects on LinkedIn as part of your sequence
+                  </p>
+                  <Button variant="outline" size="sm" className="w-full">
+                    <Link className="w-4 h-4 mr-2" />
+                    Connect LinkedIn Account
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Phone Channel */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Phone className="w-5 h-5 mr-2" />
+                  Phone Channel
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <Phone className="w-6 h-6 text-green-600" />
+                    <Switch />
+                  </div>
+                  <p className="text-sm text-gray-600">
+                    Add phone calls to your sequence for higher touch outreach
+                  </p>
+                  <Button variant="outline" size="sm" className="w-full">
+                    <Settings className="w-4 h-4 mr-2" />
+                    Configure Phone Integration
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* SMS Channel */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <MessageSquare className="w-5 h-5 mr-2" />
+                  SMS Channel
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <MessageSquare className="w-6 h-6 text-purple-600" />
+                    <Switch />
+                  </div>
+                  <p className="text-sm text-gray-600">
+                    Send SMS messages as part of your multi-channel approach
+                  </p>
+                  <Button variant="outline" size="sm" className="w-full">
+                    <Settings className="w-4 h-4 mr-2" />
+                    Setup SMS Provider
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Multi-Channel Sequence Builder */}
+          <Card>
+            <CardHeader>
+              <CardTitle>Multi-Channel Sequence Template</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between p-3 border rounded-lg">
+                  <div className="flex items-center space-x-3">
+                    <Mail className="w-5 h-5 text-blue-600" />
+                    <div>
+                      <p className="font-medium">Day 1: Initial Email</p>
+                      <p className="text-sm text-gray-600">Personalized introduction</p>
+                    </div>
+                  </div>
+                  <ArrowRight className="w-4 h-4 text-gray-400" />
+                </div>
+                
+                <div className="flex items-center justify-between p-3 border rounded-lg">
+                  <div className="flex items-center space-x-3">
+                    <Linkedin className="w-5 h-5 text-blue-600" />
+                    <div>
+                      <p className="font-medium">Day 3: LinkedIn Connection</p>
+                      <p className="text-sm text-gray-600">Connect with personalized note</p>
+                    </div>
+                  </div>
+                  <ArrowRight className="w-4 h-4 text-gray-400" />
+                </div>
+                
+                <div className="flex items-center justify-between p-3 border rounded-lg">
+                  <div className="flex items-center space-x-3">
+                    <Mail className="w-5 h-5 text-blue-600" />
+                    <div>
+                      <p className="font-medium">Day 7: Follow-up Email</p>
+                      <p className="text-sm text-gray-600">Value-add follow-up</p>
+                    </div>
+                  </div>
+                  <ArrowRight className="w-4 h-4 text-gray-400" />
+                </div>
+                
+                <div className="flex items-center justify-between p-3 border rounded-lg">
+                  <div className="flex items-center space-x-3">
+                    <Phone className="w-5 h-5 text-green-600" />
+                    <div>
+                      <p className="font-medium">Day 10: Phone Call</p>
+                      <p className="text-sm text-gray-600">Direct outreach call</p>
+                    </div>
+                  </div>
+                  <ArrowRight className="w-4 h-4 text-gray-400" />
+                </div>
+                
+                <div className="flex items-center justify-between p-3 border rounded-lg">
+                  <div className="flex items-center space-x-3">
+                    <Mail className="w-5 h-5 text-blue-600" />
+                    <div>
+                      <p className="font-medium">Day 14: Final Email</p>
+                      <p className="text-sm text-gray-600">Last attempt with clear CTA</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="targeting" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <Target className="w-5 h-5 mr-2" />
+                Prospect Targeting Configuration
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-6">
+                {/* Configuration Name */}
+                <div className="space-y-2">
+                  <Label htmlFor="config-name">Configuration Name</Label>
+                  <Input
+                    id="config-name"
+                    value={targetingConfig.name}
+                    onChange={(e) => setTargetingConfig(prev => ({ ...prev, name: e.target.value }))}
+                    placeholder="Enter configuration name"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="config-description">Description</Label>
+                  <Textarea
+                    id="config-description"
+                    value={targetingConfig.description}
+                    onChange={(e) => setTargetingConfig(prev => ({ ...prev, description: e.target.value }))}
+                    placeholder="Describe this targeting configuration"
+                    rows={2}
+                  />
+                </div>
+
+                <Separator />
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Company Filters */}
+                  <div className="space-y-4">
+                    <h3 className="font-semibold">Company Filters</h3>
+                    
+                    <div className="space-y-2">
+                      <Label>Company Size</Label>
+                      <Select onValueChange={(value) => {
+                        setTargetingConfig(prev => ({
+                          ...prev,
+                          companySize: prev.companySize.includes(value) 
+                            ? prev.companySize.filter(s => s !== value)
+                            : [...prev.companySize, value]
+                        }));
+                      }}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select company sizes" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="1-10">1-10 employees</SelectItem>
+                          <SelectItem value="11-50">11-50 employees</SelectItem>
+                          <SelectItem value="51-200">51-200 employees</SelectItem>
+                          <SelectItem value="201-500">201-500 employees</SelectItem>
+                          <SelectItem value="501-1000">501-1000 employees</SelectItem>
+                          <SelectItem value="1000+">1000+ employees</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {targetingConfig.companySize.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {targetingConfig.companySize.map(size => (
+                            <Badge key={size} variant="secondary" className="text-xs">
+                              {size}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Industries</Label>
+                      <Select onValueChange={(value) => {
+                        setTargetingConfig(prev => ({
+                          ...prev,
+                          industries: prev.industries.includes(value) 
+                            ? prev.industries.filter(i => i !== value)
+                            : [...prev.industries, value]
+                        }));
+                      }}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select industries" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="technology">Technology</SelectItem>
+                          <SelectItem value="healthcare">Healthcare</SelectItem>
+                          <SelectItem value="finance">Finance</SelectItem>
+                          <SelectItem value="education">Education</SelectItem>
+                          <SelectItem value="retail">Retail</SelectItem>
+                          <SelectItem value="manufacturing">Manufacturing</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {targetingConfig.industries.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {targetingConfig.industries.map(industry => (
+                            <Badge key={industry} variant="secondary" className="text-xs">
+                              {industry}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Locations</Label>
+                      <Select onValueChange={(value) => {
+                        setTargetingConfig(prev => ({
+                          ...prev,
+                          locations: prev.locations.includes(value) 
+                            ? prev.locations.filter(l => l !== value)
+                            : [...prev.locations, value]
+                        }));
+                      }}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select locations" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="united-states">United States</SelectItem>
+                          <SelectItem value="canada">Canada</SelectItem>
+                          <SelectItem value="united-kingdom">United Kingdom</SelectItem>
+                          <SelectItem value="australia">Australia</SelectItem>
+                          <SelectItem value="germany">Germany</SelectItem>
+                          <SelectItem value="france">France</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {targetingConfig.locations.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {targetingConfig.locations.map(location => (
+                            <Badge key={location} variant="secondary" className="text-xs">
+                              {location}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Contact Filters */}
+                  <div className="space-y-4">
+                    <h3 className="font-semibold">Contact Filters</h3>
+                    
+                    <div className="space-y-2">
+                      <Label>Job Titles</Label>
+                      <Select onValueChange={(value) => {
+                        setTargetingConfig(prev => ({
+                          ...prev,
+                          jobTitles: prev.jobTitles.includes(value) 
+                            ? prev.jobTitles.filter(t => t !== value)
+                            : [...prev.jobTitles, value]
+                        }));
+                      }}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select job titles" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="ceo">CEO</SelectItem>
+                          <SelectItem value="cto">CTO</SelectItem>
+                          <SelectItem value="cfo">CFO</SelectItem>
+                          <SelectItem value="vp-sales">VP Sales</SelectItem>
+                          <SelectItem value="director">Director</SelectItem>
+                          <SelectItem value="manager">Manager</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {targetingConfig.jobTitles.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {targetingConfig.jobTitles.map(title => (
+                            <Badge key={title} variant="secondary" className="text-xs">
+                              {title}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Seniority Levels</Label>
+                      <Select onValueChange={(value) => {
+                        setTargetingConfig(prev => ({
+                          ...prev,
+                          seniorityLevels: prev.seniorityLevels.includes(value) 
+                            ? prev.seniorityLevels.filter(l => l !== value)
+                            : [...prev.seniorityLevels, value]
+                        }));
+                      }}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select seniority levels" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="executive">Executive</SelectItem>
+                          <SelectItem value="senior">Senior</SelectItem>
+                          <SelectItem value="mid-level">Mid-Level</SelectItem>
+                          <SelectItem value="junior">Junior</SelectItem>
+                          <SelectItem value="entry-level">Entry Level</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {targetingConfig.seniorityLevels.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {targetingConfig.seniorityLevels.map(level => (
+                            <Badge key={level} variant="secondary" className="text-xs">
+                              {level}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Departments</Label>
+                      <Select onValueChange={(value) => {
+                        setTargetingConfig(prev => ({
+                          ...prev,
+                          departments: prev.departments.includes(value) 
+                            ? prev.departments.filter(d => d !== value)
+                            : [...prev.departments, value]
+                        }));
+                      }}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select departments" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="sales">Sales</SelectItem>
+                          <SelectItem value="marketing">Marketing</SelectItem>
+                          <SelectItem value="engineering">Engineering</SelectItem>
+                          <SelectItem value="finance">Finance</SelectItem>
+                          <SelectItem value="hr">Human Resources</SelectItem>
+                          <SelectItem value="operations">Operations</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      {targetingConfig.departments.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {targetingConfig.departments.map(dept => (
+                            <Badge key={dept} variant="secondary" className="text-xs">
+                              {dept}
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <Separator />
+
+                {/* Action Buttons */}
+                <div className="flex justify-between">
+                  <div className="flex items-center space-x-2">
+                    <Search className="w-4 h-4" />
+                    <span className="text-sm text-gray-600">
+                      Preview: {prospects.length} prospects match these criteria
+                    </span>
+                  </div>
+                  
+                  <div className="flex space-x-2">
+                    <Button 
+                      variant="outline"
+                      onClick={() => {
+                        // Load saved config
+                        if (savedConfigs.length > 0) {
+                          const firstConfig = savedConfigs[0] as any;
+                          setTargetingConfig(firstConfig);
+                        }
+                      }}
+                    >
+                      Load Saved
+                    </Button>
+                    <Button 
+                      onClick={() => saveTargetingConfigMutation.mutate(targetingConfig)}
+                      disabled={saveTargetingConfigMutation.isPending}
+                    >
+                      Save Configuration
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Saved Configurations */}
+                {savedConfigs.length > 0 && (
+                  <div className="space-y-2">
+                    <Label>Saved Configurations</Label>
+                    <div className="space-y-1">
+                      {savedConfigs.map((config: any) => (
+                        <div key={config.id} className="flex items-center justify-between p-2 border rounded">
+                          <span className="text-sm">{config.name}</span>
+                          <Button 
+                            variant="ghost" 
+                            size="sm"
+                            onClick={() => setTargetingConfig(config)}
+                          >
+                            Load
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      {/* Template Manager Dialog */}
+      {showTemplateManager && (
+        <EmailTemplateManager 
+          onClose={() => setShowTemplateManager(false)}
+        />
+      )}
+    </div>
+  );
+}

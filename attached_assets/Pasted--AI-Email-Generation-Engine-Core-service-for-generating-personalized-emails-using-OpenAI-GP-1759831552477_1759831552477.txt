@@ -1,0 +1,328 @@
+/**
+ * AI Email Generation Engine
+ * Core service for generating personalized emails using OpenAI GPT-4
+ */
+
+import OpenAI from "openai";
+import type { Prospect, Company } from "@shared/schema";
+import { 
+  getPromptTemplate, 
+  interpolatePrompt, 
+  EMAIL_TYPES,
+  type PromptContext,
+  type EmailType 
+} from "./promptTemplates";
+import { 
+  generatePainPoints, 
+  generateCompanyInsights,
+  generateEngagementContext,
+  type PersonalizationContext 
+} from "./personalizationEngine";
+
+// the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+export interface EmailGenerationRequest {
+  prospect: Prospect;
+  company?: Company;
+  emailType: EmailType;
+  sequenceStep?: number;
+  previousEmails?: string[];
+  customContext?: Partial<PromptContext>;
+  tone?: 'professional' | 'casual' | 'urgent' | 'friendly';
+}
+
+export interface GeneratedEmail {
+  subject: string;
+  body: string;
+  reasoning: string;
+  personalizationFactors: string[];
+  confidenceScore: number;
+}
+
+export interface EmailVariant {
+  id: string;
+  email: GeneratedEmail;
+  approach: string;
+}
+
+/**
+ * Generate a personalized email using AI
+ */
+export async function generateEmail(request: EmailGenerationRequest): Promise<GeneratedEmail> {
+  try {
+    // Build context for the prompt
+    const context = buildPromptContext(request);
+    
+    // Get the appropriate template
+    const template = getPromptTemplate(request.emailType);
+    
+    // Interpolate the template with context
+    const prompt = interpolatePrompt(template, context);
+    
+    // Generate email using OpenAI
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        {
+          role: "system",
+          content: "You are an expert sales development representative with years of experience writing high-converting cold emails. Always respond with valid JSON."
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ],
+      response_format: { type: "json_object" },
+      temperature: 0.7,
+      max_tokens: 1000
+    });
+
+    const result = JSON.parse(response.choices[0].message.content || '{}');
+    
+    // Generate personalization insights
+    const painPoints = generatePainPoints(request.prospect, request.company);
+    const companyInsights = generateCompanyInsights(request.company);
+    const engagementContext = generateEngagementContext(request.prospect);
+    
+    const personalizationFactors = [
+      'Prospect name and title',
+      ...(request.company ? ['Company information'] : []),
+      ...(painPoints.length > 0 ? ['Industry-specific pain points'] : []),
+      ...(companyInsights.length > 0 ? ['Company insights'] : []),
+      ...(engagementContext.engagementSignals.length > 0 ? ['Engagement history'] : [])
+    ];
+    
+    // Calculate confidence score
+    const confidenceScore = calculateConfidenceScore(request, personalizationFactors);
+    
+    return {
+      subject: result.subject || 'Quick question about [Company]',
+      body: result.body || 'Hi [Name], I noticed [observation]. Worth a quick chat?',
+      reasoning: result.reasoning || 'Standard cold email approach',
+      personalizationFactors,
+      confidenceScore
+    };
+    
+  } catch (error) {
+    console.error('Email generation failed:', error);
+    throw new Error(`Failed to generate email: ${error.message}`);
+  }
+}
+
+/**
+ * Generate multiple email variants for A/B testing
+ */
+export async function generateEmailVariants(
+  request: EmailGenerationRequest,
+  variantCount: number = 2
+): Promise<EmailVariant[]> {
+  const variants: EmailVariant[] = [];
+  
+  try {
+    // Generate different approaches
+    const approaches = [
+      { tone: 'professional', approach: 'Value-focused' },
+      { tone: 'friendly', approach: 'Relationship-building' },
+      { tone: 'urgent', approach: 'Urgency-driven' }
+    ];
+    
+    for (let i = 0; i < Math.min(variantCount, approaches.length); i++) {
+      const variantRequest = {
+        ...request,
+        tone: approaches[i].tone as 'professional' | 'friendly' | 'urgent',
+        customContext: {
+          ...request.customContext,
+          tone: approaches[i].tone
+        }
+      };
+      
+      const email = await generateEmail(variantRequest);
+      
+      variants.push({
+        id: `variant_${i + 1}`,
+        email,
+        approach: approaches[i].approach
+      });
+    }
+    
+    return variants;
+    
+  } catch (error) {
+    console.error('Email variant generation failed:', error);
+    throw new Error(`Failed to generate email variants: ${error.message}`);
+  }
+}
+
+/**
+ * Generate follow-up email based on previous sequence
+ */
+export async function generateFollowUp(
+  prospect: Prospect,
+  company: Company | undefined,
+  previousEmails: string[],
+  sequenceStep: number
+): Promise<GeneratedEmail> {
+  const request: EmailGenerationRequest = {
+    prospect,
+    company,
+    emailType: EMAIL_TYPES.FOLLOW_UP,
+    sequenceStep,
+    previousEmails,
+    tone: sequenceStep >= 3 ? 'professional' : 'friendly'
+  };
+  
+  return generateEmail(request);
+}
+
+/**
+ * Generate breakup email for end of sequence
+ */
+export async function generateBreakupEmail(
+  prospect: Prospect,
+  company: Company | undefined
+): Promise<GeneratedEmail> {
+  const request: EmailGenerationRequest = {
+    prospect,
+    company,
+    emailType: EMAIL_TYPES.BREAKUP,
+    tone: 'professional'
+  };
+  
+  return generateEmail(request);
+}
+
+/**
+ * Build prompt context from request data
+ */
+function buildPromptContext(request: EmailGenerationRequest): PromptContext {
+  const { prospect, company, customContext } = request;
+  
+  const painPoints = generatePainPoints(prospect, company);
+  const companyInsights = generateCompanyInsights(company);
+  const engagementContext = generateEngagementContext(prospect);
+  
+  return {
+    prospectName: `${prospect.firstName} ${prospect.lastName}`,
+    prospectTitle: prospect.jobTitle,
+    prospectCompany: company?.name || 'their company',
+    prospectIndustry: company?.industry,
+    prospectSeniority: extractSeniority(prospect.jobTitle),
+    companySize: company?.size,
+    companyRevenue: company?.revenue,
+    recentNews: company?.recentNews,
+    painPoints,
+    previousEmails: request.previousEmails,
+    sequenceStep: request.sequenceStep,
+    tone: request.tone || engagementContext.suggestedTone,
+    ...customContext
+  };
+}
+
+/**
+ * Extract seniority level from job title
+ */
+function extractSeniority(jobTitle: string): string {
+  const title = jobTitle.toLowerCase();
+  
+  if (title.includes('ceo') || title.includes('founder') || title.includes('president')) {
+    return 'C-Level';
+  }
+  if (title.includes('vp') || title.includes('vice president') || title.includes('cto') || title.includes('cfo')) {
+    return 'VP-Level';
+  }
+  if (title.includes('director') || title.includes('head of')) {
+    return 'Director-Level';
+  }
+  if (title.includes('manager') || title.includes('lead')) {
+    return 'Manager-Level';
+  }
+  if (title.includes('senior') || title.includes('sr')) {
+    return 'Senior-Level';
+  }
+  
+  return 'Individual Contributor';
+}
+
+/**
+ * Calculate confidence score based on available data
+ */
+function calculateConfidenceScore(
+  request: EmailGenerationRequest, 
+  personalizationFactors: string[]
+): number {
+  let score = 30; // Base score
+  
+  // Add points for data quality
+  if (request.company) score += 25;
+  if (request.company?.recentNews) score += 15;
+  if (request.company?.industry) score += 10;
+  if (request.prospect.leadScore > 50) score += 10;
+  if (personalizationFactors.length > 3) score += 10;
+  
+  return Math.min(100, score);
+}
+
+/**
+ * Email generation with retry logic and caching
+ */
+export class EmailGenerationService {
+  private cache = new Map<string, GeneratedEmail>();
+  private rateLimiter = new Map<string, number>();
+  
+  async generateWithRetry(
+    request: EmailGenerationRequest, 
+    maxRetries: number = 3
+  ): Promise<GeneratedEmail> {
+    // Check rate limiting
+    const key = `${request.prospect.id}_${request.emailType}`;
+    const lastRequest = this.rateLimiter.get(key) || 0;
+    const now = Date.now();
+    
+    if (now - lastRequest < 60000) { // 1 minute rate limit
+      throw new Error('Rate limit exceeded. Please wait before generating another email.');
+    }
+    
+    // Check cache
+    const cacheKey = this.generateCacheKey(request);
+    if (this.cache.has(cacheKey)) {
+      return this.cache.get(cacheKey)!;
+    }
+    
+    // Generate with retry logic
+    let lastError: Error | null = null;
+    
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const result = await generateEmail(request);
+        
+        // Cache the result
+        this.cache.set(cacheKey, result);
+        this.rateLimiter.set(key, now);
+        
+        return result;
+        
+      } catch (error) {
+        lastError = error as Error;
+        console.warn(`Email generation attempt ${attempt} failed:`, error.message);
+        
+        if (attempt < maxRetries) {
+          // Exponential backoff
+          await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+        }
+      }
+    }
+    
+    throw new Error(`Email generation failed after ${maxRetries} attempts: ${lastError?.message}`);
+  }
+  
+  private generateCacheKey(request: EmailGenerationRequest): string {
+    return `${request.prospect.id}_${request.emailType}_${request.sequenceStep || 0}_${request.tone || 'default'}`;
+  }
+  
+  clearCache(): void {
+    this.cache.clear();
+  }
+}
+
+export const emailGenerationService = new EmailGenerationService();
