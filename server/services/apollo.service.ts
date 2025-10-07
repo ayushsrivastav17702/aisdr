@@ -47,7 +47,8 @@ interface ApolloContact {
 }
 
 interface ApolloSearchResponse {
-  contacts: ApolloContact[];
+  contacts?: ApolloContact[];
+  people?: ApolloContact[];
   pagination: {
     page: number;
     per_page: number;

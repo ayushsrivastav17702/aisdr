@@ -69,8 +69,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         per_page,
       });
 
-      // Convert contacts to prospect format
-      const prospects = searchResponse.contacts.map(contact => 
+      // Convert contacts to prospect format (Apollo returns in 'people' or 'contacts' array)
+      const contacts = searchResponse.people || searchResponse.contacts || [];
+      const prospects = contacts.map(contact => 
         apolloService.convertApolloContactToProspect(contact)
       );
 
@@ -82,6 +83,54 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Apollo search error:", error);
       res.status(500).json({ 
         error: error instanceof Error ? error.message : "Apollo search failed" 
+      });
+    }
+  });
+
+  // Apollo search and save to database (synchronous alternative to job queue)
+  app.post("/api/apollo-search-and-save", async (req, res) => {
+    try {
+      const { apolloFilters, page = 1, per_page = 50, searchId } = req.body;
+      
+      const searchResponse = await apolloService.searchContacts({
+        ...apolloFilters,
+        page,
+        per_page,
+      });
+
+      // Convert contacts to prospect format and save to database
+      const contacts = searchResponse.people || searchResponse.contacts || [];
+      const savedProspects = [];
+      
+      for (const contact of contacts) {
+        const prospectData = apolloService.convertApolloContactToProspect(contact);
+        
+        // Check if prospect already exists (by email or apollo_id)
+        const existing = await storage.findProspectByEmailOrApolloId(
+          prospectData.primaryEmail,
+          prospectData.apolloId
+        );
+
+        if (existing) {
+          // Update existing prospect with new data
+          const updated = await storage.updateProspect(existing.id, prospectData);
+          savedProspects.push(updated);
+        } else {
+          // Create new prospect
+          const created = await storage.createProspect(prospectData);
+          savedProspects.push(created);
+        }
+      }
+
+      res.json({
+        prospects: savedProspects,
+        pagination: searchResponse.pagination,
+        saved: savedProspects.length,
+      });
+    } catch (error) {
+      console.error("Apollo search and save error:", error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Apollo search and save failed" 
       });
     }
   });

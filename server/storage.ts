@@ -29,6 +29,7 @@ export interface IStorage {
   deleteProspect(id: string): Promise<void>;
   getProspectsByIds(ids: string[]): Promise<Prospect[]>;
   checkDuplicateProspects(emails: string[], domains?: string[]): Promise<Prospect[]>;
+  findProspectByEmailOrApolloId(email: string | null, apolloId: string | null): Promise<Prospect | undefined>;
   
   // Searches
   getSearches(limit?: number): Promise<Search[]>;
@@ -151,6 +152,31 @@ export class DatabaseStorage implements IStorage {
     if (conditions.length === 0) return [];
     
     return await db.select().from(prospects).where(or(...conditions));
+  }
+
+  async findProspectByEmailOrApolloId(email: string | null, apolloId: string | null): Promise<Prospect | undefined> {
+    if (!email && !apolloId) return undefined;
+    
+    const conditions = [];
+    if (email) {
+      conditions.push(
+        or(
+          eq(prospects.primaryEmail, email),
+          eq(prospects.secondaryEmail, email)
+        )
+      );
+    }
+    if (apolloId) {
+      conditions.push(eq(prospects.apolloId, apolloId));
+    }
+    
+    const [prospect] = await db
+      .select()
+      .from(prospects)
+      .where(or(...conditions))
+      .limit(1);
+    
+    return prospect || undefined;
   }
 
   // Searches
