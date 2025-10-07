@@ -40,7 +40,7 @@ export interface IStorage {
   getJobs(status?: string, limit?: number): Promise<Job[]>;
   getJob(id: string): Promise<Job | undefined>;
   createJob(job: InsertJob): Promise<Job>;
-  updateJob(id: string, updates: Partial<InsertJob>): Promise<Job>;
+  updateJob(id: string, updates: Partial<Job>): Promise<Job>;
   getActiveJobs(): Promise<Job[]>;
   
   // Import Records
@@ -204,7 +204,7 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
-  async updateJob(id: string, updates: Partial<InsertJob>): Promise<Job> {
+  async updateJob(id: string, updates: Partial<Job>): Promise<Job> {
     const [updated] = await db
       .update(jobs)
       .set(updates)

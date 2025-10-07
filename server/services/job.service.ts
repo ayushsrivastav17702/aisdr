@@ -6,7 +6,6 @@ import { type Job, type Prospect, type InsertProspect } from '@shared/schema';
 
 // Redis connection
 const redis = new Redis(process.env.REDIS_URL || 'redis://localhost:6379', {
-  retryDelayOnFailover: 100,
   enableReadyCheck: false,
   maxRetriesPerRequest: null,
 });
