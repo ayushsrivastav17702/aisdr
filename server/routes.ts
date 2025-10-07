@@ -5,6 +5,9 @@ import { aiService } from "./services/ai.service";
 import { apolloService } from "./services/apollo.service";
 import { jobService } from "./services/job.service";
 import { lushaService } from "./services/lusha.service";
+import { intelligentPersonalizationService } from "./services/intelligent-personalization.service";
+import { webScrapingService } from "./services/web-scraping.service";
+import { contentManagementService } from "./services/content-management.service";
 import { 
   aiSearchSchema, 
   enrichmentRequestSchema, 
@@ -606,6 +609,225 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Mailbox module routes
   app.use("/api", mailboxRoutes);
+
+  // Intelligent Personalization - Deep AI prospect analysis
+  app.post("/api/personalization/analyze", async (req, res) => {
+    try {
+      const { prospectId, includeWebScraping = false } = req.body;
+      
+      const prospect = await storage.getProspect(prospectId);
+      if (!prospect) {
+        return res.status(404).json({ error: "Prospect not found" });
+      }
+
+      let scrapedData = null;
+      if (includeWebScraping && prospect.linkedinUrl) {
+        scrapedData = await webScrapingService.scrapeLinkedInProfile(prospect.linkedinUrl);
+      }
+
+      const analysis = await intelligentPersonalizationService.analyzeProspect(prospect, scrapedData);
+
+      // Save personalization result
+      await storage.createPersonalizationResult({
+        prospectId,
+        personalizationScore: analysis.personalizationScore,
+        keyInsights: analysis.keyInsights,
+        recommendedApproach: analysis.recommendedApproach,
+        personalizationFactors: analysis.personalizationFactors,
+      });
+
+      res.json(analysis);
+    } catch (error) {
+      console.error("Personalization analysis error:", error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Personalization analysis failed" 
+      });
+    }
+  });
+
+  // Company enrichment via web scraping
+  app.post("/api/personalization/company-enrichment", async (req, res) => {
+    try {
+      const { companyWebsite } = req.body;
+      
+      if (!companyWebsite) {
+        return res.status(400).json({ error: "Company website required" });
+      }
+
+      const companyData = await webScrapingService.scrapeCompanyWebsite(companyWebsite);
+      res.json(companyData);
+    } catch (error) {
+      console.error("Company enrichment error:", error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Company enrichment failed" 
+      });
+    }
+  });
+
+  // Apollo company search
+  app.post("/api/apollo/company-search", async (req, res) => {
+    try {
+      const { query, filters = {} } = req.body;
+      
+      const companies = await apolloService.searchContacts({
+        q_keywords: query,
+        ...filters,
+        per_page: 20
+      });
+
+      res.json({
+        companies: companies.people || companies.contacts || [],
+        pagination: companies.pagination
+      });
+    } catch (error) {
+      console.error("Company search error:", error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Company search failed" 
+      });
+    }
+  });
+
+  // Enhanced enrichment with automatic Lusha fallback
+  app.post("/api/prospects/enrich-with-fallback", async (req, res) => {
+    try {
+      const { prospectId } = req.body;
+      
+      const prospect = await storage.getProspect(prospectId);
+      if (!prospect) {
+        return res.status(404).json({ error: "Prospect not found" });
+      }
+
+      const enrichmentResult = await apolloService.enrichWithAutoFallback({
+        email: prospect.primaryEmail || undefined,
+        first_name: prospect.firstName || undefined,
+        last_name: prospect.lastName || undefined,
+        organization_name: prospect.companyName || undefined,
+        linkedin_url: prospect.linkedinUrl || undefined
+      });
+
+      if (enrichmentResult.contact) {
+        const updatedProspect = apolloService.convertApolloContactToProspect(enrichmentResult.contact);
+        await storage.updateProspect(prospectId, updatedProspect);
+      }
+
+      res.json({
+        success: !!enrichmentResult.contact,
+        source: enrichmentResult.source,
+        email: enrichmentResult.enrichedEmail,
+        prospect: enrichmentResult.contact ? 
+          apolloService.convertApolloContactToProspect(enrichmentResult.contact) : null
+      });
+    } catch (error) {
+      console.error("Enhanced enrichment error:", error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Enhanced enrichment failed" 
+      });
+    }
+  });
+
+  // Content Library - Get all items
+  app.get("/api/content-library", async (req, res) => {
+    try {
+      const items = await contentManagementService.getContentLibraryItems();
+      res.json(items);
+    } catch (error) {
+      console.error("Get content library error:", error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Failed to get content library" 
+      });
+    }
+  });
+
+  // Content Library - Get templates
+  app.get("/api/content-library/templates", async (req, res) => {
+    try {
+      const { category } = req.query;
+      const templates = category 
+        ? contentManagementService.getTemplatesByCategory(category as any)
+        : contentManagementService.getAllTemplates();
+      res.json(templates);
+    } catch (error) {
+      console.error("Get templates error:", error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Failed to get templates" 
+      });
+    }
+  });
+
+  // Content Library - Create item
+  app.post("/api/content-library", async (req, res) => {
+    try {
+      const item = await contentManagementService.addContentItem(req.body);
+      res.json(item);
+    } catch (error) {
+      console.error("Create content item error:", error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Failed to create content item" 
+      });
+    }
+  });
+
+  // Content Library - Update item
+  app.put("/api/content-library/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const item = await contentManagementService.updateContentItem(id, req.body);
+      res.json(item);
+    } catch (error) {
+      console.error("Update content item error:", error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Failed to update content item" 
+      });
+    }
+  });
+
+  // Content Library - Delete item
+  app.delete("/api/content-library/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      await contentManagementService.deleteContentItem(id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete content item error:", error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Failed to delete content item" 
+      });
+    }
+  });
+
+  // Generate email from template
+  app.post("/api/content-library/generate-email", async (req, res) => {
+    try {
+      const { templateId, prospectId, customVariables } = req.body;
+      
+      const prospect = await storage.getProspect(prospectId);
+      if (!prospect) {
+        return res.status(404).json({ error: "Prospect not found" });
+      }
+
+      const email = contentManagementService.generateEmailFromTemplate(
+        templateId,
+        {
+          name: prospect.fullName || `${prospect.firstName} ${prospect.lastName}`,
+          company: prospect.companyName || '',
+          industry: prospect.companyIndustry || '',
+          position: prospect.jobTitle || ''
+        },
+        customVariables
+      );
+
+      if (!email) {
+        return res.status(404).json({ error: "Template not found" });
+      }
+
+      res.json(email);
+    } catch (error) {
+      console.error("Generate email error:", error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Failed to generate email" 
+      });
+    }
+  });
 
   // Health check
   app.get("/api/health", (req, res) => {

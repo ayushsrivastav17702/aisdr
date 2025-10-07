@@ -1,0 +1,737 @@
+import { useState, useMemo } from "react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { 
+  X, 
+  ArrowLeft, 
+  Search, 
+  Eye, 
+  Star, 
+  Users, 
+  Clock, 
+  BarChart3,
+  Mail,
+  Filter,
+  Sparkles,
+  BookOpen,
+  Target,
+  Briefcase,
+  Heart,
+  TrendingUp,
+  Calendar,
+  MessageSquare
+} from "lucide-react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+
+interface SequenceTemplateLibraryProps {
+  open: boolean;
+  onClose: () => void;
+  onSelectTemplate: (template: any) => void;
+}
+
+// Category configurations with icons and colors
+const categoryConfig = {
+  'cold_outreach': {
+    icon: Target,
+    color: 'blue',
+    label: 'Cold Outreach',
+    description: 'Break the ice with prospects'
+  },
+  'follow_up': {
+    icon: MessageSquare,
+    color: 'green',
+    label: 'Follow-up',
+    description: 'Nurture warm prospects'
+  },
+  'demo': {
+    icon: BookOpen,
+    color: 'purple',
+    label: 'Product Demo',
+    description: 'Book and follow-up demos'
+  },
+  'event': {
+    icon: Calendar,
+    color: 'orange',
+    label: 'Events',
+    description: 'Drive event attendance'
+  },
+  'reengagement': {
+    icon: Heart,
+    color: 'red',
+    label: 'Re-engagement',
+    description: 'Revive dormant prospects'
+  },
+  'recruiting': {
+    icon: Users,
+    color: 'indigo',
+    label: 'Recruiting',
+    description: 'Attract top talent'
+  },
+  'nurture': {
+    icon: TrendingUp,
+    color: 'pink',
+    label: 'Nurture',
+    description: 'Build relationships over time'
+  }
+};
+
+const industryOptions = [
+  'All Industries',
+  'technology',
+  'healthcare',
+  'finance',
+  'education',
+  'retail',
+  'manufacturing',
+  'consulting',
+  'general'
+];
+
+const personaOptions = [
+  'All Personas',
+  'C-Level',
+  'Director',
+  'Manager',
+  'Technical',
+  'HR',
+  'Sales',
+  'Marketing'
+];
+
+export default function SequenceTemplateLibrary({ open, onClose, onSelectTemplate }: SequenceTemplateLibraryProps) {
+  const [currentView, setCurrentView] = useState<'browse' | 'preview'>('browse');
+  const [selectedTemplate, setSelectedTemplate] = useState<any>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const [selectedIndustry, setSelectedIndustry] = useState<string>('All Industries');
+  const [selectedPersona, setSelectedPersona] = useState<string>('All Personas');
+  const [showFeaturedOnly, setShowFeaturedOnly] = useState(false);
+
+  const { toast } = useToast();
+
+  // Fetch templates from backend
+  const { data: templates = [], isLoading } = useQuery({
+    queryKey: ['/api/sequence-templates'],
+    enabled: open,
+  });
+
+  // Ensure templates is always an array
+  const templateArray = Array.isArray(templates) ? templates : [];
+
+  // Create sequence from template mutation
+  const createSequenceMutation = useMutation({
+    mutationFn: async (templateData: any) => {
+      return await apiRequest('/api/sequences/from-template', 'POST', {
+        templateId: templateData.id,
+        customizeName: true,
+        sequenceName: `${templateData.name} - ${new Date().toLocaleDateString()}`
+      });
+    },
+    onSuccess: (data, template) => {
+      toast({
+        title: "Sequence Created!",
+        description: `Successfully created "${data.name}" from template`,
+      });
+      onSelectTemplate(data);
+      onClose();
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to create sequence from template",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Filter and search logic
+  const filteredTemplates = useMemo(() => {
+    let filtered = [...templateArray];
+
+    // Search filter
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(template => 
+        template.name?.toLowerCase().includes(query) ||
+        template.description?.toLowerCase().includes(query) ||
+        template.use_case?.toLowerCase().includes(query) ||
+        template.tags?.some((tag: string) => tag.toLowerCase().includes(query))
+      );
+    }
+
+    // Category filter
+    if (selectedCategory && selectedCategory !== 'all') {
+      filtered = filtered.filter(template => template.category === selectedCategory);
+    }
+
+    // Industry filter
+    if (selectedIndustry && selectedIndustry !== 'All Industries') {
+      filtered = filtered.filter(template => 
+        template.industry === selectedIndustry || template.industry === 'general'
+      );
+    }
+
+    // Persona filter
+    if (selectedPersona && selectedPersona !== 'All Personas') {
+      filtered = filtered.filter(template => template.target_persona === selectedPersona);
+    }
+
+    // Featured filter
+    if (showFeaturedOnly) {
+      filtered = filtered.filter(template => template.is_featured);
+    }
+
+    return filtered;
+  }, [templateArray, searchQuery, selectedCategory, selectedIndustry, selectedPersona, showFeaturedOnly]);
+
+  // Template categories for sidebar
+  const templateCategories = useMemo(() => {
+    const categories = templateArray.reduce((acc: any, template: any) => {
+      const category = template.category;
+      if (!acc[category]) {
+        acc[category] = 0;
+      }
+      acc[category]++;
+      return acc;
+    }, {});
+
+    return Object.entries(categories).map(([category, count]) => ({
+      id: category,
+      name: categoryConfig[category as keyof typeof categoryConfig]?.label || category,
+      count,
+      config: categoryConfig[category as keyof typeof categoryConfig]
+    }));
+  }, [templateArray]);
+
+  const handleTemplatePreview = (template: any) => {
+    setSelectedTemplate(template);
+    setCurrentView('preview');
+  };
+
+  const handleUseTemplate = (template: any) => {
+    createSequenceMutation.mutate(template);
+  };
+
+  const handleBack = () => {
+    if (currentView === 'preview') {
+      setCurrentView('browse');
+      setSelectedTemplate(null);
+    }
+  };
+
+  const clearFilters = () => {
+    setSearchQuery('');
+    setSelectedCategory('all');
+    setSelectedIndustry('All Industries');
+    setSelectedPersona('All Personas');
+    setShowFeaturedOnly(false);
+  };
+
+  const getPerformanceColor = (rate: number) => {
+    if (rate >= 15) return 'text-green-600 bg-green-50';
+    if (rate >= 8) return 'text-yellow-600 bg-yellow-50';
+    return 'text-red-600 bg-red-50';
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-7xl max-h-[95vh] overflow-hidden">
+        <DialogHeader>
+          <div className="flex items-center justify-between">
+            <DialogTitle className="flex items-center gap-2">
+              {currentView === 'browse' ? (
+                <>
+                  <BookOpen className="h-5 w-5 text-blue-600" />
+                  Template Library
+                </>
+              ) : (
+                <>
+                  <Button variant="ghost" size="sm" onClick={handleBack} className="mr-2">
+                    <ArrowLeft className="h-4 w-4" />
+                  </Button>
+                  <Eye className="h-5 w-5 text-purple-600" />
+                  Template Preview
+                </>
+              )}
+            </DialogTitle>
+            <Button variant="ghost" size="sm" onClick={onClose} data-testid="button-close-template-library">
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        </DialogHeader>
+
+        {/* Browse View */}
+        {currentView === 'browse' && (
+          <div className="flex h-[calc(95vh-120px)]">
+            {/* Sidebar */}
+            <div className="w-64 border-r bg-gray-50 p-4 overflow-y-auto">
+              <div className="space-y-6">
+                {/* Search */}
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Input
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search templates..."
+                    className="pl-10"
+                    data-testid="input-search-templates"
+                  />
+                </div>
+
+                {/* Filters */}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="font-medium text-sm text-gray-700">Filters</h3>
+                    {(searchQuery || selectedCategory !== 'all' || selectedIndustry !== 'All Industries' || 
+                      selectedPersona !== 'All Personas' || showFeaturedOnly) && (
+                      <Button 
+                        variant="ghost" 
+                        size="sm" 
+                        onClick={clearFilters}
+                        className="text-xs h-auto p-1"
+                        data-testid="button-clear-filters"
+                      >
+                        Clear
+                      </Button>
+                    )}
+                  </div>
+
+                  {/* Featured Toggle */}
+                  <label className="flex items-center space-x-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={showFeaturedOnly}
+                      onChange={(e) => setShowFeaturedOnly(e.target.checked)}
+                      className="rounded border-gray-300"
+                      data-testid="checkbox-featured-only"
+                    />
+                    <span className="text-sm flex items-center gap-1">
+                      <Star className="h-3 w-3 text-yellow-500" />
+                      Featured only
+                    </span>
+                  </label>
+
+                  {/* Industry Filter */}
+                  <div>
+                    <label className="text-xs font-medium text-gray-600 mb-2 block">Industry</label>
+                    <Select value={selectedIndustry} onValueChange={setSelectedIndustry}>
+                      <SelectTrigger className="w-full text-sm" data-testid="select-industry">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {industryOptions.map(industry => (
+                          <SelectItem key={industry} value={industry}>
+                            {industry}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Persona Filter */}
+                  <div>
+                    <label className="text-xs font-medium text-gray-600 mb-2 block">Target Persona</label>
+                    <Select value={selectedPersona} onValueChange={setSelectedPersona}>
+                      <SelectTrigger className="w-full text-sm" data-testid="select-persona">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {personaOptions.map(persona => (
+                          <SelectItem key={persona} value={persona}>
+                            {persona}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* Categories */}
+                <div>
+                  <h3 className="font-medium text-sm text-gray-700 mb-3">Categories</h3>
+                  <div className="space-y-1">
+                    <button
+                      onClick={() => setSelectedCategory('all')}
+                      className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                        selectedCategory === 'all' 
+                          ? 'bg-blue-100 text-blue-700 font-medium' 
+                          : 'hover:bg-gray-100 text-gray-600'
+                      }`}
+                      data-testid="button-category-all"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="flex items-center gap-2">
+                          <Filter className="h-4 w-4" />
+                          All Templates
+                        </span>
+                        <span className="text-xs bg-gray-200 px-2 py-1 rounded-full">
+                          {templateArray.length}
+                        </span>
+                      </div>
+                    </button>
+                    
+                    {templateCategories.map((category: any) => {
+                      const Icon = category.config?.icon || Target;
+                      const color = category.config?.color || 'gray';
+                      
+                      return (
+                        <button
+                          key={category.id}
+                          onClick={() => setSelectedCategory(category.id)}
+                          className={`w-full text-left px-3 py-2 rounded-lg text-sm transition-colors ${
+                            selectedCategory === category.id 
+                              ? `bg-${color}-100 text-${color}-700 font-medium` 
+                              : 'hover:bg-gray-100 text-gray-600'
+                          }`}
+                          data-testid={`button-category-${category.id}`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="flex items-center gap-2">
+                              <Icon className="h-4 w-4" />
+                              {category.name}
+                            </span>
+                            <span className="text-xs bg-gray-200 px-2 py-1 rounded-full">
+                              {category.count}
+                            </span>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Main Content */}
+            <div className="flex-1 p-6 overflow-y-auto">
+              {isLoading ? (
+                <div className="flex items-center justify-center h-64">
+                  <div className="animate-spin rounded-full h-8 w-8 border-2 border-blue-600 border-t-transparent" />
+                </div>
+              ) : filteredTemplates.length === 0 ? (
+                <div className="text-center py-12">
+                  <BookOpen className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">No templates found</h3>
+                  <p className="text-gray-600 mb-4">
+                    {searchQuery || selectedCategory !== 'all' || selectedIndustry !== 'All Industries' || 
+                     selectedPersona !== 'All Personas' || showFeaturedOnly
+                      ? 'Try adjusting your filters or search terms'
+                      : 'No templates are available at the moment'
+                    }
+                  </p>
+                  <Button onClick={clearFilters} variant="outline" data-testid="button-clear-all-filters">
+                    Clear All Filters
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h2 className="text-lg font-semibold text-gray-900">
+                        {selectedCategory === 'all' 
+                          ? 'All Templates' 
+                          : categoryConfig[selectedCategory as keyof typeof categoryConfig]?.label || selectedCategory
+                        }
+                      </h2>
+                      <p className="text-sm text-gray-600">
+                        {filteredTemplates.length} template{filteredTemplates.length !== 1 ? 's' : ''} available
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+                    {filteredTemplates.map((template) => {
+                      const categoryInfo = categoryConfig[template.category as keyof typeof categoryConfig];
+                      const CategoryIcon = categoryInfo?.icon || Target;
+                      
+                      return (
+                        <Card 
+                          key={template.id} 
+                          className="hover:shadow-lg transition-shadow duration-200 relative"
+                          data-testid={`card-template-${template.id}`}
+                        >
+                          {template.is_featured && (
+                            <div className="absolute top-3 right-3">
+                              <Badge className="bg-yellow-100 text-yellow-800 border-yellow-300">
+                                <Star className="h-3 w-3 mr-1" />
+                                Featured
+                              </Badge>
+                            </div>
+                          )}
+
+                          <CardHeader className="pb-3">
+                            <div className="flex items-start justify-between">
+                              <div className="flex items-center gap-3">
+                                <div className={`p-2 rounded-lg bg-${categoryInfo?.color || 'gray'}-100`}>
+                                  <CategoryIcon className={`h-5 w-5 text-${categoryInfo?.color || 'gray'}-600`} />
+                                </div>
+                                <div>
+                                  <CardTitle className="text-lg leading-tight">{template.name}</CardTitle>
+                                  <p className="text-sm text-gray-600 mt-1">{template.description}</p>
+                                </div>
+                              </div>
+                            </div>
+                          </CardHeader>
+
+                          <CardContent className="space-y-4">
+                            {/* Stats */}
+                            <div className="grid grid-cols-3 gap-3 text-center">
+                              <div className="bg-gray-50 rounded-lg p-2">
+                                <div className="flex items-center justify-center gap-1 text-xs text-gray-600 mb-1">
+                                  <Mail className="h-3 w-3" />
+                                  Steps
+                                </div>
+                                <div className="font-semibold text-sm">{template.step_count}</div>
+                              </div>
+                              <div className="bg-gray-50 rounded-lg p-2">
+                                <div className="flex items-center justify-center gap-1 text-xs text-gray-600 mb-1">
+                                  <Clock className="h-3 w-3" />
+                                  Duration
+                                </div>
+                                <div className="font-semibold text-sm">{template.estimated_duration}</div>
+                              </div>
+                              <div className="bg-gray-50 rounded-lg p-2">
+                                <div className="flex items-center justify-center gap-1 text-xs text-gray-600 mb-1">
+                                  <BarChart3 className="h-3 w-3" />
+                                  Response
+                                </div>
+                                <div className={`font-semibold text-sm ${getPerformanceColor(template.average_response_rate)}`}>
+                                  {template.average_response_rate}%
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Tags */}
+                            {template.tags && template.tags.length > 0 && (
+                              <div className="flex flex-wrap gap-1">
+                                {template.tags.slice(0, 3).map((tag: string, index: number) => (
+                                  <Badge key={index} variant="secondary" className="text-xs">
+                                    {tag}
+                                  </Badge>
+                                ))}
+                                {template.tags.length > 3 && (
+                                  <Badge variant="secondary" className="text-xs">
+                                    +{template.tags.length - 3}
+                                  </Badge>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Metadata */}
+                            <div className="text-xs text-gray-500 space-y-1">
+                              {template.industry && template.industry !== 'general' && (
+                                <div className="flex items-center gap-1">
+                                  <Briefcase className="h-3 w-3" />
+                                  {template.industry.charAt(0).toUpperCase() + template.industry.slice(1)}
+                                </div>
+                              )}
+                              {template.target_persona && (
+                                <div className="flex items-center gap-1">
+                                  <Users className="h-3 w-3" />
+                                  {template.target_persona}
+                                </div>
+                              )}
+                              {template.author_name && (
+                                <div className="flex items-center gap-1">
+                                  <span>By {template.author_name}</span>
+                                  {template.author_role && (
+                                    <span>• {template.author_role}</span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Actions */}
+                            <div className="flex gap-2 pt-2 border-t">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleTemplatePreview(template)}
+                                className="flex-1"
+                                data-testid={`button-preview-${template.id}`}
+                              >
+                                <Eye className="h-4 w-4 mr-1" />
+                                Preview
+                              </Button>
+                              <Button
+                                size="sm"
+                                onClick={() => handleUseTemplate(template)}
+                                disabled={createSequenceMutation.isPending}
+                                className="flex-1"
+                                data-testid={`button-use-template-${template.id}`}
+                              >
+                                {createSequenceMutation.isPending ? (
+                                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />
+                                ) : (
+                                  <>
+                                    <Sparkles className="h-4 w-4 mr-1" />
+                                    Use Template
+                                  </>
+                                )}
+                              </Button>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Preview View */}
+        {currentView === 'preview' && selectedTemplate && (
+          <div className="h-[calc(95vh-120px)] overflow-y-auto p-6">
+            <div className="max-w-4xl mx-auto space-y-6">
+              {/* Template Header */}
+              <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-6">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="p-2 bg-white rounded-lg shadow-sm">
+                        {(() => {
+                          const categoryInfo = categoryConfig[selectedTemplate.category as keyof typeof categoryConfig];
+                          const Icon = categoryInfo?.icon || Target;
+                          return <Icon className={`h-6 w-6 text-${categoryInfo?.color || 'gray'}-600`} />;
+                        })()}
+                      </div>
+                      <div>
+                        <h1 className="text-2xl font-bold text-gray-900">{selectedTemplate.name}</h1>
+                        <p className="text-gray-600">{selectedTemplate.description}</p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                      <div className="bg-white rounded-lg p-3 shadow-sm">
+                        <div className="flex items-center gap-2 text-gray-600 mb-1">
+                          <Mail className="h-4 w-4" />
+                          Email Steps
+                        </div>
+                        <div className="font-semibold text-lg">{selectedTemplate.step_count}</div>
+                      </div>
+                      <div className="bg-white rounded-lg p-3 shadow-sm">
+                        <div className="flex items-center gap-2 text-gray-600 mb-1">
+                          <Clock className="h-4 w-4" />
+                          Duration
+                        </div>
+                        <div className="font-semibold text-lg">{selectedTemplate.estimated_duration}</div>
+                      </div>
+                      <div className="bg-white rounded-lg p-3 shadow-sm">
+                        <div className="flex items-center gap-2 text-gray-600 mb-1">
+                          <BarChart3 className="h-4 w-4" />
+                          Avg Response
+                        </div>
+                        <div className={`font-semibold text-lg ${getPerformanceColor(selectedTemplate.average_response_rate)}`}>
+                          {selectedTemplate.average_response_rate}%
+                        </div>
+                      </div>
+                      <div className="bg-white rounded-lg p-3 shadow-sm">
+                        <div className="flex items-center gap-2 text-gray-600 mb-1">
+                          <Users className="h-4 w-4" />
+                          Usage Count
+                        </div>
+                        <div className="font-semibold text-lg">{selectedTemplate.usage_count}</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Email Steps Preview */}
+              <div className="space-y-4">
+                <h2 className="text-xl font-semibold text-gray-900">Email Sequence Preview</h2>
+                
+                {selectedTemplate.template_steps && selectedTemplate.template_steps.map((step: any, index: number) => (
+                  <Card key={index} className="overflow-hidden">
+                    <CardHeader className="bg-gray-50 pb-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="bg-blue-100 p-2 rounded-lg">
+                            <Mail className="h-4 w-4 text-blue-600" />
+                          </div>
+                          <div>
+                            <CardTitle className="text-lg">Step {step.stepNumber}</CardTitle>
+                            <p className="text-sm text-gray-600">
+                              Send on day {step.runOnDay}
+                              {step.delayDays > 0 && ` (${step.delayDays} days after previous)`}
+                            </p>
+                          </div>
+                        </div>
+                        <Badge variant="secondary">{step.type}</Badge>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div>
+                        <label className="text-sm font-medium text-gray-700 block mb-2">Subject Line</label>
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                          <p className="font-medium text-blue-900">{step.subject}</p>
+                        </div>
+                      </div>
+                      
+                      <div>
+                        <label className="text-sm font-medium text-gray-700 block mb-2">Email Content</label>
+                        <div className="bg-gray-50 border rounded-lg p-4">
+                          <div className="whitespace-pre-wrap text-sm leading-relaxed">
+                            {step.content}
+                          </div>
+                        </div>
+                      </div>
+
+                      {step.variables && step.variables.length > 0 && (
+                        <div>
+                          <label className="text-sm font-medium text-gray-700 block mb-2">Variables Used</label>
+                          <div className="flex flex-wrap gap-2">
+                            {step.variables.map((variable: string, idx: number) => (
+                              <Badge key={idx} variant="secondary" className="text-xs">
+                                {`{{${variable}}}`}
+                              </Badge>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-4 pt-6 border-t">
+                <Button
+                  size="lg"
+                  onClick={() => handleUseTemplate(selectedTemplate)}
+                  disabled={createSequenceMutation.isPending}
+                  className="flex-1"
+                  data-testid="button-use-template-preview"
+                >
+                  {createSequenceMutation.isPending ? (
+                    <>
+                      <div className="animate-spin rounded-full h-5 w-5 border-2 border-white border-t-transparent mr-2" />
+                      Creating Sequence...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-5 w-5 mr-2" />
+                      Use This Template
+                    </>
+                  )}
+                </Button>
+                <Button variant="outline" size="lg" onClick={handleBack} data-testid="button-back-to-browse">
+                  <ArrowLeft className="h-5 w-5 mr-2" />
+                  Back to Browse
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
