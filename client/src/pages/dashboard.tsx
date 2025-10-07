@@ -20,7 +20,8 @@ import {
   SettingsIcon,
   ListTodo,
   PlusIcon,
-  Mail
+  Mail,
+  Inbox
 } from "lucide-react";
 
 export default function Dashboard() {
@@ -120,6 +121,17 @@ export default function Dashboard() {
             >
               <Mail className="w-4 h-4" />
               <span>Sequences</span>
+            </Button>
+          </Link>
+
+          <Link href="/mailboxes">
+            <Button
+              variant="ghost"
+              className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
+              data-testid="nav-mailboxes"
+            >
+              <Inbox className="w-4 h-4" />
+              <span>Mailboxes</span>
             </Button>
           </Link>
           
