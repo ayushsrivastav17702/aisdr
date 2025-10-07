@@ -242,4 +242,128 @@ router.post("/webhooks/email-opened", async (req, res) => {
   }
 });
 
+// AI Email Generation
+router.post("/sequences/ai-generate-email", async (req, res) => {
+  try {
+    const { emailGenerationService } = await import("./services/ai-email-generator.service");
+    const { prospectId, emailType, sequenceStep, previousEmails, tone } = req.body;
+    
+    if (!prospectId || !emailType) {
+      return res.status(400).json({ error: "prospectId and emailType are required" });
+    }
+    
+    const result = await emailGenerationService.generateWithRetry({
+      prospectId,
+      emailType,
+      sequenceStep,
+      previousEmails,
+      tone
+    });
+    
+    res.json(result);
+  } catch (error) {
+    console.error("AI email generation error:", error);
+    res.status(500).json({ 
+      error: error instanceof Error ? error.message : "Failed to generate email" 
+    });
+  }
+});
+
+// Generate Email Variants (A/B Testing)
+router.post("/sequences/ai-generate-variants", async (req, res) => {
+  try {
+    const { generateEmailVariants } = await import("./services/ai-email-generator.service");
+    const { prospectId, emailType, variantCount } = req.body;
+    
+    if (!prospectId || !emailType) {
+      return res.status(400).json({ error: "prospectId and emailType are required" });
+    }
+    
+    const variants = await generateEmailVariants(
+      { prospectId, emailType },
+      variantCount || 2
+    );
+    
+    res.json({ variants });
+  } catch (error) {
+    console.error("Variant generation error:", error);
+    res.status(500).json({ 
+      error: error instanceof Error ? error.message : "Failed to generate variants" 
+    });
+  }
+});
+
+// Enhanced Personalization
+router.post("/sequences/enhanced-personalization", async (req, res) => {
+  try {
+    const { generateEnhancedPersonalizedEmail } = await import("./services/enhanced-personalization.service");
+    const { prospectId, includeLinkedInData, customPrompt, emailSettings } = req.body;
+    
+    if (!prospectId) {
+      return res.status(400).json({ error: "prospectId is required" });
+    }
+    
+    const result = await generateEnhancedPersonalizedEmail({
+      prospectId,
+      includeLinkedInData,
+      customPrompt,
+      emailSettings
+    });
+    
+    res.json(result);
+  } catch (error) {
+    console.error("Enhanced personalization error:", error);
+    res.status(500).json({ 
+      error: error instanceof Error ? error.message : "Failed to generate personalized email" 
+    });
+  }
+});
+
+// Analyze Email Response
+router.post("/sequences/analyze-response", async (req, res) => {
+  try {
+    const { analyzeEmailResponse } = await import("./services/enhanced-personalization.service");
+    const { originalEmail, prospectResponse, prospectId } = req.body;
+    
+    if (!originalEmail || !prospectResponse || !prospectId) {
+      return res.status(400).json({ error: "originalEmail, prospectResponse, and prospectId are required" });
+    }
+    
+    const analysis = await analyzeEmailResponse(originalEmail, prospectResponse, prospectId);
+    
+    res.json(analysis);
+  } catch (error) {
+    console.error("Response analysis error:", error);
+    res.status(500).json({ 
+      error: error instanceof Error ? error.message : "Failed to analyze response" 
+    });
+  }
+});
+
+// Generate Follow-up Preview
+router.post("/sequences/followup-preview", async (req, res) => {
+  try {
+    const { aiFollowUpScheduler } = await import("./services/ai-followup-scheduler.service");
+    const { prospectId, emailHistory, followUpType, followUpNumber } = req.body;
+    
+    if (!prospectId) {
+      return res.status(400).json({ error: "prospectId is required" });
+    }
+    
+    const preview = await aiFollowUpScheduler.generateFollowUpEmailPreview(
+      prospectId,
+      emailHistory || "",
+      followUpType || "gentle_reminder",
+      followUpNumber || 1
+    );
+    
+    res.json(preview);
+  } catch (error) {
+    console.error("Follow-up preview error:", error);
+    res.status(500).json({ 
+      error: error instanceof Error ? error.message : "Failed to generate follow-up preview" 
+    });
+  }
+});
+
 export default router;
