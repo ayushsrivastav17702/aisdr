@@ -1,5 +1,5 @@
 import { db } from "../db";
-import { emailQueue, InsertEmailQueueItem, EmailQueueItem } from "@shared/schema";
+import { emailQueue, InsertEmailQueueItem, EmailQueueItem, prospects } from "@shared/schema";
 import { eq, and, lte, sql } from "drizzle-orm";
 import { emailSendingService } from "./email-sending.service";
 import { mailboxService } from "./mailbox.service";
@@ -64,6 +64,17 @@ export class EmailQueueService {
 
   private async processEmail(email: EmailQueueItem): Promise<void> {
     try {
+      // Fetch prospect to get actual email address
+      const [prospect] = await db
+        .select()
+        .from(prospects)
+        .where(eq(prospects.id, email.prospectId))
+        .limit(1);
+
+      if (!prospect || !prospect.primaryEmail) {
+        throw new Error(`Prospect ${email.prospectId} not found or has no email`);
+      }
+
       await db
         .update(emailQueue)
         .set({ status: "sending" })
@@ -71,7 +82,7 @@ export class EmailQueueService {
 
       const result = await emailSendingService.sendEmail({
         mailboxId: email.mailboxId,
-        to: email.prospectId,
+        to: prospect.primaryEmail,
         subject: email.subject,
         body: email.body,
         fromName: email.fromName || undefined,
@@ -87,7 +98,7 @@ export class EmailQueueService {
           })
           .where(eq(emailQueue.id, email.id));
 
-        console.log(`✅ Email sent successfully: ${email.id}`);
+        console.log(`✅ Email sent successfully: ${email.id} to ${prospect.primaryEmail}`);
       } else {
         throw new Error(result.error || "Unknown error");
       }
