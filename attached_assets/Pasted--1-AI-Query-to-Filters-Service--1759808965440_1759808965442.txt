@@ -1,0 +1,656 @@
+/ ============================================
+// 1. AI Query to Filters Service
+// ============================================
+// server/services/ai.service.js
+
+const axios = require('axios');
+
+class AIService {
+  constructor() {
+    // You can use OpenAI, Claude, or any LLM API
+    this.apiKey = process.env.OPENAI_API_KEY || process.env.ANTHROPIC_API_KEY;
+    this.provider = process.env.AI_PROVIDER || 'openai'; // 'openai' or 'anthropic'
+  }
+
+  async queryToFilters(naturalLanguageQuery) {
+    const prompt = `Convert this natural language prospect search query into structured filters.
+
+Query: "${naturalLanguageQuery}"
+
+Extract and return ONLY valid JSON with these possible fields (omit fields not mentioned):
+{
+  "jobTitles": ["array of job titles"],
+  "departments": ["engineering", "it", "sales", "marketing", "operations", "finance", "hr"],
+  "seniorities": ["entry", "senior", "manager", "director", "vp", "c_suite", "owner"],
+  "hqLocations": ["city, state/country"],
+  "leadLocations": ["city, state/country"],
+  "industries": ["array of industries"],
+  "technologies": ["array of tech stack items"],
+  "revenueRange": ["1M-10M", "10M-50M", "50M-100M", "100M-500M", "500M-1B", "1B+"],
+  "employeeRange": ["1-10", "11-50", "51-200", "201-500", "501-1000", "1001-5000", "5001-10000", "10001+"],
+  "targetDomains": ["specific company domains"],
+  "companyKeywords": ["keywords about the company"],
+  "fundingStages": ["seed", "series_a", "series_b", "series_c", "series_d+", "private_equity", "ipo"],
+  "foundedYearMin": 2015,
+  "foundedYearMax": 2023
+}
+
+Examples:
+Query: "Find CTOs in fintech companies in NYC"
+Output: {"jobTitles": ["CTO", "Chief Technology Officer"], "industries": ["fintech", "financial services"], "leadLocations": ["New York, NY, USA"]}
+
+Query: "VPs of Engineering at Series B SaaS startups in San Francisco with 50-200 employees"
+Output: {"jobTitles": ["VP of Engineering", "Vice President of Engineering"], "industries": ["saas", "software"], "fundingStages": ["series_b"], "hqLocations": ["San Francisco, CA, USA"], "employeeRange": ["51-200"]}
+
+Return ONLY the JSON, no explanation.`;
+
+    try {
+      let response;
+      
+      if (this.provider === 'openai') {
+        response = await axios.post(
+          'https://api.openai.com/v1/chat/completions',
+          {
+            model: 'gpt-4-turbo-preview',
+            messages: [
+              { role: 'system', content: 'You are a search query parser. Return only valid JSON.' },
+              { role: 'user', content: prompt }
+            ],
+            temperature: 0.1,
+            response_format: { type: 'json_object' }
+          },
+          {
+            headers: {
+              'Authorization': `Bearer ${this.apiKey}`,
+              'Content-Type': 'application/json'
+            }
+          }
+        );
+        
+        const content = response.data.choices[0].message.content;
+        return JSON.parse(content);
+        
+      } else if (this.provider === 'anthropic') {
+        response = await axios.post(
+          'https://api.anthropic.com/v1/messages',
+          {
+            model: 'claude-3-5-sonnet-20241022',
+            max_tokens: 1024,
+            messages: [
+              { role: 'user', content: prompt }
+            ]
+          },
+          {
+            headers: {
+              'x-api-key': this.apiKey,
+              'anthropic-version': '2023-06-01',
+              'Content-Type': 'application/json'
+            }
+          }
+        );
+        
+        const content = response.data.content[0].text;
+        // Extract JSON from markdown code blocks if present
+        const jsonMatch = content.match(/```json\n([\s\S]*?)\n```/) || content.match(/\{[\s\S]*\}/);
+        return JSON.parse(jsonMatch ? jsonMatch[1] || jsonMatch[0] : content);
+      }
+      
+    } catch (error) {
+      console.error('AI query parsing error:', error);
+      throw new Error(`Failed to parse AI query: ${error.message}`);
+    }
+  }
+
+  // Fallback: Simple keyword extraction if AI fails
+  extractKeywords(query) {
+    const filters = {};
+    
+    // Job title patterns
+    const titlePatterns = {
+      'cto|chief technology officer': ['CTO', 'Chief Technology Officer'],
+      'ceo|chief executive': ['CEO', 'Chief Executive Officer'],
+      'vp engineering|vice president engineering': ['VP of Engineering'],
+      'director': ['Director'],
+      'manager': ['Manager']
+    };
+    
+    // Location patterns
+    const locationMatch = query.match(/in\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)/g);
+    if (locationMatch) {
+      filters.leadLocations = locationMatch.map(m => m.replace(/^in\s+/, ''));
+    }
+    
+    // Industry patterns
+    if (query.match(/fintech|financial\s+services/i)) {
+      filters.industries = ['fintech', 'financial services'];
+    }
+    if (query.match(/saas|software/i)) {
+      filters.industries = ['saas', 'software'];
+    }
+    
+    // Employee range
+    const empMatch = query.match(/(\d+)-(\d+)\s+employees/);
+    if (empMatch) {
+      filters.employeeRange = [`${empMatch[1]}-${empMatch[2]}`];
+    }
+    
+    // Funding stage
+    if (query.match(/series\s+([a-d])/i)) {
+      const round = query.match(/series\s+([a-d])/i)[1].toLowerCase();
+      filters.fundingStages = [`series_${round}`];
+    }
+    
+    return filters;
+  }
+}
+
+module.exports = new AIService();
+
+
+// ============================================
+// 2. Complete Filter Mappings
+// ============================================
+// server/services/filters.service.js (UPDATED)
+
+// Industry name to Apollo tag ID mapping (cache this in Redis or DB)
+const INDUSTRY_MAP = {
+  'financial services': 'tag_abc123',
+  'fintech': 'tag_def456',
+  'saas': 'tag_ghi789',
+  'software': 'tag_jkl012',
+  'healthcare': 'tag_mno345',
+  'e-commerce': 'tag_pqr678',
+  // Add more as needed - fetch from Apollo API: GET /api/v1/misc/industries
+};
+
+const mapIndustriesToIds = async (industries = []) => {
+  // If you don't have tag IDs, Apollo also accepts industry names directly
+  return industries.map(ind => {
+    const normalized = ind.toLowerCase();
+    return INDUSTRY_MAP[normalized] || ind; // Fallback to name if no ID
+  });
+};
+
+// Parse revenue ranges like "$5M - $20M" to min/max
+const parseRevenueRange = (ranges = []) => {
+  const min = Math.min(...ranges.map(r => parseRevenueMin(r)));
+  const max = Math.max(...ranges.map(r => parseRevenueMax(r)));
+  return { min, max };
+};
+
+const parseRevenueMin = (range) => {
+  if (range === '1M-10M') return 1000000;
+  if (range === '10M-50M') return 10000000;
+  if (range === '50M-100M') return 50000000;
+  if (range === '100M-500M') return 100000000;
+  if (range === '500M-1B') return 500000000;
+  if (range === '1B+') return 1000000000;
+  return 0;
+};
+
+const parseRevenueMax = (range) => {
+  if (range === '1M-10M') return 10000000;
+  if (range === '10M-50M') return 50000000;
+  if (range === '50M-100M') return 100000000;
+  if (range === '100M-500M') return 500000000;
+  if (range === '500M-1B') return 1000000000;
+  if (range === '1B+') return null; // No upper limit
+  return null;
+};
+
+const mapFiltersToApollo = async (filters = {}) => {
+  const apolloPayload = { page: 1, per_page: 100 };
+
+  if (filters.jobTitles?.length) apolloPayload.person_titles = filters.jobTitles;
+  if (filters.seniorities?.length) apolloPayload.person_seniorities = filters.seniorities;
+  if (filters.departments?.length) apolloPayload.person_departments = filters.departments;
+  if (filters.leadLocations?.length) apolloPayload.person_locations = filters.leadLocations;
+  if (filters.hqLocations?.length) apolloPayload.organization_locations = filters.hqLocations;
+
+  if (filters.industries?.length) {
+    apolloPayload.organization_industry_tag_ids = await mapIndustriesToIds(filters.industries);
+  }
+  if (filters.technologies?.length) apolloPayload.technologies = filters.technologies;
+
+  if (filters.revenueRange?.length) {
+    const parsed = parseRevenueRange(filters.revenueRange);
+    apolloPayload.revenue_range = parsed;
+  }
+  if (filters.employeeRange?.length) {
+    apolloPayload.organization_num_employees_ranges = filters.employeeRange;
+  }
+  if (filters.targetDomains?.length) apolloPayload.domains = filters.targetDomains;
+  if (filters.companyKeywords?.length) apolloPayload.keywords = filters.companyKeywords.join(' OR ');
+  if (filters.fundingStages?.length) apolloPayload.funding_stage_list = filters.fundingStages;
+  if (filters.foundedYearMin || filters.foundedYearMax) {
+    apolloPayload.organization_founded_year_range = {
+      min: filters.foundedYearMin,
+      max: filters.foundedYearMax
+    };
+  }
+  return apolloPayload;
+};
+
+module.exports = { mapFiltersToApollo, mapIndustriesToIds, parseRevenueRange };
+
+
+// ============================================
+// 3. Update Prospects Controller with AI Search
+// ============================================
+// server/controllers/prospects.controller.js (UPDATED search method)
+
+const aiService = require('../services/ai.service');
+
+search = asyncHandler(async (req, res) => {
+  const { searchType, filters, aiQuery, preview, limit } = req.body;
+  const userId = req.user.id;
+  const searchId = uuidv4();
+
+  await query(`INSERT INTO searches (id, user_id, search_type, filters, ai_query, status)
+               VALUES ($1,$2,$3,$4,$5,'pending')`,
+              [searchId, userId, searchType, JSON.stringify(filters||{}), aiQuery||null]);
+
+  let apolloFilters;
+  
+  if (searchType === 'ai' && aiQuery) {
+    try {
+      // Convert AI query to filters
+      const extractedFilters = await aiService.queryToFilters(aiQuery);
+      
+      // Merge with any manual filters provided
+      const mergedFilters = { ...extractedFilters, ...filters };
+      
+      // Update search record with extracted filters
+      await query(`UPDATE searches SET filters=$1 WHERE id=$2`, 
+                  [JSON.stringify(mergedFilters), searchId]);
+      
+      apolloFilters = await mapFiltersToApollo(mergedFilters);
+    } catch (error) {
+      // Fallback to keyword extraction if AI fails
+      console.warn('AI parsing failed, using keyword extraction:', error);
+      const extractedFilters = aiService.extractKeywords(aiQuery);
+      apolloFilters = await mapFiltersToApollo({ ...extractedFilters, ...filters });
+    }
+  } else {
+    apolloFilters = await mapFiltersToApollo(filters || {});
+  }
+
+  const result = await apolloService.searchPeople(apolloFilters, 1);
+  if (!result.success) throw new Error(result.error.message);
+
+  const totalResults = result.data.pagination?.total_entries || 0;
+  await query(`UPDATE searches SET total_results=$1 WHERE id=$2`, [totalResults, searchId]);
+
+  if (preview) {
+    return res.json({ 
+      searchId, 
+      status: 'preview', 
+      totalResults, 
+      sample: (result.data.people||[]).slice(0,10),
+      extractedFilters: searchType === 'ai' ? apolloFilters : null,
+      message: `Found ${totalResults} matches. Click import to add to prospects.` 
+    });
+  }
+
+  const max = Math.min(limit || 100, Number(process.env.MAX_IMPORT_SIZE)||1000);
+  const allPeople = await apolloService.getAllResults(apolloFilters, max);
+  const stats = await importService.importProspects(searchId, allPeople, userId);
+  res.json({ searchId, status:'completed', stats });
+});
+
+
+// ============================================
+// 4. Environment Variables Update
+// ============================================
+/*
+Add to .env:
+
+# AI Service (choose one)
+AI_PROVIDER=openai
+OPENAI_API_KEY=sk-...
+
+# OR
+AI_PROVIDER=anthropic
+ANTHROPIC_API_KEY=sk-ant-...
+
+# Existing variables
+APOLLO_API_KEY=DKos39lQkc1azXQk-gAfMQ
+DATABASE_URL=postgresql://...
+REDIS_URL=rediss://...
+API_TIMEOUT=30000
+MAX_IMPORT_SIZE=1000
+*/
+
+
+// ============================================
+// 5. Enhanced Import Wizard UI Component
+// ============================================
+// web/src/components/ImportWizard.jsx (COMPLETE VERSION)
+
+import React, { useState } from 'react';
+import { api } from '../api';
+
+const ImportWizard = ({ onClose }) => {
+  const [step, setStep] = useState(1);
+  const [importType, setImportType] = useState('csv'); // 'csv' or 'apollo'
+  const [file, setFile] = useState(null);
+  const [headers, setHeaders] = useState([]);
+  const [sampleData, setSampleData] = useState([]);
+  const [fieldMapping, setFieldMapping] = useState({});
+  const [searchId, setSearchId] = useState(null);
+  const [importStats, setImportStats] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  // STEP 1: Choose Import Type
+  const renderChooseImport = () => (
+    <div className="step-content">
+      <h2>Choose Import Type</h2>
+      <div className="import-types">
+        <button 
+          className={`import-type-btn ${importType === 'csv' ? 'active' : ''}`}
+          onClick={() => setImportType('csv')}
+        >
+          <h3>CSV Import</h3>
+          <p>Upload a CSV file with prospect data</p>
+        </button>
+        <button 
+          className={`import-type-btn ${importType === 'apollo' ? 'active' : ''}`}
+          onClick={() => setImportType('apollo')}
+        >
+          <h3>Apollo Search</h3>
+          <p>Search and import from Apollo.io</p>
+        </button>
+      </div>
+
+      {importType === 'csv' && (
+        <div className="csv-upload">
+          <label className="file-upload-label">
+            <input 
+              type="file" 
+              accept=".csv,.xlsx,.xls"
+              onChange={handleFileSelect}
+            />
+            <span>{file ? file.name : 'Drop your CSV file here or click to browse'}</span>
+          </label>
+          <p className="help-text">Supported formats: CSV, XLS, XLSX</p>
+        </div>
+      )}
+
+      <div className="wizard-actions">
+        <button onClick={onClose}>Cancel</button>
+        <button 
+          onClick={() => importType === 'csv' ? handleUploadCSV() : setStep(2)}
+          disabled={importType === 'csv' && !file}
+        >
+          Next
+        </button>
+      </div>
+    </div>
+  );
+
+  // STEP 2: Map Fields
+  const renderMapFields = () => {
+    const targetFields = [
+      { key: 'skip', label: 'Skip Field', required: false },
+      { key: 'firstName', label: 'First Name', required: true },
+      { key: 'middleName', label: 'Middle Name', required: false },
+      { key: 'lastName', label: 'Last Name', required: true },
+      { key: 'fullName', label: 'Full Name', required: false },
+      { key: 'title', label: 'Title', required: false },
+      { key: 'department', label: 'Department', required: false },
+      { key: 'seniority', label: 'Seniority', required: false },
+      { key: 'companyName', label: 'Company Name', required: false },
+      { key: 'website', label: 'Website URL', required: false },
+      { key: 'email', label: 'Primary Email', required: true },
+      { key: 'phone', label: 'Mobile Phone', required: false },
+      { key: 'linkedinUrl', label: 'LinkedIn URL', required: false },
+      { key: 'city', label: 'City', required: false },
+      { key: 'state', label: 'State', required: false },
+      { key: 'country', label: 'Country', required: false },
+    ];
+
+    return (
+      <div className="step-content">
+        <h2>Map Fields</h2>
+        <p>Map your CSV fields to AISDR fields</p>
+        
+        <div className="field-mapping-table">
+          <table>
+            <thead>
+              <tr>
+                <th>CSV Fields</th>
+                <th>AISDR Fields</th>
+                <th>Sample Data</th>
+              </tr>
+            </thead>
+            <tbody>
+              {headers.map((header, idx) => (
+                <tr key={idx}>
+                  <td>{header}</td>
+                  <td>
+                    <select 
+                      value={fieldMapping[header] || 'skip'}
+                      onChange={(e) => setFieldMapping({
+                        ...fieldMapping,
+                        [header]: e.target.value
+                      })}
+                    >
+                      {targetFields.map(field => (
+                        <option key={field.key} value={field.key}>
+                          {field.label} {field.required ? '*' : ''}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                  <td className="sample-data">
+                    {sampleData[0]?.[header] || '-'}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="wizard-actions">
+          <button onClick={() => setStep(1)}>Back</button>
+          <button onClick={() => setStep(3)}>Continue</button>
+        </div>
+      </div>
+    );
+  };
+
+  // STEP 3: Review & Import
+  const renderReview = () => (
+    <div className="step-content">
+      <h2>Review and Import</h2>
+      
+      <div className="import-summary">
+        <h3>Import Summary</h3>
+        <p>Total rows: {sampleData.length}</p>
+        <p>Mapped fields: {Object.values(fieldMapping).filter(v => v !== 'skip').length}</p>
+      </div>
+
+      <div className="import-options">
+        <label>
+          <input type="checkbox" defaultChecked />
+          Validate emails when prospects are imported
+        </label>
+        <label>
+          <input type="checkbox" defaultChecked />
+          Add prospects to accounts based on domain name
+        </label>
+      </div>
+
+      <div className="wizard-actions">
+        <button onClick={() => setStep(2)}>Back</button>
+        <button onClick={handleImport} disabled={loading}>
+          {loading ? 'Importing...' : 'Import Prospects'}
+        </button>
+      </div>
+    </div>
+  );
+
+  // STEP 4: Results
+  const renderResults = () => (
+    <div className="step-content">
+      <h2>Import Complete!</h2>
+      
+      {importStats && (
+        <div className="import-results">
+          <div className="stat-card success">
+            <h3>{importStats.imported}</h3>
+            <p>Imported</p>
+          </div>
+          <div className="stat-card warning">
+            <h3>{importStats.skipped}</h3>
+            <p>Skipped (Duplicates)</p>
+          </div>
+          <div className="stat-card error">
+            <h3>{importStats.errors}</h3>
+            <p>Errors</p>
+          </div>
+        </div>
+      )}
+
+      <div className="wizard-actions">
+        <button onClick={onClose}>Close</button>
+        <button onClick={() => window.location.href = '/prospects'}>
+          View Prospects
+        </button>
+      </div>
+    </div>
+  );
+
+  // Handlers
+  const handleFileSelect = (e) => {
+    setFile(e.target.files[0]);
+  };
+
+  const handleUploadCSV = async () => {
+    setLoading(true);
+    try {
+      const result = await api.uploadCSV(file);
+      setHeaders(result.headers);
+      setSampleData(result.sample);
+      
+      // Auto-detect field mappings
+      const autoMapping = autoDetectFields(result.headers);
+      setFieldMapping(autoMapping);
+      
+      setStep(2);
+    } catch (error) {
+      alert('Upload failed: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const autoDetectFields = (headers) => {
+    const mapping = {};
+    const patterns = {
+      firstName: /first.*name|fname/i,
+      lastName: /last.*name|lname/i,
+      fullName: /full.*name|name|contact/i,
+      email: /email|e-mail|mail/i,
+      phone: /phone|mobile|cell/i,
+      title: /title|position|role/i,
+      companyName: /company|organization|org/i,
+      website: /website|domain|url/i,
+      linkedinUrl: /linkedin|li.*url/i,
+      city: /city/i,
+      state: /state|province/i,
+      country: /country/i,
+    };
+
+    headers.forEach(header => {
+      for (const [field, pattern] of Object.entries(patterns)) {
+        if (pattern.test(header)) {
+          mapping[header] = field;
+          break;
+        }
+      }
+      if (!mapping[header]) mapping[header] = 'skip';
+    });
+
+    return mapping;
+  };
+
+  const handleImport = async () => {
+    setLoading(true);
+    try {
+      // Transform CSV data according to field mapping
+      const transformedData = sampleData.map(row => {
+        const prospect = {};
+        Object.entries(fieldMapping).forEach(([csvField, targetField]) => {
+          if (targetField !== 'skip') {
+            prospect[targetField] = row[csvField];
+          }
+        });
+        return prospect;
+      });
+
+      // Send to backend for import
+      const result = await api.importCSVData(transformedData);
+      setImportStats(result.stats);
+      setStep(4);
+    } catch (error) {
+      alert('Import failed: ' + error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="import-wizard-overlay">
+      <div className="import-wizard">
+        <div className="wizard-header">
+          <h1>Import Prospects</h1>
+          <div className="wizard-steps">
+            <span className={step >= 1 ? 'active' : ''}>1. Choose Import</span>
+            <span className={step >= 2 ? 'active' : ''}>2. Map Fields</span>
+            <span className={step >= 3 ? 'active' : ''}>3. Review and Import</span>
+            <span className={step >= 4 ? 'active' : ''}>4. Results</span>
+          </div>
+        </div>
+
+        {step === 1 && renderChooseImport()}
+        {step === 2 && renderMapFields()}
+        {step === 3 && renderReview()}
+        {step === 4 && renderResults()}
+      </div>
+    </div>
+  );
+};
+
+export default ImportWizard;
+
+
+// ============================================
+// 6. Add CSV Import Data Endpoint
+// ============================================
+// Add to server/routes/upload.routes.js
+
+router.post('/import/csv/data', auth, async (req, res, next) => {
+  try {
+    const { prospects } = req.body;
+    const userId = req.user.id;
+    const searchId = uuidv4();
+
+    await query(`INSERT INTO searches (id, user_id, search_type, status)
+                 VALUES ($1,$2,'csv_upload','processing')`, [searchId, userId]);
+
+    const stats = await importService.importProspects(searchId, prospects, userId);
+    res.json({ searchId, stats });
+  } catch (e) { next(e); }
+});
+
+// Update web/src/api.js
+export const api = {
+  // ... existing methods
+  importCSVData: (prospects) => 
+    fetch(`${base}/import/csv/data`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ prospects })
+    }).then(r => r.json()),
+};

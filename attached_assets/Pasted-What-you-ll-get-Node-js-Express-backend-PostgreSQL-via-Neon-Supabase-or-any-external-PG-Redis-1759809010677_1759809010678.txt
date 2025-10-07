@@ -1,0 +1,1003 @@
+What you’ll get
+
+Node.js + Express backend
+
+PostgreSQL (via Neon/Supabase or any external PG)
+
+Redis (for jobs) via Upstash or any Redis URL
+
+API: Search (Apollo), Import, CSV Upload→Map→Review→Commit, Status
+
+Enrichment: single & batch jobs, job status, deterministic merge rules
+
+Minimal React UI for: Import wizard (4 steps), Prospect table, Enrich buttons
+
+Ready-to-run scripts & seed data
+
+1) Create a fresh Replit
+
+New Repl → Node.js template.
+
+In Secrets (Environment variables) add:
+
+DATABASE_URL = postgresql://USER:PASS@HOST:PORT/DB?sslmode=require
+
+REDIS_URL = rediss://:PASSWORD@HOST:PORT (Upstash works great)
+
+APOLLO_API_KEY = xxxxx
+
+API_TIMEOUT = 30000
+
+MAX_IMPORT_SIZE = 1000
+
+In Shell run:
+
+npm init -y
+npm i express pg axios multer csv-parse xlsx bullmq ioredis morgan uuid cors
+npm i -D nodemon vite @vitejs/plugin-react react react-dom
+
+2) Apply the “builder prompt” (below)
+
+Open the Replit AI (Ghostwriter) or your editor and paste the prompt.
+
+It will generate:
+
+server/ (API, services, controllers, routes)
+
+server/db/migrations.sql (single migration you can run via script)
+
+web/ (Vite + React; minimal UI)
+
+package.json scripts to run both dev servers concurrently
+
+Small utility tests (optional)
+
+3) Run migrations
+
+In Shell:
+
+node server/db/migrate.js
+
+
+It will read migrations.sql and apply it to your DATABASE_URL.
+
+4) Start dev
+npm run dev
+
+
+Backend on http://localhost:3001
+
+Frontend on http://localhost:5173 (proxied /api/* to backend)
+
+5) Smoke test (no UI)
+# health
+curl http://localhost:3001/api/health
+
+# search preview (filters path)
+curl -X POST http://localhost:3001/api/prospects/search \
+  -H "Content-Type: application/json" \
+  -d '{"searchType":"filters","filters":{"jobTitles":["CTO"]},"preview":true,"limit":50}'
+
+6) Try the UI
+
+Open the running web app.
+
+Go to Import Prospects → Choose Import (CSV) → Map Fields → Review & Import → Results.
+
+Then go to Prospects table → select rows → Enrich (Apollo).
+
+Watch job progress in the job drawer.
+
+7) You’re ready to iterate
+
+Adjust merge rules in server/config/mergeRules.json.
+
+Extend CSV header auto-detect patterns in server/services/csv.service.js.
+
+Skin the UI as you like—structure is there.
+
+ONE-SHOT BUILDER PROMPT (paste this into Replit AI)
+
+Create a full-stack AISDR skeleton with Node/Express + PostgreSQL + Redis jobs + React (Vite). Use the exact file tree and code below. Respect all TODOs. After generating, ensure npm run dev starts both servers and the DB migration runs via node server/db/migrate.js.
+
+File tree
+.
+├─ package.json
+├─ vite.config.ts
+├─ server/
+│  ├─ index.js
+│  ├─ db/
+│  │  ├─ client.js
+│  │  ├─ migrate.js
+│  │  └─ migrations.sql
+│  ├─ routes/
+│  │  ├─ prospects.routes.js
+│  │  ├─ enrichment.routes.js
+│  │  └─ upload.routes.js
+│  ├─ controllers/
+│  │  ├─ prospects.controller.js
+│  │  └─ enrichment.controller.js
+│  ├─ services/
+│  │  ├─ apollo.service.js
+│  │  ├─ filters.service.js
+│  │  ├─ import.service.js
+│  │  ├─ csv.service.js
+│  │  ├─ validation.service.js
+│  │  └─ merge.service.js
+│  ├─ providers/
+│  │  └─ apolloProvider.js
+│  ├─ queues/
+│  │  └─ enrichment.queue.js
+│  ├─ middleware/
+│  │  ├─ auth.js
+│  │  └─ error.js
+│  └─ utils/
+│     ├─ http.js
+│     └─ normalize.js
+└─ web/
+   ├─ index.html
+   ├─ src/
+   │  ├─ main.jsx
+   │  ├─ App.jsx
+   │  ├─ api.js
+   │  ├─ components/
+   │  │  ├─ ImportWizard.jsx
+   │  │  ├─ PreviewResults.jsx
+   │  │  ├─ ProspectsTable.jsx
+   │  │  └─ JobDrawer.jsx
+   │  └─ styles.css
+   └─ proxy.config.json
+
+package.json
+{
+  "name": "aisdr",
+  "private": true,
+  "scripts": {
+    "dev:server": "nodemon server/index.js",
+    "dev:web": "vite --config vite.config.ts",
+    "dev": "npm-run-all -p dev:server dev:web",
+    "build": "vite build",
+    "preview": "vite preview",
+    "migrate": "node server/db/migrate.js"
+  },
+  "dependencies": {
+    "axios": "^1.6.8",
+    "bullmq": "^5.7.8",
+    "cors": "^2.8.5",
+    "csv-parse": "^5.5.6",
+    "express": "^4.19.2",
+    "ioredis": "^5.4.1",
+    "morgan": "^1.10.0",
+    "multer": "^1.4.5-lts.1",
+    "pg": "^8.11.3",
+    "uuid": "^9.0.1",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.2.0",
+    "nodemon": "^3.0.1",
+    "npm-run-all": "^4.1.5",
+    "vite": "^5.0.0"
+  }
+}
+
+vite.config.ts
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    port: 5173,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3001',
+        changeOrigin: true
+      }
+    }
+  }
+})
+
+server/index.js
+const express = require('express');
+const morgan = require('morgan');
+const cors = require('cors');
+const { initQueue } = require('./queues/enrichment.queue');
+const prospectsRoutes = require('./routes/prospects.routes');
+const enrichmentRoutes = require('./routes/enrichment.routes');
+const uploadRoutes = require('./routes/upload.routes');
+const errorMiddleware = require('./middleware/error');
+
+const app = express();
+app.use(cors());
+app.use(express.json({ limit: '5mb' }));
+app.use(morgan('dev'));
+
+app.get('/api/health', (_req, res) => res.json({ ok: true }));
+
+app.use('/api/prospects', prospectsRoutes);
+app.use('/api', enrichmentRoutes);
+app.use('/api', uploadRoutes);
+
+app.use(errorMiddleware);
+
+const PORT = process.env.PORT || 3001;
+
+// init queue worker
+initQueue();
+
+app.listen(PORT, () => {
+  console.log(`API running on ${PORT}`);
+});
+
+server/db/client.js
+const { Pool } = require('pg');
+const pool = new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } });
+module.exports = { pool, query: (text, params) => pool.query(text, params) };
+
+server/db/migrate.js
+const fs = require('fs');
+const path = require('path');
+const { query } = require('./client');
+
+(async () => {
+  const sql = fs.readFileSync(path.join(__dirname, 'migrations.sql'), 'utf8');
+  await query(sql);
+  console.log('Migrations applied');
+  process.exit(0);
+})().catch(e => { console.error(e); process.exit(1); });
+
+server/db/migrations.sql
+-- Order matters
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+CREATE TABLE IF NOT EXISTS searches (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL,
+  search_type VARCHAR(50),
+  filters JSONB,
+  ai_query TEXT,
+  total_results INTEGER,
+  imported_count INTEGER,
+  skipped_count INTEGER,
+  error_count INTEGER,
+  status VARCHAR(50),
+  error_details JSONB,
+  created_at TIMESTAMP DEFAULT NOW(),
+  completed_at TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS prospects (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  apollo_id VARCHAR(255) UNIQUE,
+  lead_name VARCHAR(255) NOT NULL,
+  email VARCHAR(255),
+  phone VARCHAR(50),
+  job_title VARCHAR(255),
+  department VARCHAR(100),
+  seniority VARCHAR(50),
+  company_name VARCHAR(255),
+  company_domain VARCHAR(255),
+  hq_location VARCHAR(255),
+  lead_location VARCHAR(255),
+  industry VARCHAR(255),
+  technologies JSONB,
+  revenue_range VARCHAR(100),
+  employee_range VARCHAR(100),
+  funding_stage VARCHAR(100),
+  founded_year INTEGER,
+  linkedin_url VARCHAR(500),
+  source VARCHAR(50) DEFAULT 'apollo',
+  search_id UUID REFERENCES searches(id),
+  enrichment_status VARCHAR(30) DEFAULT 'never',
+  enrichment_source VARCHAR(50),
+  last_enriched_at TIMESTAMP,
+  enrich_confidence JSONB DEFAULT '{}'::jsonb,
+  field_provenance JSONB DEFAULT '{}'::jsonb,
+  enrich_attempts INT DEFAULT 0,
+  apollo_person JSONB,
+  apollo_org JSONB,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_prospects_email ON prospects(email);
+CREATE INDEX IF NOT EXISTS idx_prospects_apollo_id ON prospects(apollo_id);
+CREATE INDEX IF NOT EXISTS idx_prospects_company_domain ON prospects(company_domain);
+
+CREATE TABLE IF NOT EXISTS import_errors (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  search_id UUID REFERENCES searches(id),
+  apollo_record JSONB,
+  error_message TEXT,
+  error_type VARCHAR(100),
+  created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS enrichment_jobs (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID NOT NULL,
+  provider VARCHAR(50) NOT NULL DEFAULT 'apollo',
+  scope VARCHAR(30) NOT NULL,
+  prospect_ids UUID[] NOT NULL,
+  requested_at TIMESTAMP DEFAULT NOW(),
+  status VARCHAR(30) NOT NULL DEFAULT 'queued',
+  total INT DEFAULT 0,
+  processed INT DEFAULT 0,
+  enriched INT DEFAULT 0,
+  partial INT DEFAULT 0,
+  failed INT DEFAULT 0,
+  error_details JSONB
+);
+
+CREATE TABLE IF NOT EXISTS enrichment_changes (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  prospect_id UUID REFERENCES prospects(id) ON DELETE CASCADE,
+  provider VARCHAR(50),
+  changed_at TIMESTAMP DEFAULT NOW(),
+  changes JSONB NOT NULL,
+  requested_by UUID
+);
+
+server/middleware/auth.js
+// Simple stub auth; attach a fake user
+module.exports = (req, _res, next) => {
+  req.user = { id: '00000000-0000-0000-0000-000000000001' };
+  next();
+};
+
+server/middleware/error.js
+module.exports = (err, _req, res, _next) => {
+  console.error(err);
+  res.status(err.status || 500).json({ error: err.message || 'Server error' });
+};
+
+server/utils/normalize.js
+const toLower = s => (s || '').toLowerCase();
+const normEmail = e => toLower(e?.trim());
+const toDomain = u => (u||'').replace(/^https?:\/\//,'').replace(/\/.*$/,'').toLowerCase();
+module.exports = { normEmail, toDomain };
+
+server/utils/http.js
+function asyncHandler(fn){return (req,res,next)=>Promise.resolve(fn(req,res,next)).catch(next)}
+module.exports = { asyncHandler };
+
+server/services/filters.service.js
+// NOTE: async because we may map industries -> Apollo tag IDs
+const mapIndustriesToIds = async (industries=[]) => industries; // TODO: convert via cached dictionary if needed
+
+const mapFiltersToApollo = async (filters = {}) => {
+  const apolloPayload = { page: 1, per_page: 100 };
+
+  if (filters.jobTitles?.length) apolloPayload.person_titles = filters.jobTitles;
+  if (filters.seniorities?.length) apolloPayload.person_seniorities = filters.seniorities;
+  if (filters.departments?.length) apolloPayload.person_departments = filters.departments;
+  if (filters.leadLocations?.length) apolloPayload.person_locations = filters.leadLocations;
+  if (filters.hqLocations?.length) apolloPayload.organization_locations = filters.hqLocations;
+
+  if (filters.industries?.length) {
+    apolloPayload.organization_industry_tag_ids = await mapIndustriesToIds(filters.industries);
+  }
+  if (filters.technologies?.length) apolloPayload.technologies = filters.technologies;
+
+  if (filters.revenueRange?.length) {
+    apolloPayload.revenue_range = { min: null, max: null }; // TODO: parse ranges
+  }
+  if (filters.employeeRange?.length) {
+    apolloPayload.organization_num_employees_ranges = filters.employeeRange;
+  }
+  if (filters.targetDomains?.length) apolloPayload.domains = filters.targetDomains;
+  if (filters.companyKeywords?.length) apolloPayload.keywords = filters.companyKeywords.join(' OR ');
+  if (filters.fundingStages?.length) apolloPayload.funding_stage_list = filters.fundingStages;
+  if (filters.foundedYearMin || filters.foundedYearMax) {
+    apolloPayload.organization_founded_year_range = {
+      min: filters.foundedYearMin,
+      max: filters.foundedYearMax
+    };
+  }
+  return apolloPayload;
+};
+
+module.exports = { mapFiltersToApollo };
+
+server/services/apollo.service.js
+const axios = require('axios');
+
+class ApolloService {
+  constructor() {
+    this.baseURL = 'https://api.apollo.io/v1';
+    this.apiKey = process.env.APOLLO_API_KEY;
+    this.maxRetries = 3;
+    this.retryDelay = 1000;
+  }
+
+  async searchPeople(filters, page = 1) {
+    return this.makeRequest('/mixed_people/search', { ...filters, api_key: this.apiKey, page, per_page: 100 });
+  }
+
+  async makeRequest(endpoint, data, retryCount = 0) {
+    try {
+      const response = await axios.post(`${this.baseURL}${endpoint}`, data, {
+        timeout: Number(process.env.API_TIMEOUT) || 30000,
+        headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-cache' }
+      });
+      return { success: true, data: response.data };
+    } catch (error) {
+      if (error.response?.status === 429) {
+        const retryAfter = Number(error.response.headers['retry-after'] || 60);
+        await this.sleep(retryAfter * 1000);
+        return this.makeRequest(endpoint, data, retryCount);
+      }
+      if (error.code === 'ECONNABORTED' || error.response?.status >= 500) {
+        if (retryCount < this.maxRetries) {
+          const delay = this.retryDelay * Math.pow(2, retryCount);
+          await this.sleep(delay);
+          return this.makeRequest(endpoint, data, retryCount + 1);
+        }
+      }
+      if (error.response?.status === 401) throw new Error('Invalid Apollo API key');
+      return { success: false, error: { message: error.response?.data?.message || error.message, status: error.response?.status, type: 'apollo_api_error' } };
+    }
+  }
+
+  sleep(ms){ return new Promise(r=>setTimeout(r,ms)); }
+
+  async getAllResults(filters, maxResults = 1000) {
+    let all = [], page = 1, hasMore = true;
+    while (hasMore && all.length < maxResults) {
+      const result = await this.searchPeople(filters, page);
+      if (!result.success) throw new Error(result.error.message);
+      const { people, pagination } = result.data;
+      all = all.concat(people || []);
+      hasMore = pagination.page < pagination.total_pages;
+      page++;
+      if (hasMore) await this.sleep(500);
+    }
+    return all.slice(0, maxResults);
+  }
+}
+module.exports = new ApolloService();
+
+server/services/validation.service.js
+module.exports = {
+  validatePerson(person) {
+    if (!person.name?.trim()) return { valid:false, error:'Missing lead name' };
+    if (!person.email && !person.linkedin_url) return { valid:false, error:'Missing both email and LinkedIn URL' };
+    return { valid:true };
+  }
+};
+
+server/services/import.service.js
+const { query } = require('../db/client');
+const { validatePerson } = require('./validation.service');
+const { toDomain } = require('../utils/normalize');
+
+class ImportService {
+  async importProspects(searchId, apolloResults, userId) {
+    const stats = { total: apolloResults.length, imported: 0, skipped: 0, errors: 0 };
+
+    await query(`UPDATE searches SET status='processing' WHERE id=$1`, [searchId]);
+
+    for (const person of apolloResults) {
+      try {
+        const dup = await this.findDuplicate(person);
+        if (dup) { stats.skipped++; continue; }
+
+        const validation = validatePerson(person);
+        if (!validation.valid) {
+          stats.errors++;
+          await this.logError(searchId, person, validation.error);
+          continue;
+        }
+
+        const p = this.transformApolloToDB(person, searchId);
+        await this.insertProspect(p);
+        stats.imported++;
+      } catch (e) {
+        stats.errors++;
+        await this.logError(searchId, person, e.message);
+      }
+    }
+
+    await query(
+      `UPDATE searches SET status='completed', imported_count=$1, skipped_count=$2, error_count=$3, completed_at=NOW() WHERE id=$4`,
+      [stats.imported, stats.skipped, stats.errors, searchId]
+    );
+
+    return stats;
+  }
+
+  async findDuplicate(person) {
+    if (person.id) {
+      const r = await query(`SELECT id FROM prospects WHERE apollo_id=$1`, [person.id]);
+      if (r.rows.length) return r.rows[0];
+    }
+    if (person.email) {
+      const r = await query(`SELECT id FROM prospects WHERE email=$1`, [person.email]);
+      if (r.rows.length) return r.rows[0];
+    }
+    if (person.name && person.organization?.name) {
+      const r = await query(
+        `SELECT id FROM prospects WHERE LOWER(lead_name)=LOWER($1) AND LOWER(company_name)=LOWER($2)`,
+        [person.name, person.organization.name]
+      );
+      if (r.rows.length) return r.rows[0];
+    }
+    return null;
+  }
+
+  transformApolloToDB(person, searchId) {
+    return {
+      apollo_id: person.id,
+      lead_name: person.name,
+      email: person.email,
+      phone: person.phone_numbers?.[0]?.raw_number || null,
+      job_title: person.title,
+      department: person.functions?.[0] || null,
+      seniority: person.seniority || null,
+      company_name: person.organization?.name || null,
+      company_domain: toDomain(person.organization?.website_url),
+      hq_location: [person.organization?.city, person.organization?.state, person.organization?.country].filter(Boolean).join(', '),
+      lead_location: [person.city, person.state, person.country].filter(Boolean).join(', '),
+      industry: person.organization?.industry || null,
+      technologies: person.organization?.technologies || [],
+      revenue_range: person.organization?.revenue_range || null,
+      employee_range: person.organization?.estimated_num_employees || null,
+      funding_stage: person.organization?.funding_stage || null,
+      founded_year: person.organization?.founded_year || null,
+      linkedin_url: person.linkedin_url || null,
+      search_id: searchId
+    };
+  }
+
+  async insertProspect(p) {
+    const sql = `
+      INSERT INTO prospects (
+        apollo_id, lead_name, email, phone, job_title, department, seniority,
+        company_name, company_domain, hq_location, lead_location, industry, technologies,
+        revenue_range, employee_range, funding_stage, founded_year, linkedin_url, search_id
+      ) VALUES (
+        $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19
+      )`;
+    const vals = [
+      p.apollo_id, p.lead_name, p.email, p.phone, p.job_title, p.department, p.seniority,
+      p.company_name, p.company_domain, p.hq_location, p.lead_location, p.industry, JSON.stringify(p.technologies),
+      p.revenue_range, p.employee_range, p.funding_stage, p.founded_year, p.linkedin_url, p.search_id
+    ];
+    await query(sql, vals);
+  }
+
+  async logError(searchId, person, msg) {
+    await query(
+      `INSERT INTO import_errors (search_id, apollo_record, error_message, error_type)
+       VALUES ($1,$2,$3,$4)`,
+      [searchId, JSON.stringify(person), msg, this.categorizeError(msg)]
+    );
+  }
+
+  categorizeError(msg) {
+    if (msg.includes('Missing')) return 'validation_error';
+    if (msg.includes('API')) return 'api_error';
+    if (msg.includes('duplicate')) return 'duplicate_error';
+    return 'unknown_error';
+  }
+}
+
+module.exports = new ImportService();
+
+server/providers/apolloProvider.js
+const axios = require('axios');
+
+class ApolloProvider {
+  constructor() {
+    this.baseURL = 'https://api.apollo.io/v1';
+    this.apiKey = process.env.APOLLO_API_KEY;
+  }
+
+  // Try email, then LI URL, then name+domain
+  async enrich({ email, linkedin_url, name, company_domain }) {
+    const tries = [];
+    if (email) tries.push({ email });
+    if (linkedin_url) tries.push({ linkedin_url });
+    if (name && company_domain) tries.push({ name, domain: company_domain });
+
+    for (const body of tries) {
+      try {
+        const r = await axios.post(`${this.baseURL}/people/match`, { api_key: this.apiKey, ...body }, { timeout: Number(process.env.API_TIMEOUT)||30000 });
+        if (r.data?.person) {
+          const { person, organization } = r.data;
+          return { success: true, person, organization, confidenceByField: {} , raw:{ person, organization } };
+        }
+      } catch (e) { /* continue to next strategy */ }
+    }
+    return { success:false, error:{ type:'not_found', message:'No match'} };
+  }
+}
+module.exports = new ApolloProvider();
+
+server/services/merge.service.js
+const rules = require('../config/mergeRules.json');
+
+const apply = (existing, out) => {
+  const diff = {};
+  const set = {};
+  const provenance = existing.field_provenance || {};
+  const confidence = existing.enrich_confidence || {};
+  let partialFlag = false;
+
+  const cand = out.person || {};
+  const org  = out.organization || {};
+
+  const candidate = {
+    job_title: cand.title,
+    department: cand.department,
+    seniority: cand.seniority,
+    linkedin_url: cand.linkedin_url,
+    email: cand.email,
+    phone: (cand.phone_numbers && cand.phone_numbers[0]?.raw_number) || null,
+    company_name: org.name,
+    company_domain: org.website_url,
+    industry: org.industry,
+    technologies: org.technologies || [],
+    revenue_range: org.revenue_range,
+    employee_range: org.estimated_num_employees,
+    funding_stage: org.funding_stage,
+    founded_year: org.founded_year,
+    hq_location: [org.city, org.state, org.country].filter(Boolean).join(', '),
+    lead_location: [cand.city, cand.state, cand.country].filter(Boolean).join(', ')
+  };
+
+  Object.entries(candidate).forEach(([field, value]) => {
+    const rule = rules[field];
+    if (!rule) return;
+
+    const conf = out.confidenceByField?.[field] ?? 1.0;
+    const current = existing[field];
+
+    const allow =
+      rule.strategy === 'fill_if_blank' ? (current == null || current === '') && value :
+      rule.strategy === 'prefer_provider' ? (conf >= (rule.min_conf ?? 0) && value) :
+      rule.strategy === 'prefer_provider_if_differs' ? (conf >= (rule.min_conf ?? 0) && value && value !== current) :
+      rule.strategy === 'keep_existing' ? null :
+      rule.strategy === 'union' ? Array.isArray(value) : null;
+
+    if (!allow) { if (rule.strategy !== 'keep_existing') partialFlag = true; return; }
+
+    if (rule.strategy === 'union') {
+      const next = Array.from(new Set([...(current || []), ...value]));
+      if (JSON.stringify(next) !== JSON.stringify(current)) {
+        set[field] = JSON.stringify(next);
+        diff[field] = { from: current ?? null, to: next, confidence: conf, source: 'apollo' };
+      }
+    } else if (value !== undefined && value !== null && value !== current) {
+      set[field] = value;
+      diff[field] = { from: current ?? null, to: value, confidence: conf, source: 'apollo' };
+    }
+
+    provenance[field] = { source: 'apollo', at: new Date().toISOString() };
+    confidence[field] = conf;
+  });
+
+  const keys = Object.keys(set);
+  const sql = keys.length
+    ? `UPDATE prospects SET ${keys.map((k,i)=>`${k}=$${i+1}`).join(', ')}, updated_at=NOW() WHERE id=$${keys.length+1}`
+    : null;
+
+  return { changes: { sql, values: [...Object.values(set), existing.id], set, diff }, confidence, provenance, partialFlag };
+};
+
+module.exports = { apply };
+
+server/config/mergeRules.json
+{
+  "job_title": { "strategy": "fill_if_blank" },
+  "department": { "strategy": "fill_if_blank" },
+  "seniority": { "strategy": "fill_if_blank" },
+  "linkedin_url": { "strategy": "prefer_provider", "min_conf": 0.7 },
+  "email": { "strategy": "keep_existing" },
+  "phone": { "strategy": "fill_if_blank" },
+  "company_name": { "strategy": "prefer_provider_if_differs", "min_conf": 0.8 },
+  "company_domain": { "strategy": "fill_if_blank" },
+  "industry": { "strategy": "prefer_provider_if_differs", "min_conf": 0.6 },
+  "technologies": { "strategy": "union" },
+  "revenue_range": { "strategy": "fill_if_blank" },
+  "employee_range": { "strategy": "fill_if_blank" },
+  "funding_stage": { "strategy": "fill_if_blank" },
+  "founded_year": { "strategy": "fill_if_blank" },
+  "hq_location": { "strategy": "fill_if_blank" },
+  "lead_location": { "strategy": "fill_if_blank" }
+}
+
+server/controllers/prospects.controller.js
+const { v4: uuidv4 } = require('uuid');
+const { query } = require('../db/client');
+const apolloService = require('../services/apollo.service');
+const { mapFiltersToApollo } = require('../services/filters.service');
+const importService = require('../services/import.service');
+const { asyncHandler } = require('../utils/http');
+
+class ProspectsController {
+  search = asyncHandler(async (req, res) => {
+    const { searchType, filters, aiQuery, preview, limit } = req.body;
+    const userId = req.user.id;
+    const searchId = uuidv4();
+
+    await query(`INSERT INTO searches (id, user_id, search_type, filters, ai_query, status)
+                 VALUES ($1,$2,$3,$4,$5,'pending')`,
+                [searchId, userId, searchType, JSON.stringify(filters||{}), aiQuery||null]);
+
+    let apolloFilters;
+    if (searchType === 'ai') {
+      // TODO: convert aiQuery -> filters; for now pass-through
+      apolloFilters = await mapFiltersToApollo(filters||{});
+    } else {
+      apolloFilters = await mapFiltersToApollo(filters||{});
+    }
+
+    const result = await apolloService.searchPeople(apolloFilters, 1);
+    if (!result.success) throw new Error(result.error.message);
+
+    const totalResults = result.data.pagination?.total_entries || 0;
+    await query(`UPDATE searches SET total_results=$1 WHERE id=$2`, [totalResults, searchId]);
+
+    if (preview) {
+      return res.json({ searchId, status: 'preview', totalResults, sample: (result.data.people||[]).slice(0,10),
+        message: `Found ${totalResults} matches. Click import to add to prospects.` });
+    }
+
+    const max = Math.min(limit || 100, Number(process.env.MAX_IMPORT_SIZE)||1000);
+    const allPeople = await apolloService.getAllResults(apolloFilters, max);
+    const stats = await importService.importProspects(searchId, allPeople, userId);
+    res.json({ searchId, status:'completed', stats });
+  });
+
+  import = asyncHandler(async (req, res) => {
+    const { searchId, selectedIds, limit } = req.body;
+    const userId = req.user.id;
+    const s = await query(`SELECT * FROM searches WHERE id=$1`, [searchId]);
+    if (!s.rows.length) return res.status(404).json({ error:'Search not found' });
+
+    const filters = s.rows[0].filters || {};
+    const apolloFilters = await mapFiltersToApollo(filters);
+    const max = Math.min(limit || 100, Number(process.env.MAX_IMPORT_SIZE)||1000);
+
+    let people = [];
+    if (selectedIds?.length) {
+      // If Apollo doesn't filter by ids, a simple approach is fetch many then filter locally:
+      const tmp = await apolloService.getAllResults(apolloFilters, max);
+      const set = new Set(selectedIds);
+      people = tmp.filter(p => set.has(p.id));
+    } else {
+      people = await apolloService.getAllResults(apolloFilters, max);
+    }
+
+    const stats = await importService.importProspects(searchId, people, userId);
+    res.json({ searchId, status:'completed', stats });
+  });
+
+  status = asyncHandler(async (req, res) => {
+    const { searchId } = req.params;
+    const s = await query(`SELECT * FROM searches WHERE id=$1`, [searchId]);
+    if (!s.rows.length) return res.status(404).json({ error:'Search not found' });
+
+    const errors = await query(
+      `SELECT error_type, COUNT(*) as count, MAX(error_message) as sample
+       FROM import_errors WHERE search_id=$1 GROUP BY error_type`, [searchId]);
+
+    const d = s.rows[0];
+    res.json({
+      searchId,
+      status: d.status,
+      progress: {
+        total: d.total_results || 0,
+        imported: d.imported_count || 0,
+        skipped: d.skipped_count || 0,
+        errors: d.error_count || 0
+      },
+      errorSummary: errors.rows
+    });
+  });
+}
+
+module.exports = new ProspectsController();
+
+server/controllers/enrichment.controller.js
+const { v4: uuidv4 } = require('uuid');
+const { query } = require('../db/client');
+const { asyncHandler } = require('../utils/http');
+const { addJob } = require('../queues/enrichment.queue');
+
+class EnrichmentController {
+  startSingle = asyncHandler(async (req, res) => {
+    const { id } = req.params;
+    const provider = (req.body?.provider || 'apollo').toLowerCase();
+    const jobId = uuidv4();
+
+    await query(`INSERT INTO enrichment_jobs (id,user_id,provider,scope,prospect_ids,status,total)
+                 VALUES ($1,$2,$3,'single',ARRAY[$4]::uuid[],'queued',1)`,
+                [jobId, req.user.id, provider, id]);
+
+    await query(`UPDATE prospects SET enrichment_status='pending', enrich_attempts=enrich_attempts+1 WHERE id=$1`, [id]);
+
+    await addJob({ jobId, provider });
+    res.json({ jobId, status:'queued' });
+  });
+
+  startBatch = asyncHandler(async (req, res) => {
+    const provider = (req.body?.provider || 'apollo').toLowerCase();
+    let ids = req.body?.prospectIds;
+
+    if (!ids || !ids.length) {
+      const r = await query(`SELECT id FROM prospects WHERE enrichment_status IN ('never','failed') LIMIT 1000`);
+      ids = r.rows.map(x=>x.id);
+    }
+    const jobId = uuidv4();
+    await query(`INSERT INTO enrichment_jobs (id,user_id,provider,scope,prospect_ids,status,total)
+      VALUES ($1,$2,$3,'batch',$4,'queued',$5)`,
+      [jobId, req.user.id, provider, ids, ids.length]);
+
+    await query(`UPDATE prospects SET enrichment_status='pending', enrich_attempts=enrich_attempts+1 WHERE id = ANY($1::uuid[])`, [ids]);
+
+    await addJob({ jobId, provider });
+    res.json({ jobId, status:'queued', totalCandidates: ids.length });
+  });
+
+  status = asyncHandler(async (req, res) => {
+    const { jobId } = req.params;
+    const j = await query(`SELECT * FROM enrichment_jobs WHERE id=$1`, [jobId]);
+    if (!j.rows.length) return res.status(404).json({ error:'Job not found' });
+    const r = j.rows[0];
+    res.json({
+      jobId,
+      status: r.status,
+      totals: { total:r.total, processed:r.processed, enriched:r.enriched, partial:r.partial, failed:r.failed },
+      errorDetails: r.error_details
+    });
+  });
+}
+module.exports = new EnrichmentController();
+
+server/routes/prospects.routes.js
+const router = require('express').Router();
+const ctrl = require('../controllers/prospects.controller');
+const auth = require('../middleware/auth');
+
+router.post('/search', auth, ctrl.search);
+router.post('/import', auth, ctrl.import);
+router.get('/search/:searchId/status', auth, ctrl.status);
+
+module.exports = router;
+
+server/routes/enrichment.routes.js
+const router = require('express').Router();
+const ctrl = require('../controllers/enrichment.controller');
+const auth = require('../middleware/auth');
+
+router.post('/prospects/:id/enrich', auth, ctrl.startSingle);
+router.post('/prospects/enrich', auth, ctrl.startBatch);
+router.get('/prospects/enrichment/:jobId/status', auth, ctrl.status);
+
+module.exports = router;
+
+server/services/csv.service.js
+const multer = require('multer');
+const { parse } = require('csv-parse');
+const xlsx = require('xlsx');
+const upload = multer({ dest: '/tmp' });
+
+// Parse CSV or XLS/XLSX into { headers, rows }
+const parseFile = async (file) => {
+  if (/\.(xlsx?|xls)$/i.test(file.originalname)) {
+    const wb = xlsx.readFile(file.path);
+    const ws = wb.Sheets[wb.SheetNames[0]];
+    const json = xlsx.utils.sheet_to_json(ws, { defval: '' });
+    const headers = Object.keys(json[0] || {});
+    return { headers, rows: json };
+  }
+  // CSV
+  const content = require('fs').readFileSync(file.path, 'utf8');
+  return new Promise((resolve, reject) => {
+    const rows = [];
+    parse(content, { columns: true, skip_empty_lines: true })
+      .on('data', row => rows.push(row))
+      .on('end', () => resolve({ headers: Object.keys(rows[0]||{}), rows }))
+      .on('error', reject);
+  });
+};
+
+module.exports = { upload, parseFile };
+
+server/routes/upload.routes.js
+const router = require('express').Router();
+const { upload, parseFile } = require('../services/csv.service');
+const auth = require('../middleware/auth');
+
+router.post('/import/csv/upload', auth, upload.single('file'), async (req, res, next) => {
+  try {
+    const parsed = await parseFile(req.file);
+    const sample = parsed.rows.slice(0, 20);
+    res.json({ headers: parsed.headers, sample });
+  } catch (e) { next(e); }
+});
+
+module.exports = router;
+
+server/queues/enrichment.queue.js
+const { Queue, Worker } = require('bullmq');
+const IORedis = require('ioredis');
+const { query } = require('../db/client');
+const apolloProvider = require('../providers/apolloProvider');
+const merge = require('../services/merge.service');
+
+const connection = new IORedis(process.env.REDIS_URL);
+const queue = new Queue('enrichment', { connection });
+
+function initQueue(){
+  new Worker('enrichment', async (job) => {
+    const { jobId } = job.data;
+    await query(`UPDATE enrichment_jobs SET status='running' WHERE id=$1`, [jobId]);
+    const jr = await query(`SELECT * FROM enrichment_jobs WHERE id=$1`, [jobId]);
+    const ids = jr.rows[0].prospect_ids;
+
+    let processed=0, enriched=0, partial=0, failed=0;
+
+    for (const pid of ids) {
+      try {
+        await query(`UPDATE prospects SET enrichment_status='processing' WHERE id=$1`, [pid]);
+        const r = await query(`SELECT * FROM prospects WHERE id=$1`, [pid]);
+        if (!r.rows.length) throw new Error('prospect_missing');
+        const existing = r.rows[0];
+
+        const input = { email: existing.email, linkedin_url: existing.linkedin_url, name: existing.lead_name, company_domain: existing.company_domain };
+        const out = await apolloProvider.enrich(input);
+
+        if (!out.success) {
+          failed++; await query(`UPDATE prospects SET enrichment_status='failed' WHERE id=$1`, [pid]);
+        } else {
+          const m = merge.apply(existing, out);
+          if (m.changes.sql) await query(m.changes.sql, m.changes.values);
+          await query(
+            `INSERT INTO enrichment_changes (prospect_id, provider, changes, requested_by)
+             VALUES ($1,$2,$3,$4)`,
+            [pid, 'apollo', JSON.stringify(m.changes.diff), jr.rows[0].user_id]
+          );
+          await query(
+            `UPDATE prospects SET enrichment_status=$2, last_enriched_at=NOW(),
+             apollo_person=$3, apollo_org=$4, field_provenance=$5, enrich_confidence=$6
+             WHERE id=$1`,
+            [pid, m.partialFlag?'partial':'enriched', out.raw?.person||null, out.raw?.organization||null, m.provenance, m.confidence]
+          );
+          if (m.partialFlag) partial++; else enriched++;
+        }
+      } catch (e) {
+        failed++; await query(`UPDATE prospects SET enrichment_status='failed' WHERE id=$1`, [pid]);
+      } finally {
+        processed++;
+        await query(`UPDATE enrichment_jobs SET processed=$2, enriched=$3, partial=$4, failed=$5 WHERE id=$1`,
+          [jobId, processed, enriched, partial, failed]);
+        await new Promise(r=>setTimeout(r,200));
+      }
+    }
+    const finalStatus = failed === ids.length ? 'failed' : (partial > 0 ? 'partial' : 'completed');
+    await query(`UPDATE enrichment_jobs SET status=$2 WHERE id=$1`, [jobId, finalStatus]);
+  }, { connection, concurrency: 3 });
+}
+
+async function addJob(data){ await queue.add('enrich', data); }
+
+module.exports = { initQueue, addJob };
+
+web/src/api.js
+const base = '/api';
+export const api = {
+  health: () => fetch(`${base}/health`).then(r=>r.json()),
+  uploadCSV: (file) => {
+    const fd = new FormData(); fd.append('file', file);
+    return fetch(`${base}/import/csv/upload`, { method:'POST', body: fd }).then(r=>r.json());
+  },
+  search: (body) => fetch(`${base}/prospects/search`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)}).then(r=>r.json()),
+  importStatus: (searchId) => fetch(`${base}/prospects/search/${searchId}/status`).then(r=>r.json()),
+  enrichSingle: (id) => fetch(`${base}/prospects/${id}/enrich`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({})}).then(r=>r.json()),
+  enrichBatch: (ids) => fetch(`${base}/prospects/enrich`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ prospectIds: ids })}).then(r=>r.json()),
+  jobStatus: (jobId) => fetch(`${base}/prospects/enrichment/${jobId}/status`).then(r=>r.json())
+};
