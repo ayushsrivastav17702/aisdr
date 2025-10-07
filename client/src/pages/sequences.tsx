@@ -366,6 +366,7 @@ function ProductionSequenceBuilder({ sequenceId }: { sequenceId: string }) {
 
 function SequenceStepsTab({ sequenceId, steps }: { sequenceId: string; steps: any[] }) {
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showAIGenerator, setShowAIGenerator] = useState(false);
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [delayDays, setDelayDays] = useState("0");
@@ -397,6 +398,12 @@ function SequenceStepsTab({ sequenceId, steps }: { sequenceId: string; steps: an
       toast({ title: "Step deleted successfully" });
     },
   });
+
+  const handleUseAIEmail = (generatedEmail: { subject: string; body: string }) => {
+    setSubject(generatedEmail.subject);
+    setBody(generatedEmail.body);
+    setShowAIGenerator(false);
+  };
 
   return (
     <div className="space-y-4">
@@ -463,28 +470,52 @@ function SequenceStepsTab({ sequenceId, steps }: { sequenceId: string; steps: an
       <Dialog open={showAddModal} onOpenChange={setShowAddModal}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>Add Email Step</DialogTitle>
+            <div className="flex items-center justify-between">
+              <DialogTitle>Add Email Step</DialogTitle>
+              {!showAIGenerator && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowAIGenerator(true)}
+                  data-testid="button-use-ai"
+                >
+                  <Sparkles className="w-4 h-4 mr-2" />
+                  Use AI
+                </Button>
+              )}
+            </div>
           </DialogHeader>
           <div className="space-y-4">
-            <div>
-              <Label>Subject Line</Label>
-              <Input
-                value={subject}
-                onChange={(e) => setSubject(e.target.value)}
-                placeholder="Enter email subject..."
-                data-testid="input-step-subject"
+            {showAIGenerator ? (
+              <AIEmailGenerator 
+                sequenceId={sequenceId}
+                stepNumber={steps.length + 1}
+                onUseEmail={handleUseAIEmail}
+                onCancel={() => setShowAIGenerator(false)}
               />
-            </div>
-            <div>
-              <Label>Email Body</Label>
-              <Textarea
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
-                placeholder="Enter email content..."
-                rows={10}
-                data-testid="input-step-body"
-              />
-            </div>
+            ) : (
+              <>
+                <div>
+                  <Label>Subject Line</Label>
+                  <Input
+                    value={subject}
+                    onChange={(e) => setSubject(e.target.value)}
+                    placeholder="Enter email subject..."
+                    data-testid="input-step-subject"
+                  />
+                </div>
+                <div>
+                  <Label>Email Body</Label>
+                  <Textarea
+                    value={body}
+                    onChange={(e) => setBody(e.target.value)}
+                    placeholder="Enter email content..."
+                    rows={10}
+                    data-testid="input-step-body"
+                  />
+                </div>
+              </>
+            )}
             <div>
               <Label>Delay (days after previous step)</Label>
               <Input
@@ -866,5 +897,143 @@ function SettingsTab({ sequenceId, sequence }: { sequenceId: string; sequence: a
         </div>
       </CardContent>
     </Card>
+  );
+}
+
+function AIEmailGenerator({ 
+  sequenceId, 
+  stepNumber, 
+  onUseEmail, 
+  onCancel 
+}: { 
+  sequenceId: string; 
+  stepNumber: number; 
+  onUseEmail: (email: { subject: string; body: string }) => void; 
+  onCancel: () => void; 
+}) {
+  const [selectedProspectId, setSelectedProspectId] = useState("");
+  const [emailType, setEmailType] = useState<'cold_outreach' | 'follow_up'>('cold_outreach');
+  const [tone, setTone] = useState<'professional' | 'casual' | 'friendly'>('professional');
+  const { toast } = useToast();
+
+  const { data: allProspects } = useQuery({
+    queryKey: ["/api/prospects"],
+  });
+
+  const prospectsList = (allProspects as any)?.prospects || [];
+
+  const generateMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedProspectId) {
+        throw new Error("Please select a prospect");
+      }
+      const res = await apiRequest("POST", "/api/sequences/ai-generate-email", {
+        prospectId: selectedProspectId,
+        emailType,
+        sequenceStep: stepNumber,
+        tone
+      });
+      return await res.json();
+    },
+    onSuccess: (data) => {
+      toast({ 
+        title: "Email generated!", 
+        description: `Personalization score: ${data.confidenceScore}%` 
+      });
+      onUseEmail({ subject: data.subject, body: data.body });
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: "Generation failed", 
+        description: error.message || "Failed to generate email",
+        variant: "destructive" 
+      });
+    }
+  });
+
+  return (
+    <div className="space-y-4 p-4 bg-gradient-to-br from-blue-50 to-purple-50 dark:from-blue-950 dark:to-purple-950 rounded-lg">
+      <div className="flex items-center gap-2 mb-2">
+        <Sparkles className="w-5 h-5 text-blue-600" />
+        <h3 className="font-semibold">AI Email Generator</h3>
+      </div>
+
+      <div>
+        <Label>Select a Prospect</Label>
+        <Select value={selectedProspectId} onValueChange={setSelectedProspectId}>
+          <SelectTrigger data-testid="select-prospect">
+            <SelectValue placeholder="Choose a prospect to personalize for..." />
+          </SelectTrigger>
+          <SelectContent>
+            {prospectsList.map((prospect: any) => (
+              <SelectItem key={prospect.id} value={prospect.id}>
+                {prospect.fullName || `${prospect.firstName || ""} ${prospect.lastName || ""}`.trim()} 
+                {prospect.companyName ? ` - ${prospect.companyName}` : ""}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div>
+        <Label>Email Type</Label>
+        <Select value={emailType} onValueChange={(v: any) => setEmailType(v)}>
+          <SelectTrigger data-testid="select-email-type">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="cold_outreach">Cold Outreach</SelectItem>
+            <SelectItem value="follow_up">Follow-up</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div>
+        <Label>Tone</Label>
+        <Select value={tone} onValueChange={(v: any) => setTone(v)}>
+          <SelectTrigger data-testid="select-tone">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="professional">Professional</SelectItem>
+            <SelectItem value="casual">Casual</SelectItem>
+            <SelectItem value="friendly">Friendly</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="flex gap-2 pt-2">
+        <Button
+          onClick={() => generateMutation.mutate()}
+          disabled={!selectedProspectId || generateMutation.isPending}
+          className="flex-1"
+          data-testid="button-generate-ai-email"
+        >
+          {generateMutation.isPending ? (
+            <>
+              <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+              Generating...
+            </>
+          ) : (
+            <>
+              <Sparkles className="w-4 h-4 mr-2" />
+              Generate Email
+            </>
+          )}
+        </Button>
+        <Button variant="outline" onClick={onCancel} data-testid="button-cancel-ai">
+          Cancel
+        </Button>
+      </div>
+
+      {generateMutation.isSuccess && generateMutation.data && (
+        <div className="mt-4 p-4 bg-white dark:bg-gray-800 rounded-lg border">
+          <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+            Confidence: {generateMutation.data.confidenceScore}% • 
+            Personalization: {generateMutation.data.personalizationFactors?.join(', ')}
+          </p>
+        </div>
+      )}
+    </div>
   );
 }
