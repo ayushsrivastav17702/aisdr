@@ -110,10 +110,7 @@ function CreateSequenceButton() {
 
   const createMutation = useMutation({
     mutationFn: async (data: { name: string; description: string }) => {
-      return await apiRequest("/api/sequences", {
-        method: "POST",
-        body: JSON.stringify(data),
-      });
+      return await apiRequest("POST", "/api/sequences", data);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/sequences"] });

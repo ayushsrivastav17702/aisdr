@@ -13,6 +13,14 @@ An AI-powered Sales Development Representative (SDR) platform that converts natu
 - ✅ Job status tracking and monitoring
 - ✅ Fallback keyword extraction when AI is unavailable
 - ✅ Graceful error handling for missing API keys
+- ✅ **Email Sequence Builder** - Complete campaign management module (Oct 7, 2025)
+  - AI-powered LinkedIn personalization using OpenAI for highly personalized emails
+  - Multi-step sequence creation with automated follow-ups
+  - Prospect enrollment and tracking
+  - Real-time email reply detection with 30-second auto-refresh
+  - Email tracking and analytics
+  - Content library for reusable templates
+  - Sentiment analysis and next action recommendations
 
 ## Architecture
 - **Frontend**: React + TypeScript + Vite + Tailwind CSS + shadcn/ui
@@ -77,6 +85,25 @@ Apollo API key needs to be configured for:
 - `POST /api/import/preview` - Preview import data
 - `POST /api/import/execute` - Execute import (requires Redis)
 
+### Sequences
+- `GET /api/sequences` - List all sequences
+- `GET /api/sequences/:id` - Get sequence details
+- `POST /api/sequences` - Create new sequence
+- `PUT /api/sequences/:id` - Update sequence
+- `DELETE /api/sequences/:id` - Delete sequence
+- `GET /api/sequences/:id/steps` - List sequence steps
+- `POST /api/sequences/:id/steps` - Add step to sequence
+- `PUT /api/sequences/:id/steps/:stepId` - Update sequence step
+- `DELETE /api/sequences/:id/steps/:stepId` - Delete sequence step
+- `POST /api/sequences/:id/enroll` - Enroll prospects in sequence
+- `GET /api/sequences/:id/prospects` - List enrolled prospects
+- `GET /api/sequences/:id/emails` - List emails sent in sequence
+- `GET /api/sequences/:id/replies` - List email replies
+- `POST /api/sequences/:id/replies/webhook` - Webhook for reply detection
+- `POST /api/sequences/:id/personalize` - AI personalization using LinkedIn data
+- `GET /api/sequences/content-library` - Get template library
+- `POST /api/sequences/content-library` - Save new template
+
 ## Database Schema
 
 ### Prospects
@@ -99,6 +126,16 @@ Apollo API key needs to be configured for:
 - Processing stats
 - Field mappings
 
+### Sequences (Oct 7, 2025)
+- **Sequences**: Campaign metadata (name, status, total prospects)
+- **Sequence Steps**: Email templates and delays for each step
+- **Sequence Prospects**: Enrollment tracking (status, current step, next action date)
+- **Emails**: Sent email tracking (subject, body, sent date, status)
+- **Email Replies**: Reply detection (subject, body, received date, sentiment)
+- **AI Follow-up Jobs**: Scheduled AI-generated follow-ups
+- **Personalization Results**: LinkedIn analysis and personalization scores
+- **Content Library**: Reusable email templates and content
+
 ## Development Notes
 
 ### Fixed Issues (Oct 7, 2025)
@@ -119,6 +156,14 @@ Apollo API key needs to be configured for:
     - Only enriches prospects with locked/missing emails
     - Returns 200 with `configured: false` when API key missing (non-fatal)
     - Fixed enrichment counting to only count when emails actually found
+12. ✅ Implemented Email Sequence Builder module - complete isolated feature
+    - Created 8 new database tables for sequences, steps, enrollments, emails, replies, etc.
+    - Built LinkedIn AI personalization service using OpenAI for highly personalized emails
+    - Implemented sequence management UI with 6 tabs (steps, prospects, replies, AI config, tracking, settings)
+    - Added backend API routes for sequence CRUD, enrollment, personalization, and webhooks
+    - Integrated navigation in dashboard sidebar with wouter Link component
+    - Architect review confirmed clean integration without breaking existing SDR functionality
+    - Fixed apiRequest parameter order (method, url, data) in sequences.tsx
 
 ### Testing Status
 - ✅ Application starts without errors
