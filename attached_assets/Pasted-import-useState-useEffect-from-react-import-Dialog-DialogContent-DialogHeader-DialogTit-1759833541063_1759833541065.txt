@@ -1,0 +1,880 @@
+import { useState, useEffect } from "react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { MailboxSelector } from "@/components/ui/mailbox-selector";
+import { Plus, Mail, Clock, Trash2, Settings, X, ChevronLeft, ChevronRight, Users, Bot, Reply, Zap } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import EmailStepBuilder from "./email-step-builder";
+import SequenceSettingsTab from "./sequence-settings-tab";
+import SequenceProspectsTab from "./sequence-prospects-tab";
+import SequenceRepliesTab from "./sequence-replies-tab";
+import { SequenceEmailTracking } from "./sequence-email-tracking";
+import { AITemplateGenerator } from "../templates/ai-template-generator";
+import { IntelligentPersonalizationWizard } from "../personalization/intelligent-personalization-wizard";
+import AIFollowUpConfig from "./ai-followup-config";
+import { SequenceAIPersonalizationSetup } from "./sequence-ai-personalization-setup";
+import { Brain } from "lucide-react";
+
+interface SequenceBuilderProps {
+  sequence: any;
+  open: boolean;
+  onClose: () => void;
+  onSave: (sequenceData: any) => void;
+}
+
+interface EmailStep {
+  id: string;
+  type: 'email';
+  stepNumber: number;
+  emailType: 'auto' | 'manual';
+  runOnDay: number;
+  hasDelay: boolean;
+  delayDays?: number;
+  delayHours?: number;
+  specificTime?: string;
+  subject: string;
+  content: string;
+  variables: string[];
+  template?: string;
+  useAI: boolean;
+  ccEmails?: string[];
+  bccEmails?: string[];
+}
+
+export default function SequenceBuilder({ sequence, open, onClose, onSave }: SequenceBuilderProps) {
+  const [sequenceName, setSequenceName] = useState(sequence?.name || "New Sequence");
+  const [sequenceDescription, setSequenceDescription] = useState(sequence?.description || "");
+  const [selectedMailboxId, setSelectedMailboxId] = useState<number | undefined>(sequence?.mailboxId);
+  const [steps, setSteps] = useState<EmailStep[]>(sequence?.steps || []);
+  const [currentStep, setCurrentStep] = useState(0);
+  const [showStepBuilder, setShowStepBuilder] = useState(false);
+  const [editingStep, setEditingStep] = useState<EmailStep | null>(null);
+  const [showAIGenerator, setShowAIGenerator] = useState(false);
+  const [showPersonalizationWizard, setShowPersonalizationWizard] = useState(false);
+  const [showAISetup, setShowAISetup] = useState(false);
+  
+  // Local sequence state for managing prospect updates
+  const [localSequence, setLocalSequence] = useState(sequence);
+  
+  // Update local sequence when the passed sequence changes
+  useEffect(() => {
+    setLocalSequence(sequence);
+  }, [sequence]);
+
+  // Initialize steps based on creation method or sequenceFlow
+  useEffect(() => {
+    if (sequence && steps.length === 0) {
+      // First, try to load from existing sequenceFlow (for existing sequences)
+      if (sequence.sequenceFlow && Array.isArray(sequence.sequenceFlow) && sequence.sequenceFlow.length > 0) {
+        console.log('🔄 Loading steps from sequenceFlow:', sequence.sequenceFlow);
+        const flowSteps = sequence.sequenceFlow.map((step: any) => ({
+          id: step.id || `step_${Date.now()}_${step.stepNumber}`,
+          type: step.type || 'email',
+          stepNumber: step.stepNumber || 1,
+          emailType: step.emailType || 'auto',
+          runOnDay: step.runOnDay || step.stepNumber || 1,
+          hasDelay: step.hasDelay || false,
+          delayDays: step.delayDays || 0,
+          delayHours: step.delayHours || 0,
+          specificTime: step.specificTime || '',
+          subject: step.subject || '',
+          content: step.content || '',
+          variables: step.variables || [],
+          template: step.template || '',
+          useAI: step.useAI || false,
+          ccEmails: step.ccEmails || [],
+          bccEmails: step.bccEmails || []
+        }));
+        setSteps(flowSteps);
+        console.log('✅ Loaded', flowSteps.length, 'steps from sequenceFlow');
+      }
+      // Otherwise, initialize based on creation method
+      else if (sequence.method === 'scratch') {
+        addEmailStep();
+      } else if (sequence.method === 'library' && sequence.template) {
+        initializeFromTemplate(sequence.template);
+      } else if (sequence.method === 'ai') {
+        initializeFromAI(sequence);
+      }
+    }
+  }, [sequence]);
+
+  // Update local sequence when prop changes
+  useEffect(() => {
+    setLocalSequence(sequence);
+  }, [sequence]);
+
+  const initializeFromTemplate = (template: any) => {
+    try {
+      console.log('Initializing from template:', template);
+      
+      // Create initial steps based on template
+      const templateSteps: EmailStep[] = [];
+      
+      // Create steps based on template.steps count
+      for (let i = 0; i < template.steps; i++) {
+        const stepNumber = i + 1;
+        const newStep: EmailStep = {
+          id: `step_${Date.now()}_${i}`,
+          type: 'email',
+          stepNumber: stepNumber,
+          emailType: 'auto',
+          runOnDay: stepNumber,
+          hasDelay: false,
+          subject: `${template.name} - Step ${stepNumber}`,
+          content: `This is step ${stepNumber} from the ${template.name} template.\n\nHi {{firstName}},\n\n[Template content will be customized here]\n\nBest regards,\n{{senderName}}`,
+          variables: ['firstName', 'senderName'],
+          useAI: false,
+          template: template.name
+        };
+        templateSteps.push(newStep);
+      }
+      
+      setSteps(templateSteps);
+      
+      // Update sequence name if not already customized
+      if (sequenceName === "New Sequence") {
+        setSequenceName(template.name);
+      }
+    } catch (error) {
+      console.error('Error initializing from template:', error);
+      // Fallback to adding a single step
+      addEmailStep();
+    }
+  };
+
+  const initializeFromAI = (sequence: any) => {
+    try {
+      console.log('Initializing AI-generated sequence:', sequence);
+      
+      // Generate appropriate steps based on sequence type
+      const aiSteps: EmailStep[] = [];
+      const stepCount = getStepCountForType(sequence.type);
+      
+      for (let i = 0; i < stepCount; i++) {
+        const stepNumber = i + 1;
+        const newStep: EmailStep = {
+          id: `step_${Date.now()}_${i}`,
+          type: 'email',
+          stepNumber: stepNumber,
+          emailType: 'auto',
+          runOnDay: getDelayForStep(stepNumber, sequence.type),
+          hasDelay: stepNumber > 1,
+          delayDays: stepNumber > 1 ? getDelayForStep(stepNumber, sequence.type) - 1 : 0,
+          subject: getAISubjectForStep(stepNumber, sequence.type),
+          content: getAIContentForStep(stepNumber, sequence.type),
+          variables: ['firstName', 'lastName', 'company', 'jobTitle'],
+          useAI: true,
+          template: 'ai-generated'
+        };
+        aiSteps.push(newStep);
+      }
+      
+      setSteps(aiSteps);
+      console.log(`✅ Generated ${aiSteps.length} AI steps for ${sequence.type} sequence`);
+      
+    } catch (error) {
+      console.error('Error initializing AI sequence:', error);
+      // Fallback to adding a single step
+      addEmailStep();
+    }
+  };
+
+  const getStepCountForType = (type: string): number => {
+    const stepCounts = {
+      'outbound': 4,
+      'inbound': 3,
+      'follow-up': 3,
+      'events': 5,
+      'recruiting': 4
+    };
+    return stepCounts[type as keyof typeof stepCounts] || 3;
+  };
+
+  const getDelayForStep = (stepNumber: number, type: string): number => {
+    if (stepNumber === 1) return 1;
+    
+    const delays = {
+      'outbound': [1, 3, 7, 14],
+      'inbound': [1, 2, 5],
+      'follow-up': [1, 3, 7],
+      'events': [1, 2, 4, 7, 14],
+      'recruiting': [1, 3, 5, 10]
+    };
+    
+    const typeDelays = delays[type as keyof typeof delays] || [1, 3, 7];
+    return typeDelays[stepNumber - 1] || stepNumber * 2;
+  };
+
+  const getAISubjectForStep = (stepNumber: number, type: string): string => {
+    const subjects = {
+      'outbound': [
+        'Quick question about {{company}}',
+        'Following up on my previous email',
+        'One more thing about our solution',
+        'Last chance to connect'
+      ],
+      'inbound': [
+        'Thanks for your interest in our solution',
+        'Let\'s schedule a quick call',
+        'Additional resources for {{company}}'
+      ],
+      'follow-up': [
+        'Following up on our conversation',
+        'Additional thoughts on our discussion',
+        'Next steps for {{company}}'
+      ],
+      'events': [
+        'You\'re invited to our upcoming event',
+        'Don\'t forget to register',
+        'Event reminder - tomorrow!',
+        'Thank you for attending',
+        'Follow-up resources from the event'
+      ],
+      'recruiting': [
+        'Exciting opportunity at our company',
+        'Let\'s discuss this role further',
+        'Additional details about the position',
+        'Final thoughts on this opportunity'
+      ]
+    };
+
+    const typeSubjects = subjects[type as keyof typeof subjects] || subjects.outbound;
+    return typeSubjects[stepNumber - 1] || `Follow-up #${stepNumber}`;
+  };
+
+  const getAIContentForStep = (stepNumber: number, type: string): string => {
+    const contents = {
+      'outbound': [
+        `Hi {{firstName}},
+
+I noticed {{company}} is growing rapidly in your industry. I wanted to reach out because we've helped similar companies streamline their operations and increase efficiency by 30%.
+
+Would you be open to a brief conversation about how we could help {{company}} achieve similar results?
+
+Best regards,
+{{senderName}}`,
+        `Hi {{firstName}},
+
+I wanted to follow up on my previous email about helping {{company}} improve operational efficiency.
+
+Many companies in your space are facing similar challenges with scaling their operations. Our solution has helped businesses like yours reduce costs while improving performance.
+
+Would you have 15 minutes this week for a quick call?
+
+Best regards,
+{{senderName}}`,
+        `Hi {{firstName}},
+
+I realize you're probably busy, but I wanted to share one quick insight that might be valuable for {{company}}.
+
+Companies in your industry typically see a 25-40% improvement in efficiency when they implement our solution. Given {{company}}'s growth trajectory, this could translate to significant value.
+
+Would you be interested in a brief conversation?
+
+Best regards,
+{{senderName}}`,
+        `Hi {{firstName}},
+
+This will be my last email, but I wanted to leave you with a resource that might be helpful for {{company}}.
+
+I've attached a case study showing how a similar company achieved remarkable results. Even if our solution isn't the right fit now, you might find the insights valuable.
+
+Best of luck with your initiatives at {{company}}.
+
+Best regards,
+{{senderName}}`
+      ],
+      'inbound': [
+        `Hi {{firstName}},
+
+Thank you for your interest in our solution! I'm excited to learn more about {{company}} and how we can help you achieve your goals.
+
+I've attached some additional information that should answer your initial questions. I'd love to schedule a brief call to discuss your specific needs.
+
+When would be a good time for you this week?
+
+Best regards,
+{{senderName}}`,
+        `Hi {{firstName}},
+
+I wanted to follow up on the resources I shared earlier. Did you have a chance to review them?
+
+I'd love to schedule that call we discussed to dive deeper into how our solution can specifically help {{company}}.
+
+I have availability tomorrow afternoon or Thursday morning. What works better for you?
+
+Best regards,
+{{senderName}}`,
+        `Hi {{firstName}},
+
+I haven't heard back from you, so I wanted to check if you had any questions about the information I shared.
+
+If you'd like to move forward with a conversation, please let me know a few times that work for you and I'll send over a calendar link.
+
+Looking forward to hearing from you!
+
+Best regards,
+{{senderName}}`
+      ]
+    };
+
+    const typeContents = contents[type as keyof typeof contents] || contents.outbound;
+    return typeContents[stepNumber - 1] || `Hi {{firstName}},\n\nFollowing up on our previous conversation.\n\nBest regards,\n{{senderName}}`;
+  };
+
+  const addEmailStep = () => {
+    const newStep: EmailStep = {
+      id: `step_${Date.now()}`,
+      type: 'email',
+      stepNumber: steps.length + 1,
+      emailType: 'auto',
+      runOnDay: steps.length === 0 ? 1 : steps.length + 1,
+      hasDelay: false,
+      subject: '',
+      content: '',
+      variables: [],
+      useAI: false
+    };
+    
+    setSteps([...steps, newStep]);
+    setEditingStep(newStep);
+    setShowStepBuilder(true);
+  };
+
+  const editStep = (step: EmailStep) => {
+    setEditingStep(step);
+    setShowStepBuilder(true);
+  };
+
+  const saveStep = (stepData: EmailStep) => {
+    setSteps(steps.map(step => 
+      step.id === stepData.id ? stepData : step
+    ));
+    setShowStepBuilder(false);
+    setEditingStep(null);
+  };
+
+  const deleteStep = (stepId: string) => {
+    setSteps(steps.filter(step => step.id !== stepId));
+  };
+
+  const handleSave = () => {
+    // Get all current settings from localSequence (which includes settings from the Settings tab)
+    const currentSettings = localSequence || {};
+    
+    const sequenceData = {
+      // Start with existing sequence data to preserve all properties
+      ...sequence,
+      // Merge in localSequence changes (like prospects and settings)
+      ...currentSettings,
+      // Override with current form values
+      name: sequenceName,
+      description: sequenceDescription,
+      steps: steps,
+      status: 'draft',
+      // Ensure prospects are preserved
+      prospects: currentSettings?.prospects || sequence?.prospects || []
+    };
+    
+    console.log('💾 Saving sequence with complete data:', {
+      name: sequenceData.name,
+      prospects: sequenceData.prospects?.length || 0,
+      assignRuleset: sequenceData.assignRuleset,
+      priority: sequenceData.priority,
+      type: sequenceData.type,
+      owner: sequenceData.owner,
+      sequenceIdentifier: sequenceData.sequenceIdentifier,
+      enrollmentLimit: sequenceData.enrollmentLimit,
+      activeProspectsLimit: sequenceData.activeProspectsLimit
+    });
+    onSave(sequenceData);
+  };
+
+  const getStepSummary = (step: EmailStep) => {
+    if (step.hasDelay && step.delayDays) {
+      return `Send after ${step.delayDays} day${step.delayDays > 1 ? 's' : ''}`;
+    }
+    if (step.runOnDay === 1) {
+      return "Send immediately when prospect is added";
+    }
+    return `Send on day ${step.runOnDay}`;
+  };
+
+  return (
+    <>
+      {/* Main Sequence Builder */}
+      <Dialog open={open && !showStepBuilder} onOpenChange={onClose}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <div className="flex items-center justify-between">
+              <DialogTitle>Sequence Builder</DialogTitle>
+              <Button variant="ghost" size="sm" onClick={onClose}>
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </DialogHeader>
+
+          <Tabs defaultValue="sequence" className="w-full">
+            <TabsList className="grid w-full grid-cols-6">
+              <TabsTrigger value="sequence">
+                <Mail className="h-4 w-4 mr-2" />
+                Sequence
+              </TabsTrigger>
+              <TabsTrigger value="prospects" data-testid="button-add-prospects">
+                <Users className="h-4 w-4 mr-2" />
+                Prospects
+              </TabsTrigger>
+              <TabsTrigger value="replies">
+                <Reply className="h-4 w-4 mr-2" />
+                Replies
+              </TabsTrigger>
+              <TabsTrigger value="followup">
+                <Zap className="h-4 w-4 mr-2" />
+                AI Follow-up
+              </TabsTrigger>
+              <TabsTrigger value="tracking">
+                <Bot className="h-4 w-4 mr-2" />
+                Email Tracking
+              </TabsTrigger>
+              <TabsTrigger value="settings">
+                <Settings className="h-4 w-4 mr-2" />
+                Settings
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="sequence" className="space-y-6 pt-4">
+              {/* Sequence Info */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="sequenceName">Sequence Name</Label>
+                  <Input
+                    id="sequenceName"
+                    data-testid="input-sequence-name"
+                    value={sequenceName}
+                    onChange={(e) => setSequenceName(e.target.value)}
+                    placeholder="Enter sequence name"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="sequenceDescription">Description (Optional)</Label>
+                  <Input
+                    id="sequenceDescription"
+                    value={sequenceDescription}
+                    onChange={(e) => setSequenceDescription(e.target.value)}
+                    placeholder="Brief description of this sequence"
+                  />
+                </div>
+              </div>
+
+            {/* Sequence Steps */}
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-medium">Email Steps</h3>
+                  <p className="text-sm text-gray-600">Create unlimited steps for your sequence</p>
+                </div>
+                <div className="flex gap-2">
+                  <Button 
+                    onClick={() => setShowPersonalizationWizard(true)} 
+                    size="sm" 
+                    variant="outline"
+                    className="bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200 hover:from-purple-100 hover:to-blue-100"
+                  >
+                    <Bot className="h-4 w-4 mr-2" />
+                    AI Personalization
+                  </Button>
+                  <Button 
+                    onClick={() => setShowAIGenerator(true)} 
+                    size="sm" 
+                    variant="outline"
+                    className="bg-purple-50 border-purple-200 hover:bg-purple-100"
+                  >
+                    <Bot className="h-4 w-4 mr-2" />
+                    AI Template
+                  </Button>
+                  <Button onClick={addEmailStep} size="sm" className="bg-blue-600 hover:bg-blue-700" data-testid="button-add-followup">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Step
+                  </Button>
+                </div>
+              </div>
+
+              {steps.length === 0 ? (
+                <Card className="border-dashed border-2 border-gray-200">
+                  <CardContent className="py-8 text-center">
+                    <Mail className="h-12 w-12 mx-auto text-gray-400 mb-4" />
+                    <h4 className="text-lg font-medium text-gray-900 mb-2">No email steps yet</h4>
+                    <p className="text-gray-600 mb-4">Create unlimited steps for your sequence - add as many as you need!</p>
+                    <div className="flex gap-2 justify-center">
+                      <Button onClick={addEmailStep} className="bg-blue-600 hover:bg-blue-700" data-testid="button-add-first-step">
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add First Step
+                      </Button>
+                      <Button onClick={() => setShowPersonalizationWizard(true)} variant="outline" className="border-purple-200 text-purple-700">
+                        <Bot className="h-4 w-4 mr-2" />
+                        AI Personalization
+                      </Button>
+                      <Button onClick={() => setShowAIGenerator(true)} variant="outline" className="border-purple-200 text-purple-700">
+                        <Bot className="h-4 w-4 mr-2" />
+                        AI Template
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="space-y-4">
+                  {steps.length === 0 ? (
+                    <Card>
+                      <CardContent className="p-6 text-center">
+                        <div className="text-gray-500">
+                          <Mail className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                          <h3 className="text-lg font-medium mb-2">No Steps Found</h3>
+                          <p className="text-sm mb-4">Steps should load automatically. If you see this, there might be a loading issue.</p>
+                          <Button onClick={() => window.location.reload()} variant="outline" size="sm">
+                            Refresh Page
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ) : (
+                    steps.map((step, index) => (
+                      <Card key={step.id} className="relative">
+                        <CardHeader className="pb-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center space-x-3">
+                              <div className="bg-blue-100 p-2 rounded-lg">
+                                <Mail className="h-4 w-4 text-blue-600" />
+                              </div>
+                              <div>
+                                <CardTitle className="text-sm">Email Step #{step.stepNumber}</CardTitle>
+                                <p className="text-sm text-gray-600 mt-1">
+                                  {getStepSummary(step)}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="flex gap-2">
+                              <Button variant="outline" size="sm" onClick={() => editStep(step)}>
+                                <Settings className="h-4 w-4" />
+                              </Button>
+                              <Button 
+                                variant="outline" 
+                                size="sm" 
+                                onClick={() => deleteStep(step.id)}
+                                className="text-red-600 hover:text-red-700"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                      </CardHeader>
+                      <CardContent className="pt-0">
+                        <div className="space-y-2">
+                          <div>
+                            <Label className="text-xs font-medium text-gray-500">SUBJECT</Label>
+                            <p className="text-sm">{step.subject || "No subject set"}</p>
+                          </div>
+                          {step.content && (
+                            <div>
+                              <Label className="text-xs font-medium text-gray-500">PREVIEW</Label>
+                              <p className="text-sm text-gray-600 truncate">
+                                {step.content.substring(0, 100)}...
+                              </p>
+                            </div>
+                          )}
+                          <div className="flex gap-2 flex-wrap">
+                            <Badge variant="secondary" className="text-xs">
+                              Day {step.runOnDay}
+                            </Badge>
+                            {step.useAI && (
+                              <Badge variant="secondary" className="text-xs bg-purple-100 text-purple-800">
+                                AI Generated
+                              </Badge>
+                            )}
+                            {step.hasDelay && (
+                              <Badge variant="secondary" className="text-xs bg-orange-100 text-orange-800">
+                                <Clock className="h-3 w-3 mr-1" />
+                                Delayed
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
+                      </CardContent>
+                      
+                      {/* Connect line to next step */}
+                      {index < steps.length - 1 && (
+                        <div className="absolute left-6 -bottom-4 w-0.5 h-8 bg-gray-200"></div>
+                      )}
+                    </Card>
+                  ))
+                  )}
+                  
+                  {/* Add Another Step Button */}
+                  <Card className="border-dashed border-2 border-blue-200 bg-blue-50/50 hover:bg-blue-100/50 transition-colors">
+                    <CardContent className="py-6 text-center">
+                      <Button onClick={addEmailStep} variant="ghost" className="text-blue-600 hover:text-blue-700">
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add Another Email Step ({steps.length + 1})
+                      </Button>
+                      <p className="text-xs text-blue-600 mt-1">Add unlimited steps to your sequence</p>
+                    </CardContent>
+                  </Card>
+                </div>
+              )}
+              </div>
+
+              {/* Footer */}
+              <div className="flex justify-between items-center pt-6 border-t">
+                <div className="text-sm text-gray-600">
+                  {steps.length} step{steps.length !== 1 ? 's' : ''} in sequence
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={onClose}>Cancel</Button>
+                  <Button onClick={handleSave} disabled={!sequenceName.trim()} data-testid="button-launch-sequence">
+                    Save Sequence
+                  </Button>
+                </div>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="prospects" className="pt-4">
+              <SequenceProspectsTab 
+                sequence={localSequence || sequence}
+                onUpdateSequence={(updates: any) => {
+                  // Update local sequence state with prospect data
+                  setLocalSequence((prev: any) => prev ? { ...prev, ...updates } : updates);
+                  console.log('Sequence updated with prospects:', updates);
+                }}
+              />
+              
+              {/* AI Personalization Setup Prompt */}
+              {(localSequence?.prospects?.length > 0 || sequence?.prospects?.length > 0) && (
+                <div className="mt-4 p-4 bg-purple-50 border-2 border-purple-200 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="font-medium text-purple-900 flex items-center gap-2">
+                        <Brain className="h-5 w-5" />
+                        {(localSequence?.prospects?.length || sequence?.prospects?.length || 0)} Prospects Ready for AI Personalization
+                      </h4>
+                      <p className="text-sm text-purple-700 mt-1">
+                        {localSequence?.aiPersonalizationEnabled || sequence?.aiPersonalizationEnabled
+                          ? `AI will personalize ${localSequence?.aiPersonalizationDailyLimit || sequence?.aiPersonalizationDailyLimit || 25} prospects per day`
+                          : 'Set up AI personalization to automatically create personalized emails using LinkedIn, company data, and content library'
+                        }
+                      </p>
+                    </div>
+                    <Button 
+                      onClick={() => setShowAISetup(true)}
+                      className="bg-purple-600 hover:bg-purple-700"
+                      data-testid="button-setup-ai-personalization"
+                    >
+                      <Brain className="h-4 w-4 mr-2" />
+                      {localSequence?.aiPersonalizationEnabled || sequence?.aiPersonalizationEnabled ? 'Update AI Setup' : 'Setup AI Personalization'}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="replies" className="pt-4">
+              {sequence?.id ? (
+                <SequenceRepliesTab sequenceId={sequence.id} sequenceName={sequence.name} />
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  <Reply className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                  <p>Save the sequence first to view prospect replies</p>
+                </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="followup" className="pt-4">
+              {sequence?.id ? (
+                <AIFollowUpConfig 
+                  sequenceId={sequence.id} 
+                  prospects={localSequence?.prospects || sequence?.prospects || []} 
+                />
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  <Zap className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                  <p>Save the sequence first to configure AI follow-ups</p>
+                  <p className="text-sm mt-2">Automated follow-up emails will be generated after certain days</p>
+                </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="tracking" className="pt-4">
+              {sequence?.id ? (
+                <SequenceEmailTracking sequenceId={sequence.id} />
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  <Mail className="w-12 h-12 mx-auto mb-4 text-gray-300" />
+                  <p>Save the sequence first to view email tracking</p>
+                </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="settings" className="pt-4">
+              <SequenceSettingsTab
+                sequence={localSequence || sequence}
+                onUpdateSequence={(updates) => {
+                  // Update sequence with settings and preserve in local state
+                  const updatedSequence = { ...(localSequence || sequence), ...updates };
+                  setLocalSequence(updatedSequence);
+                  if (updates.name) {
+                    setSequenceName(updates.name);
+                  }
+                  console.log('Settings saved to localSequence:', updates);
+                  console.log('Current localSequence:', updatedSequence);
+                }}
+              />
+            </TabsContent>
+          </Tabs>
+        </DialogContent>
+      </Dialog>
+
+      {/* Email Step Builder */}
+      {editingStep && (
+        <EmailStepBuilder
+          step={editingStep}
+          open={showStepBuilder}
+          onClose={() => {
+            setShowStepBuilder(false);
+            setEditingStep(null);
+          }}
+          onSave={(stepData: any) => {
+            // Convert StepData to EmailStep format if needed
+            const emailStepData: EmailStep = {
+              id: stepData.id || editingStep.id,
+              type: 'email',
+              stepNumber: stepData.stepNumber || editingStep.stepNumber,
+              emailType: stepData.emailType || 'auto',
+              runOnDay: stepData.runOnDay || editingStep.runOnDay,
+              hasDelay: stepData.hasDelay || false,
+              delayDays: stepData.delayDays,
+              delayHours: stepData.delayHours,
+              specificTime: stepData.specificTime,
+              subject: stepData.subject || '',
+              content: stepData.content || '',
+              variables: stepData.variables || [],
+              template: stepData.template,
+              useAI: stepData.useAI || false,
+              ccEmails: stepData.ccEmails || [],
+              bccEmails: stepData.bccEmails || []
+            };
+            saveStep(emailStepData);
+          }}
+        />
+      )}
+
+      {/* AI Template Generator */}
+      <AITemplateGenerator
+        open={showAIGenerator}
+        onClose={() => setShowAIGenerator(false)}
+        onGenerate={(template) => {
+          // Create a new step with the AI-generated template
+          const newStep: EmailStep = {
+            id: `step_${Date.now()}`,
+            type: 'email',
+            stepNumber: steps.length + 1,
+            emailType: 'auto',
+            runOnDay: steps.length === 0 ? 1 : steps.length + 1,
+            hasDelay: false,
+            subject: template.subject,
+            content: template.content,
+            variables: extractVariablesFromTemplate(template.content),
+            useAI: true,
+            template: 'ai-generated'
+          };
+          
+          setSteps([...steps, newStep]);
+          setShowAIGenerator(false);
+        }}
+      />
+
+      {/* Intelligent Personalization Wizard */}
+      <IntelligentPersonalizationWizard
+        open={showPersonalizationWizard}
+        onClose={() => setShowPersonalizationWizard(false)}
+        onComplete={(personalizedEmail) => {
+          // Create a new step with the personalized email
+          const newStep: EmailStep = {
+            id: `step_${Date.now()}`,
+            type: 'email',
+            stepNumber: steps.length + 1,
+            emailType: 'auto',
+            runOnDay: steps.length === 0 ? 1 : steps.length + 1,
+            hasDelay: false,
+            subject: personalizedEmail.subject,
+            content: personalizedEmail.content,
+            variables: extractVariablesFromTemplate(personalizedEmail.content),
+            useAI: true,
+            template: 'ai-personalized'
+          };
+          
+          setSteps([...steps, newStep]);
+          
+          // If prospect information is included, add the prospect to the sequence
+          if (personalizedEmail.prospect && personalizedEmail.prospectId && localSequence?.id) {
+            console.log('💾 Adding prospect to sequence:', personalizedEmail.prospect);
+            
+            // Call the API to add prospect to sequence
+            fetch(`/api/sequences/${localSequence.id}/prospects`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ 
+                prospectIds: [personalizedEmail.prospectId] 
+              })
+            }).then(response => {
+              if (response.ok) {
+                console.log('✅ Prospect added to sequence successfully');
+                // Update the local sequence state to reflect the change
+                const updatedSequence = {
+                  ...localSequence,
+                  prospects: [...(localSequence?.prospects || []), personalizedEmail.prospect]
+                };
+                setLocalSequence(updatedSequence);
+              } else {
+                console.error('❌ Failed to add prospect to sequence');
+              }
+            }).catch(error => {
+              console.error('❌ Error adding prospect to sequence:', error);
+            });
+          }
+          
+          setShowPersonalizationWizard(false);
+        }}
+      />
+
+      {/* AI Personalization Setup Modal */}
+      {showAISetup && (localSequence?.id || sequence?.id) && (
+        <SequenceAIPersonalizationSetup
+          open={showAISetup}
+          onClose={() => setShowAISetup(false)}
+          sequenceId={localSequence?.id || sequence?.id}
+          prospects={(localSequence?.prospects || sequence?.prospects || [])}
+        />
+      )}
+    </>
+  );
+}
+
+// Helper function to extract personalization variables from template content
+function extractVariablesFromTemplate(content: string): string[] {
+  const variableRegex = /\{\{(\w+)\}\}/g;
+  const variables: string[] = [];
+  let match;
+  
+  while ((match = variableRegex.exec(content)) !== null) {
+    if (!variables.includes(match[1])) {
+      variables.push(match[1]);
+    }
+  }
+  
+  return variables;
+}

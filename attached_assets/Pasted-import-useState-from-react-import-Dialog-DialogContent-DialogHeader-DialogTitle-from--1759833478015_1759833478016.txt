@@ -1,0 +1,238 @@
+import { useState } from "react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { X, Mail, Users, Calendar, Briefcase } from "lucide-react";
+
+interface AISequenceDialogProps {
+  open: boolean;
+  onClose: () => void;
+  onCreateSequence: (sequenceType: any) => void;
+}
+
+const sequenceTypes = [
+  {
+    id: 'outbound',
+    name: 'Outbound',
+    description: 'Engage your prospects and move them to the next stage with a tailored outbound sequence.',
+    icon: Mail,
+    color: 'blue'
+  },
+  {
+    id: 'inbound',
+    name: 'Inbound',
+    description: 'Reach out to leads and schedule a meeting with them.',
+    icon: Users,
+    color: 'green'
+  },
+  {
+    id: 'follow-up',
+    name: 'Follow Up',
+    description: 'Stay top-of-mind with prospects and close more deals with a thoughtful follow-up sequence.',
+    icon: Calendar,
+    color: 'orange'
+  },
+  {
+    id: 'events',
+    name: 'Events',
+    description: 'Keep attendees interested and invested in your event with a personalized event sequence.',
+    icon: Calendar,
+    color: 'purple'
+  },
+  {
+    id: 'recruiting',
+    name: 'Recruiting',
+    description: 'Ensure effective communication and information sharing with job candidates.',
+    icon: Briefcase,
+    color: 'indigo'
+  }
+];
+
+export default function AISequenceDialog({ open, onClose, onCreateSequence }: AISequenceDialogProps) {
+  const [currentTab, setCurrentTab] = useState("type");
+  const [selectedType, setSelectedType] = useState<string | null>(null);
+
+  const handleTypeSelect = (typeId: string) => {
+    setSelectedType(typeId);
+  };
+
+  const handleCreateSequence = () => {
+    if (selectedType) {
+      const sequenceType = sequenceTypes.find(t => t.id === selectedType);
+      onCreateSequence({
+        type: selectedType,
+        name: sequenceType?.name,
+        method: 'ai'
+      });
+      onClose();
+      // Reset state
+      setCurrentTab("type");
+      setSelectedType(null);
+    }
+  };
+
+  const getColorClasses = (color: string, selected: boolean) => {
+    const colorMap = {
+      blue: selected ? 'border-blue-500 bg-blue-50' : 'hover:border-blue-200',
+      green: selected ? 'border-green-500 bg-green-50' : 'hover:border-green-200',
+      orange: selected ? 'border-orange-500 bg-orange-50' : 'hover:border-orange-200',
+      purple: selected ? 'border-purple-500 bg-purple-50' : 'hover:border-purple-200',
+      indigo: selected ? 'border-indigo-500 bg-indigo-50' : 'hover:border-indigo-200'
+    };
+    return colorMap[color as keyof typeof colorMap] || colorMap.blue;
+  };
+
+  const getIconColorClasses = (color: string) => {
+    const colorMap = {
+      blue: 'bg-blue-100 text-blue-600',
+      green: 'bg-green-100 text-green-600',
+      orange: 'bg-orange-100 text-orange-600',
+      purple: 'bg-purple-100 text-purple-600',
+      indigo: 'bg-indigo-100 text-indigo-600'
+    };
+    return colorMap[color as keyof typeof colorMap] || colorMap.blue;
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <div className="flex items-center justify-between">
+            <DialogTitle>Auto Create with AI</DialogTitle>
+            <Button variant="ghost" size="sm" onClick={onClose}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+        </DialogHeader>
+
+        <div className="pt-4">
+          <Tabs value={currentTab} onValueChange={setCurrentTab} className="w-full">
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="type">Sequence Type</TabsTrigger>
+              <TabsTrigger value="details" disabled={!selectedType}>Details</TabsTrigger>
+              <TabsTrigger value="customization" disabled={!selectedType}>Customization</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="type" className="space-y-6 mt-6">
+              <div>
+                <h3 className="text-lg font-medium mb-2">Choose sequence category which you want AI to generate today</h3>
+                <p className="text-sm text-gray-600 mb-6">Select sequence type</p>
+              </div>
+
+              <div className="space-y-4">
+                {sequenceTypes.map((type) => {
+                  const Icon = type.icon;
+                  const isSelected = selectedType === type.id;
+                  
+                  return (
+                    <Card
+                      key={type.id}
+                      className={`cursor-pointer border-2 transition-colors ${getColorClasses(type.color, isSelected)}`}
+                      onClick={() => handleTypeSelect(type.id)}
+                    >
+                      <CardContent className="p-4">
+                        <div className="flex items-start space-x-3">
+                          <div className={`p-2 rounded-lg ${getIconColorClasses(type.color)}`}>
+                            <Icon className="h-5 w-5" />
+                          </div>
+                          <div className="flex-1">
+                            <h4 className="font-medium text-gray-900">{type.name}</h4>
+                            <p className="text-sm text-gray-600 mt-1">{type.description}</p>
+                          </div>
+                          {isSelected && (
+                            <div className="w-5 h-5 bg-blue-500 rounded-full flex items-center justify-center">
+                              <div className="w-2 h-2 bg-white rounded-full"></div>
+                            </div>
+                          )}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+
+              <div className="flex justify-end pt-6 border-t">
+                <Button 
+                  onClick={() => setCurrentTab("details")}
+                  disabled={!selectedType}
+                >
+                  Next: Details
+                </Button>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="details" className="space-y-6 mt-6">
+              <div>
+                <h3 className="text-lg font-medium mb-2">Sequence Details</h3>
+                <p className="text-sm text-gray-600">Configure your AI-generated sequence parameters</p>
+              </div>
+
+              <div className="bg-blue-50 p-4 rounded-lg">
+                <h4 className="font-medium text-blue-900">Selected Type: {sequenceTypes.find(t => t.id === selectedType)?.name}</h4>
+                <p className="text-sm text-blue-700 mt-1">
+                  {sequenceTypes.find(t => t.id === selectedType)?.description}
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <div className="text-sm text-gray-600">
+                  AI will automatically generate a sequence based on industry best practices for {sequenceTypes.find(t => t.id === selectedType)?.name.toLowerCase()} campaigns.
+                </div>
+                
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div className="bg-gray-50 p-3 rounded">
+                    <div className="font-medium">Estimated Steps</div>
+                    <div className="text-gray-600">3-5 emails</div>
+                  </div>
+                  <div className="bg-gray-50 p-3 rounded">
+                    <div className="font-medium">Duration</div>
+                    <div className="text-gray-600">7-14 days</div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex justify-between pt-6 border-t">
+                <Button variant="outline" onClick={() => setCurrentTab("type")}>
+                  Back
+                </Button>
+                <Button onClick={() => setCurrentTab("customization")}>
+                  Next: Customization
+                </Button>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="customization" className="space-y-6 mt-6">
+              <div>
+                <h3 className="text-lg font-medium mb-2">Customization Options</h3>
+                <p className="text-sm text-gray-600">Fine-tune your AI sequence generation</p>
+              </div>
+
+              <div className="bg-green-50 p-4 rounded-lg">
+                <h4 className="font-medium text-green-900">Ready to Generate</h4>
+                <p className="text-sm text-green-700 mt-1">
+                  Your {sequenceTypes.find(t => t.id === selectedType)?.name.toLowerCase()} sequence will be automatically created with AI-powered personalization.
+                </p>
+              </div>
+
+              <div className="space-y-4">
+                <div className="text-sm text-gray-600">
+                  The AI will create personalized email content, subject lines, and timing based on your selected sequence type.
+                </div>
+              </div>
+
+              <div className="flex justify-between pt-6 border-t">
+                <Button variant="outline" onClick={() => setCurrentTab("details")}>
+                  Back
+                </Button>
+                <Button onClick={handleCreateSequence}>
+                  Create AI Sequence
+                </Button>
+              </div>
+            </TabsContent>
+          </Tabs>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}

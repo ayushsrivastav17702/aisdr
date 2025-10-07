@@ -1,0 +1,351 @@
+import { useState, useEffect } from "react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
+import { Card, CardContent } from "@/components/ui/card";
+import { Progress } from "@/components/ui/progress";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { Brain, Calendar, CheckCircle, Settings, TrendingUp, Users, Zap } from "lucide-react";
+
+interface SequenceAIPersonalizationSetupProps {
+  open: boolean;
+  onClose: () => void;
+  sequenceId: number;
+  prospects: any[];
+}
+
+export function SequenceAIPersonalizationSetup({
+  open,
+  onClose,
+  sequenceId,
+  prospects
+}: SequenceAIPersonalizationSetupProps) {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const [config, setConfig] = useState({
+    dailyLimit: 25,
+    startDate: new Date().toISOString().split('T')[0],
+    personalizationLevel: 'advanced',
+    autoFollowUp: true,
+    followUpDays: 3,
+    priorityScore: 70
+  });
+
+  // Fetch current AI status
+  const { data: aiStatus } = useQuery({
+    queryKey: ['/api/sequences', sequenceId, 'ai-status'],
+    enabled: open && !!sequenceId
+  });
+
+  // Load existing config if available
+  useEffect(() => {
+    if (aiStatus && aiStatus.enabled) {
+      setConfig({
+        dailyLimit: aiStatus.dailyLimit || 25,
+        startDate: aiStatus.startDate || new Date().toISOString().split('T')[0],
+        personalizationLevel: aiStatus.personalizationLevel || 'advanced',
+        autoFollowUp: aiStatus.autoFollowUp ?? true,
+        followUpDays: aiStatus.followUpDays || 3,
+        priorityScore: aiStatus.priorityScore || 70
+      });
+    }
+  }, [aiStatus]);
+
+  // Setup AI personalization mutation
+  const setupMutation = useMutation({
+    mutationFn: async () => {
+      return await apiRequest(`/api/sequences/${sequenceId}/setup-ai-personalization`, 'POST', { config });
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/sequences', sequenceId] });
+      queryClient.invalidateQueries({ queryKey: ['/api/sequences'] });
+      toast({
+        title: "AI Personalization Activated",
+        description: `Will process ${config.dailyLimit} prospects daily. Estimated ${data.estimatedDays} days to complete.`,
+      });
+      onClose();
+    },
+    onError: () => {
+      toast({
+        title: "Setup Failed",
+        description: "Failed to configure AI personalization. Please try again.",
+        variant: "destructive"
+      });
+    }
+  });
+
+  // Manual trigger for testing
+  const triggerMutation = useMutation({
+    mutationFn: async () => {
+      return await apiRequest(`/api/sequences/${sequenceId}/process-ai-batch`, 'POST', {});
+    },
+    onSuccess: (data: any) => {
+      toast({
+        title: "Batch Processing Started",
+        description: `Processing ${data.processed} prospects with AI personalization...`,
+      });
+    }
+  });
+
+  const estimatedDays = Math.ceil(prospects.length / config.dailyLimit);
+  const personalizedCount = aiStatus?.personalizedCount || 0;
+  const remainingCount = aiStatus?.remainingCount || prospects.length;
+  const progress = aiStatus?.progress || 0;
+
+  const personalizationLevels = {
+    basic: {
+      name: 'Basic',
+      description: 'Name, company, job title',
+      score: '50-65%',
+      speed: '< 1 sec/prospect',
+      apiCalls: 'None'
+    },
+    standard: {
+      name: 'Standard',
+      description: 'Basic + role analysis + industry insights',
+      score: '65-80%',
+      speed: '2-3 sec/prospect',
+      apiCalls: '1 OpenAI call'
+    },
+    advanced: {
+      name: 'Advanced',
+      description: 'Everything + LinkedIn + website + content library',
+      score: '80-95%',
+      speed: '5-10 sec/prospect',
+      apiCalls: '3-5 OpenAI calls'
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Brain className="h-5 w-5 text-purple-600" />
+            AI Personalization Setup
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-6 pt-4">
+          {/* Status Overview */}
+          {aiStatus?.enabled && (
+            <Card className="border-green-200 bg-green-50">
+              <CardContent className="p-4">
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="font-semibold text-green-900">✅ AI Personalization Active</h4>
+                    <CheckCircle className="h-5 w-5 text-green-600" />
+                  </div>
+                  <Progress value={progress} className="h-2" />
+                  <div className="grid grid-cols-3 gap-4 text-sm">
+                    <div>
+                      <span className="text-green-700">Total:</span>
+                      <span className="ml-2 font-semibold">{aiStatus.totalProspects}</span>
+                    </div>
+                    <div>
+                      <span className="text-green-700">Personalized:</span>
+                      <span className="ml-2 font-semibold">{personalizedCount}</span>
+                    </div>
+                    <div>
+                      <span className="text-green-700">Remaining:</span>
+                      <span className="ml-2 font-semibold">{remainingCount}</span>
+                    </div>
+                  </div>
+                  <p className="text-sm text-green-700">
+                    Estimated {aiStatus.estimatedDaysRemaining} days remaining at current pace
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Daily Limit */}
+          <div className="space-y-2">
+            <Label className="flex items-center gap-2">
+              <Users className="h-4 w-4" />
+              Daily Prospect Limit
+            </Label>
+            <div className="flex items-center gap-4">
+              <Input
+                type="number"
+                min="1"
+                max="100"
+                value={config.dailyLimit}
+                onChange={(e) => setConfig({ ...config, dailyLimit: parseInt(e.target.value) || 25 })}
+                className="w-32"
+                data-testid="input-daily-limit"
+              />
+              <span className="text-sm text-gray-600">
+                prospects per day (Recommended: 20-30 for best quality)
+              </span>
+            </div>
+            <p className="text-xs text-gray-500">
+              Estimated completion: {estimatedDays} days for {prospects.length} prospects
+            </p>
+          </div>
+
+          {/* Start Date */}
+          <div className="space-y-2">
+            <Label className="flex items-center gap-2">
+              <Calendar className="h-4 w-4" />
+              Start Date
+            </Label>
+            <Input
+              type="date"
+              value={config.startDate}
+              onChange={(e) => setConfig({ ...config, startDate: e.target.value })}
+              min={new Date().toISOString().split('T')[0]}
+              data-testid="input-start-date"
+            />
+          </div>
+
+          {/* Personalization Level */}
+          <div className="space-y-3">
+            <Label className="flex items-center gap-2">
+              <Settings className="h-4 w-4" />
+              Personalization Level
+            </Label>
+            <div className="grid grid-cols-1 gap-3">
+              {Object.entries(personalizationLevels).map(([key, level]) => (
+                <Card
+                  key={key}
+                  className={`cursor-pointer transition-all ${
+                    config.personalizationLevel === key
+                      ? 'border-purple-500 bg-purple-50 border-2'
+                      : 'border-gray-200 hover:border-purple-200'
+                  }`}
+                  onClick={() => setConfig({ ...config, personalizationLevel: key })}
+                  data-testid={`card-level-${key}`}
+                >
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between">
+                      <div className="space-y-1">
+                        <h4 className="font-semibold">{level.name}</h4>
+                        <p className="text-sm text-gray-600">{level.description}</p>
+                        <div className="flex gap-4 text-xs text-gray-500 mt-2">
+                          <span>Score: {level.score}</span>
+                          <span>Speed: {level.speed}</span>
+                          <span>API: {level.apiCalls}</span>
+                        </div>
+                      </div>
+                      {config.personalizationLevel === key && (
+                        <CheckCircle className="h-5 w-5 text-purple-600" />
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+
+          {/* Auto Follow-up */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <Label className="flex items-center gap-2">
+                <Zap className="h-4 w-4" />
+                Automatic Follow-up Emails
+              </Label>
+              <Switch
+                checked={config.autoFollowUp}
+                onCheckedChange={(checked) => setConfig({ ...config, autoFollowUp: checked })}
+                data-testid="switch-auto-followup"
+              />
+            </div>
+            {config.autoFollowUp && (
+              <div className="ml-6 space-y-2">
+                <Label className="text-sm">Send follow-up after:</Label>
+                <Select
+                  value={config.followUpDays.toString()}
+                  onValueChange={(value) => setConfig({ ...config, followUpDays: parseInt(value) })}
+                >
+                  <SelectTrigger className="w-40">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="2">2 days</SelectItem>
+                    <SelectItem value="3">3 days</SelectItem>
+                    <SelectItem value="5">5 days</SelectItem>
+                    <SelectItem value="7">7 days</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-gray-500">
+                  Only sent if prospect doesn't reply to initial email
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Minimum Lead Score */}
+          <div className="space-y-2">
+            <Label className="flex items-center gap-2">
+              <TrendingUp className="h-4 w-4" />
+              Minimum Lead Score Threshold
+            </Label>
+            <div className="flex items-center gap-4">
+              <Input
+                type="number"
+                min="0"
+                max="100"
+                value={config.priorityScore}
+                onChange={(e) => setConfig({ ...config, priorityScore: parseInt(e.target.value) || 70 })}
+                className="w-32"
+              />
+              <span className="text-sm text-gray-600">
+                Only personalize prospects with score ≥ {config.priorityScore}
+              </span>
+            </div>
+          </div>
+
+          {/* Info Box */}
+          <Card className="border-blue-200 bg-blue-50">
+            <CardContent className="p-4">
+              <h4 className="font-medium text-blue-900 mb-2">How It Works:</h4>
+              <ol className="list-decimal list-inside space-y-1 text-sm text-blue-800">
+                <li>AI selects {config.dailyLimit} prospects daily starting {config.startDate}</li>
+                <li>Analyzes each using LinkedIn, company data, and content library</li>
+                <li>Generates highly personalized email (target: {personalizationLevels[config.personalizationLevel as keyof typeof personalizationLevels].score} score)</li>
+                <li>Schedules email for sending</li>
+                {config.autoFollowUp && (
+                  <li>Creates follow-up email after {config.followUpDays} days if no response</li>
+                )}
+              </ol>
+            </CardContent>
+          </Card>
+
+          {/* Action Buttons */}
+          <div className="flex justify-between pt-4 border-t">
+            <div>
+              {aiStatus?.enabled && (
+                <Button
+                  variant="outline"
+                  onClick={() => triggerMutation.mutate()}
+                  disabled={triggerMutation.isPending}
+                  data-testid="button-manual-trigger"
+                >
+                  {triggerMutation.isPending ? "Processing..." : "Process Batch Now (Test)"}
+                </Button>
+              )}
+            </div>
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={onClose}>Cancel</Button>
+              <Button
+                onClick={() => setupMutation.mutate()}
+                disabled={setupMutation.isPending}
+                className="bg-purple-600 hover:bg-purple-700"
+                data-testid="button-save-ai-setup"
+              >
+                {setupMutation.isPending ? "Saving..." : aiStatus?.enabled ? "Update Configuration" : "Activate AI Personalization"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}

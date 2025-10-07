@@ -235,6 +235,84 @@ class ApolloService {
     
     return parts.join(', ');
   }
+
+  // Enrich with automatic Lusha fallback for locked emails
+  async enrichWithAutoFallback(params: { 
+    email?: string; 
+    first_name?: string; 
+    last_name?: string; 
+    organization_name?: string;
+    linkedin_url?: string;
+  }): Promise<{ 
+    contact: ApolloContact | null; 
+    enrichedEmail?: string;
+    source: 'apollo' | 'lusha' | 'none';
+  }> {
+    try {
+      // First try Apollo enrichment
+      const apolloResult = await this.enrichContact(params);
+      const contact = apolloResult.contact;
+
+      // Check if email is locked
+      const isLocked = !contact.email || 
+                      contact.email.includes('email_not_unlocked') || 
+                      contact.email.includes('@example.com');
+
+      if (!isLocked) {
+        return { 
+          contact, 
+          enrichedEmail: contact.email,
+          source: 'apollo' 
+        };
+      }
+
+      // Try Lusha fallback for locked emails
+      const { lushaService } = await import('./lusha.service');
+      
+      if (!lushaService.isConfigured()) {
+        console.warn('Lusha not configured - cannot fallback for locked email');
+        return { 
+          contact, 
+          enrichedEmail: undefined,
+          source: 'none' 
+        };
+      }
+
+      const lushaData = await lushaService.enrichPerson({
+        fullName: params.first_name && params.last_name 
+          ? `${params.first_name} ${params.last_name}`
+          : undefined,
+        company: params.organization_name,
+        linkedinUrl: params.linkedin_url
+      });
+
+      const lushaEmail = lushaService.getBestEmail(lushaData);
+
+      if (lushaEmail) {
+        return {
+          contact: {
+            ...contact,
+            email: lushaEmail
+          },
+          enrichedEmail: lushaEmail,
+          source: 'lusha'
+        };
+      }
+
+      return { 
+        contact, 
+        enrichedEmail: undefined,
+        source: 'none' 
+      };
+    } catch (error) {
+      console.error('Enrichment with fallback error:', error);
+      return { 
+        contact: null, 
+        enrichedEmail: undefined,
+        source: 'none' 
+      };
+    }
+  }
 }
 
 export const apolloService = new ApolloService();
