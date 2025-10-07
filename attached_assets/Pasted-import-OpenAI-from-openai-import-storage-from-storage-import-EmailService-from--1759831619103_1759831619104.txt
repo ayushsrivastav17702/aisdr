@@ -1,0 +1,588 @@
+import OpenAI from "openai";
+import { storage } from "../../storage";
+import { EmailService } from "../email";
+import { contentManagement } from "../contentManagement";
+
+const emailService = new EmailService();
+
+// the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+export interface FollowUpConfig {
+  sequenceId: number;
+  prospectId: number;
+  daysBetween: number;
+  maxFollowUps: number;
+  followUpType: 'gentle_reminder' | 'value_add' | 'breakup' | 'social_proof';
+  triggerCondition: 'no_response' | 'no_open' | 'opened_no_click' | 'time_based';
+  selectedContentIds?: string[];
+  addAsSequenceStep?: boolean;
+}
+
+export interface FollowUpEmail {
+  subject: string;
+  content: string;
+  followUpNumber: number;
+  reasoning: string;
+  scheduledFor: Date;
+}
+
+export class AIFollowUpScheduler {
+  private static instance: AIFollowUpScheduler;
+  private scheduledFollowUps: Map<string, FollowUpConfig[]> = new Map();
+  private runningScheduler: boolean = false;
+
+  public static getInstance(): AIFollowUpScheduler {
+    if (!AIFollowUpScheduler.instance) {
+      AIFollowUpScheduler.instance = new AIFollowUpScheduler();
+    }
+    return AIFollowUpScheduler.instance;
+  }
+
+  /**
+   * Start the automated follow-up scheduler
+   */
+  startScheduler(): void {
+    if (this.runningScheduler) {
+      console.log('📅 Follow-up scheduler already running');
+      return;
+    }
+
+    this.runningScheduler = true;
+    console.log('📅 Starting AI Follow-up Scheduler...');
+    
+    // Check every hour for due follow-ups
+    setInterval(async () => {
+      await this.processScheduledFollowUps();
+    }, 60 * 60 * 1000); // 1 hour
+    
+    // Initial run
+    this.processScheduledFollowUps();
+  }
+
+  /**
+   * Schedule a follow-up email for a prospect
+   */
+  async scheduleFollowUp(config: FollowUpConfig): Promise<string> {
+    try {
+      const followUpId = `followup_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const key = `${config.sequenceId}_${config.prospectId}`;
+      
+      const existingFollowUps = this.scheduledFollowUps.get(key) || [];
+      existingFollowUps.push(config);
+      this.scheduledFollowUps.set(key, existingFollowUps);
+
+      console.log(`📅 ${config.followUpType} follow-up scheduled for prospect ${config.prospectId} in ${config.daysBetween} days (max ${config.maxFollowUps}, trigger: ${config.triggerCondition})`);
+      
+      // CRITICAL: If addAsSequenceStep is true, add this follow-up as a new step to the sequence
+      if (config.addAsSequenceStep) {
+        console.log(`📝 Adding AI follow-up as new step to sequence ${config.sequenceId}`);
+        
+        // Get current sequence
+        const sequence = await storage.getEmailSequence(config.sequenceId);
+        if (sequence) {
+          // Parse existing sequence flow
+          let sequenceFlow = [];
+          try {
+            sequenceFlow = sequence.sequenceFlow ? JSON.parse(sequence.sequenceFlow) : [];
+          } catch (e) {
+            sequenceFlow = [];
+          }
+          
+          // Create new step for the follow-up
+          const newStep = {
+            id: `step_${Date.now()}_ai_followup`,
+            type: "email",
+            stepNumber: sequenceFlow.length + 1,
+            emailType: "ai_followup",
+            runOnDay: (sequenceFlow.length + 1) * config.daysBetween,
+            hasDelay: true,
+            delayDays: config.daysBetween,
+            delayHours: 0,
+            specificTime: "",
+            subject: `${config.followUpType.replace('_', ' ')} follow-up`,
+            content: `AI-generated ${config.followUpType} follow-up email`,
+            variables: [],
+            useAI: true,
+            template: "ai-followup",
+            aiFollowUpType: config.followUpType,
+            triggerCondition: config.triggerCondition
+          };
+          
+          // Add the new step
+          sequenceFlow.push(newStep);
+          
+          // Update sequence with new step
+          await storage.updateEmailSequence(config.sequenceId, {
+            sequenceFlow: JSON.stringify(sequenceFlow),
+            stepsCount: sequenceFlow.length,
+            updatedAt: new Date()
+          });
+          
+          console.log(`✅ Added AI follow-up step to sequence ${config.sequenceId}`);
+        }
+      }
+      
+      // Log the scheduling activity
+      await storage.createActivity({
+        prospectId: config.prospectId,
+        type: 'followup_scheduled',
+        description: `AI follow-up scheduled: ${config.followUpType} in ${config.daysBetween} days`,
+        metadata: {
+          followUpId,
+          daysBetween: config.daysBetween,
+          followUpType: config.followUpType,
+          maxFollowUps: config.maxFollowUps,
+          triggerCondition: config.triggerCondition
+        }
+      });
+
+      return followUpId;
+    } catch (error) {
+      console.error('❌ Failed to schedule follow-up:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Process all scheduled follow-ups that are due
+   */
+  private async processScheduledFollowUps(): Promise<void> {
+    try {
+      console.log('🔍 Checking for due follow-ups...');
+      
+      for (const [key, followUps] of this.scheduledFollowUps.entries()) {
+        for (const config of followUps) {
+          if (await this.isFollowUpDue(config)) {
+            await this.sendFollowUpEmail(config);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('❌ Error processing follow-ups:', error);
+    }
+  }
+
+  /**
+   * Check if a follow-up is due based on conditions
+   */
+  private async isFollowUpDue(config: FollowUpConfig): Promise<boolean> {
+    try {
+      // Get the latest email sent to this prospect in this sequence
+      const emailLogs = await storage.getEmailLogsByProspect(config.prospectId);
+      const sequenceEmails = emailLogs.filter(log => log.sequenceId === config.sequenceId);
+      
+      if (sequenceEmails.length === 0) return false;
+
+      const latestEmail = sequenceEmails.sort((a, b) => 
+        new Date(b.sentAt).getTime() - new Date(a.sentAt).getTime()
+      )[0];
+
+      const daysSinceLastEmail = Math.floor(
+        (Date.now() - new Date(latestEmail.sentAt).getTime()) / (1000 * 60 * 60 * 24)
+      );
+
+      // Check if enough days have passed
+      if (daysSinceLastEmail < config.daysBetween) return false;
+
+      // Check trigger conditions
+      switch (config.triggerCondition) {
+        case 'no_response':
+          return !latestEmail.responseReceived;
+        case 'no_open':
+          return !latestEmail.openedAt;
+        case 'opened_no_click':
+          return latestEmail.openedAt && !latestEmail.clickedAt;
+        case 'time_based':
+          return true; // Already checked days above
+        default:
+          return false;
+      }
+    } catch (error) {
+      console.error('❌ Error checking follow-up due status:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Generate and send AI follow-up email
+   */
+  private async sendFollowUpEmail(config: FollowUpConfig): Promise<void> {
+    try {
+      console.log(`📧 Generating AI follow-up for prospect ${config.prospectId}`);
+      
+      // Get prospect data
+      const prospect = await storage.getProspect(config.prospectId);
+      if (!prospect) {
+        console.error(`❌ Prospect ${config.prospectId} not found`);
+        return;
+      }
+
+      // Get email history for context
+      const emailHistory = await this.getEmailHistory(config.prospectId, config.sequenceId);
+      
+      // Count existing follow-ups
+      const followUpCount = emailHistory.filter(email => 
+        email.subject.toLowerCase().includes('follow') || 
+        email.subject.toLowerCase().includes('following')
+      ).length + 1;
+
+      // Check if we've reached max follow-ups
+      if (followUpCount > config.maxFollowUps) {
+        console.log(`📝 Max follow-ups (${config.maxFollowUps}) reached for prospect ${config.prospectId}`);
+        return;
+      }
+
+      // Generate follow-up email with AI and selected content
+      const followUpEmail = await this.generateFollowUpEmail(
+        prospect,
+        emailHistory,
+        config.followUpType,
+        followUpCount,
+        config.selectedContentIds
+      );
+
+      // Send the email
+      const emailSent = await emailService.sendEmail({
+        to: prospect.email,
+        subject: followUpEmail.subject,
+        html: followUpEmail.content,
+        text: followUpEmail.content.replace(/<[^>]*>/g, '') // Strip HTML for text version
+      });
+
+      if (emailSent || config.addAsSequenceStep) {
+        // If addAsSequenceStep is true, create a sequence step instead of sending immediately
+        if (config.addAsSequenceStep) {
+          await this.addFollowUpAsSequenceStep(config.sequenceId, followUpEmail, followUpCount);
+          console.log(`✅ Follow-up #${followUpCount} added as sequence step`);
+        } else {
+          // Log the email
+          await storage.createEmailLog({
+            prospectId: config.prospectId,
+            sequenceId: config.sequenceId,
+            subject: followUpEmail.subject,
+            content: followUpEmail.content,
+            sentAt: new Date(),
+            emailStatus: 'sent',
+            deliveryStatus: 'delivered'
+          });
+        }
+
+        // Create activity
+        await storage.createActivity({
+          prospectId: config.prospectId,
+          type: 'followup_sent',
+          description: `AI follow-up #${followUpCount} sent: ${config.followUpType}`,
+          metadata: {
+            subject: followUpEmail.subject,
+            followUpType: config.followUpType,
+            followUpNumber: followUpCount,
+            reasoning: followUpEmail.reasoning
+          }
+        });
+
+        console.log(`✅ Follow-up #${followUpCount} sent to ${prospect.firstName} ${prospect.lastName}`);
+      } else {
+        console.error(`❌ Failed to send follow-up email to ${prospect.email}`);
+      }
+    } catch (error) {
+      console.error('❌ Error sending follow-up email:', error);
+    }
+  }
+
+  /**
+   * Get email history for context
+   */
+  private async getEmailHistory(prospectId: number, sequenceId: number): Promise<any[]> {
+    const emailLogs = await storage.getEmailLogsByProspect(prospectId);
+    return emailLogs.filter(log => log.sequenceId === sequenceId)
+      .sort((a, b) => new Date(a.sentAt).getTime() - new Date(b.sentAt).getTime());
+  }
+
+  /**
+   * Generate AI-powered follow-up email preview (public method)
+   */
+  async generateFollowUpEmailPreview(
+    prospect: any,
+    emailHistory: string,
+    followUpType: string,
+    followUpNumber: number
+  ): Promise<FollowUpEmail> {
+    // Convert string history to array format for the private method
+    const emailHistoryArray = emailHistory ? emailHistory.split('\n\n').map(entry => ({
+      subject: entry.split('\n')[0]?.replace('Subject: ', '') || '',
+      content: entry.split('\n')[1]?.replace('Content: ', '') || ''
+    })) : [];
+    
+    console.log(`📧 Generating ${followUpType} follow-up preview for ${prospect.firstName} ${prospect.lastName}`);
+    return this.generateFollowUpEmail(prospect, emailHistoryArray, followUpType, followUpNumber);
+  }
+
+  /**
+   * Generate AI-powered follow-up email
+   */
+  private async generateFollowUpEmail(
+    prospect: any,
+    emailHistory: any[],
+    followUpType: string,
+    followUpNumber: number,
+    selectedContentIds: string[] = []
+  ): Promise<FollowUpEmail> {
+    try {
+      const previousEmails = emailHistory.map(email => 
+        `Subject: ${email.subject || 'No subject'}\nContent: ${(email.content || 'No content').substring(0, 200)}...`
+      ).join('\n\n');
+
+      const prompt = await this.buildFollowUpPrompt(
+        prospect,
+        previousEmails,
+        followUpType,
+        followUpNumber,
+        selectedContentIds
+      );
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "system",
+            content: "You are an expert sales development representative specializing in thoughtful, value-driven follow-up emails. Your follow-ups are never pushy, always add value, and respect the prospect's time."
+          },
+          {
+            role: "user",
+            content: prompt
+          }
+        ],
+        response_format: { type: "json_object" },
+        temperature: 0.7,
+        max_tokens: 800
+      });
+
+      const result = JSON.parse(response.choices[0].message.content || '{}');
+      
+      // Convert HTML formatting to plain text
+      const cleanContent = (result.content || "Hi there, I wanted to follow up on our previous conversation...")
+        .replace(/<br\s*\/?>/gi, '\n\n')
+        .replace(/<\/p>/gi, '\n\n')
+        .replace(/<p[^>]*>/gi, '')
+        .replace(/<a[^>]*>/gi, '')
+        .replace(/<\/a>/gi, '')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+      
+      return {
+        subject: result.subject || `Following up on our conversation`,
+        content: cleanContent,
+        followUpNumber,
+        reasoning: result.reasoning || "Generated a thoughtful follow-up email",
+        scheduledFor: new Date()
+      };
+    } catch (error) {
+      console.error('❌ AI follow-up generation failed:', error);
+      
+      // Fallback follow-up
+      return {
+        subject: `Quick follow-up for ${prospect.firstName}`,
+        content: `Hi ${prospect.firstName},\n\nI hope this email finds you well. I wanted to follow up on my previous message regarding how we can help ${prospect.company} with their current challenges.\n\nI understand you're busy, so I'll keep this brief. Would you be open to a quick 15-minute conversation to explore if there's a fit?\n\nBest regards,\nMayukh Ganguly\nFounder & CEO, Increff AI SDR`,
+        followUpNumber,
+        reasoning: "Fallback follow-up email generated",
+        scheduledFor: new Date()
+      };
+    }
+  }
+
+  /**
+   * Add follow-up as a sequence step instead of sending immediately
+   */
+  private async addFollowUpAsSequenceStep(
+    sequenceId: number,
+    followUpEmail: FollowUpEmail,
+    followUpNumber: number
+  ): Promise<void> {
+    try {
+      // Get existing sequence steps to determine position
+      const sequence = await storage.getEmailSequence(sequenceId);
+      if (!sequence) {
+        throw new Error(`Sequence ${sequenceId} not found`);
+      }
+
+      // Parse existing sequence flow or initialize if empty
+      let sequenceFlow = [];
+      try {
+        if (sequence.sequenceFlow && typeof sequence.sequenceFlow === 'string') {
+          sequenceFlow = JSON.parse(sequence.sequenceFlow);
+        } else if (Array.isArray(sequence.sequenceFlow)) {
+          sequenceFlow = sequence.sequenceFlow;
+        }
+      } catch (parseError) {
+        console.log('🔄 Creating new sequence flow for follow-up step');
+        sequenceFlow = [];
+      }
+
+      // Create new follow-up step
+      const newStepNumber = sequenceFlow.length + 1;
+      const newStep = {
+        id: `followup_step_${Date.now()}_${followUpNumber}`,
+        type: 'email',
+        stepNumber: newStepNumber,
+        emailType: 'ai_followup',
+        runOnDay: followUpNumber * 3, // Space follow-ups 3 days apart
+        hasDelay: true,
+        delayDays: followUpNumber * 3,
+        delayHours: 0,
+        specificTime: '',
+        subject: followUpEmail.subject,
+        content: followUpEmail.content,
+        variables: [],
+        template: 'ai-followup',
+        usePersonalization: true,
+        addedByAI: true,
+        followUpType: followUpEmail.reasoning?.includes('gentle') ? 'gentle_reminder' :
+                     followUpEmail.reasoning?.includes('value') ? 'value_add' :
+                     followUpEmail.reasoning?.includes('social') ? 'social_proof' : 'breakup'
+      };
+
+      // Add the new step to the sequence flow
+      sequenceFlow.push(newStep);
+
+      // Update the sequence with the new step
+      const updatedSequence = {
+        ...sequence,
+        sequenceFlow: sequenceFlow,
+        stepsCount: sequenceFlow.length,
+        updatedAt: new Date()
+      };
+
+      await storage.updateEmailSequence(sequenceId, updatedSequence);
+
+      console.log(`✅ Added AI follow-up step ${newStepNumber} to sequence ${sequenceId}: ${followUpEmail.subject}`);
+
+      // Log the activity
+      await storage.createActivity({
+        prospectId: null, // This affects the whole sequence
+        type: 'sequence_updated',
+        description: `AI follow-up step added: ${followUpEmail.subject}`,
+        metadata: {
+          sequenceId,
+          stepNumber: newStepNumber,
+          followUpType: newStep.followUpType,
+          addedByAI: true
+        }
+      });
+
+    } catch (error) {
+      console.error('❌ Error adding follow-up as sequence step:', error);
+      throw new Error(`Failed to add follow-up as sequence step: ${error.message}`);
+    }
+  }
+
+  /**
+   * Build AI prompt for follow-up generation with content management integration
+   */
+  private async buildFollowUpPrompt(
+    prospect: any,
+    previousEmails: string,
+    followUpType: string,
+    followUpNumber: number,
+    selectedContentIds: string[] = []
+  ): Promise<string> {
+    // Get selected content from Content Management system or fallback to all content
+    const allContent = await storage.getContentLibrary();
+    const contentLibrary = selectedContentIds.length > 0 
+      ? allContent.filter(item => selectedContentIds.includes(item.id))
+      : allContent;
+    
+    const contentContext = contentLibrary.length > 0 
+      ? contentLibrary.map(item => `${item.name}: ${item.description || item.content?.substring(0, 200)}`).join('\n')
+      : 'No content available';
+
+    // Get user settings for context - use default since getUserSettings doesn't exist in storage interface
+    const userContext = `
+    From: Mayukh Ganguly
+    Company: Increff AI SDR
+    Role: Founder & CEO
+    Phone: +91 98765 43210
+    Email: mayukh@increff.com
+    `;
+    const typePrompts = {
+      gentle_reminder: "Create a gentle, non-pushy reminder that adds value",
+      value_add: "Share valuable insights, tips, or resources relevant to their industry/role",
+      breakup: "Create a professional breakup email that leaves the door open for future contact",
+      social_proof: "Include social proof, case studies, or testimonials from similar companies"
+    };
+
+    return `Generate a ${followUpType.replace('_', ' ')} follow-up email (#${followUpNumber}) for this prospect:
+
+Prospect Details:
+- Name: ${prospect.firstName} ${prospect.lastName}
+- Title: ${prospect.jobTitle || 'Professional'}
+- Company: ${prospect.company || 'their company'}
+- Email: ${prospect.email}
+
+Sender Information:${userContext}
+
+Available Content Library to Reference:
+${contentContext}
+
+Previous Email History:
+${previousEmails}
+
+Follow-up Instructions:
+- FOLLOW-UP TYPE: ${typePrompts[followUpType as keyof typeof typePrompts] || 'Create a professional follow-up'}
+- CRITICAL: This MUST be a ${followUpType.replace('_', ' ').toUpperCase()} email - follow this type strictly
+- This is follow-up #${followUpNumber} in the sequence
+- If this is a VALUE_ADD email: Include insights, tips, resources, or industry knowledge
+- If this is a GENTLE_REMINDER: Be soft, understanding, and non-pushy
+- If this is a SOCIAL_PROOF: Include case studies, testimonials, or success stories
+- If this is a BREAKUP: Be professional, understanding, and leave the door open
+- Reference previous emails naturally but don't repeat the same value proposition
+- Keep it concise (under 150 words)
+- Include a clear but soft call-to-action
+- Be helpful and respectful of their time
+- Maintain a professional yet personable tone
+
+Generate JSON response:
+{
+  "subject": "Compelling subject line that doesn't sound salesy",
+  "content": "Well-crafted email content with proper line breaks (use \\n\\n for paragraphs, not HTML tags)",
+  "reasoning": "Brief explanation of the approach and why this follow-up adds value"
+}`;
+  }
+
+  /**
+   * Get follow-up statistics for a sequence
+   */
+  async getFollowUpStats(sequenceId: number): Promise<any> {
+    try {
+      // Get all activities for this sequence and count follow-ups
+      const activities = await storage.getActivities();
+      const sequenceFollowUps = activities.filter(activity => 
+        activity.type === 'followup_sent' && activity.sequenceId === sequenceId
+      );
+
+      const prospectIds = new Set(sequenceFollowUps.map(a => a.prospectId));
+      const averageFollowUps = prospectIds.size > 0 ? sequenceFollowUps.length / prospectIds.size : 0;
+
+      const followUpTypes = sequenceFollowUps.reduce((acc, activity) => {
+        const type = activity.description?.includes('gentle') ? 'gentle_reminder' :
+                    activity.description?.includes('value') ? 'value_add' :
+                    activity.description?.includes('breakup') ? 'breakup' :
+                    activity.description?.includes('social') ? 'social_proof' : 'unknown';
+        acc[type] = (acc[type] || 0) + 1;
+        return acc;
+      }, {} as Record<string, number>);
+
+      return {
+        totalFollowUpsSent: sequenceFollowUps.length,
+        averageFollowUpsPerProspect: Math.round(averageFollowUps * 10) / 10,
+        followUpTypes
+      };
+    } catch (error) {
+      console.error('❌ Error getting follow-up stats:', error);
+      return { totalFollowUpsSent: 0, averageFollowUpsPerProspect: 0, followUpTypes: {} };
+    }
+  }
+}
+
+// Export singleton instance
+export const aiFollowUpScheduler = AIFollowUpScheduler.getInstance();
