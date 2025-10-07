@@ -1,0 +1,626 @@
+import React, { useState } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Label } from '@/components/ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useToast } from '@/hooks/use-toast';
+import { Plus, FileText, Edit, Trash2, Tag, Upload } from 'lucide-react';
+
+interface ContentItem {
+  id: string;
+  title: string;
+  type: 'case_study' | 'whitepaper' | 'blog_post' | 'product_sheet' | 'testimonial' | 'company_info';
+  content: string;
+  tags: string[];
+  industry?: string;
+  useCase?: string;
+  createdAt?: string;
+}
+
+export default function ContentManagement() {
+  const [showAddDialog, setShowAddDialog] = useState(false);
+  const [editingItem, setEditingItem] = useState<ContentItem | null>(null);
+  const [fileUpload, setFileUpload] = useState<File | null>(null);
+  const [uploadMode, setUploadMode] = useState<'manual' | 'upload'>('manual');
+  const [dragOver, setDragOver] = useState(false);
+  const [formData, setFormData] = useState({
+    title: '',
+    type: 'case_study' as ContentItem['type'],
+    content: '',
+    tags: '',
+    industry: '',
+    useCase: ''
+  });
+
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  // Fetch content library
+  const { data: contentLibrary = [], isLoading } = useQuery({
+    queryKey: ['/api/content']
+  });
+
+  // Add content mutation
+  const addContentMutation = useMutation({
+    mutationFn: async (data: any) => {
+      console.log('🔄 Submitting content data:', data);
+      const response = await fetch('/api/content', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...data,
+          id: `content_${Date.now()}`,
+          createdAt: new Date().toISOString()
+        })
+      });
+      if (!response.ok) {
+        const errorData = await response.text();
+        console.error('❌ Content submission failed:', errorData);
+        throw new Error(`Failed to add content: ${response.statusText}`);
+      }
+      const result = await response.json();
+      console.log('✅ Content added successfully:', result);
+      return result;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/content'] });
+      setShowAddDialog(false);
+      resetForm();
+      toast({
+        title: "Content Added",
+        description: "Content item has been added to your library"
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to add content item",
+        variant: "destructive"
+      });
+    }
+  });
+
+  // Update content mutation
+  const updateContentMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const response = await fetch(`/api/content/${data.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...data,
+          tags: data.tags.split(',').map((tag: string) => tag.trim()).filter(Boolean)
+        })
+      });
+      if (!response.ok) throw new Error('Failed to update content');
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/content'] });
+      setEditingItem(null);
+      resetForm();
+      toast({
+        title: "Content Updated",
+        description: "Content item has been updated successfully"
+      });
+    }
+  });
+
+  // Delete content mutation
+  const deleteContentMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const response = await fetch(`/api/content/${id}`, { method: 'DELETE' });
+      if (!response.ok) throw new Error('Failed to delete content');
+      return response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/content'] });
+      toast({
+        title: "Content Deleted",
+        description: "Content item has been removed from your library"
+      });
+    }
+  });
+
+  const resetForm = () => {
+    setFormData({
+      title: '',
+      type: 'case_study',
+      content: '',
+      tags: '',
+      industry: '',
+      useCase: ''
+    });
+    setFileUpload(null);
+    setUploadMode('manual');
+    setDragOver(false);
+  };
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      // Check file size (10MB limit)
+      if (file.size > 10 * 1024 * 1024) {
+        toast({
+          title: "File Too Large",
+          description: "Please select a file smaller than 10MB",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      setFileUpload(file);
+      // Auto-fill title with filename (without extension)
+      const fileName = file.name.replace(/\.[^/.]+$/, "");
+      setFormData(prev => ({...prev, title: fileName}));
+      
+      // Handle different file types
+      const fileType = file.type;
+      const fileName_lower = file.name.toLowerCase();
+      
+      if (fileType === 'application/pdf' || fileName_lower.endsWith('.pdf')) {
+        // Handle PDF files
+        await extractPdfContent(file);
+      } else if (fileName_lower.endsWith('.ppt') || fileName_lower.endsWith('.pptx') || fileType.includes('presentation')) {
+        // Handle PowerPoint files
+        await extractPptContent(file);
+      } else {
+        // Handle text files (TXT, MD, etc.)
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          processTextContent(e.target?.result as string);
+        };
+        reader.readAsText(file);
+      }
+    }
+  };
+
+  const extractPdfContent = async (file: File) => {
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      
+      const response = await fetch('/api/extract-pdf', {
+        method: 'POST',
+        body: formData
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        processTextContent(data.text);
+      } else {
+        const errorData = await response.json();
+        throw new Error(errorData.details || 'Failed to extract PDF content');
+      }
+    } catch (error) {
+      console.error('PDF extraction error:', error);
+      toast({
+        title: "PDF Extraction Failed", 
+        description: error.message || "Could not extract text from PDF. Please try converting to text format first.",
+        variant: "destructive"
+      });
+      
+      // Clear the file input since extraction failed
+      setFileUpload(null);
+      const input = document.getElementById('file-upload') as HTMLInputElement;
+      if (input) input.value = '';
+    }
+  };
+
+  const extractPptContent = async (file: File) => {
+    try {
+      toast({
+        title: "PowerPoint Files",
+        description: "For now, please save your PowerPoint slides as a text file (.txt) or copy and paste the content manually. PowerPoint text extraction will be added soon.",
+        variant: "destructive"
+      });
+      
+      // Clear the file input since we can't process PPT yet
+      setFileUpload(null);
+      const input = document.getElementById('file-upload') as HTMLInputElement;
+      if (input) input.value = '';
+      
+    } catch (error) {
+      console.error('PowerPoint extraction error:', error);
+    }
+  };
+
+  const processTextContent = (content: string) => {
+    // Clean up common formatting issues
+    content = content
+      .replace(/\r\n/g, '\n')  // Normalize line endings
+      .replace(/\r/g, '\n')    // Convert old Mac line endings
+      .replace(/\n{3,}/g, '\n\n')  // Remove excessive line breaks
+      .replace(/^\s+|\s+$/g, '') // Trim whitespace
+      .replace(/\t/g, '    ');   // Convert tabs to spaces
+    
+    // Limit content length to prevent server overload
+    if (content.length > 50000) {
+      content = content.substring(0, 50000) + '\n\n[Content truncated at 50,000 characters]';
+    }
+    
+    setFormData(prev => ({...prev, content}));
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      const file = files[0];
+      const input = document.getElementById('file-upload') as HTMLInputElement;
+      const dataTransfer = new DataTransfer();
+      dataTransfer.items.add(file);
+      input.files = dataTransfer.files;
+      handleFileUpload({ target: { files: dataTransfer.files } } as any);
+    }
+  };
+
+  const handleEdit = (item: ContentItem) => {
+    setEditingItem(item);
+    setFormData({
+      title: item.title,
+      type: item.type,
+      content: item.content,
+      tags: item.tags.join(', '),
+      industry: item.industry || '',
+      useCase: item.useCase || ''
+    });
+  };
+
+  const handleSubmit = () => {
+    // Enhanced validation with field highlighting
+    const missingFields = [];
+    if (!formData.title.trim()) missingFields.push("title");
+    if (!formData.content.trim()) missingFields.push("content");
+    
+    if (missingFields.length > 0) {
+      toast({
+        title: "Missing Information",
+        description: `Please fill in the ${missingFields.join(" and ")} field${missingFields.length > 1 ? "s" : ""}. For PDF files, copy the content and paste it into the content area.`,
+        variant: "destructive"
+      });
+      
+      // Focus on the first missing field
+      const fieldElement = document.getElementById(missingFields[0]);
+      if (fieldElement) {
+        fieldElement.focus();
+        fieldElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+      return;
+    }
+
+    const submitData = {
+      ...formData,
+      content: formData.content.trim(), // Ensure content is cleaned
+      tags: formData.tags.split(',').map((tag: string) => tag.trim()).filter(Boolean)
+    };
+
+    if (editingItem) {
+      updateContentMutation.mutate({ ...submitData, id: editingItem.id });
+    } else {
+      addContentMutation.mutate(submitData);
+    }
+  };
+
+  const getContentTypeIcon = (type: string) => {
+    const icons = {
+      case_study: '📊',
+      whitepaper: '📄',
+      blog_post: '📝',
+      product_sheet: '📋',
+      testimonial: '💬',
+      company_info: '🏢'
+    };
+    return icons[type as keyof typeof icons] || '📁';
+  };
+
+  const getContentTypeName = (type: string) => {
+    return type.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
+  };
+
+  return (
+    <div className="p-6 max-w-7xl mx-auto">
+      {/* Header */}
+      <div className="flex justify-between items-center mb-6">
+        <div>
+          <h1 className="text-2xl font-bold">Content Management</h1>
+          <p className="text-gray-600">Manage your content library for AI template generation</p>
+        </div>
+        <Button onClick={() => setShowAddDialog(true)}>
+          <Plus className="h-4 w-4 mr-2" />
+          Add Content
+        </Button>
+      </div>
+
+      {/* Content Library */}
+      {isLoading ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[1, 2, 3, 4, 5, 6].map(i => (
+            <Card key={i} className="animate-pulse">
+              <CardContent className="h-40 bg-gray-100 rounded"></CardContent>
+            </Card>
+          ))}
+        </div>
+      ) : contentLibrary.length === 0 ? (
+        <Card className="border-dashed border-2 border-gray-200">
+          <CardContent className="py-12 text-center">
+            <FileText className="h-16 w-16 mx-auto text-gray-400 mb-4" />
+            <h3 className="text-lg font-medium text-gray-900 mb-2">No content yet</h3>
+            <p className="text-gray-600 mb-4">Add content items to build your AI template library</p>
+            <Button onClick={() => setShowAddDialog(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Your First Content
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {contentLibrary.map((item: ContentItem) => (
+            <Card key={item.id} className="hover:shadow-lg transition-shadow">
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-2xl">{getContentTypeIcon(item.type)}</span>
+                    <Badge variant="secondary" className="text-xs">
+                      {getContentTypeName(item.type)}
+                    </Badge>
+                  </div>
+                  <div className="flex gap-1">
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={() => handleEdit(item)}
+                    >
+                      <Edit className="h-4 w-4" />
+                    </Button>
+                    <Button 
+                      variant="ghost" 
+                      size="sm"
+                      onClick={() => deleteContentMutation.mutate(item.id)}
+                      className="text-red-600 hover:text-red-700"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+                <CardTitle className="text-base">{item.title}</CardTitle>
+                <CardDescription className="text-sm line-clamp-2">
+                  {item.content.substring(0, 100)}...
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-wrap gap-1">
+                  {item.tags.slice(0, 3).map(tag => (
+                    <Badge key={tag} variant="outline" className="text-xs">
+                      <Tag className="h-3 w-3 mr-1" />
+                      {tag}
+                    </Badge>
+                  ))}
+                  {item.tags.length > 3 && (
+                    <Badge variant="outline" className="text-xs">
+                      +{item.tags.length - 3} more
+                    </Badge>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Add/Edit Content Dialog */}
+      <Dialog open={showAddDialog || !!editingItem} onOpenChange={(open) => {
+        if (!open) {
+          setShowAddDialog(false);
+          setEditingItem(null);
+          resetForm();
+        }
+      }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {editingItem ? 'Edit Content Item' : 'Add New Content Item'}
+            </DialogTitle>
+          </DialogHeader>
+          
+          <div className="space-y-6">
+            {/* Upload Mode Toggle */}
+            {!editingItem && (
+              <div className="flex gap-2 p-1 bg-gray-100 rounded-lg">
+                <Button
+                  type="button"
+                  variant={uploadMode === 'manual' ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => setUploadMode('manual')}
+                  className="flex-1"
+                >
+                  Manual Entry
+                </Button>
+                <Button
+                  type="button"
+                  variant={uploadMode === 'upload' ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => setUploadMode('upload')}
+                  className="flex-1"
+                >
+                  <Upload className="h-4 w-4 mr-2" />
+                  Upload File
+                </Button>
+              </div>
+            )}
+
+            {/* File Upload Section */}
+            {uploadMode === 'upload' && !editingItem && (
+              <div 
+                className={`border-2 border-dashed rounded-lg p-6 transition-colors ${
+                  dragOver 
+                    ? 'border-blue-400 bg-blue-50' 
+                    : 'border-gray-200 hover:border-gray-300'
+                }`}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+              >
+                <div className="text-center">
+                  <Upload className={`h-12 w-12 mx-auto mb-4 ${
+                    dragOver ? 'text-blue-500' : 'text-gray-400'
+                  }`} />
+                  <div className="mb-4">
+                    <Label htmlFor="file-upload" className="cursor-pointer">
+                      <span className="text-sm font-medium text-blue-600 hover:text-blue-500">
+                        Click to upload
+                      </span>
+                      <span className="text-sm text-gray-500"> or drag and drop</span>
+                    </Label>
+                    <Input
+                      id="file-upload"
+                      type="file"
+                      className="hidden"
+                      accept=".txt,.md"
+                      onChange={handleFileUpload}
+                    />
+                  </div>
+                  <p className="text-xs text-gray-500">
+                    Supports: TXT and MD files - max 10MB (PDF conversion coming soon)
+                  </p>
+                  <div className="text-xs text-amber-600 bg-amber-50 dark:bg-amber-900/20 p-3 rounded mt-2">
+                    <div className="font-medium mb-2">📋 Working with PDF files?</div>
+                    <div className="space-y-1">
+                      <div>• <strong>Fastest:</strong> Open PDF → Select All (Ctrl+A) → Copy → Use "Manual Entry" above</div>
+                      <div>• <strong>Alternative:</strong> Save PDF as .txt file, then upload</div>
+                      <div>• <strong>Online:</strong> Use smallpdf.com/pdf-to-txt converter</div>
+                    </div>
+                  </div>
+                  {fileUpload && (
+                    <div className="mt-4 text-sm text-green-600">
+                      ✓ Uploaded: {fileUpload.name}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="title">Title *</Label>
+                <Input
+                  id="title"
+                  value={formData.title}
+                  onChange={(e) => setFormData({...formData, title: e.target.value})}
+                  placeholder="Enter content title (required)"
+                  className={!formData.title.trim() ? "border-red-200 focus:border-red-400" : ""}
+                />
+                {!formData.title.trim() && (
+                  <p className="text-xs text-red-500 mt-1">Title is required</p>
+                )}
+              </div>
+              <div>
+                <Label htmlFor="type">Content Type</Label>
+                <Select 
+                  value={formData.type} 
+                  onValueChange={(value) => setFormData({...formData, type: value as ContentItem['type']})}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="case_study">Case Study</SelectItem>
+                    <SelectItem value="whitepaper">Whitepaper</SelectItem>
+                    <SelectItem value="blog_post">Blog Post</SelectItem>
+                    <SelectItem value="product_sheet">Product Sheet</SelectItem>
+                    <SelectItem value="testimonial">Testimonial</SelectItem>
+                    <SelectItem value="company_info">Company Info</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <div>
+              <Label htmlFor="content">Content *</Label>
+              <Textarea
+                id="content"
+                value={formData.content}
+                onChange={(e) => setFormData({...formData, content: e.target.value})}
+                placeholder={uploadMode === 'upload' ? 'Content will appear here after file upload...' : 'Paste your PDF content here or enter the content that AI will use for email generation...'}
+                rows={8}
+                className={`resize-none ${!formData.content.trim() ? "border-red-200 focus:border-red-400" : ""}`}
+                readOnly={uploadMode === 'upload' && !formData.content}
+              />
+              {!formData.content.trim() && (
+                <p className="text-xs text-red-500 mt-1">Content is required - please paste your PDF content or enter text manually</p>
+              )}
+              {uploadMode === 'manual' && (
+                <p className="text-xs text-blue-600 mt-1">💡 Copy content from your PDF and paste it here</p>
+              )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="industry">Industry (Optional)</Label>
+                <Input
+                  id="industry"
+                  value={formData.industry}
+                  onChange={(e) => setFormData({...formData, industry: e.target.value})}
+                  placeholder="e.g., Technology, Healthcare"
+                />
+              </div>
+              <div>
+                <Label htmlFor="useCase">Use Case (Optional)</Label>
+                <Input
+                  id="useCase"
+                  value={formData.useCase}
+                  onChange={(e) => setFormData({...formData, useCase: e.target.value})}
+                  placeholder="e.g., Cold outreach, Follow-up"
+                />
+              </div>
+            </div>
+
+            <div>
+              <Label htmlFor="tags">Tags</Label>
+              <Input
+                id="tags"
+                value={formData.tags}
+                onChange={(e) => setFormData({...formData, tags: e.target.value})}
+                placeholder="Enter tags separated by commas"
+              />
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4 border-t">
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  setShowAddDialog(false);
+                  setEditingItem(null);
+                  resetForm();
+                }}
+              >
+                Cancel
+              </Button>
+              <Button 
+                onClick={handleSubmit}
+                disabled={addContentMutation.isPending || updateContentMutation.isPending}
+              >
+                {editingItem ? 'Update Content' : 'Add Content'}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
