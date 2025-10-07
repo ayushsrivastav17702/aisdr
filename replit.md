@@ -36,6 +36,12 @@ An AI-powered Sales Development Representative (SDR) platform that converts natu
   - Secure credential encryption (AES-256-CBC with random IV)
   - Daily send limits and health monitoring
   - Backward-compatible encryption for existing credentials
+- ✅ **Apollo Bulk Match Integration** - Efficient multi-prospect enrichment (Oct 7, 2025)
+  - Bulk enrichment API using Apollo's bulk match endpoint
+  - Enrich multiple prospects simultaneously with single API call
+  - Detailed employment history and organization data
+  - Credit consumption tracking and reporting
+  - One-click bulk enrichment UI in prospects table
 
 ## Architecture
 - **Frontend**: React + TypeScript + Vite + Tailwind CSS + shadcn/ui
@@ -88,6 +94,7 @@ Apollo API key needs to be configured for:
 - `PUT /api/prospects/:id` - Update prospect
 - `POST /api/prospects/enrich` - Enrich prospects (requires Redis & Apollo API)
 - `POST /api/lusha-enrich` - Enrich prospects with Lusha email data (works without Redis)
+- `POST /api/apollo-bulk-enrich` - Bulk enrich prospects using Apollo bulk match API (works without Redis)
 
 ### Jobs
 - `GET /api/jobs` - List all jobs
