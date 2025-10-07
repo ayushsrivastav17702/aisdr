@@ -1,0 +1,158 @@
+asted-import-OpenAI-from-openai-interface-ProspectData-id-number-firstName-string-lastName-1759831735538_1759831735538.txt
+import OpenAI from 'openai';
+
+interface ProspectData {
+  id: number;
+  firstName: string;
+  lastName: string;
+  jobTitle: string;
+  company: string;
+  email: string;
+  linkedinUrl?: string;
+  websiteUrl?: string;
+  notes?: string;
+}
+
+interface LinkedInData {
+  experience: string[];
+  education: string[];
+  skills: string[];
+  posts: string[];
+  connections: number;
+}
+
+interface CompanyData {
+  description: string;
+  industry: string;
+  size: string;
+  recentNews: string[];
+  technologies: string[];
+  competitors: string[];
+}
+
+interface PersonalizationInsights {
+  companyInsights: {
+    industry: string;
+    size: string;
+    revenue: string;
+    challenges: string[];
+    recentNews: string[];
+    competitors: string[];
+    growth_stage: string;
+    technology_stack: string[];
+  };
+  roleInsights: {
+    responsibilities: string[];
+    painPoints: string[];
+    metrics: string[];
+    decisionMakingPower: string;
+    reporting_structure: string;
+    budget_influence: string;
+  };
+  personalizationFactors: {
+    factor: string;
+    relevance: number;
+    source: string;
+    insight: string;
+  }[];
+  recommendations: {
+    tone: string;
+    approach: string;
+    keyMessages: string[];
+    callToAction: string;
+    timing: string;
+    followUpStrategy: string;
+  };
+}
+
+export class IntelligentPersonalizationService {
+  private openai: OpenAI;
+
+  constructor() {
+    if (!process.env.OPENAI_API_KEY) {
+      throw new Error("OpenAI API key not configured");
+    }
+    this.openai = new OpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
+  }
+
+  async analyzeProspect(prospect: ProspectData): Promise<PersonalizationInsights> {
+    console.log(`🧠 Starting intelligent analysis for ${prospect.firstName} ${prospect.lastName}`);
+
+    try {
+      // Get content management data
+      const contentData = await this.fetchContentManagementData();
+      
+      // Fetch LinkedIn and company data if available
+      const linkedinData = prospect.linkedinUrl ? await this.fetchLinkedInData(prospect.linkedinUrl) : null;
+      const companyData = prospect.websiteUrl ? await this.fetchCompanyData(prospect.websiteUrl) : null;
+      
+      // Extract company information from notes or use prospect data
+      const companyName = prospect.company || this.extractCompanyName(prospect);
+      const additionalInfo = prospect.notes || '';
+      
+      // Build enriched context for AI analysis
+      const enrichedContext = this.buildEnrichedContext(prospect, linkedinData, companyData, contentData);
+
+      const analysisPrompt = `Analyze this sales prospect for intelligent email personalization using REAL DATA:
+
+${enrichedContext}
+
+ANALYSIS REQUIREMENTS:
+Based on the job title "${prospect.jobTitle}" and company context, provide a comprehensive analysis for personalized outreach.
+
+Use your knowledge of business roles, industry challenges, and professional dynamics to provide insights for:
+
+1. COMPANY INSIGHTS (industry, size estimation, typical challenges, growth stage)
+2. ROLE INSIGHTS (responsibilities, pain points, decision-making power, KPIs)
+3. PERSONALIZATION FACTORS (what matters most to this prospect)
+4. COMMUNICATION STRATEGY (tone, approach, messaging, timing)
+
+Respond in JSON format with:
+{
+  "companyInsights": {
+    "industry": "string",
+    "size": "startup|small|medium|large|enterprise",
+    "revenue": "estimated range",
+    "challenges": ["challenge1", "challenge2", "challenge3"],
+    "recentNews": ["news1", "news2"],
+    "competitors": ["comp1", "comp2", "comp3"],
+    "growth_stage": "string",
+    "technology_stack": ["tech1", "tech2"]
+  },
+  "roleInsights": {
+    "responsibilities": ["resp1", "resp2", "resp3"],
+    "painPoints": ["pain1", "pain2", "pain3"],
+    "metrics": ["metric1", "metric2", "metric3"],
+    "decisionMakingPower": "high|medium|low",
+    "reporting_structure": "string",
+    "budget_influence": "high|medium|low"
+  },
+  "personalizationFactors": [
+    {
+      "factor": "Factor name",
+      "relevance": 85,
+      "source": "Role Analysis|Industry Knowledge|Company Research",
+      "insight": "Why this matters to the prospect"
+    }
+  ],
+  "recommendations": {
+    "tone": "professional|consultative|direct|friendly",
+    "approach": "value-first|pain-focused|ROI-driven|relationship-building",
+    "keyMessages": ["message1", "message2", "message3"],
+    "callToAction": "specific CTA recommendation",
+    "timing": "best time to reach out",
+    "followUpStrategy": "recommended follow-up approach"
+  }
+}`;
+
+      const response = await this.openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "system",
+            content: "You are an expert sales intelligence analyst who provides deep insights for personalized B2B outreach. Focus on actionable intelligence that will help create highly relevant, personalized emails. Use your knowledge of business roles, industry dynamics, and professional challenges to provide comprehensive analysis."
+          },
+          {
+      ...

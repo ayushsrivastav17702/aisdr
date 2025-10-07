@@ -1,0 +1,170 @@
+Pasted-import-storage-from-storage-import-type-InsertProspect-from-shared-schema-ex-1759831793504_1759831793505.txt
+import { storage } from "../storage";
+import type { InsertProspect } from "../../shared/schema";
+
+export interface ApolloConfig {
+  apiKey: string;
+  baseUrl: string;
+}
+
+export interface ApolloSearchParams {
+  keywords?: string[];
+  industries?: string[];
+  companySize?: string;
+  location?: string;
+  jobTitles?: string[];
+  limit?: number;
+}
+
+export interface ApolloProspect {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  jobTitle: string;
+  company: {
+    name: string;
+    domain: string;
+    industry: string;
+    size: string;
+    location: string;
+  };
+  linkedinUrl?: string;
+  phone?: string;
+}
+
+class ApolloIntegrationService {
+  private config: ApolloConfig = {
+    apiKey: process.env.APOLLO_API_KEY || '',
+    baseUrl: 'https://api.apollo.io/api/v1'
+  };
+
+  async searchProspects(params: ApolloSearchParams): Promise<ApolloProspect[]> {
+    // Get API key from database settings
+    const apolloApiKey = await storage.getSetting('apollo_api_key');
+    if (!apolloApiKey) {
+      console.log('⚠️ Apollo.io API key not configured, using sample data');
+      return this.generateSampleProspects(params.limit || 10);
+    }
+    
+    this.config.apiKey = apolloApiKey.value;
+
+    try {
+      const searchPayload = {
+        api_key: this.config.apiKey,
+        q_keywords: params.keywords?.join(' '),
+        person_titles: params.jobTitles,
+        organization_industry_tag_ids: this.mapIndustries(params.industries),
+        organization_num_employees_ranges: this.mapCompanySize(params.companySize),
+        organization_locations: params.location ? [params.location] : undefined,
+        page: 1,
+        per_page: Math.min(params.limit || 25, 100)
+      };
+
+      const response = await fetch(`${this.config.baseUrl}/people/search`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache',
+          'accept': 'application/json'
+        },
+        body: JSON.stringify(searchPayload)
+      });
+
+      if (!response.ok) {
+        throw new Error(`Apollo API error: ${response.status} ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return this.transformApolloResults(data.people || []);
+
+    } catch (error) {
+      console.error('Apollo.io API error:', error);
+      console.log('📊 Falling back to sample prospect data');
+      return this.generateSampleProspects(params.limit || 10);
+    }
+  }
+
+  private transformApolloResults(apolloData: any[]): ApolloProspect[] {
+    return apolloData.map(person => ({
+      id: person.id,
+      firstName: person.first_name,
+      lastName: person.last_name,
+      email: person.email,
+      jobTitle: person.title,
+      company: {
+        name: person.organization?.name || 'Unknown Company',
+        domain: person.organization?.website_url || '',
+        industry: person.organization?.industry || 'Technology',
+        size: person.organization?.estimated_num_employees || 'Unknown',
+        location: person.organization?.city || 'Unknown'
+      },
+      linkedinUrl: person.linkedin_url,
+      phone: person.sanitized_phone
+    }));
+  }
+
+  private generateSampleProspects(count: number): ApolloProspect[] {
+    const sampleProspects: ApolloProspect[] = [
+      {
+        id: 'sample-1',
+        firstName: 'Sarah',
+        lastName: 'Johnson',
+        email: 'sarah.johnson@techcorp.com',
+        jobTitle: 'VP of Operations',
+        company: {
+          name: 'TechCorp Solutions',
+          domain: 'techcorp.com',
+          industry: 'Technology',
+          size: '500-1000',
+          location: 'San Francisco, CA'
+        },
+        linkedinUrl: 'https://linkedin.com/in/sarahjohnson'
+      },
+      {
+        id: 'sample-2',
+        firstName: 'Michael',
+        lastName: 'Chen',
+        email: 'michael.chen@innovateco.com',
+        jobTitle: 'Head of Sales',
+        company: {
+          name: 'InnovateCo',
+          domain: 'innovateco.com',
+          industry: 'SaaS',
+          size: '200-500',
+          location: 'New York, NY'
+        },
+        linkedinUrl: 'https://linkedin.com/in/michaelchen'
+      },
+      {
+        id: 'sample-3',
+        firstName: 'Emily',
+        lastName: 'Rodriguez',
+        email: 'emily.rodriguez@growthfirm.com',
+        jobTitle: 'Director of Marketing',
+        company: {
+          name: 'Growth Firm',
+          domain: 'growthfirm.com',
+          industry: 'Marketing',
+          size: '100-200',
+          location: 'Austin, TX'
+        },
+        linkedinUrl: 'https://linkedin.com/in/emilyrodriguez'
+      },
+      {
+        id: 'sample-4',
+        firstName: 'David',
+        lastName: 'Kim',
+        email: 'david.kim@scalestartup.com',
+        jobTitle: 'Co-Founder & CTO',
+        company: {
+          name: 'Scale Startup',
+          domain: 'scalestartup.com',
+          industry: 'Fintech',
+          size: '50-100',
+          location: 'Seattle, WA'
+        },
+        linkedinUrl: 'https://linkedin.com/in/davidkim'
+      },
+      {
+  ...
