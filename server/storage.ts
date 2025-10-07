@@ -9,6 +9,7 @@ import {
   emails,
   emailReplies,
   personalizationResults,
+  contentLibrary,
   type Prospect, 
   type InsertProspect,
   type Search,
@@ -28,7 +29,9 @@ import {
   type EmailReply,
   type InsertEmailReply,
   type PersonalizationResult,
-  type InsertPersonalizationResult
+  type InsertPersonalizationResult,
+  type ContentLibraryItem,
+  type InsertContentLibraryItem
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, inArray, and, or, ilike, count } from "drizzle-orm";
@@ -88,6 +91,13 @@ export interface IStorage {
   // Personalization
   createPersonalizationResult(result: InsertPersonalizationResult): Promise<PersonalizationResult>;
   getPersonalizationResult(prospectId: string): Promise<PersonalizationResult | undefined>;
+  
+  // Content Library
+  getContentLibraryItems(): Promise<ContentLibraryItem[]>;
+  getContentLibraryItem(id: string): Promise<ContentLibraryItem | undefined>;
+  createContentLibraryItem(item: InsertContentLibraryItem): Promise<ContentLibraryItem>;
+  updateContentLibraryItem(id: string, updates: Partial<InsertContentLibraryItem>): Promise<ContentLibraryItem>;
+  deleteContentLibraryItem(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -435,6 +445,34 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(personalizationResults.createdAt))
       .limit(1);
     return result || undefined;
+  }
+
+  // Content Library
+  async getContentLibraryItems(): Promise<ContentLibraryItem[]> {
+    return await db.select().from(contentLibrary).orderBy(desc(contentLibrary.createdAt));
+  }
+
+  async getContentLibraryItem(id: string): Promise<ContentLibraryItem | undefined> {
+    const [item] = await db.select().from(contentLibrary).where(eq(contentLibrary.id, id));
+    return item || undefined;
+  }
+
+  async createContentLibraryItem(item: InsertContentLibraryItem): Promise<ContentLibraryItem> {
+    const [created] = await db.insert(contentLibrary).values(item).returning();
+    return created;
+  }
+
+  async updateContentLibraryItem(id: string, updates: Partial<InsertContentLibraryItem>): Promise<ContentLibraryItem> {
+    const [updated] = await db
+      .update(contentLibrary)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(contentLibrary.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteContentLibraryItem(id: string): Promise<void> {
+    await db.delete(contentLibrary).where(eq(contentLibrary.id, id));
   }
 }
 

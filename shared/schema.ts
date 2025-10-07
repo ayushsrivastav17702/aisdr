@@ -266,13 +266,14 @@ export const personalizationResults = pgTable("personalization_results", {
 // Content library table
 export const contentLibrary = pgTable("content_library", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  name: text("name").notNull(),
+  title: text("title").notNull(),
   type: text("type").notNull(),
   description: text("description"),
   content: text("content").notNull(),
   tags: jsonb("tags"),
   industry: text("industry"),
-  role: text("role"),
+  useCase: text("use_case"),
+  variables: jsonb("variables"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
