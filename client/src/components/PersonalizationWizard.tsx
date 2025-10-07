@@ -57,11 +57,11 @@ export function PersonalizationWizard({
   const runAnalysis = async () => {
     setLoading(true);
     try {
-      const result = await apiRequest<PersonalizationAnalysis>(
+      const result = await apiRequest(
         'POST',
         '/api/personalization/analyze',
         { prospectId, includeWebScraping }
-      );
+      ) as PersonalizationAnalysis;
       setAnalysis(result);
       setStep(3);
     } catch (error) {
