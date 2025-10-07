@@ -1,0 +1,138 @@
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Separator } from "@/components/ui/separator";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { useToast } from "@/hooks/use-toast";
+import { Mail, CheckCircle, AlertCircle, RefreshCw, User, Building, Calendar, Reply, MessageSquare, Send, ExternalLink } from "lucide-react";
+import { format } from "date-fns";
+
+interface SequenceReply {
+  id: number;
+  prospectId: number;
+  subject: string;
+  content: string;
+  sentAt: string;
+  responseReceived: boolean;
+  responseContent: string | null;
+  responseAt: string | null;
+  prospect: {
+    id: number;
+    firstName: string;
+    lastName: string;
+    email: string;
+    company: string;
+  } | null;
+}
+
+interface SequenceRepliesTabProps {
+  sequenceId: number;
+  sequenceName: string;
+}
+
+export default function SequenceRepliesTab({ sequenceId, sequenceName }: SequenceRepliesTabProps) {
+  const [selectedReply, setSelectedReply] = useState<SequenceReply | null>(null);
+  const [showFollowupDialog, setShowFollowupDialog] = useState(false);
+  const [showThreadDialog, setShowThreadDialog] = useState(false);
+  const [followupEmail, setFollowupEmail] = useState("");
+  const [currentReply, setCurrentReply] = useState<SequenceReply | null>(null);
+  const [generatingFollowup, setGeneratingFollowup] = useState(false);
+  
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  // Fetch email replies for this specific sequence
+  const { data: repliesData, isLoading, refetch } = useQuery({
+    queryKey: [`/api/sequences/${sequenceId}/replies`],
+    refetchInterval: 30000, // Refresh every 30 seconds
+    staleTime: 10000, // Consider data stale after 10 seconds
+  });
+
+  const replies = (repliesData as any)?.data || [];
+  const totalReplies = replies.length;
+
+  // Handle generating AI follow-up email
+  const handleGenerateFollowup = async (reply: SequenceReply) => {
+    setCurrentReply(reply);
+    setGeneratingFollowup(true);
+    
+    // Start with intelligent fallback email based on the reply content
+    const generateSmartFollowup = (reply: SequenceReply) => {
+      const firstName = reply.prospect?.firstName || 'there';
+      const responseText = reply.responseContent?.toLowerCase() || '';
+      
+      if (responseText.includes('connect') || responseText.includes('interested')) {
+        return `Hi ${firstName},
+
+Great to hear you're interested in connecting! 
+
+I'd love to schedule a brief 15-minute call to discuss how Increff can help ${reply.prospect?.company || 'your company'} optimize inventory management and improve operational efficiency.
+
+I have availability this week on:
+- Tuesday 2-4 PM IST
+- Wednesday 10 AM-12 PM IST  
+- Thursday 3-5 PM IST
+
+Which time works better for you? Or feel free to suggest an alternative time that fits your schedule.
+
+Looking forward to our conversation!
+
+Best regards,
+Mayukh Ganguly
+Founder & CEO, Increff AI SDR
+Phone: +91 98765 43210
+Email: mayukh@increff.com`;
+      }
+      
+      return `Hi ${firstName},
+
+Thank you for your response! I appreciate you taking the time to get back to me.
+
+I'd love to schedule a brief call to discuss how we can support ${reply.prospect?.company || 'your company'}'s goals and answer any questions you might have.
+
+When would be a good time for you this week?
+
+Best regards,
+Mayukh Ganguly
+Founder & CEO, Increff AI SDR
+Phone: +91 98765 43210
+Email: mayukh@increff.com`;
+    };
+
+    // Use smart fallback immediately for faster response
+    setFollowupEmail(generateSmartFollowup(reply));
+    setShowFollowupDialog(true);
+    setGeneratingFollowup(false);
+  };
+
+  // Handle viewing full email thread
+  const handleViewFullThread = (reply: SequenceReply) => {
+    setCurrentReply(reply);
+    setShowThreadDialog(true);
+  };
+
+  // Send follow-up email
+  const sendFollowupMutation = useMutation({
+    mutationFn: async (emailData: { to: string; subject: string; content: string }) => {
+      const response = await fetch('/api/email/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          to: emailData.to,
+          subject: emailData.subject,
+          html: emailData.content.replace(/\n/g, '<br>'),
+          text: emailData.content
+        })
+      });
+      if (!response.ok) throw new Error('Failed to send email');
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Success", description: "Follow-up email sent successfully!" });
+      setShowFollowupDialog(false);
+      setFoll...
