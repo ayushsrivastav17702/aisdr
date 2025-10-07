@@ -60,19 +60,42 @@ export default function AISearch() {
 
       setActiveFilters(filters);
       
-      // Invalidate prospects query to refresh results
-      queryClient.invalidateQueries({ queryKey: ["/api/prospects"] });
-      
-      toast({
-        title: "AI Search Executed",
-        description: `Created search job with ${filters.length} filters applied.`,
-      });
+      // If job queue is not available (warning present), execute Apollo search immediately
+      if (data.warning && data.apolloFilters) {
+        apolloSearchMutation.mutate(data.apolloFilters);
+      } else if (data.job) {
+        // Job queue is available - prospects will appear when job completes
+        toast({
+          title: "AI Search Executed",
+          description: `Processing search job with ${filters.length} filters applied.`,
+        });
+      }
     },
     onError: (error) => {
       toast({
         variant: "destructive",
         title: "Search Failed",
         description: error.message || "Failed to execute AI search",
+      });
+    },
+  });
+
+  const apolloSearchMutation = useMutation({
+    mutationFn: (apolloFilters: any) => api.apolloSearchAndSave(apolloFilters, 1, 20),
+    onSuccess: (data) => {
+      // Invalidate prospects query to show newly saved prospects
+      queryClient.invalidateQueries({ queryKey: ["/api/prospects"] });
+      
+      toast({
+        title: "Prospects Found",
+        description: `Found and saved ${data.saved} prospects from Apollo search.`,
+      });
+    },
+    onError: (error) => {
+      toast({
+        variant: "destructive",
+        title: "Apollo Search Failed",
+        description: error.message || "Failed to fetch prospects from Apollo",
       });
     },
   });
@@ -117,15 +140,15 @@ export default function AISearch() {
           <Button
             className="absolute right-2 top-1/2 -translate-y-1/2 px-6 py-2"
             onClick={handleSearch}
-            disabled={aiSearchMutation.isPending}
+            disabled={aiSearchMutation.isPending || apolloSearchMutation.isPending}
             data-testid="button-search"
           >
-            {aiSearchMutation.isPending ? (
+            {aiSearchMutation.isPending || apolloSearchMutation.isPending ? (
               <SparklesIcon className="w-4 h-4 mr-2 animate-spin" />
             ) : (
               <SearchIcon className="w-4 h-4 mr-2" />
             )}
-            {aiSearchMutation.isPending ? "Searching..." : "Search"}
+            {aiSearchMutation.isPending ? "Parsing..." : apolloSearchMutation.isPending ? "Fetching..." : "Search"}
           </Button>
         </div>
 
