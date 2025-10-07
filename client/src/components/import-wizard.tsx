@@ -218,7 +218,17 @@ export default function ImportWizard({ open, onClose }: ImportWizardProps) {
           </div>
         </Card>
 
-        <Card className="p-6 border-2 border-border cursor-pointer hover:border-primary hover:bg-primary/5 transition-all">
+        <Card 
+          className="p-6 border-2 border-border cursor-pointer hover:border-primary hover:bg-primary/5 transition-all"
+          onClick={() => {
+            toast({
+              title: "Use AI Search",
+              description: "Use the AI Search feature on the main dashboard to find and save prospects from Apollo.io",
+            });
+            handleClose();
+          }}
+          data-testid="option-apollo-search"
+        >
           <div className="flex flex-col items-center text-center gap-4">
             <div className="w-16 h-16 rounded-full bg-muted flex items-center justify-center">
               <SearchIcon className="w-8 h-8 text-muted-foreground" />
