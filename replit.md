@@ -6,6 +6,7 @@ An AI-powered Sales Development Representative (SDR) platform that converts natu
 ## Features Implemented
 - ✅ Natural language to structured filters using OpenAI GPT-5 or Anthropic Claude Sonnet 4
 - ✅ Apollo.io API integration for prospect search and enrichment
+- ✅ Lusha.io integration for email enrichment (solves Apollo email lock issue)
 - ✅ PostgreSQL database with prospects, searches, jobs, and import records
 - ✅ React frontend with AI search interface and prospects table
 - ✅ CSV import wizard with field mapping
@@ -44,7 +45,8 @@ Apollo API key needs to be configured for:
 - `DATABASE_URL` - PostgreSQL connection string ✅ (configured)
 - `SESSION_SECRET` - Session encryption key ✅ (configured)
 - `OPENAI_API_KEY` - OpenAI API key for AI parsing ✅ (configured)
-- `APOLLO_API_KEY` - Apollo.io API key ❌ (not configured)
+- `APOLLO_API_KEY` - Apollo.io API key ✅ (configured)
+- `LUSHA_API_KEY` - Lusha.io API key for email enrichment ❌ (not configured)
 - `REDIS_URL` - Redis/Upstash connection string ❌ (not configured)
 
 ### Optional
@@ -62,6 +64,7 @@ Apollo API key needs to be configured for:
 - `POST /api/prospects` - Create prospect
 - `PUT /api/prospects/:id` - Update prospect
 - `POST /api/prospects/enrich` - Enrich prospects (requires Redis & Apollo API)
+- `POST /api/lusha-enrich` - Enrich prospects with Lusha email data (works without Redis)
 
 ### Jobs
 - `GET /api/jobs` - List all jobs
@@ -109,6 +112,13 @@ Apollo API key needs to be configured for:
 8. ✅ Added synchronous Apollo search-and-save endpoint for Redis-less operation
 9. ✅ Fixed CSV import validation - now properly parses uploaded files instead of returning mock data
 10. ✅ Fixed navigation buttons - added onClick handlers for all sidebar navigation items
+11. ✅ Added Lusha integration for email enrichment - solves Apollo email lock issue
+    - Created Lusha service with graceful API key validation
+    - Added `/api/lusha-enrich` endpoint that works without Redis
+    - Added "Get Emails (Lusha)" button in prospects table
+    - Only enriches prospects with locked/missing emails
+    - Returns 200 with `configured: false` when API key missing (non-fatal)
+    - Fixed enrichment counting to only count when emails actually found
 
 ### Testing Status
 - ✅ Application starts without errors
