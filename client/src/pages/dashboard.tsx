@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
+import { useToast } from "@/hooks/use-toast";
 import AISearch from "@/components/ai-search";
 import ProspectsTable from "@/components/prospects-table";
 import ImportWizard from "@/components/import-wizard";
@@ -24,6 +25,7 @@ export default function Dashboard() {
   const [selectedProspectIds, setSelectedProspectIds] = useState<string[]>([]);
   const [isImportWizardOpen, setIsImportWizardOpen] = useState(false);
   const [isJobDrawerOpen, setIsJobDrawerOpen] = useState(false);
+  const { toast } = useToast();
 
   // Get active jobs for the jobs button badge
   const { data: activeJobs = [] } = useQuery<any[]>({
@@ -32,6 +34,13 @@ export default function Dashboard() {
   });
 
   const activeJobsCount = activeJobs.length;
+
+  const handleComingSoon = (feature: string) => {
+    toast({
+      title: `${feature} Coming Soon`,
+      description: `The ${feature.toLowerCase()} feature will be available in the next release.`,
+    });
+  };
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -64,6 +73,10 @@ export default function Dashboard() {
           <Button
             variant="ghost"
             className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
+            onClick={() => toast({
+              title: "Prospects",
+              description: "You're viewing the prospects section below the search.",
+            })}
             data-testid="nav-prospects"
           >
             <UsersIcon className="w-4 h-4" />
@@ -86,6 +99,7 @@ export default function Dashboard() {
           <Button
             variant="ghost"
             className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
+            onClick={() => handleComingSoon("Enrichment")}
             data-testid="nav-enrichment"
           >
             <SparklesIcon className="w-4 h-4" />
@@ -95,6 +109,7 @@ export default function Dashboard() {
           <Button
             variant="ghost"
             className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
+            onClick={() => handleComingSoon("Analytics")}
             data-testid="nav-analytics"
           >
             <BarChart3Icon className="w-4 h-4" />
@@ -106,6 +121,7 @@ export default function Dashboard() {
           <Button
             variant="ghost"
             className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
+            onClick={() => handleComingSoon("Settings")}
             data-testid="nav-settings"
           >
             <SettingsIcon className="w-4 h-4" />
