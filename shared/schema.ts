@@ -8,6 +8,10 @@ import { relations } from "drizzle-orm";
 export const enrichmentStatusEnum = pgEnum("enrichment_status", ["new", "partial", "enriched", "failed"]);
 export const jobStatusEnum = pgEnum("job_status", ["queued", "running", "completed", "failed", "cancelled"]);
 export const jobTypeEnum = pgEnum("job_type", ["enrichment", "import", "search"]);
+export const mailboxStatusEnum = pgEnum("mailbox_status", ["active", "paused", "error", "warming"]);
+export const mailboxProviderEnum = pgEnum("mailbox_provider", ["gmail", "outlook", "smtp", "sendgrid"]);
+export const emailQueueStatusEnum = pgEnum("email_queue_status", ["pending", "sending", "sent", "failed", "scheduled"]);
+export const emailSendStatusEnum = pgEnum("email_send_status", ["success", "failed", "bounced"]);
 
 // Prospects table
 export const prospects = pgTable("prospects", {
@@ -367,4 +371,123 @@ export const insertSequenceProspectSchema = createInsertSchema(sequenceProspects
 export const insertPersonalizationResultSchema = createInsertSchema(personalizationResults).omit({
   id: true,
   createdAt: true,
+});
+
+// ============================================
+// EMAIL MAILBOXES MODULE
+// ============================================
+
+// Email Mailboxes table
+export const emailMailboxes = pgTable("email_mailboxes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  email: text("email").notNull().unique(),
+  provider: mailboxProviderEnum("provider").notNull(),
+  
+  // SMTP Settings
+  smtpHost: text("smtp_host"),
+  smtpPort: integer("smtp_port"),
+  smtpUser: text("smtp_user"),
+  smtpPassword: text("smtp_password"),
+  smtpSecure: boolean("smtp_secure").default(true),
+  
+  // SendGrid/API Settings
+  apiKey: text("api_key"),
+  
+  // OAuth Settings (for Gmail/Outlook)
+  refreshToken: text("refresh_token"),
+  accessToken: text("access_token"),
+  tokenExpiry: timestamp("token_expiry"),
+  
+  // Mailbox Health
+  status: mailboxStatusEnum("status").default("active"),
+  dailyLimit: integer("daily_limit").default(200),
+  dailySent: integer("daily_sent").default(0),
+  lastResetAt: timestamp("last_reset_at").defaultNow(),
+  
+  // Reputation
+  bounceRate: integer("bounce_rate").default(0),
+  spamScore: integer("spam_score").default(0),
+  warmupStage: integer("warmup_stage").default(0),
+  
+  // Assignment
+  isDefault: boolean("is_default").default(false),
+  roundRobinOrder: integer("round_robin_order").default(0),
+  
+  // Metadata
+  lastUsedAt: timestamp("last_used_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// Email Queue table
+export const emailQueue = pgTable("email_queue", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  emailId: varchar("email_id").references(() => emails.id, { onDelete: "cascade" }),
+  mailboxId: varchar("mailbox_id").notNull().references(() => emailMailboxes.id),
+  sequenceId: varchar("sequence_id").references(() => sequences.id),
+  prospectId: varchar("prospect_id").notNull().references(() => prospects.id),
+  
+  status: emailQueueStatusEnum("status").default("pending"),
+  priority: integer("priority").default(5),
+  
+  scheduledFor: timestamp("scheduled_for").notNull(),
+  sentAt: timestamp("sent_at"),
+  failedAt: timestamp("failed_at"),
+  
+  attempts: integer("attempts").default(0),
+  maxAttempts: integer("max_attempts").default(3),
+  lastError: text("last_error"),
+  
+  // Email Content (denormalized for queue processing)
+  subject: text("subject").notNull(),
+  body: text("body").notNull(),
+  fromName: text("from_name"),
+  replyTo: text("reply_to"),
+  
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// Email Send Log table
+export const emailSendLog = pgTable("email_send_log", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  queueId: varchar("queue_id").references(() => emailQueue.id),
+  mailboxId: varchar("mailbox_id").notNull().references(() => emailMailboxes.id),
+  
+  status: emailSendStatusEnum("status").notNull(),
+  messageId: text("message_id"),
+  
+  sentAt: timestamp("sent_at"),
+  deliveredAt: timestamp("delivered_at"),
+  
+  error: text("error"),
+  responseCode: integer("response_code"),
+  responseMessage: text("response_message"),
+  
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// Email mailbox types
+export type EmailMailbox = typeof emailMailboxes.$inferSelect;
+export type InsertEmailMailbox = typeof emailMailboxes.$inferInsert;
+export type EmailQueueItem = typeof emailQueue.$inferSelect;
+export type InsertEmailQueueItem = typeof emailQueue.$inferInsert;
+export type EmailSendLogEntry = typeof emailSendLog.$inferSelect;
+export type InsertEmailSendLogEntry = typeof emailSendLog.$inferInsert;
+
+// Email mailbox schemas
+export const insertEmailMailboxSchema = createInsertSchema(emailMailboxes).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  dailySent: true,
+  lastResetAt: true,
+  lastUsedAt: true,
+});
+
+export const insertEmailQueueSchema = createInsertSchema(emailQueue).omit({
+  id: true,
+  createdAt: true,
+  sentAt: true,
+  failedAt: true,
 });
