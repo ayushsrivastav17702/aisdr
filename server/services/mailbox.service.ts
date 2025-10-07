@@ -106,7 +106,7 @@ export class MailboxService {
       .from(emailMailboxes)
       .where(eq(emailMailboxes.id, mailboxId));
 
-    if (mailbox && mailbox.warmupStage < 5) {
+    if (mailbox && mailbox.warmupStage !== null && mailbox.warmupStage < 5) {
       const newStage = mailbox.warmupStage + 1;
       await db
         .update(emailMailboxes)
