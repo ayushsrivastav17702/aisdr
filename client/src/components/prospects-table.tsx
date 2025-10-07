@@ -153,6 +153,37 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
     },
   });
 
+  const apolloBulkEnrichMutation = useMutation({
+    mutationFn: api.apolloBulkEnrichProspects,
+    onSuccess: (result: any) => {
+      const enriched = result.enriched || 0;
+      const total = result.total || 0;
+      const creditsConsumed = result.creditsConsumed || 0;
+      
+      if (enriched > 0) {
+        toast({
+          title: "Bulk Enrichment Complete",
+          description: `Successfully enriched ${enriched} of ${total} prospects using ${creditsConsumed} Apollo credits`,
+        });
+      } else {
+        toast({
+          title: "No Prospects Enriched",
+          description: "Unable to enrich the selected prospects with Apollo",
+        });
+      }
+      
+      onSelectionChange([]);
+      queryClient.invalidateQueries({ queryKey: ["/api/prospects"] });
+    },
+    onError: (error) => {
+      toast({
+        variant: "destructive",
+        title: "Apollo Bulk Enrichment Failed",
+        description: error.message,
+      });
+    },
+  });
+
   const handleSelectAll = (checked: boolean) => {
     if (checked && data) {
       const allIds = data.prospects.map((p: any) => p.id);
@@ -194,6 +225,19 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
     }
     
     lushaEnrichMutation.mutate(selectedIds);
+  };
+
+  const handleApolloBulkEnrich = () => {
+    if (selectedIds.length === 0) {
+      toast({
+        variant: "destructive",
+        title: "No Selection",
+        description: "Please select prospects to enrich with Apollo",
+      });
+      return;
+    }
+    
+    apolloBulkEnrichMutation.mutate(selectedIds);
   };
 
   const getStatusBadge = (status: string) => {
@@ -319,6 +363,16 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
                 <Button variant="outline" size="sm" data-testid="button-export">
                   <DownloadIcon className="w-4 h-4 mr-2" />
                   Export
+                </Button>
+                <Button 
+                  variant="outline"
+                  size="sm"
+                  onClick={handleApolloBulkEnrich}
+                  disabled={apolloBulkEnrichMutation.isPending}
+                  data-testid="button-apollo-bulk-enrich"
+                >
+                  <SparklesIcon className="w-4 h-4 mr-2" />
+                  {apolloBulkEnrichMutation.isPending ? "Enriching..." : "Bulk Enrich (Apollo)"}
                 </Button>
                 <Button 
                   variant="outline"
