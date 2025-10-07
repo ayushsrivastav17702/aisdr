@@ -645,9 +645,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.createPersonalizationResult({
         prospectId,
         personalizationScore: analysis.personalizationScore,
-        keyInsights: analysis.keyInsights,
-        recommendedApproach: analysis.recommendedApproach,
-        personalizationFactors: analysis.personalizationFactors,
+        insights: {
+          keyInsights: analysis.keyInsights,
+          recommendedApproach: analysis.recommendedApproach,
+          personalizationFactors: analysis.personalizationFactors,
+          companyInsights: analysis.companyInsights,
+          roleInsights: analysis.roleInsights
+        }
       });
 
       res.json(analysis);
@@ -655,6 +659,178 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.error("Personalization analysis error:", error);
       res.status(500).json({ 
         error: error instanceof Error ? error.message : "Personalization analysis failed" 
+      });
+    }
+  });
+
+  // Advanced AI analysis - Enhanced version with scoring and variables
+  app.post("/api/personalization/advanced-analyze", async (req, res) => {
+    try {
+      const { prospectId } = req.body;
+      
+      const prospect = await storage.getProspect(prospectId);
+      if (!prospect) {
+        return res.status(404).json({ error: "Prospect not found" });
+      }
+
+      // Get comprehensive AI analysis
+      const insights = await intelligentPersonalizationService.analyzeProspect(prospectId);
+
+      // Calculate personalization score
+      const personalizationFactorValues = insights.personalizationFactors.map(f => f.relevance);
+      const avgRelevance = personalizationFactorValues.reduce((a, b) => a + b, 0) / personalizationFactorValues.length;
+      const personalizationScore = Math.round(avgRelevance);
+
+      // Generate personalization variables from insights
+      const variables = [
+        {
+          name: 'prospect_name',
+          value: prospect.fullName || `${prospect.firstName} ${prospect.lastName}`,
+          confidence: 100,
+          source: 'Database'
+        },
+        {
+          name: 'company_name',
+          value: prospect.companyName || insights.companyInsights?.industry || 'Company',
+          confidence: 95,
+          source: 'Database'
+        },
+        {
+          name: 'job_title',
+          value: prospect.jobTitle || 'Professional',
+          confidence: 100,
+          source: 'Database'
+        },
+        {
+          name: 'industry',
+          value: insights.companyInsights?.industry || 'Technology',
+          confidence: 85,
+          source: 'AI Analysis'
+        },
+        {
+          name: 'company_size',
+          value: insights.companyInsights?.size || 'Mid-size',
+          confidence: 80,
+          source: 'AI Analysis'
+        },
+        ...insights.personalizationFactors.map((factor, index) => ({
+          name: `insight_${index + 1}`,
+          value: factor.insight,
+          confidence: factor.relevance,
+          source: factor.source
+        }))
+      ];
+
+      // Generate email suggestions
+      const emailSuggestions = {
+        subject: `${prospect.firstName}, ${insights.recommendations.keyMessages[0] || 'I have an idea for your team'}`,
+        opening: `Hi ${prospect.firstName},\n\nI noticed ${insights.companyInsights?.recentNews?.[0] || `you're working in ${insights.companyInsights?.industry || 'your industry'}`}...`
+      };
+
+      // Generate content recommendations
+      const contentRecommendations = insights.recommendations.keyMessages.map((message, index) => ({
+        name: `Talking Point ${index + 1}`,
+        usage: message,
+        relevanceScore: 85 - (index * 5)
+      }));
+
+      // Build advanced analysis response
+      const analysis = {
+        personalizationScore,
+        variables,
+        emailSuggestions,
+        contentRecommendations,
+        insights: {
+          roleAnalysis: {
+            seniority: insights.roleInsights?.decisionMakingPower === 'High' ? 90 : 70,
+            decisionAuthority: insights.roleInsights?.decisionMakingPower === 'High' ? 85 : 65
+          },
+          painPoints: insights.roleInsights?.painPoints || []
+        }
+      };
+
+      res.json(analysis);
+    } catch (error) {
+      console.error("Advanced personalization analysis error:", error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Advanced analysis failed" 
+      });
+    }
+  });
+
+  // Generate personalized email with AI
+  app.post("/api/personalization/generate-email", async (req, res) => {
+    try {
+      const { prospectId, personalizationData, settings, customPrompt, useAdvanced } = req.body;
+      
+      const prospect = await storage.getProspect(prospectId);
+      if (!prospect) {
+        return res.status(404).json({ error: "Prospect not found" });
+      }
+
+      // Build context for AI email generation
+      const context = {
+        prospectName: prospect.fullName || `${prospect.firstName} ${prospect.lastName}`,
+        companyName: prospect.companyName || '',
+        jobTitle: prospect.jobTitle || '',
+        industry: personalizationData?.companyInsights?.industry || personalizationData?.insights?.industry || '',
+        insights: useAdvanced 
+          ? personalizationData?.variables?.slice(0, 5).map((v: any) => v.value).join('; ')
+          : personalizationData?.keyInsights?.join('; ') || '',
+        tone: settings?.tone || 'professional',
+        focus: settings?.focus || 'value_proposition',
+        urgency: settings?.urgency || 'medium',
+        length: settings?.length || 'medium'
+      };
+
+      // Generate email using AI service
+      const prompt = `Generate a personalized sales email with the following context:
+- Prospect: ${context.prospectName}, ${context.jobTitle} at ${context.companyName}
+- Industry: ${context.industry}
+- Key Insights: ${context.insights}
+- Tone: ${context.tone}
+- Focus: ${context.focus}
+- Urgency: ${context.urgency}
+- Length: ${context.length}
+${customPrompt ? `\nAdditional Instructions: ${customPrompt}` : ''}
+
+Generate a subject line and email body that is highly personalized and relevant.`;
+
+      const aiResponse = await aiService.generateText(prompt);
+      
+      // Parse AI response (simple split approach)
+      const lines = aiResponse.split('\n');
+      let subject = '';
+      let body = '';
+      let isBody = false;
+      
+      for (const line of lines) {
+        if (line.toLowerCase().includes('subject:')) {
+          subject = line.replace(/subject:/i, '').trim();
+        } else if (line.toLowerCase().includes('body:') || line.toLowerCase().includes('email:')) {
+          isBody = true;
+        } else if (isBody && line.trim()) {
+          body += line + '\n';
+        }
+      }
+
+      // If parsing fails, use the whole response as body
+      if (!body) {
+        body = aiResponse;
+        subject = `Quick question for ${prospect.firstName}`;
+      }
+
+      const generatedEmail = {
+        subject: subject || `${prospect.firstName}, quick question`,
+        body: body.trim(),
+        personalizationScore: personalizationData?.personalizationScore || 85
+      };
+
+      res.json(generatedEmail);
+    } catch (error) {
+      console.error("Email generation error:", error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Email generation failed" 
       });
     }
   });
