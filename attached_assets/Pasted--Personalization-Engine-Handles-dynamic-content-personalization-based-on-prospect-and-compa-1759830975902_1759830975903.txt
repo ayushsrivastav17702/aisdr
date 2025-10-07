@@ -1,0 +1,328 @@
+/**
+ * Personalization Engine
+ * Handles dynamic content personalization based on prospect and company data
+ */
+
+import type { Prospect, Company } from "@shared/schema";
+
+export interface PersonalizationContext {
+  prospect: Prospect;
+  company?: Company;
+  industryInsights?: string[];
+  recentNews?: string;
+  competitorMentions?: string[];
+  painPoints?: string[];
+}
+
+export interface PersonalizedContent {
+  personalizedSubject: string;
+  personalizedBody: string;
+  personalizationFactors: string[];
+  confidenceScore: number;
+}
+
+/**
+ * Industry-specific pain points and messaging
+ */
+const INDUSTRY_PAIN_POINTS: Record<string, string[]> = {
+  'Technology': [
+    'Scaling development teams efficiently',
+    'Managing technical debt and code quality',
+    'Accelerating time-to-market for new features',
+    'Maintaining system security and compliance',
+    'Optimizing cloud infrastructure costs'
+  ],
+  'Healthcare': [
+    'Improving patient data management',
+    'Ensuring HIPAA compliance',
+    'Reducing administrative overhead',
+    'Enhancing patient experience',
+    'Managing regulatory requirements'
+  ],
+  'Finance': [
+    'Meeting regulatory compliance standards',
+    'Improving risk management processes',
+    'Enhancing customer onboarding',
+    'Reducing operational costs',
+    'Modernizing legacy systems'
+  ],
+  'Manufacturing': [
+    'Optimizing supply chain efficiency',
+    'Reducing production downtime',
+    'Improving quality control processes',
+    'Managing inventory effectively',
+    'Implementing predictive maintenance'
+  ],
+  'Retail': [
+    'Enhancing customer experience',
+    'Managing inventory across channels',
+    'Personalizing marketing campaigns',
+    'Optimizing pricing strategies',
+    'Improving supply chain visibility'
+  ]
+};
+
+/**
+ * Role-specific value propositions
+ */
+const ROLE_VALUE_PROPS: Record<string, string[]> = {
+  'CEO': [
+    'driving revenue growth',
+    'improving operational efficiency',
+    'gaining competitive advantage',
+    'scaling business operations',
+    'reducing overall costs'
+  ],
+  'CTO': [
+    'accelerating development cycles',
+    'improving system reliability',
+    'enhancing security posture',
+    'optimizing technical architecture',
+    'managing technical debt'
+  ],
+  'VP': [
+    'achieving department objectives',
+    'improving team productivity',
+    'reducing operational overhead',
+    'enhancing process efficiency',
+    'meeting strategic goals'
+  ],
+  'Director': [
+    'streamlining team workflows',
+    'improving project delivery',
+    'enhancing team collaboration',
+    'optimizing resource allocation',
+    'meeting project deadlines'
+  ],
+  'Manager': [
+    'improving team performance',
+    'reducing manual work',
+    'enhancing daily operations',
+    'meeting quarterly targets',
+    'simplifying complex processes'
+  ]
+};
+
+/**
+ * Company size-specific messaging
+ */
+const COMPANY_SIZE_MESSAGING: Record<string, string> = {
+  '1-10': 'helping startups move fast and stay agile',
+  '11-50': 'supporting growing teams scale efficiently',
+  '51-200': 'helping mid-size companies optimize operations',
+  '201-500': 'enabling larger teams collaborate effectively',
+  '500+': 'supporting enterprise-scale operations'
+};
+
+/**
+ * Generate pain points based on prospect's role and industry
+ */
+export function generatePainPoints(prospect: Prospect, company?: Company): string[] {
+  const painPoints: string[] = [];
+  
+  // Add industry-specific pain points
+  if (company?.industry && INDUSTRY_PAIN_POINTS[company.industry]) {
+    painPoints.push(...INDUSTRY_PAIN_POINTS[company.industry].slice(0, 2));
+  }
+  
+  // Add role-specific considerations based on job title
+  const roleLevel = extractRoleLevel(prospect.jobTitle);
+  if (roleLevel && ROLE_VALUE_PROPS[roleLevel]) {
+    painPoints.push(`challenges with ${ROLE_VALUE_PROPS[roleLevel][0]}`);
+  }
+  
+  // Add company size specific challenges
+  if (company?.size && COMPANY_SIZE_MESSAGING[company.size]) {
+    painPoints.push(`${COMPANY_SIZE_MESSAGING[company.size]}`);
+  }
+  
+  return painPoints;
+}
+
+/**
+ * Extract role level from job title
+ */
+function extractRoleLevel(jobTitle: string): string | null {
+  const title = jobTitle.toLowerCase();
+  
+  if (title.includes('ceo') || title.includes('founder') || title.includes('president')) {
+    return 'CEO';
+  }
+  if (title.includes('cto') || title.includes('chief technology')) {
+    return 'CTO';
+  }
+  if (title.includes('vp') || title.includes('vice president')) {
+    return 'VP';
+  }
+  if (title.includes('director')) {
+    return 'Director';
+  }
+  if (title.includes('manager') || title.includes('lead')) {
+    return 'Manager';
+  }
+  
+  return null;
+}
+
+/**
+ * Generate company-specific insights
+ */
+export function generateCompanyInsights(company?: Company): string[] {
+  const insights: string[] = [];
+  
+  if (company?.recentNews) {
+    insights.push(`Recent developments: ${company.recentNews}`);
+  }
+  
+  if (company?.fundingStage) {
+    insights.push(`Funding stage: ${company.fundingStage}`);
+  }
+  
+  if (company?.hiringSignals) {
+    insights.push('Currently experiencing growth and hiring');
+  }
+  
+  if (company?.technologyStack && Array.isArray(company.technologyStack)) {
+    insights.push(`Technology stack: ${company.technologyStack.slice(0, 3).join(', ')}`);
+  }
+  
+  return insights;
+}
+
+/**
+ * Personalize email content with dynamic variables
+ */
+export function personalizeEmailContent(
+  template: string,
+  context: PersonalizationContext
+): PersonalizedContent {
+  const { prospect, company } = context;
+  const painPoints = generatePainPoints(prospect, company);
+  const companyInsights = generateCompanyInsights(company);
+  
+  let personalizedContent = template;
+  const personalizationFactors: string[] = [];
+  
+  // Replace basic prospect information
+  personalizedContent = personalizedContent.replace(/\{\{firstName\}\}/g, prospect.firstName);
+  personalizedContent = personalizedContent.replace(/\{\{lastName\}\}/g, prospect.lastName);
+  personalizedContent = personalizedContent.replace(/\{\{fullName\}\}/g, `${prospect.firstName} ${prospect.lastName}`);
+  personalizedContent = personalizedContent.replace(/\{\{jobTitle\}\}/g, prospect.jobTitle);
+  personalizationFactors.push('Basic prospect information');
+  
+  // Replace company information
+  if (company) {
+    personalizedContent = personalizedContent.replace(/\{\{companyName\}\}/g, company.name);
+    personalizedContent = personalizedContent.replace(/\{\{industry\}\}/g, company.industry || 'your industry');
+    personalizedContent = personalizedContent.replace(/\{\{companySize\}\}/g, company.size || 'your team');
+    personalizationFactors.push('Company information');
+  }
+  
+  // Add pain points
+  if (painPoints.length > 0) {
+    personalizedContent = personalizedContent.replace(/\{\{painPoint\}\}/g, painPoints[0]);
+    personalizedContent = personalizedContent.replace(/\{\{painPoints\}\}/g, painPoints.join(', '));
+    personalizationFactors.push('Industry-specific pain points');
+  }
+  
+  // Add company insights
+  if (companyInsights.length > 0) {
+    personalizedContent = personalizedContent.replace(/\{\{companyInsight\}\}/g, companyInsights[0]);
+    personalizationFactors.push('Company-specific insights');
+  }
+  
+  // Add role-specific value proposition
+  const roleLevel = extractRoleLevel(prospect.jobTitle);
+  if (roleLevel && ROLE_VALUE_PROPS[roleLevel]) {
+    const valueProp = ROLE_VALUE_PROPS[roleLevel][0];
+    personalizedContent = personalizedContent.replace(/\{\{valueProp\}\}/g, valueProp);
+    personalizationFactors.push('Role-specific value proposition');
+  }
+  
+  // Calculate confidence score based on available personalization data
+  let confidenceScore = 50; // Base score
+  if (company) confidenceScore += 20;
+  if (painPoints.length > 0) confidenceScore += 15;
+  if (companyInsights.length > 0) confidenceScore += 10;
+  if (roleLevel) confidenceScore += 5;
+  
+  return {
+    personalizedSubject: personalizedContent.split('\n')[0] || '',
+    personalizedBody: personalizedContent,
+    personalizationFactors,
+    confidenceScore: Math.min(100, confidenceScore)
+  };
+}
+
+/**
+ * Generate contextual email suggestions based on prospect engagement
+ */
+export function generateEngagementContext(prospect: Prospect): {
+  suggestedTone: 'professional' | 'casual' | 'urgent' | 'friendly';
+  suggestedApproach: string;
+  engagementSignals: string[];
+} {
+  const signals: string[] = [];
+  let tone: 'professional' | 'casual' | 'urgent' | 'friendly' = 'professional';
+  let approach = 'value-focused';
+  
+  // Analyze engagement history
+  if (prospect.responseCount > 0) {
+    signals.push('Previous email engagement');
+    tone = 'friendly';
+    approach = 'relationship-building';
+  }
+  
+  if (prospect.leadScore > 70) {
+    signals.push('High lead score');
+    tone = 'professional';
+    approach = 'direct-value';
+  }
+  
+  if (prospect.meetingScheduled) {
+    signals.push('Previous meeting scheduled');
+    tone = 'casual';
+    approach = 'follow-up';
+  }
+  
+  // Consider role seniority
+  const roleLevel = extractRoleLevel(prospect.jobTitle);
+  if (roleLevel === 'CEO' || roleLevel === 'CTO') {
+    tone = 'professional';
+    approach = 'strategic-value';
+  }
+  
+  return {
+    suggestedTone: tone,
+    suggestedApproach: approach,
+    engagementSignals: signals
+  };
+}
+
+/**
+ * A/B test different personalization approaches
+ */
+export function generatePersonalizationVariants(
+  context: PersonalizationContext,
+  variantCount: number = 2
+): PersonalizedContent[] {
+  const variants: PersonalizedContent[] = [];
+  
+  // Variant 1: Company-focused
+  const companyFocused = {
+    ...context,
+    painPoints: generateCompanyInsights(context.company)
+  };
+  
+  // Variant 2: Role-focused
+  const roleFocused = {
+    ...context,
+    painPoints: generatePainPoints(context.prospect, context.company)
+  };
+  
+  // Generate variants
+  variants.push(personalizeEmailContent('{{companyInsight}} template', companyFocused));
+  variants.push(personalizeEmailContent('{{painPoint}} template', roleFocused));
+  
+  return variants.slice(0, variantCount);
+}
