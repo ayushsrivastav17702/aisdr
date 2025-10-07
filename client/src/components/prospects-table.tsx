@@ -32,7 +32,7 @@ interface ProspectsTableProps {
 
 export default function ProspectsTable({ selectedIds, onSelectionChange }: ProspectsTableProps) {
   const [search, setSearch] = useState("");
-  const [status, setStatus] = useState("");
+  const [status, setStatus] = useState("all");
   const [page, setPage] = useState(1);
   const [debouncedSearch, setDebouncedSearch] = useState("");
   
@@ -51,7 +51,12 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["/api/prospects", { search: debouncedSearch, status, page }],
-    queryFn: () => api.getProspects({ search: debouncedSearch, status, page, limit: 50 }),
+    queryFn: () => api.getProspects({ 
+      search: debouncedSearch, 
+      status: status === "all" ? undefined : status, 
+      page, 
+      limit: 50 
+    }),
   });
 
   const enrichMutation = useMutation({
@@ -175,7 +180,7 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
                 <SelectValue placeholder="Filter by status" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">All Statuses</SelectItem>
+                <SelectItem value="all">All Statuses</SelectItem>
                 <SelectItem value="new">New</SelectItem>
                 <SelectItem value="partial">Partial</SelectItem>
                 <SelectItem value="enriched">Enriched</SelectItem>
