@@ -21,7 +21,12 @@ import { readFileSync } from "fs";
 import sequenceRoutes from "./sequences-routes";
 import mailboxRoutes from "./mailbox-routes";
 
-const upload = multer({ dest: 'uploads/' });
+const upload = multer({ 
+  dest: 'uploads/',
+  limits: {
+    fileSize: 50 * 1024 * 1024, // 50MB limit
+  }
+});
 
 export async function registerRoutes(app: Express): Promise<Server> {
   
@@ -638,7 +643,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } else {
         // Process synchronously without Redis
         console.log('\n========== SYNCHRONOUS CSV IMPORT (No Redis) ==========');
+        console.log(`File path: ${req.file.path}`);
+        console.log(`File size: ${req.file.size} bytes`);
+        console.log(`Field mappings:`, parsedFieldMappings);
+        console.log(`Options:`, options);
+        
         const fileContent = readFileSync(req.file.path, 'utf-8');
+        console.log(`File content length: ${fileContent.length} characters`);
+        
         const records = parse(fileContent, {
           columns: true,
           skip_empty_lines: true,
@@ -654,7 +666,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         let duplicateCount = 0;
         const errors: string[] = [];
 
-        console.log(`  Processing ${records.length} rows...`);
+        console.log(`  Parsed ${records.length} rows from CSV`);
 
         for (let i = 0; i < records.length; i++) {
           const row = records[i];
@@ -668,11 +680,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
               }
             }
 
+            // Log first few rows for debugging
+            if (i < 3) {
+              console.log(`  Row ${i + 1} mapped data:`, prospectData);
+            }
+
             // Check for duplicates if enabled
             if (options.skipDuplicates && prospectData.primaryEmail) {
               const duplicates = await storage.checkDuplicateProspects([prospectData.primaryEmail]);
               if (duplicates.length > 0) {
                 duplicateCount++;
+                if (i < 3) {
+                  console.log(`  Row ${i + 1} is duplicate, skipping`);
+                }
                 continue;
               }
             }
@@ -680,6 +700,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             // Create prospect
             await storage.createProspect(prospectData);
             successCount++;
+            
+            if (i < 3 || (i + 1) % 1000 === 0) {
+              console.log(`  Progress: ${i + 1}/${records.length} rows processed (${successCount} successful, ${duplicateCount} duplicates, ${failureCount} failed)`);
+            }
 
             // Note: Auto-enrich requires Redis, so we skip it in sync mode
             if (options.autoEnrich) {
