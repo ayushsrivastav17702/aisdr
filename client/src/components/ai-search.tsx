@@ -158,6 +158,15 @@ export default function AISearch() {
       
       const totalFound = data.pagination?.total_entries || data.saved;
       
+      if (data.saved === 0) {
+        toast({
+          variant: "destructive",
+          title: "No Prospects Found",
+          description: `No prospects matched your search criteria. Try broadening your filters or adjusting your search terms.`,
+        });
+        return;
+      }
+      
       toast({
         title: "Prospects Saved Successfully",
         description: `Saved ${data.saved} prospects (${totalFound.toLocaleString()} total available). Navigating to Prospects page...`,
@@ -165,7 +174,7 @@ export default function AISearch() {
 
       // Navigate to Prospects page after a short delay to show the toast
       setTimeout(() => {
-        setLocation("/");
+        setLocation("/prospects");
       }, 1500);
     },
     onError: (error) => {

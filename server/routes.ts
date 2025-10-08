@@ -120,7 +120,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { apolloFilters, page = 1, per_page = 50, extractionName, tag } = req.body;
       
-      console.log('Apollo Search Request:');
+      console.log('\n========== APOLLO SEARCH REQUEST ==========');
       console.log('  Extraction Name:', extractionName);
       console.log('  Tag:', tag);
       console.log('  Filters:', JSON.stringify(apolloFilters, null, 2));
@@ -135,9 +135,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Convert contacts to prospect format and save to database
       const contacts = searchResponse.people || searchResponse.contacts || [];
       
-      console.log('Apollo Search Response:');
+      console.log('\n========== APOLLO SEARCH RESPONSE ==========');
       console.log('  Total Entries:', searchResponse.pagination?.total_entries || 0);
       console.log('  Contacts Returned:', contacts.length);
+      
+      if (contacts.length === 0) {
+        console.log('  WARNING: No contacts found with current filters!');
+        console.log('  Suggestion: Try broadening search criteria or checking Apollo API response');
+      }
       const savedProspects = [];
       
       for (const contact of contacts) {
@@ -182,6 +187,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           importedResults: savedProspects.length,
         });
       }
+
+      console.log('\n========== SEARCH COMPLETE ==========');
+      console.log('  Prospects Saved:', savedProspects.length);
+      console.log('  Search ID:', searchRecord?.id || 'N/A');
+      console.log('=========================================\n');
 
       res.json({
         prospects: savedProspects,
