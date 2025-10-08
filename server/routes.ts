@@ -134,12 +134,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         );
 
         if (existing) {
-          // Update existing prospect with new data
-          const updated = await storage.updateProspect(existing.id, prospectData);
+          // Update existing prospect with new data, preserving existing tags
+          const existingTags = existing.tags || [];
+          const newTags = tag ? [tag] : [];
+          const mergedTags = Array.from(new Set([...existingTags, ...newTags]));
+          
+          const updated = await storage.updateProspect(existing.id, {
+            ...prospectData,
+            tags: mergedTags
+          });
           savedProspects.push(updated);
         } else {
-          // Create new prospect
-          const created = await storage.createProspect(prospectData);
+          // Create new prospect with tag
+          const created = await storage.createProspect({
+            ...prospectData,
+            tags: tag ? [tag] : undefined
+          });
           savedProspects.push(created);
         }
       }
