@@ -1023,6 +1023,7 @@ function AIFollowupTab({ sequenceId }: { sequenceId: string }) {
 
 function ProspectsTab({ sequenceId, prospects, isLoading }: { sequenceId: string; prospects: any[]; isLoading: boolean }) {
   const [showEnrollModal, setShowEnrollModal] = useState(false);
+  const [selectedForEnrollment, setSelectedForEnrollment] = useState<string[]>([]);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -1034,13 +1035,22 @@ function ProspectsTab({ sequenceId, prospects, isLoading }: { sequenceId: string
 
   const enrollMutation = useMutation({
     mutationFn: async (prospectIds: string[]) => {
-      const res = await apiRequest("POST", `/api/sequences/${sequenceId}/enroll`, { prospectIds });
+      const res = await apiRequest("POST", `/api/sequences/${sequenceId}/prospects`, { prospectIds });
       return await res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['/api/sequences', sequenceId, 'prospects'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/sequences', sequenceId] });
       setShowEnrollModal(false);
-      toast({ title: "Prospects enrolled successfully" });
+      setSelectedForEnrollment([]);
+      toast({ title: "Prospects enrolled successfully", description: data.message || `${selectedForEnrollment.length} prospects added` });
+    },
+    onError: (error: Error) => {
+      toast({ 
+        title: "Enrollment failed", 
+        description: error.message,
+        variant: "destructive"
+      });
     },
   });
 
@@ -1105,31 +1115,85 @@ function ProspectsTab({ sequenceId, prospects, isLoading }: { sequenceId: string
         </CardContent>
       </Card>
 
-      <Dialog open={showEnrollModal} onOpenChange={setShowEnrollModal}>
-        <DialogContent className="max-w-2xl">
+      <Dialog open={showEnrollModal} onOpenChange={(open) => {
+        setShowEnrollModal(open);
+        if (!open) setSelectedForEnrollment([]);
+      }}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-hidden flex flex-col">
           <DialogHeader>
             <DialogTitle>Enroll Prospects in Sequence</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4">
-            <p className="text-sm text-gray-500 dark:text-gray-400">
+            <p className="text-sm text-muted-foreground">
               Select prospects from your database to enroll in this sequence
             </p>
-            <div className="max-h-96 overflow-y-auto border rounded-lg p-4">
-              {prospectsList.slice(0, 10).map((prospect: any) => (
-                <div key={prospect.id} className="flex items-center gap-2 p-2 hover:bg-gray-50 dark:hover:bg-gray-800 rounded">
-                  <input type="checkbox" id={prospect.id} />
-                  <label htmlFor={prospect.id} className="flex-1 cursor-pointer">
-                    {prospect.fullName} - {prospect.companyName}
-                  </label>
-                </div>
-              ))}
+          </DialogHeader>
+          <div className="space-y-4 flex-1 overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-1">
+              <p className="text-sm font-medium">
+                {selectedForEnrollment.length} of {prospectsList.length} selected
+              </p>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => {
+                  if (selectedForEnrollment.length === prospectsList.length) {
+                    setSelectedForEnrollment([]);
+                  } else {
+                    setSelectedForEnrollment(prospectsList.map((p: any) => p.id));
+                  }
+                }}
+              >
+                {selectedForEnrollment.length === prospectsList.length ? 'Deselect All' : 'Select All'}
+              </Button>
             </div>
-            <div className="flex gap-2 justify-end">
-              <Button variant="outline" onClick={() => setShowEnrollModal(false)}>
+            <div className="flex-1 overflow-y-auto border rounded-lg p-4">
+              {prospectsList.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  No prospects found. Import or search for prospects first.
+                </div>
+              ) : (
+                prospectsList.map((prospect: any) => (
+                  <div key={prospect.id} className="flex items-center gap-2 p-2 hover:bg-muted rounded">
+                    <input 
+                      type="checkbox" 
+                      id={`enroll-${prospect.id}`} 
+                      checked={selectedForEnrollment.includes(prospect.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedForEnrollment([...selectedForEnrollment, prospect.id]);
+                        } else {
+                          setSelectedForEnrollment(selectedForEnrollment.filter(id => id !== prospect.id));
+                        }
+                      }}
+                      data-testid={`checkbox-enroll-${prospect.id}`}
+                    />
+                    <label htmlFor={`enroll-${prospect.id}`} className="flex-1 cursor-pointer text-sm">
+                      {prospect.fullName || `${prospect.firstName} ${prospect.lastName}`} - {prospect.companyName || 'No company'}
+                    </label>
+                  </div>
+                ))
+              )}
+            </div>
+            <div className="flex gap-2 justify-end pt-4 border-t">
+              <Button 
+                variant="outline" 
+                onClick={() => {
+                  setShowEnrollModal(false);
+                  setSelectedForEnrollment([]);
+                }}
+                data-testid="button-cancel-enroll"
+              >
                 Cancel
               </Button>
-              <Button onClick={() => setShowEnrollModal(false)}>
-                Enroll Selected
+              <Button 
+                onClick={() => {
+                  if (selectedForEnrollment.length > 0) {
+                    enrollMutation.mutate(selectedForEnrollment);
+                  }
+                }}
+                disabled={selectedForEnrollment.length === 0 || enrollMutation.isPending}
+                data-testid="button-confirm-enroll"
+              >
+                {enrollMutation.isPending ? 'Enrolling...' : `Enroll ${selectedForEnrollment.length} Prospect${selectedForEnrollment.length !== 1 ? 's' : ''}`}
               </Button>
             </div>
           </div>
