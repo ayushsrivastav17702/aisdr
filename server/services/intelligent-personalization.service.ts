@@ -1,4 +1,4 @@
-import OpenAI from 'openai';
+import { openaiHelper } from './openai-helper';
 import { storage } from "../storage";
 
 interface ProspectData {
@@ -49,27 +49,12 @@ interface PersonalizationInsights {
 }
 
 class IntelligentPersonalizationService {
-  private openai: OpenAI | null = null;
-
-  constructor() {
-    if (process.env.OPENAI_API_KEY) {
-      this.openai = new OpenAI({
-        apiKey: process.env.OPENAI_API_KEY,
-      });
-    }
-  }
-
   async analyzeProspect(prospectId: string): Promise<PersonalizationInsights> {
     console.log(`🧠 Starting intelligent analysis for prospect ${prospectId}`);
 
     const prospect = await storage.getProspect(prospectId);
     if (!prospect) {
       throw new Error('Prospect not found');
-    }
-
-    if (!this.openai) {
-      console.log('⚠️ OpenAI not configured, using fallback analysis');
-      return this.getFallbackAnalysis(prospect);
     }
 
     try {
@@ -127,22 +112,24 @@ Respond in JSON format with this exact structure:
   }
 }`;
 
-      const response = await this.openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [
-          {
-            role: "system",
-            content: "You are an expert sales intelligence analyst who provides deep insights for personalized B2B outreach. Focus on actionable intelligence that will help create highly relevant, personalized emails. Use your knowledge of business roles, industry dynamics, and professional challenges to provide comprehensive analysis."
-          },
-          {
-            role: "user",
-            content: analysisPrompt
-          }
-        ],
-        temperature: 0.7,
-        max_tokens: 2000,
-        response_format: { type: "json_object" }
-      });
+      const response = await openaiHelper.callWithFallback((client) =>
+        client.chat.completions.create({
+          model: "gpt-4o",
+          messages: [
+            {
+              role: "system",
+              content: "You are an expert sales intelligence analyst who provides deep insights for personalized B2B outreach. Focus on actionable intelligence that will help create highly relevant, personalized emails. Use your knowledge of business roles, industry dynamics, and professional challenges to provide comprehensive analysis."
+            },
+            {
+              role: "user",
+              content: analysisPrompt
+            }
+          ],
+          temperature: 0.7,
+          max_tokens: 2000,
+          response_format: { type: "json_object" }
+        })
+      );
 
       const content = response.choices[0]?.message?.content;
       if (!content) {

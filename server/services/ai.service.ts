@@ -37,15 +37,53 @@ interface ApolloFilters {
 
 class AIService {
   private openai: OpenAI | null = null;
+  private openaiBackup: OpenAI | null = null;
   private anthropic: Anthropic | null = null;
+  private useBackupKey: boolean = false;
   
   constructor() {
     if (process.env.OPENAI_API_KEY) {
       this.openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     }
     
+    if (process.env.OPENAI_API_KEY_BACKUP) {
+      this.openaiBackup = new OpenAI({ apiKey: process.env.OPENAI_API_KEY_BACKUP });
+      console.log('✅ Backup OpenAI API key configured');
+    }
+    
     if (process.env.ANTHROPIC_API_KEY) {
       this.anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+    }
+  }
+
+  private getOpenAIClient(): OpenAI | null {
+    if (this.useBackupKey && this.openaiBackup) {
+      console.log('🔄 Using backup OpenAI API key');
+      return this.openaiBackup;
+    }
+    return this.openai;
+  }
+
+  private async callOpenAI<T>(
+    apiCall: (client: OpenAI) => Promise<T>
+  ): Promise<T> {
+    const client = this.getOpenAIClient();
+    if (!client) {
+      throw new Error('OpenAI client not initialized');
+    }
+
+    try {
+      return await apiCall(client);
+    } catch (error: any) {
+      // Check if it's a quota error (429)
+      if (error?.status === 429 && !this.useBackupKey && this.openaiBackup) {
+        console.log('⚠️ Primary OpenAI API key quota exceeded, switching to backup key...');
+        this.useBackupKey = true;
+        
+        // Retry with backup key
+        return await apiCall(this.openaiBackup);
+      }
+      throw error;
     }
   }
 
@@ -125,7 +163,7 @@ class AIService {
     aiFilters: AIFilters;
     apolloFilters: ApolloFilters;
   }> {
-    if (!this.openai) throw new Error('OpenAI not initialized');
+    if (!this.openai && !this.openaiBackup) throw new Error('OpenAI not initialized');
 
     const systemPrompt = `You are an expert at parsing natural language queries for prospect search. 
     Convert the user's query into structured filters for finding business prospects.
@@ -169,15 +207,17 @@ class AIService {
       }
     }`;
 
-    const response = await this.openai.chat.completions.create({
-      model: DEFAULT_OPENAI_MODEL,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: query }
-      ],
-      response_format: { type: "json_object" },
-      max_completion_tokens: 2048,
-    });
+    const response = await this.callOpenAI((client) => 
+      client.chat.completions.create({
+        model: DEFAULT_OPENAI_MODEL,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: query }
+        ],
+        response_format: { type: "json_object" },
+        max_completion_tokens: 2048,
+      })
+    );
 
     const result = JSON.parse(response.choices[0].message.content || '{}');
     return {
@@ -373,18 +413,20 @@ class AIService {
 
   // Generate text using AI (OpenAI only)
   async generateText(prompt: string, maxTokens: number = 1000): Promise<string> {
-    if (!this.openai) {
+    if (!this.openai && !this.openaiBackup) {
       throw new Error('OpenAI is not configured. Please set OPENAI_API_KEY.');
     }
     
     try {
-      const response = await this.openai.chat.completions.create({
-        model: DEFAULT_OPENAI_MODEL,
-        messages: [
-          { role: "user", content: prompt }
-        ],
-        max_completion_tokens: maxTokens,
-      });
+      const response = await this.callOpenAI((client) => 
+        client.chat.completions.create({
+          model: DEFAULT_OPENAI_MODEL,
+          messages: [
+            { role: "user", content: prompt }
+          ],
+          max_completion_tokens: maxTokens,
+        })
+      );
       return response.choices[0].message.content || '';
     } catch (error) {
       console.error('OpenAI text generation failed:', error);
