@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useRoute } from "wouter";
+import { useState, useEffect } from "react";
+import { useRoute, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -104,20 +104,26 @@ function CreateSequenceButton() {
   const [creationMethod, setCreationMethod] = useState<'scratch' | 'template' | 'ai' | 'auto-ai' | null>(null);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   const createMutation = useMutation({
     mutationFn: async (data: { name: string; description: string }) => {
-      return await apiRequest("POST", "/api/sequences", data);
+      const res = await apiRequest("POST", "/api/sequences", data);
+      return await res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/sequences"] });
       toast({ title: "Sequence created successfully" });
       setShowMethodSelector(false);
       setCreationMethod(null);
       setName("");
       setDescription("");
+      // Navigate to the newly created sequence builder
+      if (data?.id) {
+        setLocation(`/sequences/${data.id}`);
+      }
     },
     onError: () => {
       toast({ title: "Failed to create sequence", variant: "destructive" });
@@ -311,7 +317,10 @@ function CreateSequenceButton() {
 }
 
 function ProductionSequenceBuilder({ sequenceId }: { sequenceId: string }) {
-  const [activeTab, setActiveTab] = useState('steps');
+  const [activeTab, setActiveTab] = useState('sequence');
+  const [sequenceName, setSequenceName] = useState('');
+  const [sequenceDescription, setSequenceDescription] = useState('');
+  const [, setLocation] = useLocation();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -340,169 +349,177 @@ function ProductionSequenceBuilder({ sequenceId }: { sequenceId: string }) {
     refetchInterval: 30000,
   });
 
+  const updateSequenceMutation = useMutation({
+    mutationFn: async (data: { name?: string; description?: string }) => {
+      return await apiRequest("PATCH", `/api/sequences/${sequenceId}`, data);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/sequences', sequenceId] });
+      toast({ title: "Sequence updated successfully" });
+    },
+    onError: () => {
+      toast({ title: "Failed to update sequence", variant: "destructive" });
+    }
+  });
+
+  // Initialize name and description from loaded sequence
+  useEffect(() => {
+    if (sequence) {
+      setSequenceName(sequence.name || '');
+      setSequenceDescription(sequence.description || '');
+    }
+  }, [sequence?.id]);
+
   if (sequenceLoading) {
     return (
       <div className="p-6 space-y-6">
         <div className="animate-pulse">
           <div className="h-8 bg-gray-200 rounded w-1/4 mb-6"></div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            {[...Array(3)].map((_, i) => (
-              <div key={i} className="h-24 bg-gray-200 rounded"></div>
-            ))}
-          </div>
+          <div className="h-12 bg-gray-200 rounded w-full mb-4"></div>
         </div>
       </div>
     );
   }
 
+  const handleSaveSequence = () => {
+    updateSequenceMutation.mutate({
+      name: sequenceName,
+      description: sequenceDescription
+    });
+  };
+
   const tabs = [
-    { id: 'steps', label: 'Email Steps', icon: Mail },
-    { id: 'prospects', label: 'Prospects', icon: Users, count: prospectsData?.total || 0 },
-    { id: 'replies', label: 'Replies', icon: MessageSquare, count: repliesData?.total || 0 },
-    { id: 'tracking', label: 'Tracking', icon: BarChart3 },
+    { id: 'sequence', label: 'Sequence', icon: Mail },
+    { id: 'prospects', label: 'Prospects', icon: Users },
+    { id: 'replies', label: 'Replies', icon: MessageSquare },
+    { id: 'ai-followup', label: 'AI Follow-up', icon: Zap },
+    { id: 'tracking', label: 'Email Tracking', icon: BarChart3 },
     { id: 'settings', label: 'Settings', icon: Settings }
   ];
 
-  const stats = {
-    sent: repliesData?.total || 0,
-    openRate: 0,
+  const handleClose = () => {
+    setLocation('/sequences');
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
-      <div className="max-w-7xl mx-auto p-6 space-y-6">
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                <Link href="/sequences">
-                  <Button variant="ghost" size="icon" data-testid="button-back-to-list">
-                    <ArrowLeft className="w-4 h-4" />
-                  </Button>
-                </Link>
-                <div>
-                  <CardTitle className="text-3xl font-bold">{sequence?.name || 'Sequence Builder'}</CardTitle>
-                  <CardDescription className="text-base mt-2">
-                    {sequence?.description || 'Manage your outreach sequence'}
-                  </CardDescription>
-                </div>
-              </div>
-              <Badge variant={sequence?.status === 'active' ? 'default' : 'secondary'} className="text-sm px-3 py-1">
-                {sequence?.status || 'Draft'}
-              </Badge>
-            </div>
-          </CardHeader>
-        </Card>
+    <div className="min-h-screen bg-background">
+      <Dialog open={true} onOpenChange={(open) => { if (!open) handleClose(); }}>
+        <DialogContent className="max-w-6xl max-h-[90vh] p-0">
+          <DialogHeader className="px-6 pt-6 pb-0">
+            <DialogTitle className="text-xl font-semibold">Sequence Builder</DialogTitle>
+            <Link href="/sequences">
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                className="absolute right-4 top-4"
+                data-testid="button-close-builder"
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </Link>
+          </DialogHeader>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">Total Prospects</p>
-                  <p className="text-3xl font-bold">{prospectsData?.total || 0}</p>
-                </div>
-                <Users className="h-8 w-8 text-blue-600" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">Steps</p>
-                  <p className="text-3xl font-bold">{sequence?.steps?.length || 0}</p>
-                </div>
-                <Mail className="h-8 w-8 text-green-600" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">Emails Sent</p>
-                  <p className="text-3xl font-bold">{stats.sent}</p>
-                </div>
-                <Send className="h-8 w-8 text-purple-600" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">Replies</p>
-                  <p className="text-3xl font-bold">{repliesData?.total || 0}</p>
-                </div>
-                <MessageSquare className="h-8 w-8 text-orange-600" />
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-          <Card>
-            <div className="overflow-x-auto">
-              <TabsList className="w-full justify-start h-auto p-1 bg-transparent">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full">
+            <div className="border-b px-6">
+              <TabsList className="w-full justify-start h-auto p-0 bg-transparent">
                 {tabs.map((tab) => {
                   const Icon = tab.icon;
                   return (
                     <TabsTrigger
                       key={tab.id}
                       value={tab.id}
-                      className="flex items-center gap-2 px-6 py-3 data-[state=active]:bg-white dark:data-[state=active]:bg-gray-800 data-[state=active]:shadow-sm"
+                      className="flex items-center gap-2 px-4 py-3 rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent"
+                      data-testid={`tab-${tab.id}`}
                     >
                       <Icon className="w-4 h-4" />
                       {tab.label}
-                      {tab.count !== undefined && tab.count > 0 && (
-                        <Badge variant="secondary" className="ml-1 text-xs">
-                          {tab.count}
-                        </Badge>
-                      )}
                     </TabsTrigger>
                   );
                 })}
               </TabsList>
             </div>
-          </Card>
 
-          <TabsContent value="steps">
-            <SequenceStepsTab sequenceId={sequenceId} steps={sequence?.steps || []} />
-          </TabsContent>
+            <div className="flex-1 overflow-y-auto">
+              <TabsContent value="sequence" className="m-0 p-6">
+                <SequenceTab 
+                  sequenceId={sequenceId} 
+                  steps={sequence?.steps || []}
+                  name={sequenceName}
+                  setName={setSequenceName}
+                  description={sequenceDescription}
+                  setDescription={setSequenceDescription}
+                />
+              </TabsContent>
 
-          <TabsContent value="prospects">
-            <ProspectsTab 
-              sequenceId={sequenceId} 
-              prospects={prospectsData?.prospects || []} 
-              isLoading={prospectsLoading}
-            />
-          </TabsContent>
+              <TabsContent value="prospects" className="m-0 p-6">
+                <ProspectsTab 
+                  sequenceId={sequenceId} 
+                  prospects={prospectsData?.prospects || []} 
+                  isLoading={prospectsLoading}
+                />
+              </TabsContent>
 
-          <TabsContent value="replies">
-            <RepliesTab sequenceId={sequenceId} replies={repliesData?.replies || []} />
-          </TabsContent>
+              <TabsContent value="replies" className="m-0 p-6">
+                <RepliesTab sequenceId={sequenceId} replies={repliesData?.replies || []} />
+              </TabsContent>
 
-          <TabsContent value="tracking">
-            <TrackingTab sequenceId={sequenceId} />
-          </TabsContent>
+              <TabsContent value="ai-followup" className="m-0 p-6">
+                <AIFollowupTab sequenceId={sequenceId} />
+              </TabsContent>
 
-          <TabsContent value="settings">
-            <SettingsTab sequenceId={sequenceId} sequence={sequence} />
-          </TabsContent>
-        </Tabs>
-      </div>
+              <TabsContent value="tracking" className="m-0 p-6">
+                <TrackingTab sequenceId={sequenceId} />
+              </TabsContent>
+
+              <TabsContent value="settings" className="m-0 p-6">
+                <SettingsTab sequenceId={sequenceId} sequence={sequence} />
+              </TabsContent>
+            </div>
+
+            <div className="border-t px-6 py-4 flex items-center justify-between bg-muted/30">
+              <span className="text-sm text-muted-foreground">
+                {sequence?.steps?.length || 0} steps in sequence
+              </span>
+              <div className="flex gap-2">
+                <Link href="/sequences">
+                  <Button variant="outline" data-testid="button-cancel">
+                    Cancel
+                  </Button>
+                </Link>
+                <Button 
+                  onClick={handleSaveSequence}
+                  disabled={updateSequenceMutation.isPending}
+                  data-testid="button-save-sequence"
+                >
+                  {updateSequenceMutation.isPending ? "Saving..." : "Save Sequence"}
+                </Button>
+              </div>
+            </div>
+          </Tabs>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
 
-function SequenceStepsTab({ sequenceId, steps }: { sequenceId: string; steps: any[] }) {
+function SequenceTab({ 
+  sequenceId, 
+  steps, 
+  name, 
+  setName, 
+  description, 
+  setDescription 
+}: { 
+  sequenceId: string; 
+  steps: any[];
+  name: string;
+  setName: (name: string) => void;
+  description: string;
+  setDescription: (desc: string) => void;
+}) {
   const [showAddModal, setShowAddModal] = useState(false);
-  const [showAIGenerator, setShowAIGenerator] = useState(false);
-  const [showPersonalization, setShowPersonalization] = useState(false);
+  const [showAIPersonalization, setShowAIPersonalization] = useState(false);
+  const [showAITemplate, setShowAITemplate] = useState(false);
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [delayDays, setDelayDays] = useState("0");
@@ -538,34 +555,104 @@ function SequenceStepsTab({ sequenceId, steps }: { sequenceId: string; steps: an
   const handleUseAIEmail = (generatedEmail: { subject: string; body: string }) => {
     setSubject(generatedEmail.subject);
     setBody(generatedEmail.body);
-    setShowAIGenerator(false);
+    setShowAIPersonalization(false);
   };
 
   return (
-    <div className="space-y-4">
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Email Sequence Steps</CardTitle>
-              <CardDescription>Create and manage your email sequence flow</CardDescription>
-            </div>
-            <Button onClick={() => setShowAddModal(true)} data-testid="button-add-step">
-              <Plus className="w-4 h-4 mr-2" />
-              Add Step
-            </Button>
+    <div className="space-y-6">
+      {/* Sequence Name and Description */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="space-y-2">
+          <Label htmlFor="sequence-name">Sequence Name</Label>
+          <Input
+            id="sequence-name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="New Sequence"
+            data-testid="input-sequence-name"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="sequence-description">Description (Optional)</Label>
+          <Input
+            id="sequence-description"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Created from scratch"
+            data-testid="input-sequence-description"
+          />
+        </div>
+      </div>
+
+      {/* Email Steps Section */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-medium">Email Steps</h3>
+            <p className="text-sm text-muted-foreground">Create unlimited steps for your sequence</p>
           </div>
-        </CardHeader>
-        <CardContent>
-          {steps.length === 0 ? (
-            <div className="text-center py-12">
-              <Mail className="w-16 h-16 text-gray-300 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold mb-2">No email steps yet</h3>
-              <p className="text-gray-600 dark:text-gray-400 mb-4">Add your first email step to start the sequence</p>
-              <Button onClick={() => setShowAddModal(true)}>
+          <div className="flex gap-2">
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => setShowAIPersonalization(true)}
+              data-testid="button-ai-personalization-header"
+            >
+              <WandIcon className="w-4 h-4 mr-2" />
+              AI Personalization
+            </Button>
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => setShowAITemplate(true)}
+              data-testid="button-ai-template-header"
+            >
+              <Sparkles className="w-4 h-4 mr-2" />
+              AI Template
+            </Button>
+            {steps.length > 0 && (
+              <Button 
+                size="sm"
+                onClick={() => setShowAddModal(true)}
+                data-testid="button-add-step-header"
+              >
                 <Plus className="w-4 h-4 mr-2" />
-                Create First Step
+                Add Step
               </Button>
+            )}
+          </div>
+        </div>
+
+        <div className="border-2 border-dashed rounded-lg p-12">
+          {steps.length === 0 ? (
+            <div className="text-center">
+              <Mail className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+              <h3 className="text-lg font-semibold mb-2">No email steps yet</h3>
+              <p className="text-muted-foreground mb-6">
+                Create unlimited steps for your sequence - add as many as you need!
+              </p>
+              <div className="flex gap-2 justify-center">
+                <Button onClick={() => setShowAddModal(true)} data-testid="button-add-first-step">
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add First Step
+                </Button>
+                <Button 
+                  variant="outline"
+                  onClick={() => setShowAIPersonalization(true)}
+                  data-testid="button-ai-personalization-empty"
+                >
+                  <WandIcon className="w-4 h-4 mr-2" />
+                  AI Personalization
+                </Button>
+                <Button 
+                  variant="outline"
+                  onClick={() => setShowAITemplate(true)}
+                  data-testid="button-ai-template-empty"
+                >
+                  <Sparkles className="w-4 h-4 mr-2" />
+                  AI Template
+                </Button>
+              </div>
             </div>
           ) : (
             <div className="space-y-4">
@@ -584,7 +671,7 @@ function SequenceStepsTab({ sequenceId, steps }: { sequenceId: string; steps: an
                           )}
                         </div>
                         <h4 className="font-semibold text-lg">{step.subject}</h4>
-                        <p className="text-gray-600 dark:text-gray-400 text-sm mt-2 line-clamp-2">{step.body}</p>
+                        <p className="text-muted-foreground text-sm mt-2 line-clamp-2">{step.body}</p>
                       </div>
                       <Button
                         variant="ghost"
@@ -600,131 +687,117 @@ function SequenceStepsTab({ sequenceId, steps }: { sequenceId: string; steps: an
               ))}
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
 
       <Dialog open={showAddModal} onOpenChange={setShowAddModal}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <div className="flex items-center justify-between">
-              <DialogTitle>Add Email Step</DialogTitle>
-              {!showAIGenerator && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowAIGenerator(true)}
-                  data-testid="button-use-ai"
-                >
-                  <Sparkles className="w-4 h-4 mr-2" />
-                  Use AI
-                </Button>
-              )}
-            </div>
+            <DialogTitle>Add Email Step</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            {showAIGenerator ? (
-              <AIEmailGenerator 
-                sequenceId={sequenceId}
-                stepNumber={steps.length + 1}
-                onUseEmail={handleUseAIEmail}
-                onCancel={() => setShowAIGenerator(false)}
+            <div>
+              <Label>Subject Line</Label>
+              <Input
+                value={subject}
+                onChange={(e) => setSubject(e.target.value)}
+                placeholder="Enter email subject..."
+                data-testid="input-step-subject"
               />
-            ) : (
-              <>
-                <div className="flex gap-2 mb-4">
-                  <Button
-                    variant="outline"
-                    onClick={() => setShowPersonalization(true)}
-                    data-testid="button-ai-personalization"
-                    className="flex-1"
-                  >
-                    <WandIcon className="w-4 h-4 mr-2" />
-                    AI Personalization
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => {
-                      toast({ title: "AI Template Library coming soon!" });
-                    }}
-                    data-testid="button-ai-template"
-                    className="flex-1"
-                  >
-                    <Sparkles className="w-4 h-4 mr-2" />
-                    AI Template
-                  </Button>
-                </div>
-                
-                <div>
-                  <Label>Subject Line</Label>
-                  <Input
-                    value={subject}
-                    onChange={(e) => setSubject(e.target.value)}
-                    placeholder="Enter email subject..."
-                    data-testid="input-step-subject"
-                  />
-                </div>
-                <div>
-                  <Label>Email Body</Label>
-                  <Textarea
-                    value={body}
-                    onChange={(e) => setBody(e.target.value)}
-                    placeholder="Enter email content..."
-                    rows={10}
-                    data-testid="input-step-body"
-                  />
-                </div>
-              </>
-            )}
-            {!showAIGenerator && (
-              <>
-                <div>
-                  <Label>Delay (days after previous step)</Label>
-                  <Input
-                    type="number"
-                    value={delayDays}
-                    onChange={(e) => setDelayDays(e.target.value)}
-                    min="0"
-                    data-testid="input-step-delay"
-                  />
-                </div>
-                <div className="flex gap-2 justify-end">
-                  <Button variant="outline" onClick={() => setShowAddModal(false)}>
-                    Cancel
-                  </Button>
-                  <Button
-                    onClick={() => {
-                      if (subject.trim() && body.trim()) {
-                        addStepMutation.mutate({
-                          subject,
-                          body,
-                          delayDays: parseInt(delayDays) || 0
-                        });
-                      }
-                    }}
-                    disabled={!subject.trim() || !body.trim() || addStepMutation.isPending}
-                    data-testid="button-save-step"
-                  >
-                    {addStepMutation.isPending ? "Adding..." : "Add Step"}
-                  </Button>
-                </div>
-              </>
-            )}
+            </div>
+            <div>
+              <Label>Email Body</Label>
+              <Textarea
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                placeholder="Enter email content..."
+                rows={10}
+                data-testid="input-step-body"
+              />
+            </div>
+            <div>
+              <Label>Delay (days after previous step)</Label>
+              <Input
+                type="number"
+                value={delayDays}
+                onChange={(e) => setDelayDays(e.target.value)}
+                min="0"
+                data-testid="input-step-delay"
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => setShowAddModal(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  if (subject.trim() && body.trim()) {
+                    addStepMutation.mutate({
+                      subject,
+                      body,
+                      delayDays: parseInt(delayDays) || 0
+                    });
+                  }
+                }}
+                disabled={!subject.trim() || !body.trim() || addStepMutation.isPending}
+                data-testid="button-save-step"
+              >
+                {addStepMutation.isPending ? "Adding..." : "Add Step"}
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
 
       <PersonalizationWizard 
-        open={showPersonalization}
-        onClose={() => setShowPersonalization(false)}
+        open={showAIPersonalization}
+        onClose={() => setShowAIPersonalization(false)}
         onComplete={(email) => {
           if (email && email.subject && email.body) {
             setSubject(email.subject);
             setBody(email.body);
-            setShowPersonalization(false);
+            setShowAIPersonalization(false);
             toast({ title: "AI-personalized email added to step!" });
           }
         }}
       />
+
+      <Dialog open={showAITemplate} onOpenChange={setShowAITemplate}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>AI Template Library</DialogTitle>
+          </DialogHeader>
+          <div className="text-center py-8">
+            <Sparkles className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+            <h3 className="text-lg font-semibold mb-2">AI Template Library Coming Soon</h3>
+            <p className="text-muted-foreground">
+              Choose from pre-built email templates optimized for different industries and use cases.
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function AIFollowupTab({ sequenceId }: { sequenceId: string }) {
+  return (
+    <div className="space-y-4">
+      <Card>
+        <CardHeader>
+          <CardTitle>AI Follow-up</CardTitle>
+          <CardDescription>Automatically generate follow-up emails based on prospect responses</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="text-center py-12">
+            <Zap className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
+            <h3 className="text-lg font-semibold mb-2">AI Follow-up Coming Soon</h3>
+            <p className="text-muted-foreground">
+              This feature will automatically craft intelligent follow-up emails based on prospect engagement and responses.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
