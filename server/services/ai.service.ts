@@ -53,20 +53,72 @@ class AIService {
     aiFilters: AIFilters;
     apolloFilters: ApolloFilters;
   }> {
-    const provider = process.env.AI_PROVIDER || (this.openai ? 'openai' : 'anthropic');
+    const preferredProvider = process.env.AI_PROVIDER || 'openai';
     
-    try {
-      if (provider === 'openai' && this.openai) {
-        return await this.parseWithOpenAI(query);
-      } else if (provider === 'anthropic' && this.anthropic) {
+    // If AI_PROVIDER is explicitly set, try that first
+    if (preferredProvider === 'anthropic' && this.anthropic) {
+      try {
+        console.log('🤖 Using Anthropic for AI search parsing (AI_PROVIDER=anthropic)...');
         return await this.parseWithAnthropic(query);
-      } else {
-        throw new Error('No AI provider available');
+      } catch (anthropicError: any) {
+        console.error('Anthropic parsing failed:', anthropicError?.message || anthropicError);
+        
+        // Try OpenAI as fallback
+        if (this.openai) {
+          try {
+            console.log('🤖 Anthropic failed, falling back to OpenAI...');
+            return await this.parseWithOpenAI(query);
+          } catch (openaiError) {
+            console.error('OpenAI parsing also failed:', openaiError);
+          }
+        }
+        
+        console.log('📝 Using keyword extraction fallback...');
+        return this.fallbackKeywordExtraction(query);
       }
-    } catch (error) {
-      console.error('AI parsing failed, falling back to keyword extraction:', error);
-      return this.fallbackKeywordExtraction(query);
     }
+    
+    // Try OpenAI first (default or explicitly set)
+    if (this.openai) {
+      try {
+        console.log('🤖 Using OpenAI for AI search parsing...');
+        return await this.parseWithOpenAI(query);
+      } catch (openaiError: any) {
+        console.error('OpenAI parsing failed:', openaiError?.message || openaiError);
+        
+        // If OpenAI fails, try Anthropic as fallback
+        if (this.anthropic) {
+          try {
+            console.log('🤖 OpenAI failed, falling back to Anthropic...');
+            return await this.parseWithAnthropic(query);
+          } catch (anthropicError) {
+            console.error('Anthropic parsing also failed:', anthropicError);
+          }
+        } else {
+          console.warn('⚠️ Anthropic not configured - cannot fallback. Set ANTHROPIC_API_KEY to enable fallback.');
+        }
+        
+        // If both AI providers fail, use keyword extraction
+        console.log('📝 Using keyword extraction fallback...');
+        return this.fallbackKeywordExtraction(query);
+      }
+    }
+    
+    // If OpenAI not available, try Anthropic
+    if (this.anthropic) {
+      try {
+        console.log('🤖 Using Anthropic for AI search parsing...');
+        return await this.parseWithAnthropic(query);
+      } catch (anthropicError) {
+        console.error('Anthropic parsing failed:', anthropicError);
+        console.log('📝 Using keyword extraction fallback...');
+        return this.fallbackKeywordExtraction(query);
+      }
+    }
+    
+    // No AI providers available - use keyword extraction
+    console.warn('⚠️ No AI providers configured. Using keyword extraction. Set OPENAI_API_KEY or ANTHROPIC_API_KEY for better results.');
+    return this.fallbackKeywordExtraction(query);
   }
 
   private async parseWithOpenAI(query: string): Promise<{
