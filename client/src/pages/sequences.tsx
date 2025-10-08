@@ -407,16 +407,15 @@ function ProductionSequenceBuilder({ sequenceId }: { sequenceId: string }) {
         <DialogContent className="max-w-6xl max-h-[90vh] p-0">
           <DialogHeader className="px-6 pt-6 pb-0">
             <DialogTitle className="text-xl font-semibold">Sequence Builder</DialogTitle>
-            <Link href="/sequences">
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                className="absolute right-4 top-4"
-                data-testid="button-close-builder"
-              >
-                <X className="w-4 h-4" />
-              </Button>
-            </Link>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="absolute right-4 top-4"
+              onClick={handleClose}
+              data-testid="button-close-builder"
+            >
+              <X className="w-4 h-4" />
+            </Button>
           </DialogHeader>
 
           <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full">
