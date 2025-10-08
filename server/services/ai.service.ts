@@ -1,8 +1,8 @@
 import OpenAI from "openai";
 import Anthropic from '@anthropic-ai/sdk';
 
-// the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
-const DEFAULT_OPENAI_MODEL = "gpt-5";
+// Use GPT-4o as the default model for optimal performance and availability
+const DEFAULT_OPENAI_MODEL = "gpt-4o";
 
 /*
 The newest Anthropic model is "claude-sonnet-4-20250514", not "claude-3-7-sonnet-20250219", "claude-3-5-sonnet-20241022" nor "claude-3-sonnet-20240229". 

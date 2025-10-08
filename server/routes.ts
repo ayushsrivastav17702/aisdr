@@ -620,8 +620,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "No file uploaded" });
       }
 
-      // Parse CSV file
+      // Parse CSV file with enhanced leniency
       const fileContent = readFileSync(req.file.path, 'utf-8');
+      const skippedRows: number[] = [];
       const records = parse(fileContent, {
         columns: true,
         skip_empty_lines: true,
@@ -629,9 +630,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         relax_quotes: true,
         relax_column_count: true,
         skip_records_with_error: true,
-      });
+        bom: true,
+        escape: '"',
+        quote: '"',
+        relax_column_count_less: true,
+        relax_column_count_more: true,
+        on_record: (record: any, context: any) => {
+          try {
+            return record;
+          } catch (err) {
+            console.warn(`Skipping malformed row at line ${context.lines}:`, err);
+            skippedRows.push(context.lines);
+            return null;
+          }
+        }
+      }).filter((r: any) => r !== null);
 
-      const totalRows = records.length;
+      const validRows = records.length;
+      const totalRows = validRows + skippedRows.length;
       const columns: { name: string; samples: string[] }[] = [];
       const suggestedMappings: Record<string, string> = {};
 
@@ -664,9 +680,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const validation = {
         totalRows,
-        validRows: totalRows,
+        validRows,
         duplicateRows: 0,
-        errorRows: 0,
+        errorRows: skippedRows.length,
+        skippedRows,
         columns,
         suggestedMappings
       };

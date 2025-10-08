@@ -124,6 +124,22 @@ router.post("/mailboxes/:id/test", async (req, res) => {
   }
 });
 
+router.post("/mailboxes/:id/set-default", async (req, res) => {
+  try {
+    await mailboxService.setDefaultMailbox(req.params.id);
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Set default mailbox error:", error);
+    const errorMessage = error instanceof Error ? error.message : "Failed to set default mailbox";
+    
+    if (errorMessage.includes("not found") || errorMessage.includes("no longer exists")) {
+      return res.status(404).json({ error: errorMessage });
+    }
+    
+    res.status(500).json({ error: errorMessage });
+  }
+});
+
 router.get("/email-queue/stats", async (req, res) => {
   try {
     const stats = await emailQueueService.getQueueStats();

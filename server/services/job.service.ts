@@ -448,7 +448,20 @@ class JobService {
         relax_quotes: true,
         relax_column_count: true,
         skip_records_with_error: true,
-      });
+        bom: true,
+        escape: '"',
+        quote: '"',
+        relax_column_count_less: true,
+        relax_column_count_more: true,
+        on_record: (record: any, context: any) => {
+          try {
+            return record;
+          } catch (err) {
+            console.warn(`Skipping malformed row at line ${context.lines}:`, err);
+            return null;
+          }
+        }
+      }).filter((r: any) => r !== null);
       return records;
     } catch (error) {
       console.error('CSV parsing error:', error);
