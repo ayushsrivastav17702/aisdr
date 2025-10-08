@@ -665,9 +665,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
         let failureCount = 0;
         let duplicateCount = 0;
         const errors: string[] = [];
+        const prospectsToInsert: any[] = [];
+        const duplicateEmails = new Set<string>();
 
         console.log(`  Parsed ${records.length} rows from CSV`);
 
+        // First pass: map rows and check for duplicates
+        if (options.skipDuplicates) {
+          // Get all emails from CSV
+          const allEmails = records
+            .map((row: any) => {
+              const prospectData: any = {};
+              for (const [csvCol, prospectField] of Object.entries(parsedFieldMappings)) {
+                if (row[csvCol]) {
+                  prospectData[prospectField] = row[csvCol];
+                }
+              }
+              return prospectData.primaryEmail;
+            })
+            .filter(Boolean);
+
+          // Check duplicates in database in one query
+          if (allEmails.length > 0) {
+            const duplicates = await storage.checkDuplicateProspects(allEmails);
+            duplicates.forEach(dup => {
+              if (dup.primaryEmail) duplicateEmails.add(dup.primaryEmail);
+              if (dup.secondaryEmail) duplicateEmails.add(dup.secondaryEmail);
+            });
+            console.log(`  Found ${duplicateEmails.size} existing emails in database`);
+          }
+        }
+
+        // Second pass: prepare prospects to insert
         for (let i = 0; i < records.length; i++) {
           const row = records[i] as Record<string, any>;
           
@@ -685,34 +714,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
               console.log(`  Row ${i + 1} mapped data:`, prospectData);
             }
 
-            // Check for duplicates if enabled
-            if (options.skipDuplicates && prospectData.primaryEmail) {
-              const duplicates = await storage.checkDuplicateProspects([prospectData.primaryEmail]);
-              if (duplicates.length > 0) {
-                duplicateCount++;
-                if (i < 3) {
-                  console.log(`  Row ${i + 1} is duplicate, skipping`);
-                }
-                continue;
+            // Check for duplicates
+            if (options.skipDuplicates && prospectData.primaryEmail && duplicateEmails.has(prospectData.primaryEmail)) {
+              duplicateCount++;
+              if (i < 3) {
+                console.log(`  Row ${i + 1} is duplicate, skipping`);
               }
+              continue;
             }
 
-            // Create prospect
-            await storage.createProspect(prospectData);
-            successCount++;
-            
-            if (i < 3 || (i + 1) % 1000 === 0) {
-              console.log(`  Progress: ${i + 1}/${records.length} rows processed (${successCount} successful, ${duplicateCount} duplicates, ${failureCount} failed)`);
-            }
-
-            // Note: Auto-enrich requires Redis, so we skip it in sync mode
-            if (options.autoEnrich) {
-              console.log('  Note: Auto-enrich skipped (requires Redis)');
-            }
+            prospectsToInsert.push(prospectData);
           } catch (error) {
             failureCount++;
             errors.push(`Row ${i + 1}: ${error instanceof Error ? error.message : 'Unknown error'}`);
           }
+        }
+
+        // Bulk insert prospects in batches of 1000
+        const BATCH_SIZE = 1000;
+        for (let i = 0; i < prospectsToInsert.length; i += BATCH_SIZE) {
+          const batch = prospectsToInsert.slice(i, i + BATCH_SIZE);
+          try {
+            await storage.bulkCreateProspects(batch);
+            successCount += batch.length;
+            console.log(`  Batch ${Math.floor(i / BATCH_SIZE) + 1}: Inserted ${batch.length} prospects (total: ${successCount}/${prospectsToInsert.length})`);
+          } catch (error) {
+            // If batch insert fails, try one by one for this batch
+            console.log(`  Batch insert failed, trying individual inserts for batch ${Math.floor(i / BATCH_SIZE) + 1}`);
+            for (let j = 0; j < batch.length; j++) {
+              try {
+                await storage.createProspect(batch[j]);
+                successCount++;
+              } catch (err) {
+                failureCount++;
+                errors.push(`Row ${i + j + 1}: ${err instanceof Error ? err.message : 'Unknown error'}`);
+              }
+            }
+          }
+        }
+
+        // Note: Auto-enrich requires Redis
+        if (options.autoEnrich) {
+          console.log('  Note: Auto-enrich skipped (requires Redis)');
         }
 
         console.log('\n========== IMPORT COMPLETE ==========');
