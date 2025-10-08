@@ -1047,6 +1047,124 @@ Generate a subject line and email body that is highly personalized and relevant.
     }
   });
 
+  // AI Email Template Generator - Generate template from content library
+  app.post("/api/content-library/ai-generate-template", async (req, res) => {
+    try {
+      const { prompt, contentItemIds, settings } = req.body;
+      
+      if (!prompt) {
+        return res.status(400).json({ error: "Prompt is required" });
+      }
+
+      if (!contentItemIds || contentItemIds.length === 0) {
+        return res.status(400).json({ error: "At least one content item must be selected" });
+      }
+
+      if (!process.env.OPENAI_API_KEY) {
+        return res.status(500).json({ 
+          error: "OpenAI API key not configured. Please configure OPENAI_API_KEY in environment variables." 
+        });
+      }
+
+      // Fetch selected content items
+      const allContentItems = await storage.getContentLibraryItems();
+      const selectedContent = allContentItems.filter(item => contentItemIds.includes(item.id));
+
+      if (selectedContent.length === 0) {
+        return res.status(404).json({ error: "No content items found with the provided IDs" });
+      }
+
+      // Build content context for AI
+      const contentContext = selectedContent.map((item, index) => {
+        return `Content Item ${index + 1}: ${item.title} (${item.type})
+${item.description ? `Description: ${item.description}` : ''}
+Content: ${item.content}
+${item.industry ? `Industry: ${item.industry}` : ''}
+${item.useCase ? `Use Case: ${item.useCase}` : ''}`;
+      }).join('\n\n---\n\n');
+
+      const tone = settings?.tone || 'professional';
+      const length = settings?.length || 'medium';
+      const cta = settings?.callToAction || 'schedule a call';
+
+      // Generate template using OpenAI
+      const OpenAI = (await import('openai')).default;
+      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+      const aiPrompt = `You are an expert email template creator. Generate a reusable email template based on the following:
+
+USER REQUEST:
+${prompt}
+
+TEMPLATE SETTINGS:
+- Tone: ${tone}
+- Length: ${length}
+- Call-to-Action: ${cta}
+
+AVAILABLE CONTENT (USE ONLY THIS DATA):
+${contentContext}
+
+REQUIREMENTS:
+1. Create a compelling subject line
+2. Write email content using ONLY the provided content items above
+3. Use the specified tone: ${tone}
+4. Target length: ${length === 'short' ? '50-100 words' : length === 'medium' ? '100-200 words' : '200-300 words'}
+5. Include the call-to-action: ${cta}
+6. Make the template reusable (use placeholders like {{company_name}}, {{prospect_name}} where appropriate)
+7. Focus on the benefits, case studies, and value propositions from the content
+8. DO NOT invent information - use only what's provided in the content items
+
+Respond in JSON format:
+{
+  "subject": "Email subject line",
+  "content": "Complete email template with placeholders",
+  "variables": ["list", "of", "variables", "used"],
+  "reasoning": "Brief explanation of approach"
+}`;
+
+      console.log('Generating AI email template with', selectedContent.length, 'content items');
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "system",
+            content: "You are an expert email template creator who generates high-quality, reusable email templates based strictly on provided content. Always respond with valid JSON."
+          },
+          {
+            role: "user",
+            content: aiPrompt
+          }
+        ],
+        response_format: { type: "json_object" },
+        temperature: 0.7,
+        max_tokens: 1500
+      });
+
+      const result = JSON.parse(response.choices[0].message.content || '{}');
+
+      // Harden response parsing with fallbacks
+      const subject = result.subject || 'Quick question about your business';
+      const content = result.content || 'Email content generation failed. Please try again.';
+      const variables = Array.isArray(result.variables) ? result.variables : [];
+      const reasoning = result.reasoning || 'Template generated from selected content';
+
+      res.json({
+        subject,
+        content,
+        variables,
+        reasoning,
+        contentItemsUsed: selectedContent.map(item => ({ id: item.id, title: item.title }))
+      });
+
+    } catch (error) {
+      console.error("AI template generation error:", error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Failed to generate AI email template" 
+      });
+    }
+  });
+
   // Health check
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });

@@ -24,16 +24,19 @@ import {
   Search,
   Filter,
   FileCheck,
-  AlertCircle
+  AlertCircle,
+  Sparkles
 } from "lucide-react";
 import { Link } from "wouter";
 import type { ContentLibraryItem } from "@shared/schema";
+import { AITemplateGenerator } from "@/components/AITemplateGenerator";
 
 export default function ContentManagement() {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [selectedTab, setSelectedTab] = useState<"manual" | "upload">("manual");
   const [searchQuery, setSearchQuery] = useState("");
   const [filterType, setFilterType] = useState<string>("all");
+  const [showAIGenerator, setShowAIGenerator] = useState(false);
   const { toast } = useToast();
 
   const { data: contentItems = [], isLoading } = useQuery<ContentLibraryItem[]>({
@@ -51,6 +54,7 @@ export default function ContentManagement() {
   const contentTypes = Array.from(new Set(contentItems.map(item => item.type)));
 
   return (
+    <>
     <div className="flex h-screen overflow-hidden bg-background">
       {/* Sidebar Navigation */}
       <aside className="w-60 bg-card border-r border-border flex flex-col">
@@ -111,13 +115,24 @@ export default function ContentManagement() {
                 Manage content items for AI-powered email personalization
               </p>
             </div>
-            <Button onClick={() => {
-              setShowAddDialog(true);
-              setSelectedTab("manual");
-            }} data-testid="button-add-content">
-              <Plus className="w-4 h-4 mr-2" />
-              Add Content
-            </Button>
+            <div className="flex gap-2">
+              <Button 
+                variant="outline"
+                onClick={() => setShowAIGenerator(true)} 
+                className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white border-0"
+                data-testid="button-ai-generator"
+              >
+                <Sparkles className="w-4 h-4 mr-2" />
+                AI Template Generator
+              </Button>
+              <Button onClick={() => {
+                setShowAddDialog(true);
+                setSelectedTab("manual");
+              }} data-testid="button-add-content">
+                <Plus className="w-4 h-4 mr-2" />
+                Add Content
+              </Button>
+            </div>
           </div>
         </header>
 
@@ -190,7 +205,14 @@ export default function ContentManagement() {
         }}
         initialTab={selectedTab}
       />
+
+      {/* AI Template Generator Dialog */}
+      <AITemplateGenerator 
+        open={showAIGenerator} 
+        onClose={() => setShowAIGenerator(false)} 
+      />
     </div>
+    </>
   );
 }
 

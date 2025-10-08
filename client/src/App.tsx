@@ -16,7 +16,7 @@ function Router() {
       <Route path="/sequences" component={Sequences} />
       <Route path="/sequences/:id" component={Sequences} />
       <Route path="/mailboxes" component={Mailboxes} />
-      <Route path="/content" component={ContentManagement} />
+      <Route path="/content-management" component={ContentManagement} />
       <Route component={NotFound} />
     </Switch>
   );
