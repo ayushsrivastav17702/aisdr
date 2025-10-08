@@ -1,0 +1,480 @@
+Functional Sequence Card Design:
+jsxfunction SequenceCard({ sequence }) {
+  return (
+    <div className="sequence-card">
+      {/* Header */}
+      <div className="card-header">
+        <div>
+          <h3>{sequence.name}</h3>
+          <span className="status-badge">{sequence.status}</span>
+        </div>
+        <DropdownMenu>
+          <MenuItem onClick={handleEdit}>Edit</MenuItem>
+          <MenuItem onClick={handleDuplicate}>Duplicate</MenuItem>
+          <MenuItem onClick={handleDelete}>Delete</MenuItem>
+        </DropdownMenu>
+      </div>
+
+      <p className="description">{sequence.description}</p>
+
+      {/* Key Metrics */}
+      <div className="stats-row">
+        <div className="stat">
+          <span className="stat-label">Steps</span>
+          <span className="stat-value">{sequence.stepCount} emails</span>
+        </div>
+        <div className="stat">
+          <span className="stat-label">Prospects</span>
+          <span className="stat-value">{sequence.prospectCount}</span>
+        </div>
+        <div className="stat">
+          <span className="stat-label">Schedule</span>
+          <span className="stat-value">{sequence.schedule}</span>
+        </div>
+      </div>
+
+      {/* Action Buttons */}
+      <div className="card-actions">
+        <button 
+          className="btn-secondary"
+          onClick={() => openStepsEditor(sequence.id)}
+        >
+          📝 Edit Steps ({sequence.stepCount})
+        </button>
+        
+        <button 
+          className="btn-secondary"
+          onClick={() => openAddProspects(sequence.id)}
+        >
+          👥 Add Prospects
+        </button>
+        
+        {sequence.status === 'draft' && sequence.prospectCount > 0 && (
+          <button 
+            className="btn-primary"
+            onClick={() => activateSequence(sequence.id)}
+          >
+            ▶️ Activate Sequence
+          </button>
+        )}
+        
+        {sequence.status === 'active' && (
+          <button 
+            className="btn-warning"
+            onClick={() => pauseSequence(sequence.id)}
+          >
+            ⏸️ Pause Sequence
+          </button>
+        )}
+      </div>
+
+      {/* Warning if incomplete */}
+      {sequence.stepCount === 0 && (
+        <div className="warning-banner">
+          ⚠️ Add email steps before activating
+        </div>
+      )}
+      
+      {sequence.stepCount > 0 && sequence.prospectCount === 0 && (
+        <div className="warning-banner">
+          ⚠️ Add prospects before activating
+        </div>
+      )}
+    </div>
+  );
+}
+
+Complete Workflow Implementation:
+1. Sequence Steps Builder
+jsx// Modal/Page: Edit Sequence Steps
+function SequenceStepsBuilder({ sequenceId }) {
+  const [steps, setSteps] = useState([]);
+
+  return (
+    <div className="steps-builder">
+      <h2>Sequence Steps</h2>
+      
+      {/* Existing Steps */}
+      {steps.map((step, index) => (
+        <div key={step.id} className="step-card">
+          <div className="step-header">
+            <span className="step-number">Step {index + 1}</span>
+            <span className="step-delay">
+              {step.delayDays === 0 ? 'Immediate' : `${step.delayDays} days after`}
+            </span>
+            <button onClick={() => deleteStep(step.id)}>🗑️</button>
+          </div>
+          
+          <div className="step-content">
+            <input 
+              type="text" 
+              placeholder="Email subject"
+              value={step.subject}
+              onChange={(e) => updateStep(step.id, 'subject', e.target.value)}
+            />
+            <textarea 
+              placeholder="Email body"
+              value={step.body}
+              onChange={(e) => updateStep(step.id, 'body', e.target.value)}
+            />
+          </div>
+          
+          <div className="step-settings">
+            <label>
+              Wait before sending:
+              <select 
+                value={step.delayDays}
+                onChange={(e) => updateStep(step.id, 'delayDays', e.target.value)}
+              >
+                <option value="0">Immediate</option>
+                <option value="1">1 day</option>
+                <option value="2">2 days</option>
+                <option value="3">3 days</option>
+                <option value="5">5 days</option>
+                <option value="7">1 week</option>
+              </select>
+            </label>
+          </div>
+        </div>
+      ))}
+
+      {/* Add New Step */}
+      <button 
+        className="btn-add-step"
+        onClick={addNewStep}
+      >
+        + Add Email Step
+      </button>
+
+      {/* Save */}
+      <div className="actions">
+        <button className="btn-secondary" onClick={onClose}>Cancel</button>
+        <button className="btn-primary" onClick={saveSteps}>
+          Save Steps
+        </button>
+      </div>
+    </div>
+  );
+}
+2. Add Prospects Modal
+jsxfunction AddProspectsModal({ sequenceId, onClose }) {
+  const [selectedProspects, setSelectedProspects] = useState([]);
+  const [searchQuery, setSearchQuery] = useState('');
+
+  return (
+    <div className="modal">
+      <div className="modal-header">
+        <h2>Add Prospects to Sequence</h2>
+        <button onClick={onClose}>✕</button>
+      </div>
+
+      <div className="modal-body">
+        {/* Search/Filter */}
+        <input
+          type="text"
+          placeholder="Search prospects..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
+
+        {/* Tabs */}
+        <div className="tabs">
+          <button className="tab active">All Prospects</button>
+          <button className="tab">Uploaded Lists</button>
+          <button className="tab">From Apollo</button>
+        </div>
+
+        {/* Prospect List */}
+        <div className="prospect-list">
+          {prospects.map(prospect => (
+            <div key={prospect.id} className="prospect-item">
+              <input
+                type="checkbox"
+                checked={selectedProspects.includes(prospect.id)}
+                onChange={() => toggleProspect(prospect.id)}
+              />
+              <div className="prospect-info">
+                <strong>{prospect.name}</strong>
+                <span>{prospect.title} at {prospect.company}</span>
+                <span className="email">{prospect.email}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* Bulk Upload Option */}
+        <div className="upload-section">
+          <button className="btn-secondary">
+            📄 Upload CSV of Prospects
+          </button>
+        </div>
+      </div>
+
+      <div className="modal-footer">
+        <span>{selectedProspects.length} prospects selected</span>
+        <button className="btn-secondary" onClick={onClose}>Cancel</button>
+        <button 
+          className="btn-primary"
+          onClick={() => addProspectsToSequence(sequenceId, selectedProspects)}
+          disabled={selectedProspects.length === 0}
+        >
+          Add to Sequence
+        </button>
+      </div>
+    </div>
+  );
+}
+3. Activate Sequence Confirmation
+jsxfunction ActivateSequenceModal({ sequence, onConfirm, onCancel }) {
+  return (
+    <div className="modal">
+      <div className="modal-header">
+        <h2>Activate Sequence?</h2>
+      </div>
+
+      <div className="modal-body">
+        <div className="sequence-summary">
+          <h3>{sequence.name}</h3>
+          
+          <div className="summary-stats">
+            <div className="stat">
+              <strong>{sequence.stepCount}</strong>
+              <span>Email steps</span>
+            </div>
+            <div className="stat">
+              <strong>{sequence.prospectCount}</strong>
+              <span>Prospects</span>
+            </div>
+          </div>
+
+          <div className="timeline-preview">
+            <h4>Email Timeline:</h4>
+            {sequence.steps.map((step, index) => (
+              <div key={index} className="timeline-item">
+                <span className="step-number">Step {index + 1}</span>
+                <span className="step-timing">
+                  {index === 0 
+                    ? 'Sends immediately' 
+                    : `Sends ${step.delayDays} days after step ${index}`
+                  }
+                </span>
+                <span className="step-subject">{step.subject}</span>
+              </div>
+            ))}
+          </div>
+
+          <div className="warning-box">
+            ⚠️ Once activated, emails will be sent automatically according to the schedule. 
+            You can pause the sequence at any time.
+          </div>
+        </div>
+      </div>
+
+      <div className="modal-footer">
+        <button className="btn-secondary" onClick={onCancel}>
+          Cancel
+        </button>
+        <button className="btn-primary" onClick={onConfirm}>
+          ✅ Yes, Activate Sequence
+        </button>
+      </div>
+    </div>
+  );
+}
+4. Backend API Endpoints
+javascript// POST /api/sequences/:id/steps
+// Add/update email steps
+app.post('/api/sequences/:id/steps', async (req, res) => {
+  const { steps } = req.body;
+  
+  await Sequence.findByIdAndUpdate(req.params.id, {
+    steps: steps,
+    stepCount: steps.length
+  });
+  
+  res.json({ success: true });
+});
+
+// POST /api/sequences/:id/prospects
+// Add prospects to sequence
+app.post('/api/sequences/:id/prospects', async (req, res) => {
+  const { prospectIds } = req.body;
+  
+  await SequenceProspect.insertMany(
+    prospectIds.map(prospectId => ({
+      sequenceId: req.params.id,
+      prospectId,
+      status: 'pending',
+      currentStep: 0
+    }))
+  );
+  
+  await Sequence.findByIdAndUpdate(req.params.id, {
+    $inc: { prospectCount: prospectIds.length }
+  });
+  
+  res.json({ success: true, added: prospectIds.length });
+});
+
+// POST /api/sequences/:id/activate
+// Activate sequence to start sending emails
+app.post('/api/sequences/:id/activate', async (req, res) => {
+  const sequence = await Sequence.findById(req.params.id);
+  
+  // Validation
+  if (sequence.stepCount === 0) {
+    return res.status(400).json({ error: 'Add email steps first' });
+  }
+  
+  if (sequence.prospectCount === 0) {
+    return res.status(400).json({ error: 'Add prospects first' });
+  }
+  
+  // Activate
+  await Sequence.findByIdAndUpdate(req.params.id, {
+    status: 'active',
+    activatedAt: new Date()
+  });
+  
+  // Queue first emails for all prospects
+  await queueInitialEmails(req.params.id);
+  
+  res.json({ success: true });
+});
+
+// POST /api/sequences/:id/pause
+// Pause active sequence
+app.post('/api/sequences/:id/pause', async (req, res) => {
+  await Sequence.findByIdAndUpdate(req.params.id, {
+    status: 'paused',
+    pausedAt: new Date()
+  });
+  
+  res.json({ success: true });
+});
+5. Email Sending Logic
+javascript// Background job that runs every minute
+async function processSequenceEmails() {
+  // Find all prospects who should receive emails now
+  const dueProspects = await SequenceProspect.find({
+    status: 'active',
+    nextEmailAt: { $lte: new Date() }
+  }).populate('sequenceId prospectId');
+  
+  for (const sp of dueProspects) {
+    const sequence = sp.sequenceId;
+    const prospect = sp.prospectId;
+    const currentStep = sequence.steps[sp.currentStep];
+    
+    // Send email
+    await sendEmail({
+      to: prospect.email,
+      subject: currentStep.subject,
+      body: personalizeEmail(currentStep.body, prospect)
+    });
+    
+    // Update prospect status
+    const nextStep = sp.currentStep + 1;
+    
+    if (nextStep >= sequence.steps.length) {
+      // Sequence completed
+      await SequenceProspect.updateOne(
+        { _id: sp._id },
+        { 
+          status: 'completed',
+          currentStep: nextStep
+        }
+      );
+    } else {
+      // Schedule next email
+      const nextStepData = sequence.steps[nextStep];
+      const nextEmailAt = new Date();
+      nextEmailAt.setDate(nextEmailAt.getDate() + nextStepData.delayDays);
+      
+      await SequenceProspect.updateOne(
+        { _id: sp._id },
+        {
+          currentStep: nextStep,
+          nextEmailAt: nextEmailAt
+        }
+      );
+    }
+  }
+}
+
+Updated Sequence Card with ALL Features:
+jsx<div className="sequence-card">
+  <div className="card-header">
+    <div>
+      <h3>Quick Test 7E0</h3>
+      <StatusBadge status={sequence.status} />
+    </div>
+    <DropdownMenu />
+  </div>
+
+  <p className="description">Verify fix</p>
+
+  {/* Stats */}
+  <div className="stats">
+    <div className="stat">
+      <span className="label">Steps:</span>
+      <span className="value">{sequence.stepCount || 0} emails</span>
+    </div>
+    <div className="stat">
+      <span className="label">Prospects:</span>
+      <span className="value">{sequence.prospectCount || 0}</span>
+    </div>
+  </div>
+
+  {/* Primary Actions */}
+  <div className="actions">
+    <button 
+      className="btn btn-secondary"
+      onClick={() => openStepsBuilder(sequence.id)}
+    >
+      {sequence.stepCount === 0 ? '+ Add Email Steps' : `Edit Steps (${sequence.stepCount})`}
+    </button>
+
+    <button 
+      className="btn btn-secondary"
+      onClick={() => openAddProspects(sequence.id)}
+    >
+      {sequence.prospectCount === 0 ? '+ Add Prospects' : `Add More Prospects`}
+    </button>
+
+    {/* Activate Button - Only show when ready */}
+    {sequence.status === 'draft' && 
+     sequence.stepCount > 0 && 
+     sequence.prospectCount > 0 && (
+      <button 
+        className="btn btn-primary btn-activate"
+        onClick={() => activateSequence(sequence.id)}
+      >
+        ▶️ Activate & Start Sending
+      </button>
+    )}
+
+    {/* Pause Button - When active */}
+    {sequence.status === 'active' && (
+      <button 
+        className="btn btn-warning"
+        onClick={() => pauseSequence(sequence.id)}
+      >
+        ⏸️ Pause Sequence
+      </button>
+    )}
+  </div>
+
+  {/* Warnings */}
+  {sequence.stepCount === 0 && (
+    <div className="alert alert-warning">
+      ⚠️ Add email steps to continue
+    </div>
+  )}
+  
+  {sequence.stepCount > 0 && sequence.prospectCount === 0 && (
+    <div className="alert alert-warning">
+      ⚠️ Add prospects to activate
+    </div>
+  )}
+</div>

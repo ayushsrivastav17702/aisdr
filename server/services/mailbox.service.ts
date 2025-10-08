@@ -43,6 +43,29 @@ export class MailboxService {
   }
 
   async getNextMailbox(): Promise<EmailMailbox> {
+    const [defaultMailbox] = await db
+      .select()
+      .from(emailMailboxes)
+      .where(
+        and(
+          eq(emailMailboxes.isDefault, true),
+          sql`${emailMailboxes.status} IN ('active', 'warming')`,
+          lt(emailMailboxes.dailySent, sql`${emailMailboxes.dailyLimit}`)
+        )
+      )
+      .limit(1);
+
+    if (defaultMailbox) {
+      await db
+        .update(emailMailboxes)
+        .set({
+          lastUsedAt: new Date(),
+        })
+        .where(eq(emailMailboxes.id, defaultMailbox.id));
+
+      return defaultMailbox;
+    }
+
     const availableMailboxes = await db
       .select()
       .from(emailMailboxes)
@@ -185,6 +208,46 @@ export class MailboxService {
     }
 
     return true;
+  }
+
+  async setDefaultMailbox(mailboxId: string): Promise<void> {
+    await db.transaction(async (tx) => {
+      const [mailbox] = await tx
+        .select()
+        .from(emailMailboxes)
+        .where(eq(emailMailboxes.id, mailboxId));
+      
+      if (!mailbox) {
+        throw new Error(`Mailbox with ID ${mailboxId} not found`);
+      }
+
+      await tx.update(emailMailboxes).set({ isDefault: false });
+      
+      const result = await tx
+        .update(emailMailboxes)
+        .set({ isDefault: true, updatedAt: new Date() })
+        .where(eq(emailMailboxes.id, mailboxId))
+        .returning();
+      
+      if (result.length === 0) {
+        throw new Error(`Failed to set mailbox ${mailboxId} as default - mailbox no longer exists`);
+      }
+      
+      console.log(`✅ Set ${mailbox.email} as default mailbox`);
+    });
+  }
+
+  async setDefaultMailboxByEmail(email: string): Promise<void> {
+    const [mailbox] = await db
+      .select()
+      .from(emailMailboxes)
+      .where(eq(emailMailboxes.email, email));
+    
+    if (!mailbox) {
+      throw new Error(`Mailbox with email ${email} not found`);
+    }
+    
+    await this.setDefaultMailbox(mailbox.id);
   }
 }
 

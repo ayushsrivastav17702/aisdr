@@ -1,0 +1,324 @@
+Feature: Custom Prospect Data Integration with Apollo.io AI Search
+Objective:
+Enable users to upload their own prospect database (50,000+ records) and automatically combine this data with Apollo.io API results when performing AI-powered prospect searches.
+Requirements:
+
+Data Upload: Allow users to upload bulk prospect data (CSV/Excel with 50K+ records)
+Backend Storage: Store uploaded prospect data in a dedicated database
+Search Integration: When users perform "AI Prospect Search", the system should:
+
+Query both Apollo.io API AND the user's uploaded prospect database
+Merge and deduplicate results
+Apply user filters to both datasets
+Return combined, relevant results
+
+
+Data Management: Users can view, update, and delete uploaded prospects
+
+
+Updated Architecture:
+┌─────────────────┐
+│  User Uploads   │
+│   50K Prospects │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────────────┐
+│   Backend Storage       │
+│  (MongoDB/PostgreSQL)   │
+│  - User's custom data   │
+└────────┬────────────────┘
+         │
+         ▼
+┌─────────────────────────┐
+│  AI Prospect Search     │
+│  Query Handler          │
+└────┬──────────────┬─────┘
+     │              │
+     ▼              ▼
+┌─────────┐  ┌──────────────┐
+│Apollo.io│  │ User's Custom│
+│   API   │  │   Database   │
+│(Already │  │              │
+│Integrated)│  │              │
+└────┬────┘  └──────┬───────┘
+     │              │
+     └──────┬───────┘
+            ▼
+    ┌───────────────┐
+    │ Merge Results │
+    │ Deduplicate   │
+    │ Apply Filters │
+    │  Return Data  │
+    └───────────────┘
+
+Implementation with Apollo.io:
+1. Backend Data Model
+javascript// Custom Prospect Schema
+const CustomProspectSchema = {
+  userId: ObjectId,
+  
+  // Basic Info
+  firstName: String,
+  lastName: String,
+  email: String,
+  phone: String,
+  
+  // Company Info
+  company: String,
+  companyDomain: String,
+  title: String,
+  
+  // Location
+  city: String,
+  state: String,
+  country: String,
+  
+  // Professional Info
+  industry: String,
+  employeeCount: String,
+  revenue: String,
+  
+  // Metadata
+  source: "uploaded", // vs "apollo_api"
+  uploadedAt: Date,
+  lastUpdated: Date,
+  tags: [String],
+  customFields: Object
+}
+2. Bulk Upload Endpoint
+javascript// POST /api/prospects/bulk-upload
+import { parse } from 'csv-parse';
+import * as XLSX from 'xlsx';
+
+export async function bulkUploadProspects(req, res) {
+  try {
+    const { file } = req;
+    const userId = req.user.id;
+    
+    // Parse file (CSV or Excel)
+    let prospects = [];
+    
+    if (file.mimetype === 'text/csv') {
+      prospects = await parseCSV(file.buffer);
+    } else if (file.mimetype.includes('spreadsheet')) {
+      prospects = await parseExcel(file.buffer);
+    }
+    
+    // Validate and clean data
+    const validatedProspects = prospects.map(p => ({
+      userId,
+      firstName: p.firstName?.trim(),
+      lastName: p.lastName?.trim(),
+      email: p.email?.toLowerCase().trim(),
+      company: p.company?.trim(),
+      title: p.title?.trim(),
+      phone: p.phone?.trim(),
+      city: p.city?.trim(),
+      state: p.state?.trim(),
+      country: p.country?.trim(),
+      industry: p.industry?.trim(),
+      source: 'uploaded',
+      uploadedAt: new Date()
+    }));
+    
+    // Remove duplicates by email
+    const uniqueProspects = removeDuplicates(validatedProspects, 'email');
+    
+    // Bulk insert to database
+    await CustomProspect.insertMany(uniqueProspects);
+    
+    return res.json({
+      success: true,
+      uploaded: uniqueProspects.length,
+      duplicates: prospects.length - uniqueProspects.length
+    });
+    
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+}
+3. Enhanced AI Prospect Search (Apollo.io + Custom Data)
+javascript// POST /api/prospects/ai-search
+export async function aiProspectSearch(req, res) {
+  try {
+    const { query, filters } = req.body;
+    const userId = req.user.id;
+    
+    // 1. Search Apollo.io API (your existing integration)
+    const apolloResults = await searchApolloAPI({
+      q_keywords: query,
+      person_titles: filters.titles,
+      person_locations: filters.locations,
+      organization_industry_tag_ids: filters.industries,
+      organization_num_employees_ranges: filters.companySize,
+      page: 1,
+      per_page: 100
+    });
+    
+    // 2. Search User's Custom Database
+    const customResults = await CustomProspect.find({
+      userId,
+      $or: [
+        { firstName: new RegExp(query, 'i') },
+        { lastName: new RegExp(query, 'i') },
+        { company: new RegExp(query, 'i') },
+        { title: new RegExp(query, 'i') }
+      ],
+      // Apply same filters
+      ...(filters.locations && { 
+        $or: [
+          { city: { $in: filters.locations } },
+          { state: { $in: filters.locations } }
+        ]
+      }),
+      ...(filters.industries && { industry: { $in: filters.industries } }),
+      ...(filters.titles && { title: { $regex: filters.titles.join('|'), $options: 'i' } })
+    }).limit(100);
+    
+    // 3. Normalize data format
+    const normalizedApollo = apolloResults.people.map(p => ({
+      id: p.id,
+      source: 'apollo',
+      firstName: p.first_name,
+      lastName: p.last_name,
+      email: p.email,
+      phone: p.phone_numbers?.[0],
+      title: p.title,
+      company: p.organization?.name,
+      companyDomain: p.organization?.website_url,
+      city: p.city,
+      state: p.state,
+      country: p.country,
+      industry: p.organization?.industry,
+      linkedinUrl: p.linkedin_url
+    }));
+    
+    const normalizedCustom = customResults.map(p => ({
+      id: p._id,
+      source: 'uploaded',
+      firstName: p.firstName,
+      lastName: p.lastName,
+      email: p.email,
+      phone: p.phone,
+      title: p.title,
+      company: p.company,
+      companyDomain: p.companyDomain,
+      city: p.city,
+      state: p.state,
+      country: p.country,
+      industry: p.industry
+    }));
+    
+    // 4. Merge and deduplicate by email
+    const mergedResults = deduplicateByEmail([
+      ...normalizedApollo,
+      ...normalizedCustom
+    ]);
+    
+    // 5. Apply AI scoring/ranking if needed
+    const rankedResults = await applyAIRanking(mergedResults, query);
+    
+    return res.json({
+      success: true,
+      total: mergedResults.length,
+      apolloCount: normalizedApollo.length,
+      customCount: normalizedCustom.length,
+      prospects: rankedResults
+    });
+    
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+}
+
+// Helper: Deduplicate by email (prioritize Apollo data if exists in both)
+function deduplicateByEmail(prospects) {
+  const seen = new Map();
+  
+  prospects.forEach(p => {
+    if (!p.email) return;
+    
+    const existing = seen.get(p.email);
+    
+    // If no existing or existing is from custom and new is from Apollo
+    if (!existing || (existing.source === 'uploaded' && p.source === 'apollo')) {
+      seen.set(p.email, p);
+    }
+  });
+  
+  return Array.from(seen.values());
+}
+4. Apollo.io API Search Function (your existing integration)
+javascript// lib/apollo.js
+import axios from 'axios';
+
+export async function searchApolloAPI(params) {
+  try {
+    const response = await axios.post(
+      'https://api.apollo.io/v1/mixed_people/search',
+      params,
+      {
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Api-Key': process.env.APOLLO_API_KEY
+        }
+      }
+    );
+    
+    return response.data;
+  } catch (error) {
+    console.error('Apollo API Error:', error);
+    throw error;
+  }
+}
+5. Frontend Integration
+javascript// Example: Search with combined data
+async function searchProspects(query, filters) {
+  const response = await fetch('/api/prospects/ai-search', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query, filters })
+  });
+  
+  const data = await response.json();
+  
+  // Display results with source indicator
+  data.prospects.forEach(prospect => {
+    console.log(`${prospect.name} - Source: ${prospect.source}`);
+  });
+}
+
+Additional Features:
+6. Prospect Management
+javascript// GET /api/prospects/custom - View uploaded prospects
+// PUT /api/prospects/custom/:id - Update prospect
+// DELETE /api/prospects/custom/:id - Delete prospect
+// POST /api/prospects/custom/export - Export to CSV
+7. Data Sync (Optional)
+javascript// Enrich uploaded prospects with Apollo.io data
+async function enrichCustomProspects(userId) {
+  const customProspects = await CustomProspect.find({ 
+    userId, 
+    enriched: false 
+  });
+  
+  for (const prospect of customProspects) {
+    if (prospect.email) {
+      const apolloData = await apolloEnrichByEmail(prospect.email);
+      
+      if (apolloData) {
+        await CustomProspect.updateOne(
+          { _id: prospect._id },
+          {
+            $set: {
+              ...apolloData,
+              enriched: true,
+              enrichedAt: new Date()
+            }
+          }
+        );
+      }
+    }
+  }
+}
