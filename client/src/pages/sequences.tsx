@@ -1039,6 +1039,8 @@ function AIFollowupTab({ sequenceId }: { sequenceId: string }) {
   const [triggerCondition, setTriggerCondition] = useState("no_response");
   const [selectedContent, setSelectedContent] = useState<string[]>([]);
   const [selectedProspects, setSelectedProspects] = useState<string[]>([]);
+  const [prospectSearch, setProspectSearch] = useState("");
+  const [contentSearch, setContentSearch] = useState("");
   const { toast } = useToast();
 
   const { data: contentLibrary } = useQuery({
@@ -1056,11 +1058,33 @@ function AIFollowupTab({ sequenceId }: { sequenceId: string }) {
   const contentItems = (contentLibrary as any)?.items || [];
   const prospects = prospectsData?.prospects || [];
 
+  const filteredContent = contentItems.filter((item: any) => {
+    const searchLower = contentSearch.toLowerCase();
+    return (item.title || '').toLowerCase().includes(searchLower) ||
+           (item.description || '').toLowerCase().includes(searchLower);
+  });
+
+  const filteredProspects = prospects.filter((p: any) => {
+    const searchLower = prospectSearch.toLowerCase();
+    const matchesSearch = 
+      (p.fullName || '').toLowerCase().includes(searchLower) ||
+      (p.companyName || '').toLowerCase().includes(searchLower) ||
+      (p.primaryEmail || '').toLowerCase().includes(searchLower);
+    return matchesSearch;
+  });
+
   const handleSelectAll = () => {
-    if (selectedProspects.length === prospects.length) {
-      setSelectedProspects([]);
+    const filteredIds = filteredProspects.map((p: any) => p.id);
+    const allFilteredSelected = filteredProspects.length > 0 && 
+      filteredProspects.every((p: any) => selectedProspects.includes(p.id));
+    
+    if (allFilteredSelected) {
+      // Remove only the filtered prospects from selection, keep others
+      setSelectedProspects(selectedProspects.filter(id => !filteredIds.includes(id)));
     } else {
-      setSelectedProspects(prospects.map((p: any) => p.id));
+      // Add filtered prospects to existing selection (union)
+      const newSelection = new Set([...selectedProspects, ...filteredIds]);
+      setSelectedProspects(Array.from(newSelection));
     }
   };
 
@@ -1161,11 +1185,28 @@ function AIFollowupTab({ sequenceId }: { sequenceId: string }) {
 
           <div className="space-y-2">
             <Label>Reference Content (Optional)</Label>
+            {contentItems.length > 0 && (
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Input
+                  placeholder="Search content..."
+                  value={contentSearch}
+                  onChange={(e) => setContentSearch(e.target.value)}
+                  className="pl-10"
+                  data-testid="input-search-content"
+                />
+              </div>
+            )}
             <div className="border rounded-lg p-4 max-h-48 overflow-y-auto">
               {contentItems.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-4">No content available</p>
+              ) : filteredContent.length === 0 ? (
+                <div className="text-center py-4">
+                  <Search className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                  <p className="text-sm text-muted-foreground">No content matches your search</p>
+                </div>
               ) : (
-                contentItems.map((item: any) => (
+                filteredContent.map((item: any) => (
                   <div key={item.id} className="flex items-center gap-2 py-2">
                     <input
                       type="checkbox"
@@ -1217,16 +1258,27 @@ function AIFollowupTab({ sequenceId }: { sequenceId: string }) {
           <CardDescription>{selectedProspects.length} selected</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <Input
+              placeholder="Search prospects by name, company, or email..."
+              value={prospectSearch}
+              onChange={(e) => setProspectSearch(e.target.value)}
+              className="pl-10"
+              data-testid="input-search-prospects"
+            />
+          </div>
+
           <div className="flex items-center gap-2">
             <input
               type="checkbox"
               id="select-all"
-              checked={selectedProspects.length === prospects.length && prospects.length > 0}
+              checked={filteredProspects.length > 0 && filteredProspects.every((p: any) => selectedProspects.includes(p.id))}
               onChange={handleSelectAll}
               data-testid="checkbox-select-all"
             />
             <label htmlFor="select-all" className="text-sm font-medium cursor-pointer">
-              Select All
+              Select All {filteredProspects.length > 0 && filteredProspects.length !== prospects.length && `(${filteredProspects.length})`}
             </label>
           </div>
 
@@ -1235,8 +1287,13 @@ function AIFollowupTab({ sequenceId }: { sequenceId: string }) {
               <p className="text-sm text-muted-foreground text-center py-8">
                 No prospects enrolled in this sequence
               </p>
+            ) : filteredProspects.length === 0 ? (
+              <div className="text-center py-8">
+                <Search className="w-12 h-12 text-gray-400 mx-auto mb-2" />
+                <p className="text-sm text-muted-foreground">No prospects match your search</p>
+              </div>
             ) : (
-              prospects.map((prospect: any) => (
+              filteredProspects.map((prospect: any) => (
                 <div key={prospect.id} className="flex items-center gap-2 py-2">
                   <input
                     type="checkbox"
