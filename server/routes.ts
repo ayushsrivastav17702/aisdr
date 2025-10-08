@@ -321,12 +321,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
               
               if (enrichmentResponse?.contact) {
                 const enrichedProspect = apolloService.convertApolloContactToProspect(enrichmentResponse.contact);
-                await storage.updateProspect(prospectId, {
-                  ...enrichedProspect,
-                  enrichmentStatus: 'enriched',
-                });
-                results.push({ id: prospectId, success: true, source: 'apollo' });
-                successCount++;
+                
+                // Check if email is locked
+                const emailLocked = enrichedProspect.primaryEmail?.includes('email_not_unlocked') || 
+                                   enrichedProspect.primaryEmail?.includes('locked');
+                
+                if (emailLocked) {
+                  console.log(`⚠️ Apollo returned locked email for prospect ${prospectId}: ${enrichedProspect.primaryEmail}`);
+                  await storage.updateProspect(prospectId, {
+                    enrichmentStatus: 'partial',
+                    enrichmentData: {
+                      error: 'Email is locked - Apollo credits may be required',
+                      apollo: enrichmentResponse.contact,
+                      enrichedAt: new Date().toISOString(),
+                    },
+                  });
+                  results.push({ 
+                    id: prospectId, 
+                    success: false, 
+                    error: 'Email locked - requires Apollo credits to unlock',
+                    emailLocked: true
+                  });
+                  failureCount++;
+                } else {
+                  await storage.updateProspect(prospectId, {
+                    ...enrichedProspect,
+                    enrichmentStatus: 'enriched',
+                  });
+                  results.push({ id: prospectId, success: true, source: 'apollo' });
+                  successCount++;
+                }
               } else {
                 await storage.updateProspect(prospectId, {
                   enrichmentStatus: 'partial',
