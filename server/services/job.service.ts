@@ -3,6 +3,8 @@ import { Redis } from 'ioredis';
 import { storage } from '../storage';
 import { apolloService } from './apollo.service';
 import { type Job, type Prospect, type InsertProspect } from '@shared/schema';
+import { parse } from 'csv-parse/sync';
+import { readFileSync } from 'fs';
 
 // Check if Redis is configured
 const REDIS_ENABLED = !!process.env.REDIS_URL;
@@ -437,9 +439,21 @@ class JobService {
   }
 
   private async parseCSVFile(filePath: string): Promise<any[]> {
-    // This would use csv-parse or similar library to parse the uploaded file
-    // For now, returning empty array as placeholder
-    return [];
+    try {
+      const fileContent = readFileSync(filePath, 'utf-8');
+      const records = parse(fileContent, {
+        columns: true,
+        skip_empty_lines: true,
+        trim: true,
+        relax_quotes: true,
+        relax_column_count: true,
+        skip_records_with_error: true,
+      });
+      return records;
+    } catch (error) {
+      console.error('CSV parsing error:', error);
+      throw new Error(`Failed to parse CSV file: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 
   private mapCSVRowToProspect(row: any, fieldMappings: Record<string, string>): InsertProspect {
