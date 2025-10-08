@@ -3,9 +3,11 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
-import { SparklesIcon, SearchIcon, SlidersHorizontalIcon, XIcon } from "lucide-react";
+import { SparklesIcon, SearchIcon, SlidersHorizontalIcon, XIcon, ChevronDownIcon, ChevronUpIcon } from "lucide-react";
 
 interface ActiveFilter {
   type: string;
@@ -13,9 +15,19 @@ interface ActiveFilter {
   icon: string;
 }
 
+interface AdvancedFilters {
+  industries?: string[];
+  locations?: string[];
+  jobTitles?: string[];
+  seniorityLevels?: string[];
+  companySize?: { min?: number; max?: number };
+}
+
 export default function AISearch() {
   const [query, setQuery] = useState("");
   const [activeFilters, setActiveFilters] = useState<ActiveFilter[]>([]);
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilters>({});
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -113,6 +125,69 @@ export default function AISearch() {
     aiSearchMutation.mutate(query);
   };
 
+  // Helper function to map industries to Apollo IDs
+  const mapIndustryToApolloId = (industry: string): string => {
+    const mapping: { [key: string]: string } = {
+      'fintech': '5567cdcc7369646289050000',
+      'saas': '5567cdcc7369646289040000',
+      'healthcare': '5567cdcc7369646289030000',
+      'technology': '5567cdcc7369646289020000',
+      'financial services': '5567cdcc7369646289010000'
+    };
+    return mapping[industry.toLowerCase()] || industry;
+  };
+
+  // Helper function to map seniority to Apollo format
+  const mapSeniorityToApollo = (seniority: string): string => {
+    const mapping: { [key: string]: string } = {
+      'executive': 'c_level',
+      'director': 'director',
+      'manager': 'manager',
+      'senior': 'senior',
+      'entry': 'entry'
+    };
+    return mapping[seniority.toLowerCase()] || seniority;
+  };
+
+  const handleAdvancedSearch = () => {
+    // Validate at least one filter is set
+    if (!advancedFilters.industries?.length && 
+        !advancedFilters.locations?.length && 
+        !advancedFilters.jobTitles?.length && 
+        !advancedFilters.seniorityLevels?.length && 
+        !advancedFilters.companySize) {
+      toast({
+        variant: "destructive",
+        title: "No Filters Selected",
+        description: "Please select at least one filter to search",
+      });
+      return;
+    }
+
+    // Build filters object from advanced filters with proper Apollo formatting
+    const filters: any = {};
+    
+    if (advancedFilters.industries?.length) {
+      filters.organization_industry_tag_ids = advancedFilters.industries.map(mapIndustryToApolloId);
+    }
+    if (advancedFilters.locations?.length) {
+      filters.person_locations = advancedFilters.locations;
+    }
+    if (advancedFilters.jobTitles?.length) {
+      filters.person_titles = advancedFilters.jobTitles;
+    }
+    if (advancedFilters.seniorityLevels?.length) {
+      filters.person_seniorities = advancedFilters.seniorityLevels.map(mapSeniorityToApollo);
+    }
+    if (advancedFilters.companySize) {
+      const { min = 1, max = 999999 } = advancedFilters.companySize;
+      filters.organization_num_employees_ranges = [`${min},${max}`];
+    }
+
+    // Execute Apollo search directly with filters
+    apolloSearchMutation.mutate(filters);
+  };
+
   const removeFilter = (index: number) => {
     setActiveFilters(filters => filters.filter((_, i) => i !== index));
   };
@@ -120,6 +195,7 @@ export default function AISearch() {
   const clearAllFilters = () => {
     setActiveFilters([]);
     setQuery("");
+    setAdvancedFilters({});
   };
 
   return (
@@ -188,17 +264,165 @@ export default function AISearch() {
           </div>
         )}
 
-        {/* Quick Filters Toggle */}
+        {/* Advanced Filters Toggle */}
         <Button
           variant="ghost"
           size="sm"
           className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-2"
+          onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
           data-testid="button-advanced-filters"
         >
           <SlidersHorizontalIcon className="w-4 h-4" />
           Advanced Filters
-          {/* <ChevronDownIcon className="w-3 h-3" /> */}
+          {showAdvancedFilters ? (
+            <ChevronUpIcon className="w-3 h-3" />
+          ) : (
+            <ChevronDownIcon className="w-3 h-3" />
+          )}
         </Button>
+
+        {/* Advanced Filters Panel */}
+        {showAdvancedFilters && (
+          <div className="bg-card border border-border rounded-lg p-6 space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Industries */}
+              <div className="space-y-2">
+                <Label htmlFor="industries">Industries</Label>
+                <Select
+                  value={advancedFilters.industries?.[0] || ""}
+                  onValueChange={(value) => setAdvancedFilters({
+                    ...advancedFilters,
+                    industries: value ? [value] : undefined
+                  })}
+                >
+                  <SelectTrigger id="industries" data-testid="select-industries">
+                    <SelectValue placeholder="Select industry" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="technology">Technology</SelectItem>
+                    <SelectItem value="saas">SaaS</SelectItem>
+                    <SelectItem value="healthcare">Healthcare</SelectItem>
+                    <SelectItem value="fintech">Fintech</SelectItem>
+                    <SelectItem value="financial services">Financial Services</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Locations */}
+              <div className="space-y-2">
+                <Label htmlFor="locations">Locations</Label>
+                <Input
+                  id="locations"
+                  placeholder="e.g., New York, San Francisco, Remote"
+                  value={advancedFilters.locations?.join(", ") || ""}
+                  onChange={(e) => setAdvancedFilters({
+                    ...advancedFilters,
+                    locations: e.target.value.split(",").map(s => s.trim()).filter(Boolean)
+                  })}
+                  data-testid="input-locations"
+                />
+              </div>
+
+              {/* Job Titles */}
+              <div className="space-y-2">
+                <Label htmlFor="job-titles">Job Titles</Label>
+                <Input
+                  id="job-titles"
+                  placeholder="e.g., CEO, CTO, VP of Sales"
+                  value={advancedFilters.jobTitles?.join(", ") || ""}
+                  onChange={(e) => setAdvancedFilters({
+                    ...advancedFilters,
+                    jobTitles: e.target.value.split(",").map(s => s.trim()).filter(Boolean)
+                  })}
+                  data-testid="input-job-titles"
+                />
+              </div>
+
+              {/* Seniority Levels */}
+              <div className="space-y-2">
+                <Label htmlFor="seniority">Seniority Levels</Label>
+                <Select
+                  value={advancedFilters.seniorityLevels?.[0] || ""}
+                  onValueChange={(value) => setAdvancedFilters({
+                    ...advancedFilters,
+                    seniorityLevels: value ? [value] : undefined
+                  })}
+                >
+                  <SelectTrigger id="seniority" data-testid="select-seniority">
+                    <SelectValue placeholder="Select seniority" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="executive">Executive</SelectItem>
+                    <SelectItem value="director">Director</SelectItem>
+                    <SelectItem value="manager">Manager</SelectItem>
+                    <SelectItem value="senior">Senior</SelectItem>
+                    <SelectItem value="entry">Entry Level</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Company Size */}
+              <div className="space-y-2">
+                <Label htmlFor="company-size">Company Size</Label>
+                <Select
+                  value={advancedFilters.companySize ? `${advancedFilters.companySize.min}-${advancedFilters.companySize.max}` : ""}
+                  onValueChange={(value) => {
+                    const [min, max] = value.split("-").map(Number);
+                    setAdvancedFilters({
+                      ...advancedFilters,
+                      companySize: { min, max }
+                    });
+                  }}
+                >
+                  <SelectTrigger id="company-size" data-testid="select-company-size">
+                    <SelectValue placeholder="Select company size" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1-10">1-10 employees</SelectItem>
+                    <SelectItem value="11-50">11-50 employees</SelectItem>
+                    <SelectItem value="51-200">51-200 employees</SelectItem>
+                    <SelectItem value="201-500">201-500 employees</SelectItem>
+                    <SelectItem value="501-1000">501-1000 employees</SelectItem>
+                    <SelectItem value="1001-5000">1001-5000 employees</SelectItem>
+                    <SelectItem value="5001-10000">5001-10000 employees</SelectItem>
+                    <SelectItem value="10001-999999">10001+ employees</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Apply Filters Button */}
+            <div className="flex gap-2 justify-end">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setAdvancedFilters({});
+                  setShowAdvancedFilters(false);
+                }}
+                data-testid="button-cancel-filters"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleAdvancedSearch}
+                disabled={apolloSearchMutation.isPending}
+                data-testid="button-apply-filters"
+              >
+                {apolloSearchMutation.isPending ? (
+                  <>
+                    <SparklesIcon className="w-4 h-4 mr-2 animate-spin" />
+                    Searching...
+                  </>
+                ) : (
+                  <>
+                    <SearchIcon className="w-4 h-4 mr-2" />
+                    Apply Filters
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
