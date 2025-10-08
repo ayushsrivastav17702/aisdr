@@ -20,6 +20,7 @@ interface AIFilters {
     max?: number;
   };
   locations?: string[];
+  companyNames?: string[];
   keywords?: string[];
 }
 
@@ -30,6 +31,7 @@ interface ApolloFilters {
   organization_industry_tag_ids?: string[];
   organization_num_employees_ranges?: string[];
   person_locations?: string[];
+  q_organization_name?: string;
   q_keywords?: string;
 }
 
@@ -77,25 +79,31 @@ class AIService {
     Convert the user's query into structured filters for finding business prospects.
     
     Extract and structure the following information:
-    - Job titles and roles (CEO, CTO, VP Engineering, merchandiser, etc.)
-    - Seniority levels (C-Level, VP, Director, Manager, etc.)
-    - Departments (Engineering, Marketing, Sales, etc.)
-    - Industries (Fintech, Healthcare, SaaS, etc.)
-    - Company names (Nike, Google, Apple, etc.) - VERY IMPORTANT: Always include company names in keywords
+    - Job titles and roles (CEO, CTO, VP Engineering, merchandiser, Merchandising Manager, Visual Merchandiser, etc.)
+    - Seniority levels (C-Level, VP, Director, Manager, Senior, Entry, etc.)
+    - Departments (Engineering, Marketing, Sales, Merchandising, Operations, etc.)
+    - Industries (Fintech, Healthcare, SaaS, Retail, Fashion, Sportswear, etc.)
+    - Company names (Nike, Google, Apple, etc.) - CRITICAL: Extract company names separately AND include in keywords
     - Company size (employee ranges)
     - Locations (cities, states, countries)
-    - Keywords for additional search terms (MUST include company names, job titles, and other relevant terms)
+    - Keywords for additional search terms
+    
+    IMPORTANT RULES:
+    1. For job titles, include ALL variations (e.g., "merchandiser" -> ["merchandiser", "merchandising manager", "visual merchandiser", "product merchandiser"])
+    2. For company names, ALWAYS put them in BOTH companyNames array AND keywords
+    3. Be flexible with job title matching - include related roles
     
     Respond with JSON in this exact format:
     {
       "aiFilters": {
-        "jobTitles": ["array of job titles"],
+        "jobTitles": ["array of job titles with variations"],
         "seniority": ["array of seniority levels"],
         "departments": ["array of departments"],
         "industries": ["array of industries"],
         "companySize": {"min": number, "max": number},
         "locations": ["array of locations"],
-        "keywords": ["array of keywords"]
+        "companyNames": ["array of company names"],
+        "keywords": ["array of keywords including company names"]
       },
       "apolloFilters": {
         "person_titles": ["array of job titles"],
@@ -104,6 +112,7 @@ class AIService {
         "organization_industry_tag_ids": ["array of industry IDs"],
         "organization_num_employees_ranges": ["array of employee ranges"],
         "person_locations": ["array of locations"],
+        "q_organization_name": "company name",
         "q_keywords": "space-separated keywords"
       }
     }`;
@@ -135,25 +144,31 @@ class AIService {
     Convert the user's query into structured filters for finding business prospects.
     
     Extract and structure the following information:
-    - Job titles and roles (CEO, CTO, VP Engineering, merchandiser, etc.)
-    - Seniority levels (C-Level, VP, Director, Manager, etc.)
-    - Departments (Engineering, Marketing, Sales, etc.)
-    - Industries (Fintech, Healthcare, SaaS, etc.)
-    - Company names (Nike, Google, Apple, etc.) - VERY IMPORTANT: Always include company names in keywords
+    - Job titles and roles (CEO, CTO, VP Engineering, merchandiser, Merchandising Manager, Visual Merchandiser, etc.)
+    - Seniority levels (C-Level, VP, Director, Manager, Senior, Entry, etc.)
+    - Departments (Engineering, Marketing, Sales, Merchandising, Operations, etc.)
+    - Industries (Fintech, Healthcare, SaaS, Retail, Fashion, Sportswear, etc.)
+    - Company names (Nike, Google, Apple, etc.) - CRITICAL: Extract company names separately AND include in keywords
     - Company size (employee ranges)
     - Locations (cities, states, countries)
-    - Keywords for additional search terms (MUST include company names, job titles, and other relevant terms)
+    - Keywords for additional search terms
+    
+    IMPORTANT RULES:
+    1. For job titles, include ALL variations (e.g., "merchandiser" -> ["merchandiser", "merchandising manager", "visual merchandiser", "product merchandiser"])
+    2. For company names, ALWAYS put them in BOTH companyNames array AND keywords
+    3. Be flexible with job title matching - include related roles
     
     Respond with JSON in this exact format:
     {
       "aiFilters": {
-        "jobTitles": ["array of job titles"],
+        "jobTitles": ["array of job titles with variations"],
         "seniority": ["array of seniority levels"],
         "departments": ["array of departments"],
         "industries": ["array of industries"],
         "companySize": {"min": number, "max": number},
         "locations": ["array of locations"],
-        "keywords": ["array of keywords"]
+        "companyNames": ["array of company names"],
+        "keywords": ["array of keywords including company names"]
       }
     }`;
 
@@ -239,6 +254,11 @@ class AIService {
 
     if (aiFilters.locations?.length) {
       apolloFilters.person_locations = aiFilters.locations;
+    }
+
+    if (aiFilters.companyNames?.length) {
+      // Use first company name for organization search (Apollo supports single company filter)
+      apolloFilters.q_organization_name = aiFilters.companyNames[0];
     }
 
     if (aiFilters.keywords?.length) {

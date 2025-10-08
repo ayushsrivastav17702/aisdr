@@ -5,6 +5,7 @@ interface ApolloSearchParams {
   organization_industry_tag_ids?: string[];
   organization_num_employees_ranges?: string[];
   person_locations?: string[];
+  q_organization_name?: string;
   q_keywords?: string;
   page?: number;
   per_page?: number;

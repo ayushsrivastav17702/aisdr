@@ -33,6 +33,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Parse natural language query
       const { aiFilters, apolloFilters } = await aiService.parseNaturalLanguageQuery(query);
       
+      console.log('AI Search Query:', query);
+      console.log('AI Filters:', JSON.stringify(aiFilters, null, 2));
+      console.log('Apollo Filters:', JSON.stringify(apolloFilters, null, 2));
+      
       // Save search record
       const search = await storage.createSearch({
         query,
@@ -100,6 +104,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { apolloFilters, page = 1, per_page = 50, searchId } = req.body;
       
+      console.log('Apollo Search Request:');
+      console.log('  Filters:', JSON.stringify(apolloFilters, null, 2));
+      console.log('  Page:', page, 'Per Page:', per_page);
+      
       const searchResponse = await apolloService.searchContacts({
         ...apolloFilters,
         page,
@@ -108,6 +116,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Convert contacts to prospect format and save to database
       const contacts = searchResponse.people || searchResponse.contacts || [];
+      
+      console.log('Apollo Search Response:');
+      console.log('  Total Entries:', searchResponse.pagination?.total_entries || 0);
+      console.log('  Contacts Returned:', contacts.length);
       const savedProspects = [];
       
       for (const contact of contacts) {
