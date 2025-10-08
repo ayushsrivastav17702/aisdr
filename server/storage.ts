@@ -51,6 +51,7 @@ export interface IStorage {
   getProspectsByIds(ids: string[]): Promise<Prospect[]>;
   checkDuplicateProspects(emails: string[], domains?: string[]): Promise<Prospect[]>;
   findProspectByEmailOrApolloId(email: string | null, apolloId: string | null): Promise<Prospect | undefined>;
+  searchLocalProspects(aiFilters: any): Promise<Prospect[]>;
   
   // Searches
   getSearches(limit?: number): Promise<Search[]>;
@@ -227,6 +228,82 @@ export class DatabaseStorage implements IStorage {
       .limit(1);
     
     return prospect || undefined;
+  }
+
+  private normalizeFilterArray(values: any): string[] {
+    if (!values) return [];
+    if (!Array.isArray(values)) values = [values];
+    
+    const normalized = values
+      .map((v: any) => {
+        if (typeof v === 'string') return v.trim();
+        if (v && typeof v === 'object' && 'value' in v) return String(v.value).trim();
+        if (v && typeof v === 'object') return null;
+        return String(v).trim();
+      })
+      .filter((v: string | null) => v && v.length > 0) as string[];
+    
+    const uniqueValues = [...new Set(normalized)];
+    return uniqueValues.slice(0, 10);
+  }
+
+  async searchLocalProspects(aiFilters: any): Promise<Prospect[]> {
+    const conditions = [];
+    
+    const jobTitles = this.normalizeFilterArray(aiFilters.jobTitles);
+    if (jobTitles.length > 0) {
+      const titleConditions = jobTitles.map((title: string) => 
+        ilike(prospects.jobTitle, `%${title}%`)
+      );
+      conditions.push(titleConditions.length === 1 ? titleConditions[0] : or(...titleConditions));
+    }
+    
+    const companyNames = this.normalizeFilterArray(aiFilters.companyNames);
+    if (companyNames.length > 0) {
+      const companyConditions = companyNames.map((company: string) => 
+        ilike(prospects.companyName, `%${company}%`)
+      );
+      conditions.push(companyConditions.length === 1 ? companyConditions[0] : or(...companyConditions));
+    }
+    
+    const locations = this.normalizeFilterArray(aiFilters.locations);
+    if (locations.length > 0) {
+      const locationConditions = locations.flatMap((location: string) => [
+        ilike(prospects.contactLocation, `%${location}%`),
+        ilike(prospects.companyLocation, `%${location}%`)
+      ]);
+      conditions.push(locationConditions.length === 1 ? locationConditions[0] : or(...locationConditions));
+    }
+    
+    const industries = this.normalizeFilterArray(aiFilters.industries);
+    if (industries.length > 0) {
+      const industryConditions = industries.map((industry: string) => 
+        ilike(prospects.companyIndustry, `%${industry}%`)
+      );
+      conditions.push(industryConditions.length === 1 ? industryConditions[0] : or(...industryConditions));
+    }
+    
+    const keywords = this.normalizeFilterArray(aiFilters.keywords).slice(0, 5);
+    if (keywords.length > 0) {
+      const keywordConditions = keywords.flatMap((keyword: string) => [
+        ilike(prospects.fullName, `%${keyword}%`),
+        ilike(prospects.jobTitle, `%${keyword}%`),
+        ilike(prospects.companyName, `%${keyword}%`)
+      ]);
+      conditions.push(keywordConditions.length === 1 ? keywordConditions[0] : or(...keywordConditions));
+    }
+    
+    if (conditions.length === 0) {
+      return [];
+    }
+    
+    const results = await db
+      .select()
+      .from(prospects)
+      .where(conditions.length === 1 ? conditions[0] : and(...conditions))
+      .limit(200);
+    
+    return results;
   }
 
   // Searches

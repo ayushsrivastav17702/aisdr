@@ -28,7 +28,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // AI Search endpoint
   app.post("/api/ai-search", async (req, res) => {
     try {
-      const { query } = aiSearchSchema.parse(req.body);
+      const validatedBody = aiSearchSchema.extend({ 
+        includeLocalProspects: z.boolean().default(true) 
+      }).parse(req.body);
+      const { query, includeLocalProspects } = validatedBody;
       
       // Parse natural language query
       const { aiFilters, apolloFilters } = await aiService.parseNaturalLanguageQuery(query);
@@ -44,6 +47,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         apolloFilters,
       });
 
+      // Search local prospects if enabled
+      let localProspects: any[] = [];
+      if (includeLocalProspects) {
+        try {
+          localProspects = await storage.searchLocalProspects(aiFilters);
+          console.log(`Found ${localProspects.length} local prospects matching query`);
+        } catch (localSearchError) {
+          console.warn("Local prospect search failed:", localSearchError instanceof Error ? localSearchError.message : "Unknown error");
+        }
+      }
+
       // Try to create search job for background processing (optional)
       let job = null;
       let jobWarning = null;
@@ -57,6 +71,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.json({ 
         search,
+        localProspectsCount: localProspects.length,
+        localProspects: localProspects.slice(0, 50),
         job,
         aiFilters,
         apolloFilters,
