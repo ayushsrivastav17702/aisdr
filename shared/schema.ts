@@ -33,6 +33,7 @@ export const prospects = pgTable("prospects", {
   phoneNumber: text("phone_number"),
   linkedinUrl: text("linkedin_url"),
   apolloId: text("apollo_id"),
+  tags: text("tags").array(),
   enrichmentStatus: enrichmentStatusEnum("enrichment_status").default("new"),
   enrichmentData: jsonb("enrichment_data"),
   createdAt: timestamp("created_at").defaultNow(),

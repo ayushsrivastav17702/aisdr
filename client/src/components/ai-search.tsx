@@ -398,7 +398,7 @@ export default function AISearch() {
 
         {/* Comprehensive Advanced Filters Panel */}
         {showAdvancedFilters && (
-          <div className="bg-card border border-border rounded-lg p-6 space-y-6">
+          <div className="bg-card border border-border rounded-lg p-6 space-y-6 max-h-[70vh] overflow-y-auto">
             <div className="space-y-4">
               <h3 className="text-lg font-semibold">Find Your Ideal Prospects</h3>
               <p className="text-sm text-muted-foreground">
