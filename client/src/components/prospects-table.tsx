@@ -90,13 +90,34 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
 
   const enrichMutation = useMutation({
     mutationFn: api.enrichProspects,
-    onSuccess: () => {
-      toast({
-        title: "Enrichment Started",
-        description: `Started enriching ${selectedIds.length} prospects`,
-      });
-      onSelectionChange([]);
-      queryClient.invalidateQueries({ queryKey: ["/api/prospects"] });
+    onSuccess: (result: any) => {
+      // Check if this is a direct enrichment response (without Redis/job queue)
+      if (result.direct) {
+        const { successCount, failureCount, total, message } = result;
+        
+        if (successCount > 0) {
+          toast({
+            title: "Enrichment Complete",
+            description: message || `Successfully enriched ${successCount} of ${total} prospects`,
+          });
+        } else {
+          toast({
+            variant: "destructive",
+            title: "Enrichment Failed",
+            description: `Failed to enrich all ${failureCount} prospects`,
+          });
+        }
+        onSelectionChange([]);
+        queryClient.invalidateQueries({ queryKey: ["/api/prospects"] });
+      } else {
+        // Job-based enrichment (with Redis)
+        toast({
+          title: "Enrichment Started",
+          description: `Started enriching ${selectedIds.length} prospects`,
+        });
+        onSelectionChange([]);
+        queryClient.invalidateQueries({ queryKey: ["/api/prospects"] });
+      }
     },
     onError: (error) => {
       toast({
