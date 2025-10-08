@@ -1,0 +1,147 @@
+Template Library
+
+Search templates...
+Filters
+
+Featured only
+Industry
+
+All Industries
+Target Persona
+
+All Personas
+Categories
+
+All Templates
+8
+
+Product Demo
+1
+
+Follow-up
+1
+
+Cold Outreach
+2
+
+Nurture
+1
+
+Recruiting
+1
+
+Re-engagement
+1
+
+Events
+1
+All Templates
+8 templates available
+
+Product Demo Request
+Strategic 3-step sequence to convert prospects into product demo bookings.
+
+Steps
+Duration
+Response
+%
+demo
+product
+conversion
++1
+Technology
+Preview
+Use Template
+Follow-up After Demo
+Effective 3-step follow-up sequence for prospects who attended a product demo or sales presentation.
+
+Steps
+Duration
+Response
+%
+follow-up
+demo
+conversion
++1
+Preview
+Use Template
+B2B SaaS Cold Outreach
+Professional 4-step cold outreach sequence specifically designed for B2B SaaS companies targeting decision makers.
+
+Steps
+Duration
+Response
+%
+b2b
+saas
+cold
++1
+Technology
+Preview
+Use Template
+Content Marketing Nurture
+Value-driven 4-step nurture sequence focused on educational content and relationship building.
+
+Steps
+Duration
+Response
+%
+nurture
+content
+education
++1
+Preview
+Use Template
+Healthcare Partnership Outreach
+Specialized 3-step sequence for healthcare industry partnerships and B2B relationships.
+
+Steps
+Duration
+Response
+%
+healthcare
+partnerships
+b2b
++1
+Healthcare
+Preview
+Use Template
+Recruiting Sequence
+Professional 4-step recruitment sequence for attracting top talent to open positions.
+
+Steps
+Duration
+Response
+%
+recruiting
+talent
+hiring
++1
+Preview
+Use Template
+Re-engagement Campaign
+Strategic 3-step sequence to re-engage cold prospects and dormant leads with value-driven content.
+
+Steps
+Duration
+Response
+%
+reengagement
+nurture
+value
++1
+Preview
+Use Template
+Event Invitation & Follow-up
+Complete 5-step sequence for promoting webinars, conferences, and events with follow-up nurture.
+
+Steps
+Duration
+Response
+%
+event
+webinar
+marketing
++1
+Preview
+Use Template

@@ -81,14 +81,14 @@ export default function AISearch() {
   });
 
   const apolloSearchMutation = useMutation({
-    mutationFn: (apolloFilters: any) => api.apolloSearchAndSave(apolloFilters, 1, 20),
+    mutationFn: (apolloFilters: any) => api.apolloSearchAndSave(apolloFilters, 1, 50),
     onSuccess: (data) => {
       // Invalidate prospects query to show newly saved prospects
       queryClient.invalidateQueries({ queryKey: ["/api/prospects"] });
       
       toast({
         title: "Prospects Found",
-        description: `Found and saved ${data.saved} prospects from Apollo search.`,
+        description: `Found and saved ${data.saved} of ${data.pagination?.total_entries || data.saved} prospects from Apollo search.`,
       });
     },
     onError: (error) => {
