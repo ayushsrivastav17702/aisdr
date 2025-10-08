@@ -16,8 +16,9 @@ import { Link } from "wouter";
 import { 
   Users, MessageSquare, Zap, BarChart3, Settings, Plus, RefreshCw, 
   Sparkles, X, Trash2, Mail, Send, Eye, Target,
-  Clock, TrendingUp, Play, Pause, ArrowLeft, FileText
+  Clock, TrendingUp, Play, Pause, ArrowLeft, FileText, WandIcon
 } from "lucide-react";
+import { PersonalizationWizard } from "@/components/PersonalizationWizard";
 
 export default function SequencesPage() {
   const [match, params] = useRoute("/sequences/:id");
@@ -99,7 +100,8 @@ function SequencesList() {
 }
 
 function CreateSequenceButton() {
-  const [showForm, setShowForm] = useState(false);
+  const [showMethodSelector, setShowMethodSelector] = useState(false);
+  const [creationMethod, setCreationMethod] = useState<'scratch' | 'template' | 'ai' | 'auto-ai' | null>(null);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const queryClient = useQueryClient();
@@ -112,7 +114,8 @@ function CreateSequenceButton() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/sequences"] });
       toast({ title: "Sequence created successfully" });
-      setShowForm(false);
+      setShowMethodSelector(false);
+      setCreationMethod(null);
       setName("");
       setDescription("");
     },
@@ -121,57 +124,189 @@ function CreateSequenceButton() {
     },
   });
 
-  if (showForm) {
-    return (
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle>Create New Sequence</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <Label>Name</Label>
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="My Email Sequence"
-              data-testid="input-sequence-name"
-            />
-          </div>
-          <div>
-            <Label>Description</Label>
-            <Textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="Description of this sequence..."
-              data-testid="input-sequence-description"
-            />
-          </div>
-          <div className="flex gap-2">
-            <Button
-              onClick={() => {
-                if (name.trim()) {
-                  createMutation.mutate({ name, description });
-                }
-              }}
-              disabled={!name.trim() || createMutation.isPending}
-              data-testid="button-create-sequence"
-            >
-              {createMutation.isPending ? "Creating..." : "Create"}
-            </Button>
-            <Button variant="outline" onClick={() => setShowForm(false)} data-testid="button-cancel">
-              Cancel
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
+  const handleMethodSelect = (method: 'scratch' | 'template' | 'ai' | 'auto-ai') => {
+    setCreationMethod(method);
+  };
+
+  const handleBackToMethods = () => {
+    setCreationMethod(null);
+  };
 
   return (
-    <Button onClick={() => setShowForm(true)} data-testid="button-new-sequence">
-      <Plus className="w-4 h-4 mr-2" />
-      New Sequence
-    </Button>
+    <>
+      <Button onClick={() => setShowMethodSelector(true)} data-testid="button-new-sequence">
+        <Plus className="w-4 h-4 mr-2" />
+        New Sequence
+      </Button>
+
+      <Dialog open={showMethodSelector} onOpenChange={(open) => {
+        setShowMethodSelector(open);
+        if (!open) {
+          setCreationMethod(null);
+          setName("");
+          setDescription("");
+        }
+      }}>
+        <DialogContent className="max-w-4xl">
+          <DialogHeader>
+            <DialogTitle>Create Sequence</DialogTitle>
+          </DialogHeader>
+
+          {!creationMethod ? (
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold">How do you want to create your sequence?</h3>
+              
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Card 
+                  className="cursor-pointer hover:border-primary transition-colors"
+                  onClick={() => handleMethodSelect('scratch')}
+                  data-testid="method-scratch"
+                >
+                  <CardHeader>
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-lg bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
+                        <FileText className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-base">Create from Scratch</CardTitle>
+                        <CardDescription>Create a sequence manually by yourself</CardDescription>
+                      </div>
+                    </div>
+                  </CardHeader>
+                </Card>
+
+                <Card 
+                  className="cursor-pointer hover:border-primary transition-colors"
+                  onClick={() => handleMethodSelect('template')}
+                  data-testid="method-template"
+                >
+                  <CardHeader>
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-lg bg-purple-100 dark:bg-purple-900 flex items-center justify-center">
+                        <Mail className="w-6 h-6 text-purple-600 dark:text-purple-400" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-base">Choose from Template Library</CardTitle>
+                        <CardDescription>Browse professional email sequence templates for instant use</CardDescription>
+                      </div>
+                    </div>
+                  </CardHeader>
+                </Card>
+
+                <Card 
+                  className="cursor-pointer hover:border-primary transition-colors"
+                  onClick={() => handleMethodSelect('ai')}
+                  data-testid="method-ai"
+                >
+                  <CardHeader>
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-lg bg-emerald-100 dark:bg-emerald-900 flex items-center justify-center">
+                        <Sparkles className="w-6 h-6 text-emerald-600 dark:text-emerald-400" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-base">Generate with AI</CardTitle>
+                        <CardDescription>Write a prompt and let AI create your email</CardDescription>
+                      </div>
+                    </div>
+                  </CardHeader>
+                </Card>
+
+                <Card 
+                  className="cursor-pointer hover:border-primary transition-colors"
+                  onClick={() => handleMethodSelect('auto-ai')}
+                  data-testid="method-auto-ai"
+                >
+                  <CardHeader>
+                    <div className="flex items-center gap-3">
+                      <div className="w-12 h-12 rounded-lg bg-amber-100 dark:bg-amber-900 flex items-center justify-center">
+                        <Zap className="w-6 h-6 text-amber-600 dark:text-amber-400" />
+                      </div>
+                      <div>
+                        <CardTitle className="text-base">Auto Create with AI</CardTitle>
+                        <CardDescription>Automatically generate best sequence using AI powered by ChatGPT</CardDescription>
+                      </div>
+                    </div>
+                  </CardHeader>
+                </Card>
+              </div>
+            </div>
+          ) : creationMethod === 'scratch' ? (
+            <div className="space-y-4">
+              <Button variant="ghost" onClick={handleBackToMethods} data-testid="button-back">
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back to Methods
+              </Button>
+              
+              <div className="space-y-4">
+                <div>
+                  <Label>Sequence Name</Label>
+                  <Input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="New Sequence"
+                    data-testid="input-sequence-name"
+                  />
+                </div>
+                <div>
+                  <Label>Description (Optional)</Label>
+                  <Textarea
+                    value={description}
+                    onChange={(e) => setDescription(e.target.value)}
+                    placeholder="Created from scratch"
+                    data-testid="input-sequence-description"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => {
+                      if (name.trim()) {
+                        createMutation.mutate({ name, description });
+                      }
+                    }}
+                    disabled={!name.trim() || createMutation.isPending}
+                    data-testid="button-create-sequence"
+                  >
+                    {createMutation.isPending ? "Creating..." : "Create Sequence"}
+                  </Button>
+                  <Button variant="outline" onClick={() => {
+                    setShowMethodSelector(false);
+                    setCreationMethod(null);
+                    setName("");
+                    setDescription("");
+                  }} data-testid="button-cancel">
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : creationMethod === 'template' ? (
+            <div className="text-center py-8">
+              <Button variant="ghost" onClick={handleBackToMethods} data-testid="button-back">
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back to Methods
+              </Button>
+              <p className="text-muted-foreground mt-4">Template Library coming soon...</p>
+            </div>
+          ) : creationMethod === 'ai' ? (
+            <div className="text-center py-8">
+              <Button variant="ghost" onClick={handleBackToMethods} data-testid="button-back">
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back to Methods
+              </Button>
+              <p className="text-muted-foreground mt-4">AI Generation coming soon...</p>
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <Button variant="ghost" onClick={handleBackToMethods} data-testid="button-back">
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                Back to Methods
+              </Button>
+              <p className="text-muted-foreground mt-4">Auto Create with AI coming soon...</p>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
@@ -367,6 +502,7 @@ function ProductionSequenceBuilder({ sequenceId }: { sequenceId: string }) {
 function SequenceStepsTab({ sequenceId, steps }: { sequenceId: string; steps: any[] }) {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showAIGenerator, setShowAIGenerator] = useState(false);
+  const [showPersonalization, setShowPersonalization] = useState(false);
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
   const [delayDays, setDelayDays] = useState("0");
@@ -495,6 +631,29 @@ function SequenceStepsTab({ sequenceId, steps }: { sequenceId: string; steps: an
               />
             ) : (
               <>
+                <div className="flex gap-2 mb-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowPersonalization(true)}
+                    data-testid="button-ai-personalization"
+                    className="flex-1"
+                  >
+                    <WandIcon className="w-4 h-4 mr-2" />
+                    AI Personalization
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      toast({ title: "AI Template Library coming soon!" });
+                    }}
+                    data-testid="button-ai-template"
+                    className="flex-1"
+                  >
+                    <Sparkles className="w-4 h-4 mr-2" />
+                    AI Template
+                  </Button>
+                </div>
+                
                 <div>
                   <Label>Subject Line</Label>
                   <Input
@@ -553,6 +712,19 @@ function SequenceStepsTab({ sequenceId, steps }: { sequenceId: string; steps: an
           </div>
         </DialogContent>
       </Dialog>
+
+      <PersonalizationWizard 
+        open={showPersonalization}
+        onClose={() => setShowPersonalization(false)}
+        onComplete={(email) => {
+          if (email && email.subject && email.body) {
+            setSubject(email.subject);
+            setBody(email.body);
+            setShowPersonalization(false);
+            toast({ title: "AI-personalized email added to step!" });
+          }
+        }}
+      />
     </div>
   );
 }
