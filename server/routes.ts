@@ -685,14 +685,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
             })
             .filter(Boolean);
 
+          console.log(`  Extracted ${allEmails.length} emails from CSV for duplicate checking`);
+          console.log(`  Sample emails:`, allEmails.slice(0, 5));
+
           // Check duplicates in database in one query
           if (allEmails.length > 0) {
             const duplicates = await storage.checkDuplicateProspects(allEmails);
+            console.log(`  Database returned ${duplicates.length} duplicate prospects`);
             duplicates.forEach(dup => {
               if (dup.primaryEmail) duplicateEmails.add(dup.primaryEmail);
               if (dup.secondaryEmail) duplicateEmails.add(dup.secondaryEmail);
             });
             console.log(`  Found ${duplicateEmails.size} existing emails in database`);
+            console.log(`  Duplicate emails:`, Array.from(duplicateEmails));
           }
         }
 
