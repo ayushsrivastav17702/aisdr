@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import Dashboard from "@/pages/dashboard";
 import Sequences from "@/pages/sequences";
 import Mailboxes from "@/pages/mailboxes";
+import ContentManagement from "@/pages/content-management";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -15,6 +16,7 @@ function Router() {
       <Route path="/sequences" component={Sequences} />
       <Route path="/sequences/:id" component={Sequences} />
       <Route path="/mailboxes" component={Mailboxes} />
+      <Route path="/content" component={ContentManagement} />
       <Route component={NotFound} />
     </Switch>
   );

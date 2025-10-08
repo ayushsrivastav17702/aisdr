@@ -21,7 +21,8 @@ import {
   ListTodo,
   PlusIcon,
   Mail,
-  Inbox
+  Inbox,
+  FileText
 } from "lucide-react";
 
 export default function Dashboard() {
@@ -132,6 +133,17 @@ export default function Dashboard() {
             >
               <Inbox className="w-4 h-4" />
               <span>Mailboxes</span>
+            </Button>
+          </Link>
+
+          <Link href="/content">
+            <Button
+              variant="ghost"
+              className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
+              data-testid="nav-content"
+            >
+              <FileText className="w-4 h-4" />
+              <span>Content</span>
             </Button>
           </Link>
           
