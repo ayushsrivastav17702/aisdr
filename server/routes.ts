@@ -1075,7 +1075,7 @@ ${item.description ? `   Description: ${item.description}` : ''}
       }
 
       // Generate email using AI service
-      const prompt = `Generate a personalized sales email with the following context:
+      const prompt = `You are an expert sales email writer. Generate a personalized sales email following this EXACT structure and constraints:
 
 PROSPECT INFORMATION:
 - Name: ${context.prospectName}
@@ -1087,16 +1087,31 @@ PROSPECT INFORMATION:
 EMAIL SETTINGS:
 - Tone: ${context.tone}
 - Focus: ${context.focus}
-- Urgency: ${context.urgency}
-- Length: ${context.length}${contentContext}
+- Urgency: ${context.urgency}${contentContext}
 ${customPrompt ? `\nADDITIONAL INSTRUCTIONS:\n${customPrompt}` : ''}
 
-Generate a subject line and email body that is highly personalized and relevant. Use the reference content if provided to enhance the value proposition.
+MANDATORY EMAIL STRUCTURE:
+1. Subject: Make it specific to their business challenge
+2. Opening: Reference ONE concrete detail about their company or role (no generic praise)
+3. Problem: State the pain point directly in 1-2 sentences
+4. Solution: Explain what you offer in one sentence
+5. Value: One specific, quantifiable benefit
+6. CTA: Single clear next step with low commitment
 
-Format your response as:
+STRICT CONSTRAINTS:
+- MAXIMUM 80 words for the email body (count carefully!)
+- NO adjectives like "leading," "innovative," "excited," "thrilled," "delighted"
+- NO phrases like "I hope this email finds you well"
+- NO phrases like "I was impressed by"
+- Use "you" more than "we" (second-person focus)
+- END with a QUESTION, not a statement
+- Be direct and conversational
+- No fluff or filler words
+
+Format your response EXACTLY as:
 Subject: [Your subject line here]
 
-[Your email body here]`;
+[Your email body here - MUST be under 80 words and end with a question]`;
 
       const aiResponse = await aiService.generateText(prompt, 1500);
       
