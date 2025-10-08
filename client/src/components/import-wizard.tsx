@@ -224,7 +224,7 @@ export default function ImportWizard({ open, onClose }: ImportWizardProps) {
       <div className="grid grid-cols-2 gap-4">
         <Card 
           className="p-6 border-2 border-primary bg-primary/5 cursor-pointer hover:bg-primary/10 transition-all"
-          onClick={() => document.getElementById('csv-file-input')?.click()}
+          onClick={() => setCurrentStep("upload")}
           data-testid="option-csv-upload"
         >
           <div className="flex flex-col items-center text-center gap-4">
@@ -292,7 +292,7 @@ export default function ImportWizard({ open, onClose }: ImportWizardProps) {
           {selectedFile ? selectedFile.name : 'Drag and drop your file here'}
         </h4>
         <p className="text-sm text-muted-foreground mb-4">or click to browse</p>
-        <p className="text-xs text-muted-foreground">Supports CSV, XLSX, XLS (Max 10MB)</p>
+        <p className="text-xs text-muted-foreground">Supports CSV, XLSX, XLS (Max 50MB)</p>
       </div>
 
       <Card className="bg-muted/50 p-4">
@@ -315,7 +315,7 @@ export default function ImportWizard({ open, onClose }: ImportWizardProps) {
           </li>
           <li className="flex items-start gap-2">
             <CheckIcon className="w-4 h-4 text-emerald-500 mt-0.5" />
-            <span>Maximum file size: 10MB (approximately 50,000 rows)</span>
+            <span>Maximum file size: 50MB (approximately 250,000 rows)</span>
           </li>
         </ul>
       </Card>

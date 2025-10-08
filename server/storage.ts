@@ -46,6 +46,7 @@ export interface IStorage {
   }): Promise<{ prospects: Prospect[]; total: number }>;
   getProspect(id: string): Promise<Prospect | undefined>;
   createProspect(prospect: InsertProspect): Promise<Prospect>;
+  bulkCreateProspects(prospects: InsertProspect[]): Promise<Prospect[]>;
   updateProspect(id: string, updates: Partial<InsertProspect>): Promise<Prospect>;
   deleteProspect(id: string): Promise<void>;
   getProspectsByIds(ids: string[]): Promise<Prospect[]>;
@@ -162,6 +163,21 @@ export class DatabaseStorage implements IStorage {
     const [created] = await db
       .insert(prospects)
       .values({ ...prospect, updatedAt: new Date() })
+      .returning();
+    return created;
+  }
+
+  async bulkCreateProspects(prospectsToCreate: InsertProspect[]): Promise<Prospect[]> {
+    if (prospectsToCreate.length === 0) return [];
+    
+    const prospectsWithUpdatedAt = prospectsToCreate.map(p => ({ 
+      ...p, 
+      updatedAt: new Date() 
+    }));
+    
+    const created = await db
+      .insert(prospects)
+      .values(prospectsWithUpdatedAt)
       .returning();
     return created;
   }
