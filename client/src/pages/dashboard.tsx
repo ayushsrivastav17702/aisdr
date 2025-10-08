@@ -136,7 +136,7 @@ export default function Dashboard() {
             </Button>
           </Link>
 
-          <Link href="/content">
+          <Link href="/content-management">
             <Button
               variant="ghost"
               className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
