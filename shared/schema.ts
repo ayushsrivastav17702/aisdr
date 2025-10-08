@@ -42,6 +42,8 @@ export const prospects = pgTable("prospects", {
 // Searches table
 export const searches = pgTable("searches", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  extractionName: text("extraction_name"),
+  tag: text("tag"),
   query: text("query").notNull(),
   aiFilters: jsonb("ai_filters"),
   apolloFilters: jsonb("apollo_filters"),

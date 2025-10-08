@@ -160,11 +160,19 @@ export const api = {
   },
 
   // Apollo Search and Save
-  async apolloSearchAndSave(apolloFilters: any, page: number = 1, per_page: number = 50) {
+  async apolloSearchAndSave(
+    apolloFilters: any, 
+    page: number = 1, 
+    per_page: number = 50,
+    extractionName?: string,
+    tag?: string
+  ) {
     const response = await apiRequest("POST", "/api/apollo-search-and-save", { 
       apolloFilters, 
       page, 
-      per_page 
+      per_page,
+      extractionName,
+      tag
     });
     return response.json();
   },

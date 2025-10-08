@@ -102,9 +102,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Apollo search and save to database (synchronous alternative to job queue)
   app.post("/api/apollo-search-and-save", async (req, res) => {
     try {
-      const { apolloFilters, page = 1, per_page = 50, searchId } = req.body;
+      const { apolloFilters, page = 1, per_page = 50, extractionName, tag } = req.body;
       
       console.log('Apollo Search Request:');
+      console.log('  Extraction Name:', extractionName);
+      console.log('  Tag:', tag);
       console.log('  Filters:', JSON.stringify(apolloFilters, null, 2));
       console.log('  Page:', page, 'Per Page:', per_page);
       
@@ -142,10 +144,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      // Create search record if extraction name is provided
+      let searchRecord = null;
+      if (extractionName) {
+        searchRecord = await storage.createSearch({
+          extractionName,
+          tag,
+          query: extractionName, // Use extraction name as query for now
+          apolloFilters,
+          totalResults: searchResponse.pagination?.total_entries || 0,
+          importedResults: savedProspects.length,
+        });
+      }
+
       res.json({
         prospects: savedProspects,
         pagination: searchResponse.pagination,
         saved: savedProspects.length,
+        searchId: searchRecord?.id,
       });
     } catch (error) {
       console.error("Apollo search and save error:", error);
