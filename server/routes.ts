@@ -624,13 +624,89 @@ export async function registerRoutes(app: Express): Promise<Server> {
         autoEnrich: autoEnrich === "true",
       };
 
-      const job = await jobService.createImportJob(
-        req.file.path,
-        parsedFieldMappings,
-        options
-      );
+      // Check if Redis/job queue is available
+      const REDIS_ENABLED = !!process.env.REDIS_URL;
+      
+      if (REDIS_ENABLED) {
+        // Use background job queue
+        const job = await jobService.createImportJob(
+          req.file.path,
+          parsedFieldMappings,
+          options
+        );
+        res.json({ job });
+      } else {
+        // Process synchronously without Redis
+        console.log('\n========== SYNCHRONOUS CSV IMPORT (No Redis) ==========');
+        const fileContent = readFileSync(req.file.path, 'utf-8');
+        const records = parse(fileContent, {
+          columns: true,
+          skip_empty_lines: true,
+          trim: true,
+          relax_quotes: true,
+          relax_column_count: true,
+          skip_records_with_error: true,
+          bom: true,
+        });
 
-      res.json({ job });
+        let successCount = 0;
+        let failureCount = 0;
+        let duplicateCount = 0;
+        const errors: string[] = [];
+
+        console.log(`  Processing ${records.length} rows...`);
+
+        for (let i = 0; i < records.length; i++) {
+          const row = records[i];
+          
+          try {
+            // Map CSV row to prospect format
+            const prospectData: any = {};
+            for (const [csvCol, prospectField] of Object.entries(parsedFieldMappings)) {
+              if (row[csvCol]) {
+                prospectData[prospectField] = row[csvCol];
+              }
+            }
+
+            // Check for duplicates if enabled
+            if (options.skipDuplicates && prospectData.primaryEmail) {
+              const duplicates = await storage.checkDuplicateProspects([prospectData.primaryEmail]);
+              if (duplicates.length > 0) {
+                duplicateCount++;
+                continue;
+              }
+            }
+
+            // Create prospect
+            await storage.createProspect(prospectData);
+            successCount++;
+
+            // Note: Auto-enrich requires Redis, so we skip it in sync mode
+            if (options.autoEnrich) {
+              console.log('  Note: Auto-enrich skipped (requires Redis)');
+            }
+          } catch (error) {
+            failureCount++;
+            errors.push(`Row ${i + 1}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          }
+        }
+
+        console.log('\n========== IMPORT COMPLETE ==========');
+        console.log(`  Success: ${successCount}`);
+        console.log(`  Duplicates: ${duplicateCount}`);
+        console.log(`  Failed: ${failureCount}`);
+        console.log('=========================================\n');
+
+        // Invalidate prospects cache
+        res.json({
+          success: true,
+          imported: successCount,
+          failed: failureCount,
+          duplicates: duplicateCount,
+          errors: errors.slice(0, 10), // Return first 10 errors
+          message: `Imported ${successCount} prospects successfully${failureCount > 0 ? ` (${failureCount} failed)` : ''}`
+        });
+      }
     } catch (error) {
       console.error("CSV import error:", error);
       res.status(500).json({ 
