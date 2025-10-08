@@ -1,9 +1,14 @@
 import OpenAI from "openai";
+import Anthropic from "@anthropic-ai/sdk";
 import { storage } from "../storage";
 
-const openai = new OpenAI({
+const openai = process.env.OPENAI_API_KEY ? new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
-});
+}) : null;
+
+const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic({
+  apiKey: process.env.ANTHROPIC_API_KEY,
+}) : null;
 
 export interface LinkedInData {
   profileText?: string;
@@ -69,20 +74,64 @@ Format:
 }`;
 
   try {
-    const completion = await openai.chat.completions.create({
-      model: "gpt-4",
-      messages: [
-        {
-          role: "system",
-          content: "You are a B2B sales email expert. Generate highly personalized, engaging emails based on LinkedIn data. Be specific, reference real details, and create authentic connection points."
-        },
-        { role: "user", content: prompt }
-      ],
-      temperature: 0.7,
-      max_tokens: 1500,
-    });
+    let responseText: string;
 
-    const responseText = completion.choices[0].message.content || "{}";
+    // Try OpenAI first
+    if (openai) {
+      try {
+        const completion = await openai.chat.completions.create({
+          model: "gpt-4o",
+          messages: [
+            {
+              role: "system",
+              content: "You are a B2B sales email expert. Generate highly personalized, engaging emails based on LinkedIn data. Be specific, reference real details, and create authentic connection points. Always respond with valid JSON."
+            },
+            { role: "user", content: prompt }
+          ],
+          response_format: { type: "json_object" },
+          temperature: 0.7,
+          max_tokens: 1500,
+        });
+
+        responseText = completion.choices[0].message.content || "{}";
+      } catch (openaiError: any) {
+        console.error("OpenAI error:", openaiError?.message || openaiError);
+        
+        // If OpenAI fails, try Anthropic
+        if (anthropic) {
+          console.log("Falling back to Anthropic Claude...");
+          const completion = await anthropic.messages.create({
+            model: "claude-sonnet-4-20250514",
+            max_tokens: 1500,
+            temperature: 0.7,
+            system: "You are a B2B sales email expert. Generate highly personalized, engaging emails based on LinkedIn data. Be specific, reference real details, and create authentic connection points. Always respond with valid JSON.",
+            messages: [
+              { role: "user", content: prompt }
+            ],
+          });
+
+          responseText = completion.content[0].type === 'text' ? completion.content[0].text : "{}";
+        } else {
+          throw openaiError;
+        }
+      }
+    } else if (anthropic) {
+      // Use Anthropic if OpenAI is not configured
+      const completion = await anthropic.messages.create({
+        model: "claude-sonnet-4-20250514",
+        max_tokens: 1500,
+        temperature: 0.7,
+        system: "You are a B2B sales email expert. Generate highly personalized, engaging emails based on LinkedIn data. Be specific, reference real details, and create authentic connection points. Always respond with valid JSON.",
+        messages: [
+          { role: "user", content: prompt }
+        ],
+      });
+
+      responseText = completion.content[0].type === 'text' ? completion.content[0].text : "{}";
+    } else {
+      throw new Error("No AI provider configured. Please set OPENAI_API_KEY or ANTHROPIC_API_KEY.");
+    }
+
     const result = JSON.parse(responseText);
 
     await storage.createPersonalizationResult({
