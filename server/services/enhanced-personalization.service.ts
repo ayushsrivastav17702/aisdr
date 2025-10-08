@@ -39,7 +39,11 @@ export async function generateEnhancedPersonalizedEmail(
       return generateFallbackPersonalization(prospect);
     }
 
-    const enrichedContext = buildEnrichedContext(prospect, request);
+    // Fetch content from content library
+    const contentLibraryItems = await storage.getContentLibraryItems();
+    console.log(`Fetched ${contentLibraryItems.length} content items from library`);
+
+    const enrichedContext = buildEnrichedContext(prospect, request, contentLibraryItems);
     const emailPrompt = buildEmailPrompt(prospect, enrichedContext, request);
 
     const response = await openai.chat.completions.create({
@@ -84,7 +88,11 @@ export async function generateEnhancedPersonalizedEmail(
   }
 }
 
-function buildEnrichedContext(prospect: Prospect, request: EnhancedPersonalizationRequest): string {
+function buildEnrichedContext(
+  prospect: Prospect, 
+  request: EnhancedPersonalizationRequest,
+  contentLibraryItems: any[]
+): string {
   const parts: string[] = [];
   
   parts.push(`PROSPECT INFORMATION:
@@ -103,7 +111,44 @@ function buildEnrichedContext(prospect: Prospect, request: EnhancedPersonalizati
     parts.push(`\nENRICHMENT DATA AVAILABLE: Yes`);
   }
 
+  // Add relevant content from content library
+  if (contentLibraryItems && contentLibraryItems.length > 0) {
+    const relevantContent = filterRelevantContent(contentLibraryItems, prospect);
+    if (relevantContent.length > 0) {
+      parts.push(`\n\nCONTENT LIBRARY RESOURCES (use these to enhance personalization):`);
+      relevantContent.forEach((item, index) => {
+        parts.push(`\n${index + 1}. ${item.title} (${item.type})`);
+        if (item.description) {
+          parts.push(`   Description: ${item.description}`);
+        }
+        parts.push(`   Content: ${item.content.substring(0, 300)}${item.content.length > 300 ? '...' : ''}`);
+        if (item.industry) {
+          parts.push(`   Industry Focus: ${item.industry}`);
+        }
+        if (item.useCase) {
+          parts.push(`   Use Case: ${item.useCase}`);
+        }
+      });
+    }
+  }
+
   return parts.join('\n');
+}
+
+function filterRelevantContent(contentItems: any[], prospect: Prospect): any[] {
+  // Filter content by industry match or general content
+  return contentItems.filter(item => {
+    // Include if no specific industry filter
+    if (!item.industry) return true;
+    
+    // Match industry if prospect has industry info
+    if (prospect.companyIndustry && item.industry) {
+      return item.industry.toLowerCase().includes(prospect.companyIndustry.toLowerCase()) ||
+             prospect.companyIndustry.toLowerCase().includes(item.industry.toLowerCase());
+    }
+    
+    return true;
+  }).slice(0, 5); // Limit to 5 most relevant items
 }
 
 function buildEmailPrompt(
@@ -130,12 +175,13 @@ ${request.customPrompt ? `CUSTOM REQUIREMENTS: ${request.customPrompt}` : ''}
 REQUIREMENTS:
 1. Write a compelling subject line personalized to their role/industry
 2. Open with a relevant insight or observation
-3. Connect their specific challenges to our solution value
-4. Include personalization factors naturally throughout
-5. Use the recommended tone and approach
-6. End with a relevant call-to-action
-7. Keep under 150 words for medium length
-8. Include professional signature
+3. **USE content from the Content Library Resources above to enhance the email** (if provided)
+4. Connect their specific challenges to our solution value
+5. Include personalization factors naturally throughout
+6. Use the recommended tone and approach
+7. End with a relevant call-to-action
+8. Keep under 150 words for medium length
+9. Include professional signature
 
 Respond in JSON format:
 {
