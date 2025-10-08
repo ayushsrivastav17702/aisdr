@@ -623,7 +623,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const { fieldMappings, skipDuplicates = "true", autoEnrich = "false" } = req.body;
       
-      const parsedFieldMappings = JSON.parse(fieldMappings || "{}");
+      const parsedFieldMappings = JSON.parse(fieldMappings || "{}") as Record<string, string>;
       const options = {
         skipDuplicates: skipDuplicates === "true",
         autoEnrich: autoEnrich === "true",
@@ -669,7 +669,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log(`  Parsed ${records.length} rows from CSV`);
 
         for (let i = 0; i < records.length; i++) {
-          const row = records[i];
+          const row = records[i] as Record<string, any>;
           
           try {
             // Map CSV row to prospect format
