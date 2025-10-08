@@ -16,7 +16,8 @@ import { Link } from "wouter";
 import { 
   Users, MessageSquare, Zap, BarChart3, Settings, Plus, RefreshCw, 
   Sparkles, X, Trash2, Mail, Send, Eye, Target,
-  Clock, TrendingUp, Play, Pause, ArrowLeft, FileText, WandIcon
+  Clock, TrendingUp, Play, Pause, ArrowLeft, FileText, WandIcon,
+  Search, Filter, Grid3x3, List, MoreVertical, Copy, Edit2, MailOpen, Reply
 } from "lucide-react";
 import { PersonalizationWizard } from "@/components/PersonalizationWizard";
 
@@ -35,12 +36,25 @@ function SequencesList() {
   const { data: sequences, isLoading } = useQuery({
     queryKey: ["/api/sequences"],
   });
+  
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
   const sequencesList = Array.isArray(sequences) ? sequences : [];
+
+  // Filter and search sequences
+  const filteredSequences = sequencesList.filter((seq: any) => {
+    const matchesSearch = seq.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                         (seq.description || "").toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesStatus = statusFilter === "all" || seq.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
       <div className="max-w-7xl mx-auto p-6">
+        {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-4">
             <Link href="/">
@@ -56,9 +70,59 @@ function SequencesList() {
           <CreateSequenceButton />
         </div>
 
+        {/* Toolbar */}
+        {sequencesList.length > 0 && (
+          <div className="mb-6 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
+            <div className="flex gap-3 flex-1 max-w-2xl w-full">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                <Input
+                  placeholder="Search sequences..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="pl-10"
+                  data-testid="input-search-sequences"
+                />
+              </div>
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-[180px]" data-testid="filter-status">
+                  <SelectValue placeholder="Filter by status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Statuses</SelectItem>
+                  <SelectItem value="draft">Draft</SelectItem>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="paused">Paused</SelectItem>
+                  <SelectItem value="completed">Completed</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            
+            {/* View Toggle */}
+            <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
+              <Button
+                variant={viewMode === 'grid' ? 'secondary' : 'ghost'}
+                size="sm"
+                onClick={() => setViewMode('grid')}
+                data-testid="view-grid"
+              >
+                <Grid3x3 className="w-4 h-4" />
+              </Button>
+              <Button
+                variant={viewMode === 'list' ? 'secondary' : 'ghost'}
+                size="sm"
+                onClick={() => setViewMode('list')}
+                data-testid="view-list"
+              >
+                <List className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        )}
+
         {isLoading ? (
           <div className="text-center py-16">Loading sequences...</div>
-        ) : sequencesList.length === 0 ? (
+        ) : filteredSequences.length === 0 && sequencesList.length === 0 ? (
           <Card>
             <CardContent className="text-center py-16">
               <MessageSquare className="w-16 h-16 text-gray-400 mx-auto mb-4" />
@@ -67,30 +131,24 @@ function SequencesList() {
               <CreateSequenceButton />
             </CardContent>
           </Card>
-        ) : (
+        ) : filteredSequences.length === 0 ? (
+          <Card>
+            <CardContent className="text-center py-16">
+              <Search className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+              <h3 className="text-xl font-semibold mb-2">No sequences found</h3>
+              <p className="text-gray-500">Try adjusting your search or filters</p>
+            </CardContent>
+          </Card>
+        ) : viewMode === 'grid' ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {sequencesList.map((sequence: any) => (
-              <Link key={sequence.id} href={`/sequences/${sequence.id}`}>
-                <Card className="cursor-pointer hover:shadow-lg transition-shadow" data-testid={`card-sequence-${sequence.id}`}>
-                  <CardHeader>
-                    <div className="flex items-center justify-between">
-                      <CardTitle>{sequence.name}</CardTitle>
-                      <Badge variant={sequence.status === "active" ? "default" : "secondary"}>
-                        {sequence.status}
-                      </Badge>
-                    </div>
-                    <CardDescription>{sequence.description || "No description"}</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-2">
-                      <div className="flex justify-between text-sm">
-                        <span className="text-gray-500">Prospects:</span>
-                        <span className="font-medium">{sequence.totalProspects || 0}</span>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </Link>
+            {filteredSequences.map((sequence: any) => (
+              <EnhancedSequenceCard key={sequence.id} sequence={sequence} />
+            ))}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {filteredSequences.map((sequence: any) => (
+              <SequenceListItem key={sequence.id} sequence={sequence} />
             ))}
           </div>
         )}
@@ -313,6 +371,200 @@ function CreateSequenceButton() {
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+function EnhancedSequenceCard({ sequence }: { sequence: any }) {
+  const [, setLocation] = useLocation();
+  
+  // Calculate metrics
+  const emailCount = sequence.steps?.length || 0;
+  const totalProspects = sequence.totalProspects || 0;
+  const sentCount = sequence.sentCount || 0;
+  const openedCount = sequence.openedCount || 0;
+  const repliedCount = sequence.repliedCount || 0;
+  const openRate = sentCount > 0 ? Math.round((openedCount / sentCount) * 100) : 0;
+  const replyRate = sentCount > 0 ? Math.round((repliedCount / sentCount) * 100) : 0;
+  
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'active': return 'bg-green-100 text-green-700 border-green-200';
+      case 'paused': return 'bg-amber-100 text-amber-700 border-amber-200';
+      case 'completed': return 'bg-blue-100 text-blue-700 border-blue-200';
+      default: return 'bg-gray-100 text-gray-700 border-gray-200';
+    }
+  };
+
+  return (
+    <Card className="group hover:shadow-xl transition-all duration-200 cursor-pointer relative overflow-hidden" onClick={() => setLocation(`/sequences/${sequence.id}`)} data-testid={`card-sequence-${sequence.id}`}>
+      {sequence.status === 'active' && (
+        <div className="absolute top-0 right-0 w-2 h-full bg-gradient-to-b from-green-500 to-emerald-500"></div>
+      )}
+      
+      <CardHeader className="pb-3">
+        <div className="flex items-start justify-between mb-2">
+          <div className="flex-1 min-w-0">
+            <CardTitle className="text-lg font-semibold truncate">{sequence.name}</CardTitle>
+            {sequence.description && (
+              <CardDescription className="mt-1 line-clamp-2">{sequence.description}</CardDescription>
+            )}
+          </div>
+          <Badge className={`ml-2 ${getStatusColor(sequence.status)}`} data-testid={`badge-status-${sequence.id}`}>
+            {sequence.status}
+          </Badge>
+        </div>
+      </CardHeader>
+
+      <CardContent className="space-y-4">
+        {/* Metrics Grid */}
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
+            <div className="flex items-center gap-2 mb-1">
+              <Mail className="w-4 h-4 text-blue-500" />
+              <span className="text-xs text-gray-500">Emails</span>
+            </div>
+            <div className="text-2xl font-bold">{emailCount}</div>
+          </div>
+          
+          <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
+            <div className="flex items-center gap-2 mb-1">
+              <Users className="w-4 h-4 text-purple-500" />
+              <span className="text-xs text-gray-500">Prospects</span>
+            </div>
+            <div className="text-2xl font-bold">{totalProspects}</div>
+          </div>
+          
+          <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
+            <div className="flex items-center gap-2 mb-1">
+              <MailOpen className="w-4 h-4 text-green-500" />
+              <span className="text-xs text-gray-500">Open Rate</span>
+            </div>
+            <div className="text-2xl font-bold">{openRate}%</div>
+          </div>
+          
+          <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
+            <div className="flex items-center gap-2 mb-1">
+              <Reply className="w-4 h-4 text-orange-500" />
+              <span className="text-xs text-gray-500">Reply Rate</span>
+            </div>
+            <div className="text-2xl font-bold">{replyRate}%</div>
+          </div>
+        </div>
+
+        {/* Progress indicator for active sequences */}
+        {sequence.status === 'active' && totalProspects > 0 && (
+          <div className="space-y-1">
+            <div className="flex justify-between text-xs text-gray-600">
+              <span>{sentCount} sent</span>
+              <span>{totalProspects - sentCount} remaining</span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-2 overflow-hidden">
+              <div 
+                className="bg-gradient-to-r from-blue-500 to-green-500 h-full transition-all duration-500"
+                style={{ width: `${totalProspects > 0 ? (sentCount / totalProspects) * 100 : 0}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Footer */}
+        <div className="flex items-center justify-between pt-2 border-t border-gray-100 dark:border-gray-700">
+          <span className="text-xs text-gray-500">
+            {sequence.createdAt ? `Created ${new Date(sequence.createdAt).toLocaleDateString()}` : 'Recently created'}
+          </span>
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="opacity-0 group-hover:opacity-100 transition-opacity"
+            onClick={(e) => {
+              e.stopPropagation();
+              setLocation(`/sequences/${sequence.id}`);
+            }}
+          >
+            View Details →
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function SequenceListItem({ sequence }: { sequence: any }) {
+  const [, setLocation] = useLocation();
+  
+  const emailCount = sequence.steps?.length || 0;
+  const totalProspects = sequence.totalProspects || 0;
+  const sentCount = sequence.sentCount || 0;
+  const openedCount = sequence.openedCount || 0;
+  const repliedCount = sequence.repliedCount || 0;
+  const openRate = sentCount > 0 ? Math.round((openedCount / sentCount) * 100) : 0;
+  const replyRate = sentCount > 0 ? Math.round((repliedCount / sentCount) * 100) : 0;
+  
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'active': return 'bg-green-100 text-green-700 border-green-200';
+      case 'paused': return 'bg-amber-100 text-amber-700 border-amber-200';
+      case 'completed': return 'bg-blue-100 text-blue-700 border-blue-200';
+      default: return 'bg-gray-100 text-gray-700 border-gray-200';
+    }
+  };
+
+  return (
+    <Card className="group hover:shadow-lg transition-all cursor-pointer" onClick={() => setLocation(`/sequences/${sequence.id}`)} data-testid={`list-item-${sequence.id}`}>
+      <CardContent className="p-4">
+        <div className="flex items-center gap-4">
+          {/* Name & Description */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-3 mb-1">
+              <h3 className="font-semibold truncate">{sequence.name}</h3>
+              <Badge className={getStatusColor(sequence.status)}>
+                {sequence.status}
+              </Badge>
+            </div>
+            {sequence.description && (
+              <p className="text-sm text-gray-500 truncate">{sequence.description}</p>
+            )}
+          </div>
+
+          {/* Metrics */}
+          <div className="hidden md:flex items-center gap-6 text-sm">
+            <div className="text-center">
+              <div className="font-semibold">{emailCount}</div>
+              <div className="text-xs text-gray-500">Emails</div>
+            </div>
+            <div className="text-center">
+              <div className="font-semibold">{totalProspects}</div>
+              <div className="text-xs text-gray-500">Prospects</div>
+            </div>
+            <div className="text-center">
+              <div className="font-semibold">{sentCount}</div>
+              <div className="text-xs text-gray-500">Sent</div>
+            </div>
+            <div className="text-center">
+              <div className="font-semibold">{openRate}%</div>
+              <div className="text-xs text-gray-500">Opens</div>
+            </div>
+            <div className="text-center">
+              <div className="font-semibold">{replyRate}%</div>
+              <div className="text-xs text-gray-500">Replies</div>
+            </div>
+          </div>
+
+          {/* Action */}
+          <Button 
+            variant="ghost" 
+            size="sm"
+            className="opacity-0 group-hover:opacity-100 transition-opacity"
+            onClick={(e) => {
+              e.stopPropagation();
+              setLocation(`/sequences/${sequence.id}`);
+            }}
+          >
+            Open →
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
