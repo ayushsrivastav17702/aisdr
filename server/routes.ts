@@ -517,6 +517,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         columns: true,
         skip_empty_lines: true,
         trim: true,
+        relax_quotes: true,
+        relax_column_count: true,
+        skip_records_with_error: true,
       });
 
       const totalRows = records.length;
