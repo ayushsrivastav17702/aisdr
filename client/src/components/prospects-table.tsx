@@ -22,8 +22,10 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   TableCellsSplit,
-  ListIcon
+  ListIcon,
+  WandIcon
 } from "lucide-react";
+import { PersonalizationWizard } from "@/components/PersonalizationWizard";
 
 interface ProspectsTableProps {
   selectedIds: string[];
@@ -35,6 +37,7 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
   const [status, setStatus] = useState("all");
   const [page, setPage] = useState(1);
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [personalizationOpen, setPersonalizationOpen] = useState(false);
   
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -385,6 +388,7 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
                   {lushaEnrichMutation.isPending ? "Finding Emails..." : "Get Emails (Lusha)"}
                 </Button>
                 <Button 
+                  variant="outline"
                   size="sm"
                   onClick={handleEnrichSelected}
                   disabled={enrichMutation.isPending}
@@ -392,6 +396,15 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
                 >
                   <SparklesIcon className="w-4 h-4 mr-2" />
                   {enrichMutation.isPending ? "Enriching..." : "Enrich Selected"}
+                </Button>
+                <Button 
+                  size="sm"
+                  onClick={() => setPersonalizationOpen(true)}
+                  data-testid="button-ai-personalization"
+                  className="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+                >
+                  <WandIcon className="w-4 h-4 mr-2" />
+                  AI Personalization
                 </Button>
               </div>
             </div>
@@ -602,6 +615,11 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
           )}
         </Card>
       </div>
+
+      <PersonalizationWizard 
+        open={personalizationOpen} 
+        onClose={() => setPersonalizationOpen(false)} 
+      />
     </div>
   );
 }

@@ -66,6 +66,7 @@ interface PersonalizationWizardProps {
   open: boolean;
   onClose: () => void;
   prospectId?: number;
+  initialSelectedIds?: string[];
   onComplete?: (personalizedEmail: any) => void;
 }
 
@@ -81,12 +82,15 @@ export function PersonalizationWizard({
   open, 
   onClose, 
   prospectId, 
+  initialSelectedIds = [],
   onComplete 
 }: PersonalizationWizardProps) {
   const [currentStep, setCurrentStep] = useState(0);
-  const [selectedProspectId, setSelectedProspectId] = useState(prospectId?.toString() || '');
-  const [selectedProspectIds, setSelectedProspectIds] = useState<string[]>(prospectId ? [prospectId.toString()] : []);
-  const [batchMode, setBatchMode] = useState(false);
+  const [selectedProspectId, setSelectedProspectId] = useState(prospectId?.toString() || initialSelectedIds[0] || '');
+  const [selectedProspectIds, setSelectedProspectIds] = useState<string[]>(
+    initialSelectedIds.length > 0 ? initialSelectedIds : (prospectId ? [prospectId.toString()] : [])
+  );
+  const [batchMode, setBatchMode] = useState(initialSelectedIds.length > 1);
   const [personalizationData, setPersonalizationData] = useState<PersonalizationData | null>(null);
   const [analysisProgress, setAnalysisProgress] = useState(0);
   const [generatedEmail, setGeneratedEmail] = useState<any>(null);
@@ -101,6 +105,16 @@ export function PersonalizationWizard({
   const [advancedAnalysisData, setAdvancedAnalysisData] = useState<any>(null);
 
   const { toast } = useToast();
+
+  // Reset state when wizard opens with new initial selections
+  useEffect(() => {
+    if (open && initialSelectedIds.length > 0) {
+      setSelectedProspectIds(initialSelectedIds);
+      setSelectedProspectId(initialSelectedIds[0]);
+      setBatchMode(initialSelectedIds.length > 1);
+      setCurrentStep(0);
+    }
+  }, [open, initialSelectedIds]);
 
   // Load prospects for selection
   const { data } = useQuery<{ prospects: any[]; total: number }>({
