@@ -11,7 +11,22 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Card, CardContent } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { api, type ProspectsResponse } from "@/lib/api";
 import { 
@@ -23,7 +38,16 @@ import {
   ChevronRightIcon,
   TableCellsSplit,
   ListIcon,
-  WandIcon
+  WandIcon,
+  BuildingIcon,
+  MapPinIcon,
+  MailIcon,
+  PhoneIcon,
+  LinkedinIcon,
+  BriefcaseIcon,
+  TagIcon,
+  TrashIcon,
+  EditIcon
 } from "lucide-react";
 import { PersonalizationWizard } from "@/components/PersonalizationWizard";
 
@@ -38,6 +62,8 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
   const [page, setPage] = useState(1);
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [personalizationOpen, setPersonalizationOpen] = useState(false);
+  const [selectedProspect, setSelectedProspect] = useState<any>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
   
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -521,7 +547,15 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
                       
                       <td className="px-4 py-4">
                         <div className="flex items-center gap-2">
-                          <Button variant="ghost" size="sm" data-testid={`button-view-${prospect.id}`}>
+                          <Button 
+                            variant="ghost" 
+                            size="sm" 
+                            onClick={() => {
+                              setSelectedProspect(prospect);
+                              setDetailOpen(true);
+                            }}
+                            data-testid={`button-view-${prospect.id}`}
+                          >
                             <EyeIcon className="w-4 h-4" />
                           </Button>
                           <Button 
@@ -533,9 +567,47 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
                           >
                             <SparklesIcon className="w-4 h-4" />
                           </Button>
-                          <Button variant="ghost" size="sm" data-testid={`button-more-${prospect.id}`}>
-                            <MoreVerticalIcon className="w-4 h-4" />
-                          </Button>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="sm" data-testid={`button-more-${prospect.id}`}>
+                                <MoreVerticalIcon className="w-4 h-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem 
+                                onClick={() => {
+                                  setSelectedProspect(prospect);
+                                  setDetailOpen(true);
+                                }}
+                                data-testid={`menu-view-details-${prospect.id}`}
+                              >
+                                <EyeIcon className="w-4 h-4 mr-2" />
+                                View Details
+                              </DropdownMenuItem>
+                              <DropdownMenuItem 
+                                onClick={() => enrichMutation.mutate([prospect.id])}
+                                data-testid={`menu-enrich-${prospect.id}`}
+                              >
+                                <SparklesIcon className="w-4 h-4 mr-2" />
+                                Enrich
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem 
+                                className="text-destructive"
+                                onClick={() => {
+                                  toast({
+                                    title: "Delete Not Implemented",
+                                    description: "Delete functionality will be implemented in a future update",
+                                    variant: "destructive",
+                                  });
+                                }}
+                                data-testid={`menu-delete-${prospect.id}`}
+                              >
+                                <TrashIcon className="w-4 h-4 mr-2" />
+                                Delete
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
                       </td>
                     </tr>
@@ -621,6 +693,180 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
         onClose={() => setPersonalizationOpen(false)}
         initialSelectedIds={selectedIds}
       />
+
+      <Sheet open={detailOpen} onOpenChange={setDetailOpen}>
+        <SheetContent className="w-full sm:max-w-xl overflow-y-auto" data-testid="prospect-detail-sheet">
+          <SheetHeader>
+            <SheetTitle data-testid="sheet-title">Prospect Details</SheetTitle>
+            <SheetDescription data-testid="sheet-description">
+              View and manage prospect information
+            </SheetDescription>
+          </SheetHeader>
+          
+          {selectedProspect && (
+            <div className="mt-6 space-y-6">
+              {/* Header with avatar */}
+              <div className="flex items-center gap-4">
+                <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center text-white font-medium text-xl" data-testid="prospect-avatar">
+                  {getInitials(selectedProspect.firstName, selectedProspect.lastName)}
+                </div>
+                <div>
+                  <h3 className="text-xl font-semibold" data-testid="prospect-detail-name">
+                    {selectedProspect.fullName || `${selectedProspect.firstName || ""} ${selectedProspect.lastName || ""}`.trim() || "Unknown"}
+                  </h3>
+                  <p className="text-sm text-muted-foreground" data-testid="prospect-detail-title">
+                    {selectedProspect.jobTitle || "No title"}
+                  </p>
+                  <div data-testid="prospect-detail-status">
+                    {getStatusBadge(selectedProspect.enrichmentStatus)}
+                  </div>
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Contact Information */}
+              <div className="space-y-4">
+                <h4 className="text-sm font-semibold text-muted-foreground uppercase">Contact Information</h4>
+                
+                <div className="space-y-3">
+                  <div className="flex items-start gap-3">
+                    <MailIcon className="w-4 h-4 mt-0.5 text-muted-foreground" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium">Email</p>
+                      <p className="text-sm text-muted-foreground break-all" data-testid="prospect-detail-email">
+                        {selectedProspect.primaryEmail || "Not available"}
+                      </p>
+                    </div>
+                  </div>
+
+                  {selectedProspect.phone && (
+                    <div className="flex items-start gap-3">
+                      <PhoneIcon className="w-4 h-4 mt-0.5 text-muted-foreground" />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">Phone</p>
+                        <p className="text-sm text-muted-foreground" data-testid="prospect-detail-phone">{selectedProspect.phone}</p>
+                      </div>
+                    </div>
+                  )}
+
+                  {selectedProspect.linkedinUrl && (
+                    <div className="flex items-start gap-3">
+                      <LinkedinIcon className="w-4 h-4 mt-0.5 text-muted-foreground" />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">LinkedIn</p>
+                        <a 
+                          href={selectedProspect.linkedinUrl} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="text-sm text-primary hover:underline break-all"
+                          data-testid="prospect-detail-linkedin"
+                        >
+                          View Profile
+                        </a>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <Separator />
+
+              {/* Professional Information */}
+              <div className="space-y-4">
+                <h4 className="text-sm font-semibold text-muted-foreground uppercase">Professional Information</h4>
+                
+                <div className="space-y-3">
+                  <div className="flex items-start gap-3">
+                    <BriefcaseIcon className="w-4 h-4 mt-0.5 text-muted-foreground" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium">Job Title</p>
+                      <p className="text-sm text-muted-foreground" data-testid="prospect-detail-job-title">{selectedProspect.jobTitle || "Not available"}</p>
+                      {selectedProspect.department && (
+                        <p className="text-xs text-muted-foreground mt-1" data-testid="prospect-detail-department">{selectedProspect.department}</p>
+                      )}
+                      {selectedProspect.seniority && (
+                        <Badge variant="outline" className="mt-1" data-testid="prospect-detail-seniority">{selectedProspect.seniority}</Badge>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-start gap-3">
+                    <BuildingIcon className="w-4 h-4 mt-0.5 text-muted-foreground" />
+                    <div className="flex-1">
+                      <p className="text-sm font-medium">Company</p>
+                      <p className="text-sm text-muted-foreground" data-testid="prospect-detail-company">{selectedProspect.companyName || "Not available"}</p>
+                      {selectedProspect.companySize && (
+                        <p className="text-xs text-muted-foreground mt-1" data-testid="prospect-detail-company-size">{selectedProspect.companySize}</p>
+                      )}
+                      {selectedProspect.industry && (
+                        <Badge variant="outline" className="mt-1" data-testid="prospect-detail-industry">{selectedProspect.industry}</Badge>
+                      )}
+                    </div>
+                  </div>
+
+                  {(selectedProspect.contactLocation || selectedProspect.companyLocation) && (
+                    <div className="flex items-start gap-3">
+                      <MapPinIcon className="w-4 h-4 mt-0.5 text-muted-foreground" />
+                      <div className="flex-1">
+                        <p className="text-sm font-medium">Location</p>
+                        <p className="text-sm text-muted-foreground" data-testid="prospect-detail-location">
+                          {selectedProspect.contactLocation || selectedProspect.companyLocation}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Tags */}
+              {selectedProspect.tags && selectedProspect.tags.length > 0 && (
+                <>
+                  <Separator />
+                  <div className="space-y-4">
+                    <h4 className="text-sm font-semibold text-muted-foreground uppercase">Tags</h4>
+                    <div className="flex flex-wrap gap-2" data-testid="prospect-detail-tags">
+                      {selectedProspect.tags.map((tag: string, index: number) => (
+                        <Badge key={index} variant="secondary" data-testid={`tag-${tag}`}>
+                          <TagIcon className="w-3 h-3 mr-1" />
+                          {tag}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              <Separator />
+
+              {/* Actions */}
+              <div className="flex gap-2">
+                <Button 
+                  className="flex-1"
+                  onClick={() => {
+                    enrichMutation.mutate([selectedProspect.id]);
+                    setDetailOpen(false);
+                  }}
+                  disabled={enrichMutation.isPending}
+                  data-testid="button-enrich-prospect-detail"
+                >
+                  <SparklesIcon className="w-4 h-4 mr-2" />
+                  Enrich Prospect
+                </Button>
+                <Button 
+                  variant="outline"
+                  onClick={() => {
+                    setDetailOpen(false);
+                  }}
+                  data-testid="button-close-detail"
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          )}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
