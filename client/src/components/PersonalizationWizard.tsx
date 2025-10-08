@@ -103,6 +103,7 @@ export function PersonalizationWizard({
   });
   const [useAdvancedMode, setUseAdvancedMode] = useState(true);
   const [advancedAnalysisData, setAdvancedAnalysisData] = useState<any>(null);
+  const [selectedContentIds, setSelectedContentIds] = useState<string[]>([]);
 
   const { toast } = useToast();
 
@@ -122,6 +123,13 @@ export function PersonalizationWizard({
     enabled: open
   });
   const prospects = data?.prospects ?? [];
+
+  // Load content library
+  const { data: contentLibrary } = useQuery({
+    queryKey: ["/api/content-library"],
+    enabled: open
+  });
+  const contentItems = (contentLibrary as any)?.items || [];
 
   // Advanced AI analysis mutation
   const advancedAnalyzeMutation = useMutation({
@@ -269,7 +277,8 @@ export function PersonalizationWizard({
       personalizationData: dataToUse,
       settings: emailSettings,
       customPrompt,
-      useAdvanced: !!advancedAnalysisData
+      useAdvanced: !!advancedAnalysisData,
+      contentItemIds: selectedContentIds
     });
   };
 
@@ -788,6 +797,40 @@ export function PersonalizationWizard({
                       data-testid="textarea-custom-prompt"
                     />
                   </div>
+
+                  {contentItems.length > 0 && (
+                    <div className="mt-4">
+                      <Label>Reference Content (Optional)</Label>
+                      <p className="text-sm text-muted-foreground mb-2">Select content to include in email generation</p>
+                      <ScrollArea className="h-32 border rounded-md p-2">
+                        {contentItems.map((item: any) => (
+                          <div key={item.id} className="flex items-center gap-2 py-1">
+                            <input
+                              type="checkbox"
+                              id={`content-${item.id}`}
+                              checked={selectedContentIds.includes(item.id)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedContentIds([...selectedContentIds, item.id]);
+                                } else {
+                                  setSelectedContentIds(selectedContentIds.filter(id => id !== item.id));
+                                }
+                              }}
+                              data-testid={`checkbox-content-${item.id}`}
+                            />
+                            <label htmlFor={`content-${item.id}`} className="text-sm cursor-pointer flex-1">
+                              {item.title} <span className="text-muted-foreground">({item.type})</span>
+                            </label>
+                          </div>
+                        ))}
+                      </ScrollArea>
+                      {selectedContentIds.length > 0 && (
+                        <p className="text-sm text-muted-foreground mt-2">
+                          {selectedContentIds.length} content item{selectedContentIds.length > 1 ? 's' : ''} selected
+                        </p>
+                      )}
+                    </div>
+                  )}
 
                   <div className="flex justify-end mt-6">
                     <Button 
