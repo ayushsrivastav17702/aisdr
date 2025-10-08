@@ -25,6 +25,8 @@ The platform is built with a modern web stack:
     - **Multi-Mailbox Sending**: Securely manages multiple email accounts (Gmail, Outlook, SMTP, SendGrid) with round-robin rotation, encryption, and an email warmup system.
     - **Bulk Operations**: Efficiently enriches multiple prospects simultaneously using Apollo's bulk match API.
     - **Data Security**: Secure credential encryption (AES-256-CBC with random IV) for email mailboxes.
+    - **API Key Management**: Automatic fallback from primary to backup OpenAI API key when quota is exhausted (429 errors).
+    - **CSV Import Resilience**: 50MB file size limit, comprehensive logging for debugging large imports (15k+ prospects), detailed error tracking with row numbers.
 
 ## External Dependencies
 - **Apollo.io**: Primary API for prospect search, data enrichment, and bulk matching.
