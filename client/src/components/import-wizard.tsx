@@ -91,12 +91,36 @@ export default function ImportWizard({ open, onClose }: ImportWizardProps) {
       mappings: Record<string, string>; 
       options: { skipDuplicates: boolean; autoEnrich: boolean; }
     }) => api.uploadCSV(file, mappings, options),
-    onSuccess: () => {
-      toast({
-        title: "Import Started",
-        description: "Your CSV import job has been queued successfully",
-      });
-      queryClient.invalidateQueries({ queryKey: ["/api/jobs"] });
+    onSuccess: (data: any) => {
+      // Handle both job-based (Redis) and direct (no Redis) responses
+      if (data.job) {
+        // Redis-based background job
+        toast({
+          title: "Import Started",
+          description: "Your CSV import job has been queued successfully",
+        });
+        queryClient.invalidateQueries({ queryKey: ["/api/jobs"] });
+      } else if (data.success !== undefined) {
+        // Direct/synchronous import (no Redis)
+        const { imported, failed, duplicates, message } = data;
+        
+        if (imported > 0) {
+          toast({
+            title: "Import Complete",
+            description: message || `Successfully imported ${imported} prospects${duplicates > 0 ? ` (${duplicates} duplicates skipped)` : ''}`,
+          });
+        } else if (failed > 0) {
+          toast({
+            variant: "destructive",
+            title: "Import Failed",
+            description: `Failed to import prospects. Check the console for details.`,
+          });
+        }
+        
+        // Refresh prospects list
+        queryClient.invalidateQueries({ queryKey: ["/api/prospects"] });
+      }
+      
       onClose();
       resetWizard();
     },
