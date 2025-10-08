@@ -1,4 +1,4 @@
-import OpenAI from "openai";
+import { openaiHelper } from "./openai-helper";
 import { storage } from "../storage";
 import type { Prospect } from "@shared/schema";
 import { 
@@ -8,8 +8,6 @@ import {
   type PromptContext,
   type EmailType 
 } from "./ai-prompt-templates";
-
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 export interface EmailGenerationRequest {
   prospectId: string;
@@ -44,28 +42,25 @@ export async function generateEmail(request: EmailGenerationRequest): Promise<Ge
     const context = buildPromptContext(prospect, request);
     const template = getPromptTemplate(request.emailType);
     const prompt = interpolatePrompt(template, context);
-    
-    if (!process.env.OPENAI_API_KEY) {
-      console.warn("OpenAI API key not configured, using fallback email generation");
-      return generateFallbackEmail(prospect, request);
-    }
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-4o",
-      messages: [
-        {
-          role: "system",
-          content: "You are an expert sales development representative with years of experience writing high-converting cold emails. Always respond with valid JSON."
-        },
-        {
-          role: "user",
-          content: prompt
-        }
-      ],
-      response_format: { type: "json_object" },
-      temperature: 0.7,
-      max_tokens: 1000
-    });
+    const response = await openaiHelper.callWithFallback((client) =>
+      client.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "system",
+            content: "You are an expert sales development representative with years of experience writing high-converting cold emails. Always respond with valid JSON."
+          },
+          {
+            role: "user",
+            content: prompt
+          }
+        ],
+        response_format: { type: "json_object" },
+        temperature: 0.7,
+        max_tokens: 1000
+      })
+    );
 
     const result = JSON.parse(response.choices[0].message.content || '{}');
     
