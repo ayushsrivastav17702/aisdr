@@ -1,0 +1,203 @@
+Find Your Ideal Prospects
+One simple form to find and import prospects from Apollo.io's 230M+ database
+Extraction Name *
+e.g., Tech CEOs Q1 2025
+Tag for Prospects *
+e.g., tech-ceos-q1
+Advanced Prospect Targeting
+Create detailed targeting criteria to find your exact ideal customer profile. Use as many or as few filters as needed.
+
+Decision Makers & Job Titles
+Add decision maker (e.g., CEO, CTO, VP Sales)
+
+Industries
+
+Technology
+
+Software
+
+SaaS
+
+Healthcare
+
+Finance
+
+Banking
+
+Insurance
+
+E-commerce
+
+Retail
+
+Manufacturing
+
+Automotive
+
+Real Estate
+
+Construction
+
+Education
+
+Government
+
+Non-Profit
+
+Consulting
+
+Marketing
+
+Advertising
+
+Media
+
+Entertainment
+
+Travel
+
+Hospitality
+
+Food & Beverage
+
+Agriculture
+
+Energy
+
+Utilities
+
+Transportation
+
+Logistics
+
+Telecommunications
+Countries
+
+United States
+
+Canada
+
+United Kingdom
+
+Germany
+
+France
+
+Spain
+
+Italy
+
+Netherlands
+
+Sweden
+
+Norway
+
+Denmark
+
+Finland
+
+Australia
+
+New Zealand
+
+Singapore
+
+Hong Kong
+
+Japan
+
+South Korea
+
+India
+
+China
+
+Brazil
+
+Mexico
+
+Argentina
+
+Chile
+
+South Africa
+
+Israel
+
+United Arab Emirates
+
+Switzerland
+
+Austria
+
+Belgium
+
+Ireland
+
+Portugal
+
+Poland
+
+Czech Republic
+Company Size (Select Multiple)
+
+Startup (1-10 employees)
+
+Small (11-50 employees)
+
+Medium (51-200 employees)
+
+Large (201-1000 employees)
+
+Enterprise (1000+ employees)
+Number of Prospects
+50 prospects
+Annual Revenue
+Any revenue
+Specific Companies (Optional)
+Target specific companies: Microsoft, Google, Amazon
+Technologies Used
+Salesforce, HubSpot, Shopify
+Departments
+marketing, sales, operations
+Seniority Level (Select Multiple)
+
+Entry Level
+
+Junior
+
+Senior
+
+Manager
+
+Director
+
+VP
+
+C-Suite
+
+Owner
+Years of Experience (Select Multiple)
+
+0-2 years
+
+3-5 years
+
+6-10 years
+
+11-15 years
+
+16+ years
+Find My Prospects🧪 Quick Test (CEO/Manager Search)
+🔧 System Diagnostic
+🧪 Simple Test
+🎯 Broad Test
+📊 Check Form
+Open browser Console (F12) before clicking to see detailed logs
+How it works:
+1. Name your search and create a tag for organization
+2. Describe your ideal prospect using the filters above
+3. Click "Find My Prospects" to search Apollo.io's database
+4. View results instantly in your main Prospects tab with your tag
+Tip: Start broad with just job titles, then get more specific with company size and industry

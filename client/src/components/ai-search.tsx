@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -30,6 +31,7 @@ export default function AISearch() {
   const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilters>({});
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [, setLocation] = useLocation();
 
   const aiSearchMutation = useMutation({
     mutationFn: api.aiSearch,
@@ -98,10 +100,17 @@ export default function AISearch() {
       // Invalidate prospects query to show newly saved prospects
       queryClient.invalidateQueries({ queryKey: ["/api/prospects"] });
       
+      const totalFound = data.pagination?.total_entries || data.saved;
+      
       toast({
-        title: "Prospects Found",
-        description: `Found and saved ${data.saved} of ${data.pagination?.total_entries || data.saved} prospects from Apollo search.`,
+        title: "Prospects Saved Successfully",
+        description: `Saved ${data.saved} prospects (${totalFound.toLocaleString()} total available). Navigating to Prospects page...`,
       });
+
+      // Navigate to Prospects page after a short delay to show the toast
+      setTimeout(() => {
+        setLocation("/");
+      }, 1500);
     },
     onError: (error) => {
       toast({
@@ -325,10 +334,10 @@ export default function AISearch() {
 
               {/* Job Titles */}
               <div className="space-y-2">
-                <Label htmlFor="job-titles">Job Titles</Label>
+                <Label htmlFor="job-titles">Job Titles (Multiple)</Label>
                 <Input
                   id="job-titles"
-                  placeholder="e.g., CEO, CTO, VP of Sales"
+                  placeholder="Merchandiser, Visual Merchandiser, Product Merchandiser"
                   value={advancedFilters.jobTitles?.join(", ") || ""}
                   onChange={(e) => setAdvancedFilters({
                     ...advancedFilters,
@@ -336,6 +345,9 @@ export default function AISearch() {
                   })}
                   data-testid="input-job-titles"
                 />
+                <p className="text-xs text-muted-foreground">
+                  Separate multiple titles with commas
+                </p>
               </div>
 
               {/* Seniority Levels */}
