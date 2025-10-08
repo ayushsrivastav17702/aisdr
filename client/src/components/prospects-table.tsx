@@ -618,7 +618,8 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
 
       <PersonalizationWizard 
         open={personalizationOpen} 
-        onClose={() => setPersonalizationOpen(false)} 
+        onClose={() => setPersonalizationOpen(false)}
+        initialSelectedIds={selectedIds}
       />
     </div>
   );
