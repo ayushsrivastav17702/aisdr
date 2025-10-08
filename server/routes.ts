@@ -944,8 +944,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Generate personalized email with AI
   app.post("/api/personalization/generate-email", async (req, res) => {
     try {
-      const { prospectId, personalizationData, settings, customPrompt, useAdvanced } = req.body;
+      const { prospectId, personalizationData, settings, customPrompt, useAdvanced, contentItemIds } = req.body;
       
+      if (!process.env.OPENAI_API_KEY) {
+        return res.status(500).json({ 
+          error: "OpenAI API key not configured. Please set OPENAI_API_KEY in environment variables." 
+        });
+      }
+
       const prospect = await storage.getProspect(prospectId);
       if (!prospect) {
         return res.status(404).json({ error: "Prospect not found" });
@@ -966,20 +972,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
         length: settings?.length || 'medium'
       };
 
+      // Fetch content items if provided
+      let contentContext = '';
+      if (contentItemIds && contentItemIds.length > 0) {
+        const allContentItems = await storage.getContentLibraryItems();
+        const selectedContent = allContentItems.filter(item => contentItemIds.includes(item.id));
+        
+        if (selectedContent.length > 0) {
+          contentContext = '\n\nREFERENCE CONTENT (use this to enhance your email):\n' + 
+            selectedContent.map((item, index) => {
+              return `${index + 1}. ${item.title} (${item.type})
+${item.description ? `   Description: ${item.description}` : ''}
+   Content: ${item.content}`;
+            }).join('\n\n');
+        }
+      }
+
       // Generate email using AI service
       const prompt = `Generate a personalized sales email with the following context:
-- Prospect: ${context.prospectName}, ${context.jobTitle} at ${context.companyName}
+
+PROSPECT INFORMATION:
+- Name: ${context.prospectName}
+- Title: ${context.jobTitle}
+- Company: ${context.companyName}
 - Industry: ${context.industry}
 - Key Insights: ${context.insights}
+
+EMAIL SETTINGS:
 - Tone: ${context.tone}
 - Focus: ${context.focus}
 - Urgency: ${context.urgency}
-- Length: ${context.length}
-${customPrompt ? `\nAdditional Instructions: ${customPrompt}` : ''}
+- Length: ${context.length}${contentContext}
+${customPrompt ? `\nADDITIONAL INSTRUCTIONS:\n${customPrompt}` : ''}
 
-Generate a subject line and email body that is highly personalized and relevant.`;
+Generate a subject line and email body that is highly personalized and relevant. Use the reference content if provided to enhance the value proposition.
 
-      const aiResponse = await aiService.generateText(prompt);
+Format your response as:
+Subject: [Your subject line here]
+
+[Your email body here]`;
+
+      const aiResponse = await aiService.generateText(prompt, 1500);
       
       // Parse AI response (simple split approach)
       const lines = aiResponse.split('\n');
@@ -993,6 +1026,10 @@ Generate a subject line and email body that is highly personalized and relevant.
         } else if (line.toLowerCase().includes('body:') || line.toLowerCase().includes('email:')) {
           isBody = true;
         } else if (isBody && line.trim()) {
+          body += line + '\n';
+        } else if (subject && !isBody && line.trim()) {
+          // Start body after subject if we haven't found explicit "Body:" marker
+          isBody = true;
           body += line + '\n';
         }
       }
@@ -1013,7 +1050,7 @@ Generate a subject line and email body that is highly personalized and relevant.
     } catch (error) {
       console.error("Email generation error:", error);
       res.status(500).json({ 
-        error: error instanceof Error ? error.message : "Email generation failed" 
+        error: error instanceof Error ? error.message : "Failed to generate personalized email" 
       });
     }
   });
