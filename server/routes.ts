@@ -279,14 +279,99 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Enrich prospects
+  // Enrich prospects (uses job queue if Redis available, otherwise direct enrichment)
   app.post("/api/enrich", async (req, res) => {
     try {
       const { prospectIds } = enrichmentRequestSchema.parse(req.body);
       
-      const job = await jobService.createEnrichmentJob(prospectIds);
+      // Check if Redis/job queue is available
+      const redisEnabled = process.env.REDIS_URL || process.env.UPSTASH_REDIS_REST_URL;
       
-      res.json({ job });
+      if (redisEnabled) {
+        // Use job queue for background processing
+        const job = await jobService.createEnrichmentJob(prospectIds);
+        res.json({ job });
+      } else {
+        // Direct enrichment without job queue
+        const results = [];
+        let successCount = 0;
+        let failureCount = 0;
+        
+        for (const prospectId of prospectIds) {
+          try {
+            const prospect = await storage.getProspect(prospectId);
+            if (!prospect) {
+              results.push({ id: prospectId, success: false, error: "Prospect not found" });
+              failureCount++;
+              continue;
+            }
+
+            // Prepare contact for enrichment
+            const contactData = {
+              email: prospect.primaryEmail || undefined,
+              first_name: prospect.firstName || undefined,
+              last_name: prospect.lastName || undefined,
+              organization_name: prospect.companyName || undefined,
+              linkedin_url: prospect.linkedinUrl || undefined,
+            };
+
+            // Try Apollo enrichment first
+            try {
+              const enrichmentResponse = await apolloService.enrichContact(contactData);
+              
+              if (enrichmentResponse?.contact) {
+                const enrichedProspect = apolloService.convertApolloContactToProspect(enrichmentResponse.contact);
+                await storage.updateProspect(prospectId, {
+                  ...enrichedProspect,
+                  enrichmentStatus: 'enriched',
+                });
+                results.push({ id: prospectId, success: true, source: 'apollo' });
+                successCount++;
+              } else {
+                await storage.updateProspect(prospectId, {
+                  enrichmentStatus: 'partial',
+                  enrichmentData: {
+                    error: 'No data found',
+                    enrichedAt: new Date().toISOString(),
+                  },
+                });
+                results.push({ id: prospectId, success: false, error: 'No data found' });
+                failureCount++;
+              }
+            } catch (enrichError) {
+              await storage.updateProspect(prospectId, {
+                enrichmentStatus: 'failed',
+                enrichmentData: {
+                  error: enrichError instanceof Error ? enrichError.message : 'Enrichment failed',
+                  enrichedAt: new Date().toISOString(),
+                },
+              });
+              results.push({ 
+                id: prospectId, 
+                success: false, 
+                error: enrichError instanceof Error ? enrichError.message : 'Enrichment failed' 
+              });
+              failureCount++;
+            }
+          } catch (error) {
+            results.push({ 
+              id: prospectId, 
+              success: false, 
+              error: error instanceof Error ? error.message : 'Unknown error' 
+            });
+            failureCount++;
+          }
+        }
+
+        res.json({ 
+          direct: true,
+          results,
+          total: prospectIds.length,
+          successCount,
+          failureCount,
+          message: `Enrichment completed: ${successCount} successful, ${failureCount} failed`
+        });
+      }
     } catch (error) {
       console.error("Enrichment error:", error);
       res.status(500).json({ 
