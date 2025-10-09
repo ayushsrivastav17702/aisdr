@@ -28,6 +28,7 @@ The platform is built with a modern web stack:
     - **Data Security**: Secure credential encryption (AES-256-CBC with random IV) for email mailboxes.
     - **API Key Management**: Automatic fallback from primary to backup OpenAI API key when quota is exhausted (429 errors).
     - **CSV Import Resilience**: 50MB file size limit, comprehensive logging for debugging large imports (15k+ prospects), detailed error tracking with row numbers.
+    - **Reply Detection System**: IMAP-based polling (every 20 seconds) that automatically detects prospect replies, matches them to sent emails, and stores them with proper error handling. Emails are only marked as "seen" after successful database save to prevent data loss on errors.
 
 ## External Dependencies
 - **Apollo.io**: Primary API for prospect search, data enrichment, and bulk matching.
