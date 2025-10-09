@@ -158,12 +158,20 @@ export default function AISearch() {
         params.tag
       ),
     onSuccess: (data) => {
+      console.log('🔍 Apollo search mutation onSuccess:', data);
+      console.log('  data.saved:', data.saved);
+      console.log('  data.pagination:', data.pagination);
+      
       // Invalidate prospects query to show newly saved prospects
       queryClient.invalidateQueries({ queryKey: ["/api/prospects"] });
       
       const totalFound = data.pagination?.total_entries || data.saved;
       
+      console.log('  totalFound:', totalFound);
+      console.log('  Checking if data.saved === 0:', data.saved === 0);
+      
       if (data.saved === 0) {
+        console.log('  ⚠️ Showing "No Prospects Found" toast');
         toast({
           variant: "destructive",
           title: "No Prospects Found",
@@ -172,6 +180,7 @@ export default function AISearch() {
         return;
       }
       
+      console.log('  ✅ Showing success toast and navigating');
       toast({
         title: "Prospects Saved Successfully",
         description: `Saved ${data.saved} prospects (${totalFound.toLocaleString()} total available). Navigating to Prospects page...`,
