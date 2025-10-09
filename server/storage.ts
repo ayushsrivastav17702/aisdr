@@ -41,6 +41,8 @@ export interface IStorage {
   getProspects(filters?: {
     search?: string;
     status?: string;
+    companyLocation?: string;
+    jobTitle?: string;
     limit?: number;
     offset?: number;
   }): Promise<{ prospects: Prospect[]; total: number }>;
@@ -53,6 +55,7 @@ export interface IStorage {
   checkDuplicateProspects(emails: string[], domains?: string[]): Promise<Prospect[]>;
   findProspectByEmailOrApolloId(email: string | null, apolloId: string | null): Promise<Prospect | undefined>;
   searchLocalProspects(aiFilters: any): Promise<Prospect[]>;
+  getUniqueFilterValues(): Promise<{ locations: string[]; jobTitles: string[] }>;
   
   // Searches
   getSearches(limit?: number): Promise<Search[]>;
@@ -110,10 +113,12 @@ export class DatabaseStorage implements IStorage {
   async getProspects(filters: {
     search?: string;
     status?: string;
+    companyLocation?: string;
+    jobTitle?: string;
     limit?: number;
     offset?: number;
   } = {}): Promise<{ prospects: Prospect[]; total: number }> {
-    const { search, status, limit = 50, offset = 0 } = filters;
+    const { search, status, companyLocation, jobTitle, limit = 50, offset = 0 } = filters;
     
     let query = db.select().from(prospects);
     let countQuery = db.select({ count: count() }).from(prospects);
@@ -135,6 +140,14 @@ export class DatabaseStorage implements IStorage {
     
     if (status) {
       conditions.push(eq(prospects.enrichmentStatus, status as any));
+    }
+
+    if (companyLocation) {
+      conditions.push(ilike(prospects.contactLocation, `%${companyLocation}%`));
+    }
+
+    if (jobTitle) {
+      conditions.push(ilike(prospects.jobTitle, `%${jobTitle}%`));
     }
     
     if (conditions.length > 0) {
@@ -323,6 +336,32 @@ export class DatabaseStorage implements IStorage {
       .limit(200);
     
     return results;
+  }
+
+  async getUniqueFilterValues(): Promise<{ locations: string[]; jobTitles: string[] }> {
+    // Get all prospects with non-null locations and job titles
+    const allProspects = await db
+      .select({
+        contactLocation: prospects.contactLocation,
+        jobTitle: prospects.jobTitle,
+      })
+      .from(prospects);
+
+    // Extract unique, non-null countries from contact location
+    const locations = [...new Set(
+      allProspects
+        .map(p => p.contactLocation)
+        .filter((loc): loc is string => !!loc && loc.trim().length > 0)
+    )].sort();
+
+    // Extract unique, non-null job titles
+    const jobTitles = [...new Set(
+      allProspects
+        .map(p => p.jobTitle)
+        .filter((title): title is string => !!title && title.trim().length > 0)
+    )].sort();
+
+    return { locations, jobTitles };
   }
 
   // Searches

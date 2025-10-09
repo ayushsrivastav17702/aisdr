@@ -224,12 +224,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get unique filter values for dropdowns
+  app.get("/api/prospects/filters", async (req, res) => {
+    try {
+      const filterValues = await storage.getUniqueFilterValues();
+      res.json(filterValues);
+    } catch (error) {
+      console.error("Get filter values error:", error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Failed to get filter values" 
+      });
+    }
+  });
+
   // Get prospects with filters
   app.get("/api/prospects", async (req, res) => {
     try {
       const { 
         search, 
-        status, 
+        status,
+        companyLocation,
+        jobTitle,
         page = "1", 
         limit = "50" 
       } = req.query;
@@ -241,6 +256,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const result = await storage.getProspects({
         search: search as string,
         status: status as string,
+        companyLocation: companyLocation as string,
+        jobTitle: jobTitle as string,
         limit: limitNum,
         offset,
       });
@@ -254,6 +271,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       console.error("Get prospects error:", error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Failed to get prospects" 
+      });
+    }
+  });
+
+  // Get prospects by IDs (for export)
+  app.post("/api/prospects/by-ids", async (req, res) => {
+    try {
+      const { prospectIds } = req.body;
+      
+      if (!prospectIds || !Array.isArray(prospectIds) || prospectIds.length === 0) {
+        return res.status(400).json({ error: "prospectIds array is required" });
+      }
+
+      const prospects = await storage.getProspectsByIds(prospectIds);
+      res.json(prospects);
+    } catch (error) {
+      console.error("Get prospects by IDs error:", error);
       res.status(500).json({ 
         error: error instanceof Error ? error.message : "Failed to get prospects" 
       });

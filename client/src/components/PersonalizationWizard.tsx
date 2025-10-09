@@ -133,10 +133,11 @@ export function PersonalizationWizard({
   const prospects = allProspects.filter((prospect: any) => {
     if (!prospectSearchTerm) return true;
     const searchLower = prospectSearchTerm.toLowerCase();
-    const fullName = `${prospect.firstName || ''} ${prospect.lastName || ''}`.toLowerCase();
-    const company = (prospect.company || '').toLowerCase();
+    const fullName = (prospect.fullName || `${prospect.firstName || ''} ${prospect.lastName || ''}`).toLowerCase();
+    const company = (prospect.companyName || '').toLowerCase();
     const jobTitle = (prospect.jobTitle || '').toLowerCase();
-    return fullName.includes(searchLower) || company.includes(searchLower) || jobTitle.includes(searchLower);
+    const email = (prospect.primaryEmail || '').toLowerCase();
+    return fullName.includes(searchLower) || company.includes(searchLower) || jobTitle.includes(searchLower) || email.includes(searchLower);
   });
 
   // Load content library
