@@ -1,6 +1,7 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import { emailQueueService } from "./services/email-queue.service";
 
 const app = express();
 
@@ -77,5 +78,18 @@ app.use((req, res, next) => {
     reusePort: true,
   }, () => {
     log(`serving on port ${port}`);
+    
+    // Start email queue processor
+    log(`📧 Starting email queue processor...`);
+    setInterval(async () => {
+      try {
+        await emailQueueService.processPendingEmails();
+      } catch (error) {
+        console.error("Email queue processor error:", error);
+      }
+    }, 60000); // Process every 60 seconds (1 minute)
+    
+    // Process immediately on startup
+    emailQueueService.processPendingEmails().catch(console.error);
   });
 })();
