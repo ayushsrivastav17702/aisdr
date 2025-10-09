@@ -289,12 +289,39 @@ class AIService {
     aiFilters: AIFilters;
     apolloFilters: ApolloFilters;
   } {
-    const jobTitleKeywords = ['ceo', 'cto', 'cfo', 'vp', 'director', 'manager', 'engineer', 'developer'];
-    const locationKeywords = ['nyc', 'new york', 'san francisco', 'sf', 'bay area', 'boston', 'austin'];
-    const industryKeywords = ['fintech', 'saas', 'healthcare', 'ai', 'blockchain', 'crypto'];
+    console.log('⚠️ Using fallback keyword extraction for query:', query);
+    
+    const jobTitleKeywords = [
+      'ceo', 'cto', 'cfo', 'coo', 'vp', 'vice president', 
+      'director', 'manager', 'head', 'lead', 'chief',
+      'engineer', 'developer', 'designer', 'analyst', 'architect',
+      'merchandiser', 'merchandising', 'buyer', 'planner', 'coordinator',
+      'sales', 'marketing', 'product', 'operations', 'finance'
+    ];
+    
+    const locationKeywords = [
+      'nyc', 'new york', 'san francisco', 'sf', 'bay area', 'boston', 'austin',
+      'seattle', 'los angeles', 'la', 'chicago', 'miami', 'atlanta', 'denver',
+      'dallas', 'houston', 'portland', 'philadelphia', 'dc', 'washington'
+    ];
+    
+    const industryKeywords = [
+      'fintech', 'saas', 'healthcare', 'ai', 'blockchain', 'crypto',
+      'retail', 'ecommerce', 'fashion', 'technology', 'software', 'hardware'
+    ];
+    
+    // Extract potential company names (capitalized words that aren't common words)
+    const commonWords = ['the', 'a', 'an', 'in', 'at', 'on', 'for', 'to', 'of', 'and', 'or', 'with'];
+    const words = query.split(/\s+/);
+    const companyNames = words.filter(word => {
+      const firstChar = word.charAt(0);
+      return firstChar === firstChar.toUpperCase() && 
+             firstChar !== firstChar.toLowerCase() &&
+             !commonWords.includes(word.toLowerCase()) &&
+             word.length > 2;
+    });
     
     const lowerQuery = query.toLowerCase();
-    const words = lowerQuery.split(/\s+/);
     
     const extractedTitles = jobTitleKeywords.filter(keyword => 
       lowerQuery.includes(keyword)
@@ -308,12 +335,25 @@ class AIService {
       lowerQuery.includes(keyword)
     );
 
+    // If no job titles found but query contains common job-related words, use them
+    if (extractedTitles.length === 0) {
+      const potentialTitles = words.filter(word => 
+        word.length > 4 && !commonWords.includes(word.toLowerCase())
+      );
+      if (potentialTitles.length > 0) {
+        extractedTitles.push(...potentialTitles.slice(0, 3)); // Use up to 3 potential titles
+      }
+    }
+
     const aiFilters: AIFilters = {
-      jobTitles: extractedTitles,
-      locations: extractedLocations,
-      industries: extractedIndustries,
-      keywords: words.filter(word => word.length > 3)
+      jobTitles: extractedTitles.length > 0 ? extractedTitles : undefined,
+      locations: extractedLocations.length > 0 ? extractedLocations : undefined,
+      industries: extractedIndustries.length > 0 ? extractedIndustries : undefined,
+      companyNames: companyNames.length > 0 ? companyNames : undefined,
+      keywords: words.filter(word => word.length > 3 && !commonWords.includes(word.toLowerCase()))
     };
+
+    console.log('📝 Fallback extracted filters:', JSON.stringify(aiFilters, null, 2));
 
     return {
       aiFilters,
