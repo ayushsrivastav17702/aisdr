@@ -12,6 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { api } from "@/lib/api";
 import { Link } from "wouter";
 import { 
   Users, MessageSquare, Zap, BarChart3, Settings, Plus, RefreshCw, 
@@ -1470,11 +1471,24 @@ function AIFollowupTab({ sequenceId }: { sequenceId: string }) {
 function ProspectsTab({ sequenceId, prospects, isLoading }: { sequenceId: string; prospects: any[]; isLoading: boolean }) {
   const [showEnrollModal, setShowEnrollModal] = useState(false);
   const [selectedForEnrollment, setSelectedForEnrollment] = useState<string[]>([]);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  // Debounce search to avoid too many API calls
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  // Load prospects with backend search
   const { data: allProspects } = useQuery({
-    queryKey: ["/api/prospects"],
+    queryKey: ["/api/prospects", { search: debouncedSearchTerm, limit: 100 }],
+    queryFn: () => api.getProspects({ search: debouncedSearchTerm, limit: 100 }),
+    enabled: showEnrollModal, // Only fetch when modal is open
   });
 
   const prospectsList = (allProspects as any)?.prospects || [];
@@ -1573,6 +1587,18 @@ function ProspectsTab({ sequenceId, prospects, isLoading }: { sequenceId: string
             </p>
           </DialogHeader>
           <div className="space-y-4 flex-1 overflow-hidden flex flex-col">
+            {/* Search Input */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <Input
+                placeholder="Search prospects by name, company, or job title..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-10"
+                data-testid="input-search-enroll-prospects"
+              />
+            </div>
+            
             <div className="flex items-center justify-between px-1">
               <p className="text-sm font-medium">
                 {selectedForEnrollment.length} of {prospectsList.length} selected
