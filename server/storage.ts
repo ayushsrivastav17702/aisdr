@@ -499,10 +499,11 @@ export class DatabaseStorage implements IStorage {
 
   // Email Replies
   async getEmailReplies(sequenceId: string): Promise<Array<EmailReply & { prospect?: Prospect }>> {
-    return await db
+    const results = await db
       .select({
         id: emailReplies.id,
         emailId: emailReplies.emailId,
+        sequenceId: emailReplies.sequenceId,
         prospectId: emailReplies.prospectId,
         replyContent: emailReplies.replyContent,
         sentiment: emailReplies.sentiment,
@@ -514,9 +515,11 @@ export class DatabaseStorage implements IStorage {
       })
       .from(emailReplies)
       .leftJoin(prospects, eq(emailReplies.prospectId, prospects.id))
-      .leftJoin(emails, eq(emailReplies.emailId, emails.id))
-      .where(eq(emails.sequenceId, sequenceId))
+      .where(eq(emailReplies.sequenceId, sequenceId))
       .orderBy(desc(emailReplies.receivedAt));
+    
+    console.log(`📨 getEmailReplies for sequence ${sequenceId}: found ${results.length} replies`);
+    return results;
   }
 
   async createEmailReply(reply: InsertEmailReply): Promise<EmailReply> {
