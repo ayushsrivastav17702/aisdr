@@ -656,8 +656,8 @@ function ProductionSequenceBuilder({ sequenceId }: { sequenceId: string }) {
   return (
     <div className="min-h-screen bg-background">
       <Dialog open={true} onOpenChange={(open) => { if (!open) handleClose(); }}>
-        <DialogContent className="max-w-6xl max-h-[90vh] p-0">
-          <DialogHeader className="px-6 pt-6 pb-0">
+        <DialogContent className="max-w-6xl h-[90vh] p-0 flex flex-col">
+          <DialogHeader className="px-6 pt-6 pb-0 flex-shrink-0">
             <DialogTitle className="text-xl font-semibold">Sequence Builder</DialogTitle>
             <Button 
               variant="ghost" 
@@ -670,8 +670,8 @@ function ProductionSequenceBuilder({ sequenceId }: { sequenceId: string }) {
             </Button>
           </DialogHeader>
 
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full">
-            <div className="border-b px-6">
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col flex-1 min-h-0">
+            <div className="border-b px-6 flex-shrink-0">
               <TabsList className="w-full justify-start h-auto p-0 bg-transparent">
                 {tabs.map((tab) => {
                   const Icon = tab.icon;
@@ -690,7 +690,7 @@ function ProductionSequenceBuilder({ sequenceId }: { sequenceId: string }) {
               </TabsList>
             </div>
 
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 min-h-0 overflow-y-auto">
               <TabsContent value="sequence" className="m-0 p-6">
                 <SequenceTab 
                   sequenceId={sequenceId} 
@@ -727,7 +727,7 @@ function ProductionSequenceBuilder({ sequenceId }: { sequenceId: string }) {
               </TabsContent>
             </div>
 
-            <div className="border-t px-6 py-4 flex items-center justify-between bg-muted/30">
+            <div className="border-t px-6 py-4 flex items-center justify-between bg-muted/30 flex-shrink-0">
               <span className="text-sm text-muted-foreground">
                 {sequence?.steps?.length || 0} steps in sequence • {prospectsData?.prospects?.length || 0} prospects enrolled
               </span>
@@ -1209,7 +1209,7 @@ function AIFollowupTab({ sequenceId }: { sequenceId: string }) {
                 />
               </div>
             )}
-            <div className="border rounded-lg p-4 max-h-48 overflow-y-auto">
+            <div className="border rounded-lg p-4 max-h-96 overflow-y-auto">
               {contentItems.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-4">No content available</p>
               ) : filteredContent.length === 0 ? (
@@ -1294,7 +1294,7 @@ function AIFollowupTab({ sequenceId }: { sequenceId: string }) {
             </label>
           </div>
 
-          <div className="border rounded-lg p-4 max-h-64 overflow-y-auto">
+          <div className="border rounded-lg p-4 max-h-96 overflow-y-auto">
             {prospects.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-8">
                 No prospects enrolled in this sequence
@@ -1620,14 +1620,40 @@ function RepliesTab({ sequenceId, replies }: { sequenceId: string; replies: any[
                   <CardTitle className="text-base">
                     {reply.prospect?.fullName || 'Unknown Prospect'}
                   </CardTitle>
-                  <Badge variant={reply.sentiment === 'positive' ? 'default' : 'secondary'}>
-                    {reply.sentiment || 'neutral'}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge variant={reply.sentiment === 'positive' ? 'default' : 'secondary'}>
+                      {reply.sentiment || 'neutral'}
+                    </Badge>
+                    <Button 
+                      size="sm" 
+                      variant="outline"
+                      onClick={() => {
+                        // TODO: Implement AI followup generation
+                        queryClient.invalidateQueries({ queryKey: ['/api/sequences', sequenceId, 'replies'] });
+                      }}
+                      data-testid={`button-generate-followup-${reply.id}`}
+                    >
+                      <Zap className="w-4 h-4 mr-2" />
+                      AI Follow-up
+                    </Button>
+                  </div>
                 </div>
                 <CardDescription>{new Date(reply.receivedAt).toLocaleString()}</CardDescription>
               </CardHeader>
               <CardContent>
-                <p className="text-sm whitespace-pre-wrap">{reply.replyContent}</p>
+                <div className="space-y-3">
+                  <div>
+                    <p className="text-xs font-medium text-muted-foreground mb-1">Reply Content:</p>
+                    <p className="text-sm whitespace-pre-wrap bg-muted p-3 rounded-lg">{reply.replyContent}</p>
+                  </div>
+                  {reply.prospect && (
+                    <div className="flex gap-4 text-xs text-muted-foreground">
+                      <span>{reply.prospect.companyName || 'No company'}</span>
+                      <span>{reply.prospect.jobTitle || 'No title'}</span>
+                      <span>{reply.prospect.primaryEmail || 'No email'}</span>
+                    </div>
+                  )}
+                </div>
               </CardContent>
             </Card>
           ))}
