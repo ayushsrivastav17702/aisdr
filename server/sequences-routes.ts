@@ -1,9 +1,81 @@
 import { Router } from "express";
 import { storage } from "./storage";
 import { generatePersonalizedEmail, type LinkedInData } from "./services/personalization.service";
+import { emailQueueService } from "./services/email-queue.service";
+import { db } from "./db";
+import { sequenceProspects } from "@shared/schema";
+import { eq } from "drizzle-orm";
 import { z } from "zod";
 
 const router = Router();
+
+// Helper function to initialize sequence when activated
+async function initializeSequence(sequenceId: string): Promise<void> {
+  try {
+    console.log(`🚀 Initializing sequence ${sequenceId}...`);
+    
+    // Get all enrolled prospects
+    const enrolledProspects = await storage.getSequenceProspects(sequenceId);
+    console.log(`  Found ${enrolledProspects.length} enrolled prospects`);
+    
+    if (enrolledProspects.length === 0) {
+      console.log(`  ⚠️ No prospects enrolled, skipping initialization`);
+      return;
+    }
+    
+    // Get sequence steps
+    const steps = await storage.getSequenceSteps(sequenceId);
+    console.log(`  Found ${steps.length} sequence steps`);
+    
+    if (steps.length === 0) {
+      console.log(`  ⚠️ No steps found, skipping initialization`);
+      return;
+    }
+    
+    // Sort steps by order and get first step
+    const sortedSteps = steps.sort((a, b) => a.stepOrder - b.stepOrder);
+    const firstStep = sortedSteps[0];
+    console.log(`  First step: ${firstStep.subject} (ID: ${firstStep.id})`);
+    
+    // Initialize each prospect
+    for (const enrolledProspect of enrolledProspects) {
+      // Skip if already initialized
+      if (enrolledProspect.currentStepId) {
+        console.log(`  ⏭️  Prospect ${enrolledProspect.prospectId} already initialized`);
+        continue;
+      }
+      
+      // Set current step
+      await db
+        .update(sequenceProspects)
+        .set({ currentStepId: firstStep.id })
+        .where(eq(sequenceProspects.id, enrolledProspect.id));
+      
+      // Calculate scheduled time based on delay
+      const scheduledFor = new Date();
+      if (firstStep.delayDays && firstStep.delayDays > 0) {
+        scheduledFor.setDate(scheduledFor.getDate() + firstStep.delayDays);
+      }
+      
+      // Add email to queue
+      await emailQueueService.addToQueue({
+        sequenceId,
+        prospectId: enrolledProspect.prospectId,
+        subject: firstStep.subject,
+        body: firstStep.body,
+        scheduledFor,
+        priority: 5,
+      });
+      
+      console.log(`  ✅ Initialized prospect ${enrolledProspect.prospectId}`);
+    }
+    
+    console.log(`🎉 Sequence ${sequenceId} initialized successfully!`);
+  } catch (error) {
+    console.error(`❌ Failed to initialize sequence ${sequenceId}:`, error);
+    throw error;
+  }
+}
 
 // Get all sequences
 router.get("/sequences", async (req, res) => {
@@ -66,6 +138,12 @@ router.post("/sequences", async (req, res) => {
 router.put("/sequences/:id", async (req, res) => {
   try {
     const sequence = await storage.updateSequence(req.params.id, req.body);
+    
+    // If status changed to active, initialize the sequence
+    if (req.body.status === "active") {
+      await initializeSequence(req.params.id);
+    }
+    
     res.json(sequence);
   } catch (error) {
     console.error("Error updating sequence:", error);
@@ -77,6 +155,12 @@ router.put("/sequences/:id", async (req, res) => {
 router.patch("/sequences/:id", async (req, res) => {
   try {
     const sequence = await storage.updateSequence(req.params.id, req.body);
+    
+    // If status changed to active, initialize the sequence
+    if (req.body.status === "active") {
+      await initializeSequence(req.params.id);
+    }
+    
     res.json(sequence);
   } catch (error) {
     console.error("Error updating sequence:", error);
