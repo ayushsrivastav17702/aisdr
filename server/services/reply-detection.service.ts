@@ -106,6 +106,7 @@ export class ReplyDetectionService {
               }
 
               if (!results || results.length === 0) {
+                console.log(`📭 No unread emails in ${mailbox.email}`);
                 imap.end();
                 resolve();
                 return;
@@ -118,37 +119,56 @@ export class ReplyDetectionService {
                 markSeen: false, // Don't mark as seen immediately - only after successful processing
               });
 
+              const processingPromises: Promise<{ seqno: number; success: boolean }>[] = [];
+              
               fetch.on("message", (msg, seqno) => {
                 msg.on("body", (stream) => {
-                  simpleParser(stream, async (err: any, parsed: any) => {
-                    if (err) {
-                      console.error("❌ Email parse error:", err);
-                      return;
-                    }
-
-                    try {
-                      const success = await this.processReply(parsed, mailbox);
-                      
-                      // Only mark as seen if processing was successful
-                      if (success) {
-                        imap.addFlags(seqno, ["\\Seen"], (flagErr) => {
-                          if (flagErr) {
-                            console.error("❌ Failed to mark email as seen:", flagErr);
-                          }
-                        });
+                  const processingPromise = new Promise<{ seqno: number; success: boolean }>((resolveMsg) => {
+                    simpleParser(stream, async (err: any, parsed: any) => {
+                      if (err) {
+                        console.error("❌ Email parse error:", err);
+                        resolveMsg({ seqno, success: false });
+                        return;
                       }
-                    } catch (error) {
-                      console.error("❌ Process reply error:", error);
-                    }
+
+                      try {
+                        const success = await this.processReply(parsed, mailbox);
+                        resolveMsg({ seqno, success });
+                      } catch (error) {
+                        console.error("❌ Process reply error:", error);
+                        resolveMsg({ seqno, success: false });
+                      }
+                    });
                   });
+                  
+                  processingPromises.push(processingPromise);
                 });
+              });
+              
+              // Wait for all messages to be processed, then mark as seen
+              fetch.once("end", async () => {
+                const results = await Promise.all(processingPromises);
+                const emailsToMark = results.filter(r => r.success).map(r => r.seqno);
+                
+                if (emailsToMark.length > 0) {
+                  console.log(`✅ Marking ${emailsToMark.length} emails as seen...`);
+                  imap.addFlags(emailsToMark, ["\\Seen"], (flagErr) => {
+                    if (flagErr) {
+                      console.error("❌ Failed to mark emails as seen:", flagErr);
+                    } else {
+                      console.log(`✅ Successfully marked ${emailsToMark.length} emails as seen`);
+                    }
+                    imap.end();
+                    resolve();
+                  });
+                } else {
+                  imap.end();
+                  resolve();
+                }
               });
 
               fetch.once("error", (err: any) => {
                 console.error(`❌ IMAP fetch error for ${mailbox.email}:`, err);
-              });
-
-              fetch.once("end", () => {
                 imap.end();
                 resolve();
               });
@@ -156,7 +176,7 @@ export class ReplyDetectionService {
           });
         });
 
-        imap.once("error", (err) => {
+        imap.once("error", (err: any) => {
           console.error(`❌ IMAP connection error for ${mailbox.email}:`, err);
           resolve();
         });
@@ -186,7 +206,7 @@ export class ReplyDetectionService {
         return false;
       }
 
-      console.log(`📧 Processing reply from ${fromEmail}`);
+      console.log(`📧 Processing reply from ${fromEmail} - Subject: "${subject.substring(0, 50)}..."`);
 
       // Find the original sent email by matching recipient and subject/message-id
       const sentEmails = await db

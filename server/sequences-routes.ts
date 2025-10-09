@@ -572,7 +572,11 @@ router.post("/sequences/enhanced-personalization", async (req, res) => {
       return res.status(400).json({ error: "prospectId is required" });
     }
     
-    const result = await generateEnhancedPersonalizedEmail(prospectId, linkedInData, companyData);
+    const result = await generateEnhancedPersonalizedEmail({
+      prospectId,
+      linkedInData,
+      companyData,
+    });
     
     res.json(result);
   } catch (error) {
