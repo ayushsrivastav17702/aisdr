@@ -3,6 +3,8 @@ import { apiRequest } from "./queryClient";
 export interface ProspectFilters {
   search?: string;
   status?: string;
+  companyLocation?: string;
+  jobTitle?: string;
   page?: number;
   limit?: number;
 }
@@ -39,10 +41,17 @@ export const api = {
   },
 
   // Prospects
+  async getProspectFilterValues() {
+    const response = await apiRequest("GET", "/api/prospects/filters");
+    return response.json();
+  },
+
   async getProspects(filters: ProspectFilters = {}): Promise<ProspectsResponse> {
     const params = new URLSearchParams();
     if (filters.search) params.set("search", filters.search);
     if (filters.status) params.set("status", filters.status);
+    if (filters.companyLocation) params.set("companyLocation", filters.companyLocation);
+    if (filters.jobTitle) params.set("jobTitle", filters.jobTitle);
     if (filters.page) params.set("page", filters.page.toString());
     if (filters.limit) params.set("limit", filters.limit.toString());
 

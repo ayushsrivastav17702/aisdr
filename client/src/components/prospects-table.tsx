@@ -59,6 +59,8 @@ interface ProspectsTableProps {
 export default function ProspectsTable({ selectedIds, onSelectionChange }: ProspectsTableProps) {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
+  const [companyLocation, setCompanyLocation] = useState("all");
+  const [jobTitle, setJobTitle] = useState("all");
   const [page, setPage] = useState(1);
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [personalizationOpen, setPersonalizationOpen] = useState(false);
@@ -78,11 +80,19 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
     return () => clearTimeout(timer);
   }, [search]);
 
+  // Load filter options
+  const { data: filterOptions } = useQuery<{ locations: string[]; jobTitles: string[] }>({
+    queryKey: ["/api/prospects/filters"],
+    queryFn: () => api.getProspectFilterValues(),
+  });
+
   const { data, isLoading, error } = useQuery({
-    queryKey: ["/api/prospects", { search: debouncedSearch, status, page }],
+    queryKey: ["/api/prospects", { search: debouncedSearch, status, companyLocation, jobTitle, page }],
     queryFn: () => api.getProspects({ 
       search: debouncedSearch, 
-      status: status === "all" ? undefined : status, 
+      status: status === "all" ? undefined : status,
+      companyLocation: companyLocation === "all" ? undefined : companyLocation,
+      jobTitle: jobTitle === "all" ? undefined : jobTitle,
       page, 
       limit: 50 
     }),
@@ -313,6 +323,101 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
     apolloBulkEnrichMutation.mutate(selectedIds);
   };
 
+  const handleExportSelected = async () => {
+    if (selectedIds.length === 0) {
+      toast({
+        variant: "destructive",
+        title: "No Selection",
+        description: "Please select prospects to export",
+      });
+      return;
+    }
+
+    try {
+      // Fetch all selected prospects by IDs (not just current page)
+      const response = await fetch(`/api/prospects/by-ids`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prospectIds: selectedIds })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch prospects for export');
+      }
+
+      const selectedProspects = await response.json();
+      
+      if (selectedProspects.length === 0) {
+        toast({
+          variant: "destructive",
+          title: "Export Failed",
+          description: "No prospect data found to export",
+        });
+        return;
+      }
+
+      // Create CSV content
+      const headers = [
+        "Full Name",
+        "First Name",
+        "Last Name",
+        "Email",
+        "Job Title",
+        "Company",
+        "Company Location",
+        "Contact Location",
+        "Phone",
+        "LinkedIn URL",
+        "Tags",
+        "Status"
+      ];
+
+      const csvRows = [headers.join(",")];
+      
+      selectedProspects.forEach((prospect: any) => {
+        const row = [
+          prospect.fullName || `${prospect.firstName || ''} ${prospect.lastName || ''}`.trim(),
+          prospect.firstName || '',
+          prospect.lastName || '',
+          prospect.primaryEmail || '',
+          prospect.jobTitle || '',
+          prospect.companyName || '',
+          prospect.companyLocation || '',
+          prospect.contactLocation || '',
+          prospect.phoneNumber || '',
+          prospect.linkedinUrl || '',
+          (prospect.tags || []).join('; '),
+          prospect.enrichmentStatus || ''
+        ].map(field => `"${String(field).replace(/"/g, '""')}"`);
+        
+        csvRows.push(row.join(","));
+      });
+
+      const csvContent = csvRows.join("\n");
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+      
+      link.setAttribute("href", url);
+      link.setAttribute("download", `prospects_export_${new Date().toISOString().split('T')[0]}.csv`);
+      link.style.visibility = "hidden";
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      toast({
+        title: "Export Complete",
+        description: `Exported ${selectedProspects.length} prospect${selectedProspects.length !== 1 ? 's' : ''} to CSV`,
+      });
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Export Failed",
+        description: error instanceof Error ? error.message : "Failed to export prospects",
+      });
+    }
+  };
+
   const handleBulkDelete = () => {
     if (selectedIds.length === 0) {
       toast({
@@ -396,10 +501,10 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
             </p>
           </div>
           
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <Select value={status} onValueChange={setStatus}>
-              <SelectTrigger className="w-48" data-testid="filter-status">
-                <SelectValue placeholder="Filter by status" />
+              <SelectTrigger className="w-40" data-testid="filter-status">
+                <SelectValue placeholder="Status" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Statuses</SelectItem>
@@ -407,6 +512,34 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
                 <SelectItem value="partial">Partial</SelectItem>
                 <SelectItem value="enriched">Enriched</SelectItem>
                 <SelectItem value="failed">Failed</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={companyLocation} onValueChange={setCompanyLocation}>
+              <SelectTrigger className="w-52" data-testid="filter-location">
+                <SelectValue placeholder="All Countries" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Countries</SelectItem>
+                {filterOptions?.locations?.map((location) => (
+                  <SelectItem key={location} value={location}>
+                    {location}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={jobTitle} onValueChange={setJobTitle}>
+              <SelectTrigger className="w-52" data-testid="filter-job-title">
+                <SelectValue placeholder="All Job Titles" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Job Titles</SelectItem>
+                {filterOptions?.jobTitles?.map((title) => (
+                  <SelectItem key={title} value={title}>
+                    {title}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
 
@@ -461,9 +594,14 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
                   <TrashIcon className="w-4 h-4 mr-2" />
                   {bulkDeleteMutation.isPending ? "Deleting..." : "Delete"}
                 </Button>
-                <Button variant="outline" size="sm" data-testid="button-export">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={handleExportSelected}
+                  data-testid="button-export"
+                >
                   <DownloadIcon className="w-4 h-4 mr-2" />
-                  Export
+                  Export Selected
                 </Button>
                 <Button 
                   variant="outline"
