@@ -205,24 +205,73 @@ export function PersonalizationWizard({
   // Generate personalized email mutation
   const generateEmailMutation = useMutation({
     mutationFn: async (data: any) => {
-      const response = await fetch('/api/personalization/generate-email', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data)
-      });
-      if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error || 'Failed to generate personalized email');
+      const MAX_RETRIES = 3;
+      let lastEmail: any = null;
+      let lastError: string | null = null;
+      
+      // Auto-retry logic: regenerate if validation fails
+      for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+        console.log(`📧 Email generation attempt ${attempt}/${MAX_RETRIES}`);
+        
+        const response = await fetch('/api/personalization/generate-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+        
+        if (!response.ok) {
+          const error = await response.json();
+          throw new Error(error.error || 'Failed to generate email');
+        }
+        
+        const emailData = await response.json();
+        lastEmail = emailData;
+        
+        // Check if email passes content library validation
+        const hasContentLibrary = data.contentItemIds && data.contentItemIds.length > 0;
+        if (hasContentLibrary) {
+          if (!emailData.validationWarnings || emailData.validationWarnings.length === 0) {
+            console.log(`✅ Email passed validation on attempt ${attempt}`);
+            return emailData;
+          } else {
+            console.log(`❌ Attempt ${attempt} failed validation:`, emailData.validationWarnings);
+            lastError = `Attempt ${attempt}: ${emailData.validationWarnings.join(', ')}`;
+            
+            if (attempt < MAX_RETRIES) {
+              // Add slight delay before retry
+              await new Promise(resolve => setTimeout(resolve, 500));
+            }
+          }
+        } else {
+          // No content library, accept the email
+          return emailData;
+        }
       }
-      return response.json();
+      
+      // All attempts failed validation
+      if (lastError) {
+        throw new Error(`Failed to generate compliant email after ${MAX_RETRIES} attempts. Please check your content library settings and try again.`);
+      }
+      
+      // Fallback: return last email even if it has warnings
+      return lastEmail;
     },
     onSuccess: (data) => {
       setGeneratedEmail(data);
       setCurrentStep(4);
-      toast({
-        title: "Email Generated",
-        description: "Your personalized email is ready for review"
-      });
+      
+      // Show success toast only if validation passed
+      if (!data.validationWarnings || data.validationWarnings.length === 0) {
+        toast({
+          title: "✅ Email Generated Successfully",
+          description: "Your personalized email follows all content library guidelines."
+        });
+      } else {
+        toast({
+          title: "Email Generated",
+          description: "Your personalized email is ready for review"
+        });
+      }
     },
     onError: (error: any) => {
       toast({
