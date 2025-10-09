@@ -1180,7 +1180,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           ? `Decision authority: ${personalizationData.insights.roleAnalysis.decisionAuthority}%, Seniority: ${personalizationData.insights.roleAnalysis.seniority}%`
           : '',
         emailSuggestions: useAdvanced && personalizationData?.emailSuggestions
-          ? personalizationData.emailSuggestions.join('; ')
+          ? (typeof personalizationData.emailSuggestions === 'string' 
+              ? personalizationData.emailSuggestions 
+              : Array.isArray(personalizationData.emailSuggestions)
+                ? personalizationData.emailSuggestions.join('; ')
+                : JSON.stringify(personalizationData.emailSuggestions))
           : '',
         tone: settings?.tone || 'professional',
         focus: settings?.focus || 'value_proposition',
