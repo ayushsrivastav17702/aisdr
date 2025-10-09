@@ -178,17 +178,35 @@ class ApolloService {
 
   // Convert Apollo contact to our prospect format
   convertApolloContactToProspect(contact: ApolloContact) {
+    // Validate contact has minimum required fields
+    if (!contact.id && !contact.email) {
+      throw new Error(`Invalid Apollo contact: missing both ID and email`);
+    }
+
+    // Validate email if present
+    const email = contact.email || '';
+    if (email && (typeof email !== 'string' || email.length < 3 || !email.includes('@'))) {
+      throw new Error(`Invalid Apollo contact: email format invalid (type: ${typeof email})`);
+    }
+
+    // Build full name with fallback logic
+    const fullName = contact.name || 
+                    (contact.first_name && contact.last_name ? `${contact.first_name} ${contact.last_name}` : '') ||
+                    contact.first_name ||
+                    contact.last_name ||
+                    '';
+
     const phoneNumber = contact.phone_numbers?.[0]?.sanitized_number || 
                        contact.phone_numbers?.[0]?.raw_number || '';
 
     return {
-      apolloId: contact.id,
-      firstName: contact.first_name,
-      lastName: contact.last_name,
-      fullName: contact.name,
-      primaryEmail: contact.email,
-      jobTitle: contact.title,
-      seniority: contact.seniority,
+      apolloId: contact.id || '',
+      firstName: contact.first_name || '',
+      lastName: contact.last_name || '',
+      fullName,
+      primaryEmail: email,
+      jobTitle: contact.title || '',
+      seniority: contact.seniority || '',
       department: contact.departments?.[0] || '',
       companyName: contact.organization?.name || '',
       companyDomain: this.extractDomainFromUrl(contact.organization?.website_url || ''),
@@ -196,7 +214,7 @@ class ApolloService {
       companyIndustry: contact.organization?.industry || '',
       companyLocation: this.formatLocation(contact.organization?.headquarters_location),
       phoneNumber,
-      linkedinUrl: contact.linkedin_url,
+      linkedinUrl: contact.linkedin_url || '',
       enrichmentStatus: 'enriched' as const,
       enrichmentData: {
         apollo: contact,

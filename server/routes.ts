@@ -143,42 +143,54 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log('\n========== APOLLO SEARCH RESPONSE ==========');
       console.log('  Total Entries:', searchResponse.pagination?.total_entries || 0);
       console.log('  Contacts Returned:', contacts.length);
+      if (contacts.length > 0) {
+        console.log('  First contact has ID:', !!contacts[0].id, 'Email:', !!contacts[0].email);
+      }
       
       if (contacts.length === 0) {
         console.log('  WARNING: No contacts found with current filters!');
         console.log('  Suggestion: Try broadening search criteria or checking Apollo API response');
       }
       const savedProspects = [];
+      let skippedCount = 0;
+      let errorCount = 0;
       
       for (const contact of contacts) {
-        const prospectData = apolloService.convertApolloContactToProspect(contact);
-        
-        // Check if prospect already exists (by email or apollo_id)
-        const existing = await storage.findProspectByEmailOrApolloId(
-          prospectData.primaryEmail,
-          prospectData.apolloId
-        );
-
-        if (existing) {
-          // Update existing prospect with new data, preserving existing tags
-          const existingTags = existing.tags || [];
-          const newTags = tag ? [tag] : [];
-          const mergedTags = Array.from(new Set([...existingTags, ...newTags]));
+        try {
+          const prospectData = apolloService.convertApolloContactToProspect(contact);
           
-          const updated = await storage.updateProspect(existing.id, {
-            ...prospectData,
-            tags: mergedTags
-          });
-          savedProspects.push(updated);
-        } else {
-          // Create new prospect with tag
-          const created = await storage.createProspect({
-            ...prospectData,
-            tags: tag ? [tag] : undefined
-          });
-          savedProspects.push(created);
+          // Check if prospect already exists (by email or apollo_id)
+          const existing = await storage.findProspectByEmailOrApolloId(
+            prospectData.primaryEmail,
+            prospectData.apolloId
+          );
+
+          if (existing) {
+            // Update existing prospect with new data, preserving existing tags
+            const existingTags = existing.tags || [];
+            const newTags = tag ? [tag] : [];
+            const mergedTags = Array.from(new Set([...existingTags, ...newTags]));
+            
+            const updated = await storage.updateProspect(existing.id, {
+              ...prospectData,
+              tags: mergedTags
+            });
+            savedProspects.push(updated);
+          } else {
+            // Create new prospect with tag
+            const created = await storage.createProspect({
+              ...prospectData,
+              tags: tag ? [tag] : undefined
+            });
+            savedProspects.push(created);
+          }
+        } catch (error) {
+          errorCount++;
+          console.error(`  ✗ Error saving prospect ${savedProspects.length + 1}:`, error instanceof Error ? error.message : 'Unknown error');
         }
       }
+      
+      console.log(`  Saved: ${savedProspects.length}, Errors: ${errorCount}`);
 
       // Create search record if extraction name is provided
       let searchRecord = null;
