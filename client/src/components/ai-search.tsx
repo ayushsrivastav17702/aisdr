@@ -463,7 +463,7 @@ export default function AISearch() {
                 <Label htmlFor="job-titles">Decision Makers & Job Titles</Label>
                 <Input
                   id="job-titles"
-                  placeholder="e.g., CEO, CTO, VP Sales, Merchandiser"
+                  placeholder="e.g., CEO, CTO, VP Sales, Merchandiser (separate with commas)"
                   value={advancedFilters.jobTitles?.join(", ") || ""}
                   onChange={(e) => setAdvancedFilters({
                     ...advancedFilters,
@@ -471,7 +471,34 @@ export default function AISearch() {
                   })}
                   data-testid="input-job-titles"
                 />
-                <p className="text-xs text-muted-foreground">Comma-separated</p>
+                {advancedFilters.jobTitles && advancedFilters.jobTitles.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {advancedFilters.jobTitles.map((title, index) => (
+                      <Badge key={index} variant="secondary" className="text-xs">
+                        {title}
+                        <button
+                          onClick={() => {
+                            const updated = advancedFilters.jobTitles?.filter((_, i) => i !== index) || [];
+                            setAdvancedFilters({
+                              ...advancedFilters,
+                              jobTitles: updated
+                            });
+                          }}
+                          className="ml-2 hover:text-destructive"
+                          data-testid={`remove-title-${index}`}
+                        >
+                          ×
+                        </button>
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  {advancedFilters.jobTitles && advancedFilters.jobTitles.length > 0 
+                    ? `${advancedFilters.jobTitles.length} decision maker(s) added` 
+                    : "Add multiple job titles separated by commas"
+                  }
+                </p>
               </div>
 
               {/* Industries - Multi-select with Checkboxes */}
