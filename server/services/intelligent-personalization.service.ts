@@ -165,7 +165,9 @@ Respond in JSON format with this exact structure:
         throw new Error('No response from AI');
       }
 
-      const insights: PersonalizationInsights = JSON.parse(content);
+      // Strip markdown code blocks if present (```json ... ```)
+      const jsonContent = content.replace(/```json\s*|\s*```/g, '').trim();
+      const insights: PersonalizationInsights = JSON.parse(jsonContent);
 
       // Store personalization results
       await storage.createPersonalizationResult({

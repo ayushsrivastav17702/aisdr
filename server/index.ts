@@ -76,7 +76,7 @@ app.use((req, res, next) => {
     port,
     host: "0.0.0.0",
     reusePort: true,
-  }, () => {
+  }, async () => {
     log(`serving on port ${port}`);
     
     // Start email queue processor
@@ -91,5 +91,9 @@ app.use((req, res, next) => {
     
     // Process immediately on startup
     emailQueueService.processPendingEmails().catch(console.error);
+    
+    // Start reply detection polling
+    const { replyDetectionService } = await import("./services/reply-detection.service");
+    replyDetectionService.startPolling(20); // Check every 20 seconds
   });
 })();

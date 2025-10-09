@@ -229,7 +229,8 @@ export const emails = pgTable("emails", {
 // Email replies table
 export const emailReplies = pgTable("email_replies", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  emailId: varchar("email_id").notNull().references(() => emails.id, { onDelete: "cascade" }),
+  emailId: varchar("email_id").references(() => emails.id, { onDelete: "cascade" }),
+  sequenceId: varchar("sequence_id").references(() => sequences.id, { onDelete: "cascade" }),
   prospectId: varchar("prospect_id").notNull().references(() => prospects.id, { onDelete: "cascade" }),
   replyContent: text("reply_content").notNull(),
   sentiment: text("sentiment").default("neutral"),
