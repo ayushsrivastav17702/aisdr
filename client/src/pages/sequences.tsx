@@ -1053,6 +1053,8 @@ function AIFollowupTab({ sequenceId }: { sequenceId: string }) {
   const [selectedProspects, setSelectedProspects] = useState<string[]>([]);
   const [prospectSearch, setProspectSearch] = useState("");
   const [contentSearch, setContentSearch] = useState("");
+  const [showPreview, setShowPreview] = useState(false);
+  const [previewData, setPreviewData] = useState<any>(null);
   const { toast } = useToast();
 
   const { data: contentLibrary } = useQuery({
@@ -1102,11 +1104,53 @@ function AIFollowupTab({ sequenceId }: { sequenceId: string }) {
     }
   };
 
+  const previewMutation = useMutation({
+    mutationFn: async (prospectId: string) => {
+      const res = await apiRequest("POST", "/api/sequences/followup-preview", {
+        prospectId,
+        emailHistory: "",
+        followUpType: followupType,
+        followUpNumber: 1
+      });
+      return await res.json();
+    },
+    onSuccess: (data) => {
+      setPreviewData(data);
+      setShowPreview(true);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Preview failed",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
+  });
+
+  const handlePreviewEmail = () => {
+    if (selectedProspects.length === 0) {
+      toast({
+        title: "No prospects selected",
+        description: "Please select at least one prospect to preview",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    // Get the first selected prospect's actual prospect ID
+    const firstSelectedSequenceProspect = prospects.find((p: any) => p.id === selectedProspects[0]);
+    if (firstSelectedSequenceProspect) {
+      const prospectId = firstSelectedSequenceProspect.prospectId;
+      previewMutation.mutate(prospectId);
+    }
+  };
+
   const handleScheduleFollowups = () => {
     toast({ 
       title: `Follow-ups scheduled for ${selectedProspects.length} prospects`,
       description: "AI will generate personalized follow-ups based on your settings"
     });
+    setSelectedProspects([]);
   };
 
   return (
@@ -1335,16 +1379,90 @@ function AIFollowupTab({ sequenceId }: { sequenceId: string }) {
             )}
           </div>
 
-          <Button 
-            onClick={handleScheduleFollowups}
-            disabled={selectedProspects.length === 0}
-            className="w-full"
-            data-testid="button-schedule-followups"
-          >
-            Schedule for {selectedProspects.length} prospects
-          </Button>
+          <div className="flex gap-2">
+            <Button 
+              onClick={handlePreviewEmail}
+              disabled={selectedProspects.length === 0 || previewMutation.isPending}
+              variant="outline"
+              className="flex-1"
+              data-testid="button-preview-email"
+            >
+              {previewMutation.isPending ? (
+                <>
+                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  Generating Preview...
+                </>
+              ) : (
+                <>
+                  <Eye className="w-4 h-4 mr-2" />
+                  Preview Email
+                </>
+              )}
+            </Button>
+            <Button 
+              onClick={handleScheduleFollowups}
+              disabled={selectedProspects.length === 0}
+              className="flex-1"
+              data-testid="button-schedule-followups"
+            >
+              Schedule for {selectedProspects.length} prospects
+            </Button>
+          </div>
         </CardContent>
       </Card>
+
+      {/* Email Preview Dialog */}
+      <Dialog open={showPreview} onOpenChange={setShowPreview}>
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>AI Follow-up Email Preview</DialogTitle>
+          </DialogHeader>
+          {previewData && (
+            <div className="space-y-4">
+              <div>
+                <Label className="text-sm font-semibold">Subject</Label>
+                <div className="mt-1 p-3 bg-gray-50 dark:bg-gray-800 rounded-md border">
+                  {previewData.subject}
+                </div>
+              </div>
+              <div>
+                <Label className="text-sm font-semibold">Email Body</Label>
+                <div className="mt-1 p-4 bg-gray-50 dark:bg-gray-800 rounded-md border whitespace-pre-wrap">
+                  {previewData.body}
+                </div>
+              </div>
+              {previewData.personalizationScore !== undefined && (
+                <div className="flex items-center gap-2">
+                  <Label className="text-sm font-semibold">Personalization Score:</Label>
+                  <Badge variant={previewData.personalizationScore >= 80 ? "default" : "secondary"}>
+                    {previewData.personalizationScore}%
+                  </Badge>
+                </div>
+              )}
+              <div className="flex gap-2 pt-4">
+                <Button 
+                  onClick={() => {
+                    setShowPreview(false);
+                    handleScheduleFollowups();
+                  }}
+                  className="flex-1"
+                  data-testid="button-schedule-from-preview"
+                >
+                  <Send className="w-4 h-4 mr-2" />
+                  Schedule for {selectedProspects.length} prospects
+                </Button>
+                <Button 
+                  variant="outline" 
+                  onClick={() => setShowPreview(false)}
+                  data-testid="button-close-preview"
+                >
+                  Close
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
