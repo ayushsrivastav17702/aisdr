@@ -1524,8 +1524,113 @@ function ProspectsTab({ sequenceId, prospects, isLoading }: { sequenceId: string
   );
 }
 
+function AIReplyComposer({ reply, sequenceId, open, onOpenChange }: { reply: any; sequenceId: string; open: boolean; onOpenChange: (open: boolean) => void }) {
+  const [generatedEmail, setGeneratedEmail] = useState("");
+  const [isGenerating, setIsGenerating] = useState(false);
+  const { toast } = useToast();
+
+  const generateReplyMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/sequences/${sequenceId}/generate-reply`, {
+        replyId: reply.id,
+        prospectId: reply.prospectId,
+        replyContent: reply.replyContent
+      });
+      return await res.json();
+    },
+    onSuccess: (data) => {
+      setGeneratedEmail(data.email || "");
+      setIsGenerating(false);
+      toast({
+        title: "Reply generated",
+        description: "Your AI-generated reply is ready for review.",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Generation failed",
+        description: error.message || "Failed to generate reply",
+        variant: "destructive",
+      });
+    }
+  });
+
+  const handleGenerate = () => {
+    setIsGenerating(true);
+    generateReplyMutation.mutate();
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-3xl max-h-[80vh] flex flex-col">
+        <DialogHeader>
+          <DialogTitle>AI Reply Composer</DialogTitle>
+        </DialogHeader>
+
+        <div className="flex-1 min-h-0 overflow-y-auto space-y-4 p-4">
+          <div>
+            <Label className="text-sm font-medium">Original Reply from {reply.prospect?.fullName}</Label>
+            <div className="mt-2 p-3 bg-muted rounded-lg text-sm">
+              {reply.replyContent}
+            </div>
+          </div>
+
+          {!generatedEmail && !generateReplyMutation.isPending && (
+            <Button 
+              onClick={handleGenerate}
+              className="w-full"
+              data-testid="button-generate-ai-reply"
+            >
+              <Sparkles className="w-4 h-4 mr-2" />
+              Generate AI Reply
+            </Button>
+          )}
+
+          {generateReplyMutation.isPending && (
+            <div className="text-center py-8">
+              <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-2 text-primary" />
+              <p className="text-sm text-muted-foreground">Generating personalized reply...</p>
+            </div>
+          )}
+
+          {generatedEmail && (
+            <div>
+              <Label className="text-sm font-medium">Generated Reply</Label>
+              <Textarea
+                value={generatedEmail}
+                onChange={(e) => setGeneratedEmail(e.target.value)}
+                className="mt-2 min-h-[200px]"
+                data-testid="textarea-generated-reply"
+              />
+            </div>
+          )}
+        </div>
+
+        <div className="border-t px-4 py-4 flex justify-between">
+          <Button variant="outline" onClick={() => onOpenChange(false)} data-testid="button-cancel-reply">
+            Cancel
+          </Button>
+          {generatedEmail && (
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={handleGenerate} data-testid="button-regenerate-reply">
+                <RefreshCw className="w-4 h-4 mr-2" />
+                Regenerate
+              </Button>
+              <Button data-testid="button-send-reply">
+                <Send className="w-4 h-4 mr-2" />
+                Send Reply
+              </Button>
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function RepliesTab({ sequenceId, replies }: { sequenceId: string; replies: any[] }) {
   const queryClient = useQueryClient();
+  const [selectedReply, setSelectedReply] = useState<any>(null);
   
   const { data: sequence } = useQuery({
     queryKey: ['/api/sequences', sequenceId],
@@ -1627,10 +1732,7 @@ function RepliesTab({ sequenceId, replies }: { sequenceId: string; replies: any[
                     <Button 
                       size="sm" 
                       variant="outline"
-                      onClick={() => {
-                        // TODO: Implement AI followup generation
-                        queryClient.invalidateQueries({ queryKey: ['/api/sequences', sequenceId, 'replies'] });
-                      }}
+                      onClick={() => setSelectedReply(reply)}
                       data-testid={`button-generate-followup-${reply.id}`}
                     >
                       <Zap className="w-4 h-4 mr-2" />
@@ -1658,6 +1760,17 @@ function RepliesTab({ sequenceId, replies }: { sequenceId: string; replies: any[
             </Card>
           ))}
         </div>
+      )}
+
+      {selectedReply && (
+        <AIReplyComposer 
+          reply={selectedReply}
+          sequenceId={sequenceId}
+          open={!!selectedReply}
+          onOpenChange={(open) => {
+            if (!open) setSelectedReply(null);
+          }}
+        />
       )}
     </div>
   );

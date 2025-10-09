@@ -1411,6 +1411,52 @@ Subject: [Your subject line here]
     }
   });
 
+  // Generate AI reply to prospect response
+  app.post("/api/sequences/:sequenceId/generate-reply", async (req, res) => {
+    try {
+      const { replyId, prospectId, replyContent } = req.body;
+      
+      if (!process.env.OPENAI_API_KEY && !process.env.ANTHROPIC_API_KEY) {
+        return res.status(500).json({ 
+          error: "No AI provider configured. Please set OPENAI_API_KEY or ANTHROPIC_API_KEY." 
+        });
+      }
+
+      const prospect = await storage.getProspect(prospectId);
+      if (!prospect) {
+        return res.status(404).json({ error: "Prospect not found" });
+      }
+
+      const prompt = `You are a professional sales representative responding to a prospect's reply. Generate a contextual, professional response.
+
+PROSPECT INFORMATION:
+- Name: ${prospect.fullName}
+- Title: ${prospect.jobTitle || 'Not specified'}
+- Company: ${prospect.companyName || 'Not specified'}
+
+THEIR REPLY:
+"${replyContent}"
+
+Generate a professional, contextual response that:
+1. Acknowledges their message appropriately
+2. Addresses any questions or concerns they raised
+3. Moves the conversation forward constructively
+4. Maintains a friendly, professional tone
+5. Is concise (80-120 words)
+
+Return ONLY the email body text, no subject line needed.`;
+
+      const email = await aiService.generateText(prompt, 300);
+
+      res.json({ email: email.trim() });
+    } catch (error) {
+      console.error("AI reply generation error:", error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Failed to generate AI reply" 
+      });
+    }
+  });
+
   // Company enrichment via web scraping
   app.post("/api/personalization/company-enrichment", async (req, res) => {
     try {
