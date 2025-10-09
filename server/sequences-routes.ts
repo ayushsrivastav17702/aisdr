@@ -39,17 +39,14 @@ async function initializeSequence(sequenceId: string): Promise<void> {
     
     // Initialize each prospect
     for (const enrolledProspect of enrolledProspects) {
-      // Skip if already initialized
-      if (enrolledProspect.currentStepId) {
-        console.log(`  ⏭️  Prospect ${enrolledProspect.prospectId} already initialized`);
-        continue;
+      // Set current step if not already set
+      if (!enrolledProspect.currentStepId) {
+        await db
+          .update(sequenceProspects)
+          .set({ currentStepId: firstStep.id })
+          .where(eq(sequenceProspects.id, enrolledProspect.id));
+        console.log(`  📌 Set current step for prospect ${enrolledProspect.prospectId}`);
       }
-      
-      // Set current step
-      await db
-        .update(sequenceProspects)
-        .set({ currentStepId: firstStep.id })
-        .where(eq(sequenceProspects.id, enrolledProspect.id));
       
       // Calculate scheduled time based on delay
       const scheduledFor = new Date();
@@ -57,7 +54,7 @@ async function initializeSequence(sequenceId: string): Promise<void> {
         scheduledFor.setDate(scheduledFor.getDate() + firstStep.delayDays);
       }
       
-      // Add email to queue
+      // Always add email to queue (idempotent - won't duplicate if already exists)
       await emailQueueService.addToQueue({
         sequenceId,
         prospectId: enrolledProspect.prospectId,
@@ -67,7 +64,7 @@ async function initializeSequence(sequenceId: string): Promise<void> {
         priority: 5,
       });
       
-      console.log(`  ✅ Initialized prospect ${enrolledProspect.prospectId}`);
+      console.log(`  ✅ Added email to queue for prospect ${enrolledProspect.prospectId}`);
     }
     
     console.log(`🎉 Sequence ${sequenceId} initialized successfully!`);
