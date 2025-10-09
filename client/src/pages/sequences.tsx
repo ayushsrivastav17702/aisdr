@@ -1014,7 +1014,13 @@ function SequenceTab({
             setSubject(email.subject);
             setBody(email.body);
             setShowAIPersonalization(false);
-            toast({ title: "AI-personalized email added to step!" });
+            
+            // Automatically save the step to the sequence
+            addStepMutation.mutate({
+              subject: email.subject,
+              body: email.body,
+              delayDays: parseInt(delayDays) || 0
+            });
           }
         }}
       />
