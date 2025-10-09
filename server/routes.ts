@@ -1171,8 +1171,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
         jobTitle: prospect.jobTitle || '',
         industry: personalizationData?.companyInsights?.industry || personalizationData?.insights?.industry || '',
         insights: useAdvanced 
-          ? personalizationData?.variables?.slice(0, 5).map((v: any) => v.value).join('; ')
+          ? personalizationData?.variables?.map((v: any) => v.value).join('; ')
           : personalizationData?.keyInsights?.join('; ') || '',
+        painPoints: useAdvanced && personalizationData?.insights?.painPoints 
+          ? personalizationData.insights.painPoints.join('; ')
+          : '',
+        roleAnalysis: useAdvanced && personalizationData?.insights?.roleAnalysis
+          ? `Decision authority: ${personalizationData.insights.roleAnalysis.decisionAuthority}%, Seniority: ${personalizationData.insights.roleAnalysis.seniority}%`
+          : '',
+        emailSuggestions: useAdvanced && personalizationData?.emailSuggestions
+          ? personalizationData.emailSuggestions.join('; ')
+          : '',
         tone: settings?.tone || 'professional',
         focus: settings?.focus || 'value_proposition',
         urgency: settings?.urgency || 'medium',
@@ -1203,7 +1212,10 @@ PROSPECT INFORMATION:
 - Title: ${context.jobTitle}
 - Company: ${context.companyName}
 - Industry: ${context.industry}
-- Key Insights: ${context.insights}
+- Key Insights: ${context.insights}${context.painPoints ? `
+- Pain Points: ${context.painPoints}` : ''}${context.roleAnalysis ? `
+- Role Analysis: ${context.roleAnalysis}` : ''}${context.emailSuggestions ? `
+- Email Angle Suggestions: ${context.emailSuggestions}` : ''}
 
 EMAIL SETTINGS:
 - Tone: ${context.tone}
@@ -1212,11 +1224,11 @@ EMAIL SETTINGS:
 ${customPrompt ? `\nADDITIONAL INSTRUCTIONS:\n${customPrompt}` : ''}
 
 MANDATORY EMAIL STRUCTURE:
-1. Subject: Make it specific to their business challenge
-2. Opening: Reference ONE concrete detail about their company or role (no generic praise)
-3. Problem: State the pain point directly in 1-2 sentences
+1. Subject: Make it specific to their business challenge (use pain points from analysis)
+2. Opening: Reference ONE concrete detail about their company or role (use key insights)
+3. Problem: State the pain point directly in 1-2 sentences (use pain points from analysis)
 4. Solution: Explain what you offer in one sentence
-5. Value: One specific, quantifiable benefit
+5. Value: One specific, quantifiable benefit (use reference content if available)
 6. CTA: Single clear next step with low commitment
 
 STRICT CONSTRAINTS:
@@ -1228,6 +1240,7 @@ STRICT CONSTRAINTS:
 - END with a QUESTION, not a statement
 - Be direct and conversational
 - No fluff or filler words
+- MUST use the AI analysis data (insights, pain points, role analysis) to personalize the email
 
 Format your response EXACTLY as:
 Subject: [Your subject line here]
