@@ -85,6 +85,39 @@ router.post("/mailboxes", async (req, res) => {
   }
 });
 
+router.patch("/mailboxes/:id", async (req, res) => {
+  try {
+    const mailbox = await mailboxService.getMailboxById(req.params.id);
+    if (!mailbox) {
+      return res.status(404).json({ error: "Mailbox not found" });
+    }
+
+    const updateData: any = { ...req.body };
+    
+    if (req.body.smtpPassword) {
+      updateData.smtpPassword = req.body.smtpPassword;
+    }
+    if (req.body.apiKey) {
+      updateData.apiKey = req.body.apiKey;
+    }
+
+    const updated = await mailboxService.updateMailbox(req.params.id, updateData);
+    
+    const sanitized = {
+      ...updated,
+      smtpPassword: updated.smtpPassword ? "***" : null,
+      apiKey: updated.apiKey ? "***" : null,
+      refreshToken: updated.refreshToken ? "***" : null,
+      accessToken: updated.accessToken ? "***" : null,
+    };
+    
+    res.json(sanitized);
+  } catch (error) {
+    console.error("Update mailbox error:", error);
+    res.status(500).json({ error: error instanceof Error ? error.message : "Failed to update mailbox" });
+  }
+});
+
 router.put("/mailboxes/:id/status", async (req, res) => {
   try {
     const { status } = req.body;
