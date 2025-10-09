@@ -14,6 +14,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
 import { queryClient } from '@/lib/queryClient';
+import { api } from '@/lib/api';
 import { 
   Brain, 
   Target, 
@@ -122,23 +123,23 @@ export function PersonalizationWizard({
     }
   }, [open, initialSelectedIds]);
 
-  // Load prospects for selection
+  // Debounce search to avoid too many API calls
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+  
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(prospectSearchTerm);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [prospectSearchTerm]);
+
+  // Load prospects for selection with backend search
   const { data } = useQuery<{ prospects: any[]; total: number }>({
-    queryKey: ["/api/prospects"],
+    queryKey: ["/api/prospects", { search: debouncedSearchTerm, limit: 100 }],
+    queryFn: () => api.getProspects({ search: debouncedSearchTerm, limit: 100 }),
     enabled: open
   });
-  const allProspects = data?.prospects ?? [];
-  
-  // Filter prospects based on search term
-  const prospects = allProspects.filter((prospect: any) => {
-    if (!prospectSearchTerm) return true;
-    const searchLower = prospectSearchTerm.toLowerCase();
-    const fullName = (prospect.fullName || `${prospect.firstName || ''} ${prospect.lastName || ''}`).toLowerCase();
-    const company = (prospect.companyName || '').toLowerCase();
-    const jobTitle = (prospect.jobTitle || '').toLowerCase();
-    const email = (prospect.primaryEmail || '').toLowerCase();
-    return fullName.includes(searchLower) || company.includes(searchLower) || jobTitle.includes(searchLower) || email.includes(searchLower);
-  });
+  const prospects = data?.prospects ?? [];
 
   // Load content library
   const { data: contentLibrary } = useQuery({
