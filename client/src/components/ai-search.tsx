@@ -125,7 +125,12 @@ export default function AISearch() {
       
       // If job queue is not available (no job created), execute Apollo search immediately
       if (!data.job && data.apolloFilters) {
-        apolloSearchMutation.mutate(data.apolloFilters);
+        apolloSearchMutation.mutate({ 
+          apolloFilters: data.apolloFilters,
+          extractionName: query.substring(0, 100),
+          tag: "AI Search",
+          prospectCount: 50
+        });
       } else if (data.job) {
         // Job queue is available - prospects will appear when job completes
         toast({
