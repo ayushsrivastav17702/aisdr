@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
@@ -28,7 +29,8 @@ import {
   ArrowRight,
   Clock,
   Copy,
-  RefreshCw
+  RefreshCw,
+  Search
 } from 'lucide-react';
 
 interface PersonalizationData {
@@ -104,6 +106,7 @@ export function PersonalizationWizard({
   const [useAdvancedMode, setUseAdvancedMode] = useState(true);
   const [advancedAnalysisData, setAdvancedAnalysisData] = useState<any>(null);
   const [selectedContentIds, setSelectedContentIds] = useState<string[]>([]);
+  const [prospectSearchTerm, setProspectSearchTerm] = useState('');
 
   const { toast } = useToast();
 
@@ -122,7 +125,17 @@ export function PersonalizationWizard({
     queryKey: ["/api/prospects"],
     enabled: open
   });
-  const prospects = data?.prospects ?? [];
+  const allProspects = data?.prospects ?? [];
+  
+  // Filter prospects based on search term
+  const prospects = allProspects.filter((prospect: any) => {
+    if (!prospectSearchTerm) return true;
+    const searchLower = prospectSearchTerm.toLowerCase();
+    const fullName = `${prospect.firstName || ''} ${prospect.lastName || ''}`.toLowerCase();
+    const company = (prospect.company || '').toLowerCase();
+    const jobTitle = (prospect.jobTitle || '').toLowerCase();
+    return fullName.includes(searchLower) || company.includes(searchLower) || jobTitle.includes(searchLower);
+  });
 
   // Load content library
   const { data: contentLibrary } = useQuery({
@@ -403,6 +416,18 @@ export function PersonalizationWizard({
                 </CardHeader>
                 <CardContent>
                   <div className="space-y-4">
+                    {/* Search Input */}
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <Input
+                        placeholder="Search prospects by name, company, or job title..."
+                        value={prospectSearchTerm}
+                        onChange={(e) => setProspectSearchTerm(e.target.value)}
+                        className="pl-10"
+                        data-testid="input-search-prospects-personalization"
+                      />
+                    </div>
+                    
                     {!batchMode ? (
                       // Single prospect selection
                       <Select value={selectedProspectId} onValueChange={(value) => {
@@ -460,7 +485,7 @@ export function PersonalizationWizard({
                           </div>
                         </div>
                         <div className="max-h-64 overflow-y-auto border rounded-lg p-2 space-y-1">
-                          {Array.isArray(prospects) && prospects.slice(0, 20).map((prospect: any) => (
+                          {Array.isArray(prospects) && prospects.map((prospect: any) => (
                             <div 
                               key={prospect.id}
                               className={`flex items-center gap-3 p-2 rounded cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 ${
