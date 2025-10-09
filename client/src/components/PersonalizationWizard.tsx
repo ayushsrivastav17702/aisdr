@@ -434,8 +434,8 @@ export function PersonalizationWizard({
       // Include prospect information with the generated email
       const emailWithProspect = {
         ...generatedEmail,
-        prospectId: parseInt(selectedProspectId),
-        prospect: (prospects as any[]).find((p: any) => p.id === parseInt(selectedProspectId))
+        prospectId: selectedProspectId,
+        prospect: (prospects as any[]).find((p: any) => p.id.toString() === selectedProspectId.toString())
       };
       
       onComplete(emailWithProspect);

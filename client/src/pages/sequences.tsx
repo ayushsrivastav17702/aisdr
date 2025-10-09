@@ -1010,7 +1010,7 @@ function SequenceTab({
       <PersonalizationWizard 
         open={showAIPersonalization}
         onClose={() => setShowAIPersonalization(false)}
-        onComplete={(email) => {
+        onComplete={async (email) => {
           if (email && email.subject && email.body) {
             setSubject(email.subject);
             setBody(email.body);
@@ -1022,6 +1022,34 @@ function SequenceTab({
               body: email.body,
               delayDays: parseInt(delayDays) || 0
             });
+
+            // Auto-enroll the prospect in the sequence
+            if (email.prospectId && sequenceId) {
+              try {
+                await apiRequest("POST", `/api/sequences/${sequenceId}/prospects`, { 
+                  prospectIds: [email.prospectId.toString()] 
+                });
+                
+                // Invalidate prospects cache to refresh the list
+                queryClient.invalidateQueries({ queryKey: ['/api/sequences', sequenceId, 'prospects'] });
+                
+                const prospectName = email.prospect ? 
+                  `${email.prospect.firstName || ''} ${email.prospect.lastName || ''}`.trim() || 'Prospect' : 
+                  'Prospect';
+                
+                toast({
+                  title: "Prospect Auto-Enrolled",
+                  description: `${prospectName} has been enrolled in this sequence`
+                });
+              } catch (error) {
+                console.error("Failed to auto-enroll prospect:", error);
+                toast({
+                  title: "Enrollment Failed",
+                  description: "Could not auto-enroll prospect. You can manually enroll them from the Prospects tab.",
+                  variant: "destructive"
+                });
+              }
+            }
           }
         }}
       />
