@@ -1078,10 +1078,12 @@ function AIFollowupTab({ sequenceId }: { sequenceId: string }) {
 
   const filteredProspects = prospects.filter((p: any) => {
     const searchLower = prospectSearch.toLowerCase();
+    const prospectData = p.prospect || p;
+    const fullName = prospectData.fullName || `${prospectData.firstName || ''} ${prospectData.lastName || ''}`.trim();
     const matchesSearch = 
-      (p.fullName || '').toLowerCase().includes(searchLower) ||
-      (p.companyName || '').toLowerCase().includes(searchLower) ||
-      (p.primaryEmail || '').toLowerCase().includes(searchLower);
+      fullName.toLowerCase().includes(searchLower) ||
+      (prospectData.companyName || '').toLowerCase().includes(searchLower) ||
+      (prospectData.primaryEmail || '').toLowerCase().includes(searchLower);
     return matchesSearch;
   });
 
@@ -1305,26 +1307,31 @@ function AIFollowupTab({ sequenceId }: { sequenceId: string }) {
                 <p className="text-sm text-muted-foreground">No prospects match your search</p>
               </div>
             ) : (
-              filteredProspects.map((prospect: any) => (
-                <div key={prospect.id} className="flex items-center gap-2 py-2">
-                  <input
-                    type="checkbox"
-                    id={`prospect-${prospect.id}`}
-                    checked={selectedProspects.includes(prospect.id)}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setSelectedProspects([...selectedProspects, prospect.id]);
-                      } else {
-                        setSelectedProspects(selectedProspects.filter(id => id !== prospect.id));
-                      }
-                    }}
-                    data-testid={`checkbox-prospect-${prospect.id}`}
-                  />
-                  <label htmlFor={`prospect-${prospect.id}`} className="flex-1 text-sm cursor-pointer">
-                    {prospect.fullName} - {prospect.companyName || 'No company'}
-                  </label>
-                </div>
-              ))
+              filteredProspects.map((item: any) => {
+                const prospectData = item.prospect || item;
+                const displayName = prospectData.fullName || `${prospectData.firstName || ''} ${prospectData.lastName || ''}`.trim();
+                
+                return (
+                  <div key={item.id} className="flex items-center gap-2 py-2">
+                    <input
+                      type="checkbox"
+                      id={`prospect-${item.id}`}
+                      checked={selectedProspects.includes(item.id)}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedProspects([...selectedProspects, item.id]);
+                        } else {
+                          setSelectedProspects(selectedProspects.filter(id => id !== item.id));
+                        }
+                      }}
+                      data-testid={`checkbox-prospect-${item.id}`}
+                    />
+                    <label htmlFor={`prospect-${item.id}`} className="flex-1 text-sm cursor-pointer">
+                      {displayName} - {prospectData.companyName || 'No company'}
+                    </label>
+                  </div>
+                );
+              })
             )}
           </div>
 
