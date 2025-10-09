@@ -96,6 +96,8 @@ export function PersonalizationWizard({
   const [personalizationData, setPersonalizationData] = useState<PersonalizationData | null>(null);
   const [analysisProgress, setAnalysisProgress] = useState(0);
   const [generatedEmail, setGeneratedEmail] = useState<any>(null);
+  const [batchGeneratedEmails, setBatchGeneratedEmails] = useState<Map<string, any>>(new Map());
+  const [activeProspectTab, setActiveProspectTab] = useState<string>('');
   const [customPrompt, setCustomPrompt] = useState('');
   const [emailSettings, setEmailSettings] = useState({
     tone: 'professional',
@@ -283,19 +285,97 @@ export function PersonalizationWizard({
     }
   };
 
-  const handleGenerateEmail = () => {
-    const dataToUse = advancedAnalysisData || personalizationData;
-    if (!dataToUse) return;
-    
+  const handleGenerateEmail = async () => {
     setCurrentStep(3);
-    generateEmailMutation.mutate({
-      prospectId: selectedProspectId,
-      personalizationData: dataToUse,
-      settings: emailSettings,
-      customPrompt,
-      useAdvanced: !!advancedAnalysisData,
-      contentItemIds: selectedContentIds
-    });
+    
+    if (batchMode && selectedProspectIds.length > 1) {
+      // Generate emails for all selected prospects - each with their own analysis
+      const emailsMap = new Map();
+      let successCount = 0;
+      let failCount = 0;
+      
+      for (const prospectId of selectedProspectIds) {
+        try {
+          // First, analyze this specific prospect
+          const analysisResponse = await fetch('/api/personalization/advanced-analyze', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prospectId })
+          });
+          
+          if (!analysisResponse.ok) {
+            throw new Error(`Analysis failed for prospect ${prospectId}`);
+          }
+          
+          const analysisData = await analysisResponse.json();
+          
+          // Then generate email using this prospect's specific analysis
+          const emailResponse = await fetch('/api/personalization/generate-email', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              prospectId,
+              personalizationData: analysisData,
+              settings: emailSettings,
+              customPrompt,
+              useAdvanced: true,
+              contentItemIds: selectedContentIds
+            })
+          });
+          
+          if (emailResponse.ok) {
+            const emailData = await emailResponse.json();
+            emailsMap.set(prospectId, emailData);
+            successCount++;
+          } else {
+            failCount++;
+            const prospect = prospects.find((p: any) => p.id.toString() === prospectId);
+            toast({
+              variant: "destructive",
+              title: "Email Generation Failed",
+              description: `Failed to generate email for ${prospect?.firstName} ${prospect?.lastName}`
+            });
+          }
+        } catch (error: any) {
+          failCount++;
+          const prospect = prospects.find((p: any) => p.id.toString() === prospectId);
+          toast({
+            variant: "destructive",
+            title: "Processing Failed",
+            description: `Error processing ${prospect?.firstName} ${prospect?.lastName}: ${error.message}`
+          });
+        }
+      }
+      
+      if (successCount > 0) {
+        setBatchGeneratedEmails(emailsMap);
+        setActiveProspectTab(selectedProspectIds[0]);
+        setCurrentStep(4);
+        toast({
+          title: "Batch Generation Complete",
+          description: `Generated ${successCount} personalized email${successCount > 1 ? 's' : ''}${failCount > 0 ? `, ${failCount} failed` : ''}`
+        });
+      } else {
+        toast({
+          variant: "destructive",
+          title: "Batch Generation Failed",
+          description: "Failed to generate any emails. Please try again."
+        });
+      }
+    } else {
+      // Single prospect mode
+      const dataToUse = advancedAnalysisData || personalizationData;
+      if (!dataToUse) return;
+      
+      generateEmailMutation.mutate({
+        prospectId: selectedProspectId,
+        personalizationData: dataToUse,
+        settings: emailSettings,
+        customPrompt,
+        useAdvanced: !!advancedAnalysisData,
+        contentItemIds: selectedContentIds
+      });
+    }
   };
 
   const handleCompleteWizard = () => {
@@ -886,52 +966,123 @@ export function PersonalizationWizard({
           )}
 
           {/* Step 5: Review & Send */}
-          {currentStep === 4 && generatedEmail && (
+          {currentStep === 4 && (batchMode && batchGeneratedEmails.size > 0 ? true : generatedEmail) && (
             <div className="space-y-6">
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
                     <Eye className="h-5 w-5 text-green-600" />
-                    Review Generated Email
+                    Review Generated Email{batchMode && batchGeneratedEmails.size > 1 ? 's' : ''}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-4">
-                    <div>
-                      <Label className="text-sm font-medium">Subject Line</Label>
-                      <div className="mt-2 p-3 bg-gray-50 dark:bg-gray-900 rounded-lg border">
-                        <p className="font-medium">{generatedEmail.subject || 'No subject generated'}</p>
-                      </div>
-                    </div>
+                  {batchMode && batchGeneratedEmails.size > 1 ? (
+                    <Tabs value={activeProspectTab} onValueChange={setActiveProspectTab}>
+                      <TabsList className="mb-4">
+                        {Array.from(batchGeneratedEmails.keys()).map((prospectId) => {
+                          const prospect = prospects.find((p: any) => p.id.toString() === prospectId);
+                          return (
+                            <TabsTrigger key={prospectId} value={prospectId} data-testid={`tab-prospect-${prospectId}`}>
+                              {prospect?.firstName} {prospect?.lastName}
+                            </TabsTrigger>
+                          );
+                        })}
+                      </TabsList>
+                      {Array.from(batchGeneratedEmails.entries()).map(([prospectId, email]) => {
+                        const prospect = prospects.find((p: any) => p.id.toString() === prospectId);
+                        return (
+                          <TabsContent key={prospectId} value={prospectId}>
+                            <div className="space-y-4">
+                              <div className="p-3 bg-purple-50 dark:bg-purple-950/30 rounded-lg border border-purple-200 dark:border-purple-800">
+                                <p className="text-sm font-medium">
+                                  Prospect: {prospect?.firstName} {prospect?.lastName} • {prospect?.jobTitle} at {prospect?.company}
+                                </p>
+                              </div>
+                              
+                              <div>
+                                <Label className="text-sm font-medium">Subject Line</Label>
+                                <div className="mt-2 p-3 bg-gray-50 dark:bg-gray-900 rounded-lg border">
+                                  <p className="font-medium">{email.subject || 'No subject generated'}</p>
+                                </div>
+                              </div>
 
-                    <div>
-                      <Label className="text-sm font-medium">Email Body</Label>
-                      <div className="mt-2 p-4 bg-gray-50 dark:bg-gray-900 rounded-lg border whitespace-pre-wrap">
-                        {generatedEmail.body || 'No email body generated'}
-                      </div>
-                    </div>
+                              <div>
+                                <Label className="text-sm font-medium">Email Body</Label>
+                                <div className="mt-2 p-4 bg-gray-50 dark:bg-gray-900 rounded-lg border whitespace-pre-wrap">
+                                  {email.body || 'No email body generated'}
+                                </div>
+                              </div>
 
-                    {generatedEmail.personalizationScore && (
-                      <div className="flex items-center gap-4 p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-800">
-                        <Target className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                        <div>
-                          <p className="text-sm font-medium">Personalization Score</p>
-                          <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                            {generatedEmail.personalizationScore}/100
-                          </p>
+                              {email.personalizationScore && (
+                                <div className="flex items-center gap-4 p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-800">
+                                  <Target className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                                  <div>
+                                    <p className="text-sm font-medium">Personalization Score</p>
+                                    <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                                      {email.personalizationScore}/100
+                                    </p>
+                                  </div>
+                                </div>
+                              )}
+
+                              <div className="flex justify-end gap-2">
+                                <Button
+                                  variant="outline"
+                                  onClick={() => {
+                                    navigator.clipboard.writeText(email.body);
+                                    toast({ title: "Copied to clipboard" });
+                                  }}
+                                  data-testid={`button-copy-email-${prospectId}`}
+                                >
+                                  <Copy className="h-4 w-4 mr-2" />
+                                  Copy Email
+                                </Button>
+                              </div>
+                            </div>
+                          </TabsContent>
+                        );
+                      })}
+                    </Tabs>
+                  ) : (
+                    <div className="space-y-4">
+                      <div>
+                        <Label className="text-sm font-medium">Subject Line</Label>
+                        <div className="mt-2 p-3 bg-gray-50 dark:bg-gray-900 rounded-lg border">
+                          <p className="font-medium">{generatedEmail?.subject || 'No subject generated'}</p>
                         </div>
                       </div>
-                    )}
 
-                    <div className="flex justify-between">
-                      <Button
-                        variant="outline"
-                        onClick={() => setCurrentStep(3)}
-                        data-testid="button-back-to-settings"
-                      >
-                        Back to Settings
-                      </Button>
-                      <div className="flex gap-2">
+                      <div>
+                        <Label className="text-sm font-medium">Email Body</Label>
+                        <div className="mt-2 p-4 bg-gray-50 dark:bg-gray-900 rounded-lg border whitespace-pre-wrap">
+                          {generatedEmail?.body || 'No email body generated'}
+                        </div>
+                      </div>
+
+                      {generatedEmail?.personalizationScore && (
+                        <div className="flex items-center gap-4 p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-800">
+                          <Target className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                          <div>
+                            <p className="text-sm font-medium">Personalization Score</p>
+                            <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                              {generatedEmail.personalizationScore}/100
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="flex justify-between mt-6">
+                    <Button
+                      variant="outline"
+                      onClick={() => setCurrentStep(3)}
+                      data-testid="button-back-to-settings"
+                    >
+                      Back to Settings
+                    </Button>
+                    <div className="flex gap-2">
+                      {!batchMode && (
                         <Button
                           variant="outline"
                           onClick={() => {
@@ -943,15 +1094,15 @@ export function PersonalizationWizard({
                           <Copy className="h-4 w-4 mr-2" />
                           Copy Email
                         </Button>
-                        <Button
-                          onClick={handleCompleteWizard}
-                          className="bg-green-600 hover:bg-green-700"
-                          data-testid="button-complete"
-                        >
-                          <CheckCircle className="h-4 w-4 mr-2" />
-                          Complete & Use Email
-                        </Button>
-                      </div>
+                      )}
+                      <Button
+                        onClick={handleCompleteWizard}
+                        className="bg-green-600 hover:bg-green-700"
+                        data-testid="button-complete"
+                      >
+                        <CheckCircle className="h-4 w-4 mr-2" />
+                        Complete & Use Email{batchMode && batchGeneratedEmails.size > 1 ? 's' : ''}
+                      </Button>
                     </div>
                   </div>
                 </CardContent>
