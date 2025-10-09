@@ -576,10 +576,10 @@ export function PersonalizationWizard({
                                 </div>
                                 <div>
                                   <div className="font-medium">
-                                    {prospect.firstName} {prospect.lastName}
+                                    {prospect.fullName || `${prospect.firstName} ${prospect.lastName}`}
                                   </div>
                                   <div className="text-sm text-gray-600">
-                                    {prospect.jobTitle} at {prospect.company || 'Unknown Company'}
+                                    {prospect.jobTitle} at {prospect.companyName || 'Unknown Company'}
                                   </div>
                                 </div>
                               </div>
@@ -642,10 +642,10 @@ export function PersonalizationWizard({
                               </div>
                               <div>
                                 <div className="font-medium">
-                                  {prospect.firstName} {prospect.lastName}
+                                  {prospect.fullName || `${prospect.firstName} ${prospect.lastName}`}
                                 </div>
                                 <div className="text-sm text-gray-600 dark:text-gray-400">
-                                  {prospect.jobTitle} at {prospect.company || 'Unknown Company'}
+                                  {prospect.jobTitle} at {prospect.companyName || 'Unknown Company'}
                                 </div>
                               </div>
                             </div>
@@ -668,11 +668,11 @@ export function PersonalizationWizard({
                             </div>
                             <div className="flex-1">
                               <h3 className="font-semibold text-lg">
-                                {selectedProspect.firstName} {selectedProspect.lastName}
+                                {selectedProspect.fullName || `${selectedProspect.firstName} ${selectedProspect.lastName}`}
                               </h3>
                               <p className="text-gray-600 dark:text-gray-300">{selectedProspect.jobTitle}</p>
                               <p className="text-sm text-gray-500 dark:text-gray-400">
-                                {selectedProspect.company || 'Company information available'}
+                                {selectedProspect.companyName || 'Company information available'}
                               </p>
                             </div>
                           </div>
