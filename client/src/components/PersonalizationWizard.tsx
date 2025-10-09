@@ -1059,6 +1059,25 @@ export function PersonalizationWizard({
                         </div>
                       </div>
 
+                      {generatedEmail?.validationWarnings && generatedEmail.validationWarnings.length > 0 && (
+                        <div className="p-4 bg-amber-50 dark:bg-amber-950/30 rounded-lg border border-amber-300 dark:border-amber-700">
+                          <div className="flex items-start gap-3">
+                            <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+                            <div className="flex-1">
+                              <p className="font-semibold text-amber-900 dark:text-amber-100 mb-2">⚠️ Content Library Validation Issues</p>
+                              <p className="text-sm text-amber-800 dark:text-amber-200 mb-3">
+                                This email doesn't follow your content library guidelines. Please regenerate or edit manually:
+                              </p>
+                              <ul className="text-sm space-y-1 list-none">
+                                {generatedEmail.validationWarnings.map((warning: string, idx: number) => (
+                                  <li key={idx} className="text-amber-700 dark:text-amber-300">{warning}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
                       {generatedEmail?.personalizationScore && (
                         <div className="flex items-center gap-4 p-3 bg-blue-50 dark:bg-blue-950/30 rounded-lg border border-blue-200 dark:border-blue-800">
                           <Target className="h-5 w-5 text-blue-600 dark:text-blue-400" />

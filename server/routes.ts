@@ -1194,22 +1194,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Fetch content items if provided
       let contentContext = '';
+      let hasContentLibrary = false;
       if (contentItemIds && contentItemIds.length > 0) {
         const allContentItems = await storage.getContentLibraryItems();
         const selectedContent = allContentItems.filter(item => contentItemIds.includes(item.id));
         
         if (selectedContent.length > 0) {
-          contentContext = '\n\nREFERENCE CONTENT (use this to enhance your email):\n' + 
+          hasContentLibrary = true;
+          contentContext = '\n\n=== APPROVED CONTENT LIBRARY (USE ONLY THIS DATA) ===\n' + 
             selectedContent.map((item, index) => {
               return `${index + 1}. ${item.title} (${item.type})
 ${item.description ? `   Description: ${item.description}` : ''}
    Content: ${item.content}`;
-            }).join('\n\n');
+            }).join('\n\n') + '\n=== END OF APPROVED CONTENT ===';
         }
       }
 
       // Generate email using AI service
-      const prompt = `You are an expert sales email writer. Generate a personalized sales email following this EXACT structure and constraints:
+      const prompt = hasContentLibrary 
+        ? `${contentContext}
+
+⚠️ CRITICAL: YOU ARE WRITING FOR INCREFF MERCHANDISING SOFTWARE ⚠️
+
+FORBIDDEN WORDS & PHRASES - YOU WILL FAIL IF YOU USE ANY OF THESE:
+🚫 "multi-brand operations" 🚫 "unified coordination" 🚫 "integrated management" 
+🚫 "real-time visibility" 🚫 "coordination platforms" 🚫 "streamline operations"
+🚫 "operational efficiency" 🚫 "cross-brand" 🚫 ANY percentage not listed below
+🚫 "We provide" 🚫 "Our solution" 🚫 "Our clients typically"
+
+REQUIRED: USE ONLY THESE EXACT WORDS FROM APPROVED CONTENT:
+✅ Solutions: "Increff Assortment Planning & Buying" OR "Allocation & Replenishment" OR "Markdown Optimization" OR "WSSI/MSSI" OR "Merchandise Financial Planning"
+✅ Statistics: "13% improvement in full price sell-through" OR "36% revenue uplift" OR "26% increment in sales" OR "7% size availability improvement"
+✅ Clients: "Puma" "Adidas" "Blackberrys" (from approved content only)
 
 PROSPECT INFORMATION:
 - Name: ${context.prospectName}
@@ -1224,15 +1240,54 @@ PROSPECT INFORMATION:
 EMAIL SETTINGS:
 - Tone: ${context.tone}
 - Focus: ${context.focus}
-- Urgency: ${context.urgency}${contentContext}
+- Urgency: ${context.urgency}
 ${customPrompt ? `\nADDITIONAL INSTRUCTIONS:\n${customPrompt}` : ''}
 
 MANDATORY EMAIL STRUCTURE:
-1. Subject: Make it specific to their business challenge (use pain points from analysis)
-2. Opening: Reference ONE concrete detail about their company or role (use key insights)
-3. Problem: State the pain point directly in 1-2 sentences (use pain points from analysis)
+1. Subject: Make it specific to their business challenge
+2. Opening: Reference ONE concrete detail about their company or role
+3. Problem: State the pain point directly in 1-2 sentences
+4. Solution: ONE exact solution name from approved content (e.g., "Increff Assortment Planning & Buying" or "Markdown Optimization")
+5. Value: ONE exact statistic from approved content (e.g., "13% improvement in full price sell-through" or "36% revenue uplift")
+6. CTA: Question asking about their specific challenge
+
+STRICT CONSTRAINTS:
+- MAXIMUM 80 words for the email body
+- NO generic phrases: "integrated management" "real-time visibility" "multi-brand operations" "coordination time" "operational efficiency"
+- NO made-up statistics: Only use numbers that appear in the approved content library
+- NO adjectives: "leading" "innovative" "excited"
+- Use "you" more than "we"
+- END with a QUESTION
+- Solution names must match approved content EXACTLY
+
+Format:
+Subject: [subject]
+
+[body - under 80 words, ends with question]`
+        : `You are an expert sales email writer. Generate a personalized sales email following this EXACT structure and constraints:
+
+PROSPECT INFORMATION:
+- Name: ${context.prospectName}
+- Title: ${context.jobTitle}
+- Company: ${context.companyName}
+- Industry: ${context.industry}
+- Key Insights: ${context.insights}${context.painPoints ? `
+- Pain Points: ${context.painPoints}` : ''}${context.roleAnalysis ? `
+- Role Analysis: ${context.roleAnalysis}` : ''}${context.emailSuggestions ? `
+- Email Angle Suggestions: ${context.emailSuggestions}` : ''}
+
+EMAIL SETTINGS:
+- Tone: ${context.tone}
+- Focus: ${context.focus}
+- Urgency: ${context.urgency}
+${customPrompt ? `\nADDITIONAL INSTRUCTIONS:\n${customPrompt}` : ''}
+
+MANDATORY EMAIL STRUCTURE:
+1. Subject: Make it specific to their business challenge
+2. Opening: Reference ONE concrete detail about their company or role
+3. Problem: State the pain point directly in 1-2 sentences
 4. Solution: Explain what you offer in one sentence
-5. Value: One specific, quantifiable benefit (use reference content if available)
+5. Value: One specific, quantifiable benefit
 6. CTA: Single clear next step with low commitment
 
 STRICT CONSTRAINTS:
@@ -1244,14 +1299,21 @@ STRICT CONSTRAINTS:
 - END with a QUESTION, not a statement
 - Be direct and conversational
 - No fluff or filler words
-- MUST use the AI analysis data (insights, pain points, role analysis) to personalize the email
 
 Format your response EXACTLY as:
 Subject: [Your subject line here]
 
 [Your email body here - MUST be under 80 words and end with a question]`;
 
+      console.log('📧 Email generation prompt length:', prompt.length, 'chars');
+      console.log('📧 Has content library:', hasContentLibrary);
+      if (hasContentLibrary) {
+        console.log('📚 Content items provided:', contentItemIds?.length || 0);
+      }
+      
       const aiResponse = await aiService.generateText(prompt, 1500);
+      
+      console.log('📧 AI Response:', aiResponse.substring(0, 200) + '...');
       
       // Parse AI response (simple split approach)
       const lines = aiResponse.split('\n');
@@ -1279,10 +1341,65 @@ Subject: [Your subject line here]
         subject = `Quick question for ${prospect.firstName}`;
       }
 
+      // POST-GENERATION VALIDATION when content library is used
+      const violations: string[] = [];
+      if (hasContentLibrary) {
+        const forbiddenPhrases = [
+          'multi-brand operations', 'unified coordination', 'integrated management',
+          'real-time visibility', 'coordination platforms', 'streamline operations',
+          'operational efficiency', 'cross-brand', 'We provide', 'Our solution', 
+          'Our clients typically', 'simplifying your multi-brand'
+        ];
+        
+        const requiredSolutions = [
+          'Increff Assortment Planning & Buying', 'Allocation & Replenishment',
+          'Markdown Optimization', 'WSSI/MSSI', 'Merchandise Financial Planning',
+          'Increff Co-Pilot', 'assortment planning', 'allocation', 'replenishment'
+        ];
+        
+        const approvedStats = ['13%', '36%', '26%', '7%'];
+        
+        const fullText = (subject + ' ' + body).toLowerCase();
+        
+        // Check for forbidden phrases
+        for (const phrase of forbiddenPhrases) {
+          if (fullText.includes(phrase.toLowerCase())) {
+            violations.push(`❌ Contains forbidden phrase: "${phrase}"`);
+          }
+        }
+        
+        // Check for required solution (at least one must be present)
+        const hasSolution = requiredSolutions.some(sol => 
+          fullText.includes(sol.toLowerCase())
+        );
+        if (!hasSolution) {
+          violations.push('❌ Missing required Increff solution name (must mention: Assortment Planning, Allocation, Replenishment, Markdown Optimization, WSSI/MSSI, or Merchandise Financial Planning)');
+        }
+        
+        // Check for unapproved percentages
+        const percentageRegex = /(\d+)%/g;
+        const matches = (subject + ' ' + body).match(percentageRegex) || [];
+        for (const match of matches) {
+          if (!approvedStats.includes(match)) {
+            violations.push(`❌ Contains unapproved statistic: "${match}" (only 13%, 36%, 26%, 7% allowed from Increff content library)`);
+          }
+        }
+        
+        if (violations.length > 0) {
+          console.log('⚠️ EMAIL VALIDATION FAILED - Content library rules violated:');
+          violations.forEach(v => console.log('   ', v));
+          console.log('📧 Subject:', subject);
+          console.log('📧 Body:', body.substring(0, 200));
+        } else {
+          console.log('✅ Email validation passed - content library rules followed');
+        }
+      }
+
       const generatedEmail = {
         subject: subject || `${prospect.firstName}, quick question`,
         body: body.trim(),
-        personalizationScore: personalizationData?.personalizationScore || 85
+        personalizationScore: personalizationData?.personalizationScore || 85,
+        validationWarnings: violations.length > 0 ? violations : undefined
       };
 
       res.json(generatedEmail);
