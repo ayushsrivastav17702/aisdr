@@ -322,6 +322,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Bulk delete prospects
+  app.post("/api/prospects/bulk-delete", async (req, res) => {
+    try {
+      const { prospectIds } = req.body;
+      
+      if (!prospectIds || !Array.isArray(prospectIds) || prospectIds.length === 0) {
+        return res.status(400).json({ error: "prospectIds array is required" });
+      }
+
+      let deletedCount = 0;
+      let failedCount = 0;
+      const errors: string[] = [];
+
+      for (const id of prospectIds) {
+        try {
+          await storage.deleteProspect(id);
+          deletedCount++;
+        } catch (error) {
+          failedCount++;
+          errors.push(`Failed to delete ${id}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+      }
+
+      res.json({ 
+        success: true,
+        deleted: deletedCount,
+        failed: failedCount,
+        errors: errors.slice(0, 5) // Return first 5 errors
+      });
+    } catch (error) {
+      console.error("Bulk delete prospects error:", error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Failed to delete prospects" 
+      });
+    }
+  });
+
   // Enrich prospects (uses job queue if Redis available, otherwise direct enrichment)
   app.post("/api/enrich", async (req, res) => {
     try {

@@ -70,6 +70,11 @@ export const api = {
     return response.json();
   },
 
+  async bulkDeleteProspects(prospectIds: string[]) {
+    const response = await apiRequest("POST", "/api/prospects/bulk-delete", { prospectIds });
+    return response.json();
+  },
+
   // Enrichment
   async enrichProspects(prospectIds: string[]) {
     const response = await apiRequest("POST", "/api/enrich", { prospectIds });
