@@ -112,28 +112,57 @@ Respond in JSON format with this exact structure:
   }
 }`;
 
-      const response = await openaiHelper.callWithFallback((client) =>
-        client.chat.completions.create({
-          model: "gpt-4o",
-          messages: [
-            {
-              role: "system",
-              content: "You are an expert sales intelligence analyst who provides deep insights for personalized B2B outreach. Focus on actionable intelligence that will help create highly relevant, personalized emails. Use your knowledge of business roles, industry dynamics, and professional challenges to provide comprehensive analysis."
-            },
-            {
-              role: "user",
-              content: analysisPrompt
-            }
-          ],
-          temperature: 0.7,
-          max_tokens: 2000,
-          response_format: { type: "json_object" }
-        })
+      const systemPrompt = "You are an expert sales intelligence analyst who provides deep insights for personalized B2B outreach. Focus on actionable intelligence that will help create highly relevant, personalized emails. Use your knowledge of business roles, industry dynamics, and professional challenges to provide comprehensive analysis.";
+      
+      const response = await openaiHelper.callWithFallback(
+        // OpenAI call
+        (client) =>
+          client.chat.completions.create({
+            model: "gpt-4o",
+            messages: [
+              {
+                role: "system",
+                content: systemPrompt
+              },
+              {
+                role: "user",
+                content: analysisPrompt
+              }
+            ],
+            temperature: 0.7,
+            max_tokens: 2000,
+            response_format: { type: "json_object" }
+          }),
+        // Anthropic fallback
+        async (anthropic) => {
+          const anthropicResponse = await anthropic.messages.create({
+            model: "claude-sonnet-4-20250514",
+            max_tokens: 2000,
+            system: systemPrompt,
+            messages: [
+              { role: "user", content: analysisPrompt }
+            ],
+          });
+          
+          const textContent = anthropicResponse.content.find(block => block.type === 'text');
+          if (!textContent || textContent.type !== 'text') {
+            throw new Error('No text response from Anthropic');
+          }
+          
+          // Return in OpenAI format for consistency
+          return {
+            choices: [{
+              message: {
+                content: textContent.text
+              }
+            }]
+          } as any;
+        }
       );
 
       const content = response.choices[0]?.message?.content;
       if (!content) {
-        throw new Error('No response from OpenAI');
+        throw new Error('No response from AI');
       }
 
       const insights: PersonalizationInsights = JSON.parse(content);

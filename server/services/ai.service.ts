@@ -411,27 +411,76 @@ class AIService {
     return '1+';
   }
 
-  // Generate text using AI (OpenAI only)
+  // Generate text using AI (OpenAI with Anthropic fallback)
   async generateText(prompt: string, maxTokens: number = 1000): Promise<string> {
-    if (!this.openai && !this.openaiBackup) {
-      throw new Error('OpenAI is not configured. Please set OPENAI_API_KEY.');
+    // Try OpenAI first (with automatic backup key fallback)
+    if (this.openai || this.openaiBackup) {
+      try {
+        const response = await this.callOpenAI((client) => 
+          client.chat.completions.create({
+            model: DEFAULT_OPENAI_MODEL,
+            messages: [
+              { role: "user", content: prompt }
+            ],
+            max_completion_tokens: maxTokens,
+          })
+        );
+        return response.choices[0].message.content || '';
+      } catch (error: any) {
+        console.error('OpenAI text generation failed:', error?.message || error);
+        
+        // If OpenAI fails (including backup), try Anthropic as fallback
+        if (this.anthropic) {
+          console.log('⚠️ OpenAI failed, falling back to Anthropic for text generation...');
+          try {
+            const anthropicResponse = await this.anthropic.messages.create({
+              model: DEFAULT_ANTHROPIC_MODEL,
+              max_tokens: maxTokens,
+              messages: [
+                { role: "user", content: prompt }
+              ],
+            });
+            
+            const textContent = anthropicResponse.content.find(block => block.type === 'text');
+            if (textContent && textContent.type === 'text') {
+              return textContent.text;
+            }
+            throw new Error('No text response from Anthropic');
+          } catch (anthropicError: any) {
+            console.error('Anthropic text generation also failed:', anthropicError?.message || anthropicError);
+            throw new Error(`AI text generation failed. OpenAI error: ${error?.message}. Anthropic error: ${anthropicError?.message}`);
+          }
+        } else {
+          console.warn('⚠️ Anthropic not configured - cannot fallback. Set ANTHROPIC_API_KEY to enable fallback.');
+          throw error;
+        }
+      }
     }
     
-    try {
-      const response = await this.callOpenAI((client) => 
-        client.chat.completions.create({
-          model: DEFAULT_OPENAI_MODEL,
+    // If no OpenAI available, try Anthropic directly
+    if (this.anthropic) {
+      try {
+        console.log('🤖 Using Anthropic for text generation (OpenAI not configured)...');
+        const response = await this.anthropic.messages.create({
+          model: DEFAULT_ANTHROPIC_MODEL,
+          max_tokens: maxTokens,
           messages: [
             { role: "user", content: prompt }
           ],
-          max_completion_tokens: maxTokens,
-        })
-      );
-      return response.choices[0].message.content || '';
-    } catch (error) {
-      console.error('OpenAI text generation failed:', error);
-      throw error;
+        });
+        
+        const textContent = response.content.find(block => block.type === 'text');
+        if (textContent && textContent.type === 'text') {
+          return textContent.text;
+        }
+        throw new Error('No text response from Anthropic');
+      } catch (error) {
+        console.error('Anthropic text generation failed:', error);
+        throw error;
+      }
     }
+    
+    throw new Error('No AI provider configured. Please set OPENAI_API_KEY, OPENAI_API_KEY_BACKUP, or ANTHROPIC_API_KEY.');
   }
 }
 
