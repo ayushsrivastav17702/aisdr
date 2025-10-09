@@ -39,36 +39,69 @@ export async function generateEmail(request: EmailGenerationRequest): Promise<Ge
       throw new Error(`Prospect with ID ${request.prospectId} not found`);
     }
 
-    const context = buildPromptContext(prospect, request);
+    // Fetch content library items
+    const contentLibraryItems = await storage.getContentLibraryItems();
+    
+    const context = buildPromptContext(prospect, request, contentLibraryItems);
     const template = getPromptTemplate(request.emailType);
     const prompt = interpolatePrompt(template, context);
 
-    const response = await openaiHelper.callWithFallback((client) =>
-      client.chat.completions.create({
-        model: "gpt-4o",
-        messages: [
-          {
-            role: "system",
-            content: "You are an expert sales development representative with years of experience writing high-converting cold emails. Always respond with valid JSON."
-          },
-          {
-            role: "user",
-            content: prompt
-          }
-        ],
-        response_format: { type: "json_object" },
-        temperature: 0.7,
-        max_tokens: 1000
-      })
+    const response = await openaiHelper.callWithFallback(
+      (client) =>
+        client.chat.completions.create({
+          model: "gpt-4o",
+          messages: [
+            {
+              role: "system",
+              content: "You are an expert sales development representative for Increff with years of experience writing high-converting cold emails. Always respond with valid JSON and follow the exact structure and constraints provided."
+            },
+            {
+              role: "user",
+              content: prompt
+            }
+          ],
+          response_format: { type: "json_object" },
+          temperature: 0.7,
+          max_tokens: 1000
+        }),
+      // Anthropic fallback - cast to any to avoid type mismatch
+      (anthropic) =>
+        anthropic.messages.create({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 1000,
+          temperature: 0.7,
+          messages: [
+            {
+              role: "user",
+              content: `${prompt}\n\nRespond with valid JSON only.`
+            }
+          ]
+        }) as any
     );
 
-    const result = JSON.parse(response.choices[0].message.content || '{}');
+    // Handle both OpenAI and Anthropic response formats
+    let result;
+    if ('choices' in response) {
+      // OpenAI format
+      result = JSON.parse((response as any).choices[0].message.content || '{}');
+    } else {
+      // Anthropic format
+      const content = (response as any).content[0];
+      if (content.type === 'text') {
+        const text = content.text;
+        // Strip markdown code blocks if present
+        const jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/) || text.match(/```\s*([\s\S]*?)\s*```/);
+        const jsonText = jsonMatch ? jsonMatch[1] : text;
+        result = JSON.parse(jsonText.trim());
+      }
+    }
     
     const personalizationFactors = [
       'Prospect name and title',
       prospect.companyName ? 'Company information' : null,
       'Industry-specific context',
-      'Role-appropriate messaging'
+      'Role-appropriate messaging',
+      contentLibraryItems.length > 0 ? 'Content library data' : null
     ].filter(Boolean) as string[];
     
     const confidenceScore = calculateConfidenceScore(prospect, request);
@@ -155,8 +188,19 @@ export async function generateBreakupEmail(prospectId: string): Promise<Generate
 
 function buildPromptContext(
   prospect: Prospect, 
-  request: EmailGenerationRequest
+  request: EmailGenerationRequest,
+  contentLibraryItems: any[] = []
 ): PromptContext {
+  // Format content library data for the prompt
+  let contentLibrary = '';
+  if (contentLibraryItems.length > 0) {
+    contentLibrary = contentLibraryItems.map((item: any) => {
+      return `${item.title || 'Untitled'}:\n${item.content || ''}`;
+    }).join('\n\n');
+  } else {
+    contentLibrary = 'Increff provides merchandising solutions for fashion and retail, including demand forecasting, inventory allocation, and markdown optimization.';
+  }
+
   return {
     prospectName: `${prospect.firstName || ""} ${prospect.lastName || ""}`.trim(),
     prospectTitle: prospect.jobTitle || 'Professional',
@@ -170,6 +214,7 @@ function buildPromptContext(
     previousEmails: request.previousEmails,
     sequenceStep: request.sequenceStep,
     tone: request.tone || 'professional',
+    contentLibrary,
     ...request.customContext
   };
 }

@@ -11,9 +11,10 @@ export interface PromptContext {
   previousEmails?: string[];
   sequenceStep?: number;
   tone?: 'professional' | 'casual' | 'urgent' | 'friendly';
+  contentLibrary?: string;
 }
 
-export const COLD_EMAIL_PROMPT = `You are an expert sales development representative writing personalized cold emails. Generate a compelling cold outreach email based on the following context:
+export const COLD_EMAIL_PROMPT = `You are an expert sales development representative for Increff, writing personalized cold emails. Generate a compelling cold outreach email using the following information:
 
 PROSPECT INFORMATION:
 - Name: {{prospectName}}
@@ -21,20 +22,26 @@ PROSPECT INFORMATION:
 - Company: {{prospectCompany}}
 - Industry: {{prospectIndustry}}
 - Seniority Level: {{prospectSeniority}}
-- Company Size: {{companySize}}
 
-COMPANY CONTEXT:
-- Recent News: {{recentNews}}
-- Key Pain Points for {{prospectTitle}}: {{painPoints}}
+PRODUCT/SERVICE INFORMATION:
+{{contentLibrary}}
 
-EMAIL REQUIREMENTS:
-1. Subject line should be personalized and curiosity-driven (5-8 words)
-2. Email body should be 3-4 sentences maximum
-3. Include specific reference to their company or recent developments
-4. Focus on ONE clear value proposition relevant to their role
-5. End with a soft, low-pressure call-to-action
-6. Tone: {{tone}}
-7. Avoid generic sales language and buzzwords
+EMAIL STRUCTURE REQUIREMENTS:
+1. Subject: Make it specific to their business challenge (not generic)
+2. Opening: Reference ONE concrete detail about their company or role (NO generic praise like "I was impressed by" or "leading")
+3. Problem: State the pain point directly in 1-2 sentences
+4. Solution: Explain what Increff offers in ONE sentence
+5. Value: ONE specific, quantifiable benefit (use actual numbers from content library when available)
+6. CTA: Single clear next step with low commitment - MUST end with a question
+
+STRICT CONSTRAINTS:
+- Maximum 80 words for email body (excluding subject)
+- NO adjectives: "leading", "innovative", "excited", "impressive", "great"
+- NO phrases: "I hope this email finds you well", "I was impressed by", "reaching out to"
+- Use "you" more than "we"
+- End with a question, NOT a statement
+- Use concrete data and examples from the content library above
+- Be specific to their industry (fashion/footwear/retail if applicable)
 
 RESPONSE FORMAT:
 {

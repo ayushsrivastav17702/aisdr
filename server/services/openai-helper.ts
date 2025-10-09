@@ -42,6 +42,20 @@ class OpenAIHelper {
     try {
       return await apiCall(client);
     } catch (error: any) {
+      // If backup key is already active and fails with 429, try Anthropic
+      if (error?.status === 429 && this.useBackupKey && this.anthropic && anthropicFallback) {
+        console.error('⚠️ Backup OpenAI key quota exceeded:', error?.message || error);
+        console.log('⚠️ Falling back to Anthropic...');
+        this.useBackupKey = false; // Reset for future requests
+        
+        try {
+          return await anthropicFallback(this.anthropic);
+        } catch (anthropicError: any) {
+          console.error('⚠️ Anthropic fallback also failed:', anthropicError?.message || anthropicError);
+          throw new Error(`All AI providers failed. Last error: ${anthropicError?.message || anthropicError}`);
+        }
+      }
+      
       // Check if it's a quota error (429) and we have a backup
       if (error?.status === 429 && !this.useBackupKey && this.backupClient) {
         console.log('⚠️ Primary OpenAI API key quota exceeded, switching to backup key...');
@@ -52,6 +66,7 @@ class OpenAIHelper {
           return await apiCall(this.backupClient);
         } catch (backupError: any) {
           console.error('⚠️ Backup OpenAI key also failed:', backupError?.message || backupError);
+          this.useBackupKey = false; // Reset for future requests
           
           // If backup also fails and we have Anthropic fallback, try that
           if (this.anthropic && anthropicFallback) {
