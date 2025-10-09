@@ -1279,16 +1279,20 @@ EMAIL SETTINGS:
 - Urgency: ${context.urgency}
 ${customPrompt ? `\nADDITIONAL INSTRUCTIONS:\n${customPrompt}` : ''}
 
-MANDATORY EMAIL STRUCTURE:
-1. Subject: Make it specific to their business challenge
-2. Opening: Reference ONE concrete detail about their company or role
-3. Problem: State the pain point directly in 1-2 sentences
-4. Solution: ONE exact solution name from approved content (e.g., "Increff Assortment Planning & Buying" or "Markdown Optimization")
-5. Value: ONE exact statistic from approved content (e.g., "13% improvement in full price sell-through" or "36% revenue uplift")
-6. CTA: Question asking about their specific challenge
+MANDATORY EMAIL STRUCTURE (WITH LINE BREAKS):
+1. Opening: Reference ONE concrete detail about their company or role
+2. [BLANK LINE]
+3. Problem: State the pain point directly in 1-2 sentences  
+4. [BLANK LINE]
+5. Solution: ONE exact solution name from approved content (e.g., "Increff Assortment Planning & Buying" or "Markdown Optimization")
+6. [BLANK LINE]
+7. Value: ONE exact statistic from approved content (e.g., "13% improvement in full price sell-through" or "36% revenue uplift")
+8. [BLANK LINE]
+9. CTA: Question asking about their specific challenge
 
 STRICT CONSTRAINTS:
 - MAXIMUM 80 words for the email body
+- MUST include blank lines between each section for readability
 - NO generic phrases: "integrated management" "real-time visibility" "multi-brand operations" "coordination time" "operational efficiency"
 - NO made-up statistics: Only use numbers that appear in the approved content library
 - NO adjectives: "leading" "innovative" "excited"
@@ -1296,10 +1300,18 @@ STRICT CONSTRAINTS:
 - END with a QUESTION
 - Solution names must match approved content EXACTLY
 
-Format:
+Format (IMPORTANT - Include blank lines):
 Subject: [subject]
 
-[body - under 80 words, ends with question]`
+[Opening sentence referencing their business]
+
+[Pain point in 1-2 sentences]
+
+[Solution with exact Increff product name]
+
+[Specific statistic from approved content]
+
+[Question-based CTA]`
         : `You are an expert sales email writer. Generate a personalized sales email following this EXACT structure and constraints:
 
 PROSPECT INFORMATION:
@@ -1318,16 +1330,20 @@ EMAIL SETTINGS:
 - Urgency: ${context.urgency}
 ${customPrompt ? `\nADDITIONAL INSTRUCTIONS:\n${customPrompt}` : ''}
 
-MANDATORY EMAIL STRUCTURE:
-1. Subject: Make it specific to their business challenge
-2. Opening: Reference ONE concrete detail about their company or role
+MANDATORY EMAIL STRUCTURE (WITH LINE BREAKS):
+1. Opening: Reference ONE concrete detail about their company or role
+2. [BLANK LINE]
 3. Problem: State the pain point directly in 1-2 sentences
-4. Solution: Explain what you offer in one sentence
-5. Value: One specific, quantifiable benefit
-6. CTA: Single clear next step with low commitment
+4. [BLANK LINE]
+5. Solution: Explain what you offer in one sentence
+6. [BLANK LINE]
+7. Value: One specific, quantifiable benefit
+8. [BLANK LINE]
+9. CTA: Single clear next step with low commitment
 
 STRICT CONSTRAINTS:
 - MAXIMUM 80 words for the email body (count carefully!)
+- MUST include blank lines between each section for readability
 - NO adjectives like "leading," "innovative," "excited," "thrilled," "delighted"
 - NO phrases like "I hope this email finds you well"
 - NO phrases like "I was impressed by"
@@ -1336,10 +1352,18 @@ STRICT CONSTRAINTS:
 - Be direct and conversational
 - No fluff or filler words
 
-Format your response EXACTLY as:
+Format your response EXACTLY as (IMPORTANT - Include blank lines):
 Subject: [Your subject line here]
 
-[Your email body here - MUST be under 80 words and end with a question]`;
+[Opening sentence referencing their business]
+
+[Pain point in 1-2 sentences]
+
+[Solution in one sentence]
+
+[Specific quantifiable benefit]
+
+[Question-based CTA]`;
 
       console.log('📧 Email generation prompt length:', prompt.length, 'chars');
       console.log('📧 Has content library:', hasContentLibrary);
