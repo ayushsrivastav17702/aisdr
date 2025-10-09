@@ -2,8 +2,8 @@ import Imap from "imap";
 // @ts-ignore - mailparser doesn't have types
 import { simpleParser } from "mailparser";
 import { db } from "../db";
-import { emailReplies, emailQueue, emailMailboxes } from "@shared/schema";
-import { eq, and } from "drizzle-orm";
+import { emailReplies, emailQueue, emailMailboxes, sequenceProspects } from "@shared/schema";
+import { eq, and, sql } from "drizzle-orm";
 import { mailboxService } from "./mailbox.service";
 
 export class ReplyDetectionService {
@@ -227,11 +227,16 @@ export class ReplyDetectionService {
         return true; // Mark as seen anyway - not a match for our system
       }
 
-      // Check if reply already exists
+      // Check if this exact reply already exists (by content to avoid duplicates)
       const [existingReply] = await db
         .select()
         .from(emailReplies)
-        .where(eq(emailReplies.prospectId, matchedEmail.prospectId));
+        .where(
+          and(
+            eq(emailReplies.prospectId, matchedEmail.prospectId),
+            eq(emailReplies.replyContent, body)
+          )
+        );
 
       if (existingReply) {
         console.log(`⏭️ Reply already recorded for prospect ${matchedEmail.prospectId}`);
@@ -249,6 +254,22 @@ export class ReplyDetectionService {
         aiSummary: null,
         nextAction: null,
       });
+
+      // Update sequence prospect: increment reply counter and set status to 'replied'
+      if (matchedEmail.sequenceId) {
+        await db
+          .update(sequenceProspects)
+          .set({
+            replies: sql`${sequenceProspects.replies} + 1`,
+            status: "replied",
+          })
+          .where(
+            and(
+              eq(sequenceProspects.sequenceId, matchedEmail.sequenceId),
+              eq(sequenceProspects.prospectId, matchedEmail.prospectId)
+            )
+          );
+      }
 
       console.log(`✅ Stored reply from ${fromEmail} for prospect ${matchedEmail.prospectId}`);
       return true; // Success - mark as seen
