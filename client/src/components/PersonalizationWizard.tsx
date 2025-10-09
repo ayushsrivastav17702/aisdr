@@ -1097,7 +1097,8 @@ export function PersonalizationWizard({
                       )}
                       <Button
                         onClick={handleCompleteWizard}
-                        className="bg-green-600 hover:bg-green-700"
+                        disabled={!generatedEmail || !selectedProspectId}
+                        className="bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
                         data-testid="button-complete"
                       >
                         <CheckCircle className="h-4 w-4 mr-2" />
