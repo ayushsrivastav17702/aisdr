@@ -86,6 +86,9 @@ export interface IStorage {
   getSequenceProspects(sequenceId: string): Promise<Array<SequenceProspect & { prospect?: Prospect }>>;
   enrollProspects(sequenceId: string, prospectIds: string[]): Promise<SequenceProspect[]>;
   
+  // Emails
+  getSequenceEmails(sequenceId: string): Promise<Email[]>;
+  
   // Email Replies
   getEmailReplies(sequenceId: string): Promise<Array<EmailReply & { prospect?: Prospect }>>;
   createEmailReply(reply: InsertEmailReply): Promise<EmailReply>;
@@ -495,6 +498,14 @@ export class DatabaseStorage implements IStorage {
       enrolled.push(result);
     }
     return enrolled;
+  }
+
+  // Emails
+  async getSequenceEmails(sequenceId: string): Promise<Email[]> {
+    return await db
+      .select()
+      .from(emails)
+      .where(eq(emails.sequenceId, sequenceId));
   }
 
   // Email Replies

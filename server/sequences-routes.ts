@@ -255,14 +255,29 @@ router.get("/sequences/:id/replies", async (req, res) => {
 // Get tracking stats for sequence
 router.get("/sequences/:id/tracking", async (req, res) => {
   try {
+    const sequenceId = req.params.id;
+    
+    // Get all emails for this sequence
+    const emails = await storage.getSequenceEmails(sequenceId);
+    
+    // Calculate stats
+    const sent = emails.filter(e => e.sentAt).length;
+    const delivered = emails.filter(e => e.deliveredAt).length;
+    const opened = emails.filter(e => e.openedAt).length;
+    const replied = emails.filter(e => e.repliedAt).length;
+    
+    const deliveryRate = sent > 0 ? Math.round((delivered / sent) * 100) : 0;
+    const openRate = delivered > 0 ? Math.round((opened / delivered) * 100) : 0;
+    const replyRate = delivered > 0 ? Math.round((replied / delivered) * 100) : 0;
+    
     res.json({
-      sent: 0,
-      delivered: 0,
-      opened: 0,
-      replied: 0,
-      deliveryRate: 0,
-      openRate: 0,
-      replyRate: 0,
+      sent,
+      delivered,
+      opened,
+      replied,
+      deliveryRate,
+      openRate,
+      replyRate,
     });
   } catch (error) {
     console.error("Error fetching tracking:", error);
