@@ -3,7 +3,7 @@ import Imap from "imap";
 import { simpleParser } from "mailparser";
 import { db } from "../db";
 import { emailReplies, emailQueue, emailMailboxes, sequenceProspects } from "@shared/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, sql, desc } from "drizzle-orm";
 import { mailboxService } from "./mailbox.service";
 
 export class ReplyDetectionService {
@@ -209,6 +209,7 @@ export class ReplyDetectionService {
       console.log(`📧 Processing reply from ${fromEmail} - Subject: "${subject.substring(0, 50)}..."`);
 
       // Find the original sent email by matching recipient and subject/message-id
+      // Order by scheduled_for DESC to prioritize most recent emails
       const sentEmails = await db
         .select()
         .from(emailQueue)
@@ -217,28 +218,44 @@ export class ReplyDetectionService {
             eq(emailQueue.mailboxId, mailbox.id),
             eq(emailQueue.status, "sent")
           )
-        );
+        )
+        .orderBy(desc(emailQueue.scheduledFor));
 
       let matchedEmail = null;
+      let potentialMatches: any[] = [];
 
-      // Try to match by In-Reply-To or subject
+      // First pass: collect all potential matches from this sender
       for (const sentEmail of sentEmails) {
-        // Get prospect email from the queue entry
         const prospectEmail = await this.getProspectEmail(sentEmail.prospectId);
         
         if (!prospectEmail) continue;
 
         // Match by prospect email
         if (prospectEmail.toLowerCase() === fromEmail.toLowerCase()) {
-          // Additional check: subject similarity or In-Reply-To header
+          // Check if subject matches or is a reply
           if (
-            inReplyTo === sentEmail.emailId ||
             subject.toLowerCase().includes(sentEmail.subject?.toLowerCase() || "") ||
             subject.toLowerCase().includes("re:")
           ) {
-            matchedEmail = sentEmail;
-            break;
+            potentialMatches.push({
+              email: sentEmail,
+              isInReplyTo: inReplyTo === sentEmail.emailId,
+            });
           }
+        }
+      }
+
+      // Second pass: prioritize In-Reply-To match, otherwise use most recent
+      if (potentialMatches.length > 0) {
+        // First try to find exact In-Reply-To match
+        const inReplyToMatch = potentialMatches.find(m => m.isInReplyTo);
+        if (inReplyToMatch) {
+          matchedEmail = inReplyToMatch.email;
+          console.log(`✓ Matched via In-Reply-To header to sequence: ${matchedEmail.sequenceId}`);
+        } else {
+          // Use most recent email (already sorted by scheduledFor DESC)
+          matchedEmail = potentialMatches[0].email;
+          console.log(`✓ Matched to most recent email in sequence: ${matchedEmail.sequenceId}`);
         }
       }
 
