@@ -310,16 +310,11 @@ class AIService {
       'retail', 'ecommerce', 'fashion', 'technology', 'software', 'hardware'
     ];
     
-    // Extract potential company names (capitalized words that aren't common words)
-    const commonWords = ['the', 'a', 'an', 'in', 'at', 'on', 'for', 'to', 'of', 'and', 'or', 'with'];
+    // NOTE: We intentionally do NOT extract company names in fallback mode
+    // Reason: Too many false positives (locations, sentence-starting words, etc.)
+    // The general keyword search (q_keywords) is safer and more reliable
+    const commonWords = ['the', 'a', 'an', 'in', 'on', 'to', 'of', 'and', 'or', 'with', 'find', 'looking', 'search', 'get', 'at', 'from', 'for'];
     const words = query.split(/\s+/);
-    const companyNames = words.filter(word => {
-      const firstChar = word.charAt(0);
-      return firstChar === firstChar.toUpperCase() && 
-             firstChar !== firstChar.toLowerCase() &&
-             !commonWords.includes(word.toLowerCase()) &&
-             word.length > 2;
-    });
     
     const lowerQuery = query.toLowerCase();
     
@@ -345,12 +340,29 @@ class AIService {
       }
     }
 
+    // Filter keywords: include meaningful words and capitalized tokens (potential company names)
+    const keywords = words.filter(word => {
+      const wordLower = word.toLowerCase();
+      if (commonWords.includes(wordLower)) return false;
+      
+      // Include if length > 3
+      if (word.length > 3) return true;
+      
+      // Include short capitalized words (potential companies like IBM, Gap, HP, 3M)
+      // Allow words starting with capital letter OR digit (for companies like 3M, 23andMe)
+      if (word.length >= 2 && /^[A-Z0-9][A-Za-z0-9]*$/.test(word)) {
+        return true;
+      }
+      
+      return false;
+    });
+
     const aiFilters: AIFilters = {
       jobTitles: extractedTitles.length > 0 ? extractedTitles : undefined,
       locations: extractedLocations.length > 0 ? extractedLocations : undefined,
       industries: extractedIndustries.length > 0 ? extractedIndustries : undefined,
-      companyNames: companyNames.length > 0 ? companyNames : undefined,
-      keywords: words.filter(word => word.length > 3 && !commonWords.includes(word.toLowerCase()))
+      // companyNames intentionally omitted in fallback mode to avoid false positives
+      keywords: keywords.length > 0 ? keywords : undefined
     };
 
     console.log('📝 Fallback extracted filters:', JSON.stringify(aiFilters, null, 2));
