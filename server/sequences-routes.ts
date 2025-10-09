@@ -73,6 +73,17 @@ router.put("/sequences/:id", async (req, res) => {
   }
 });
 
+// Update sequence (PATCH)
+router.patch("/sequences/:id", async (req, res) => {
+  try {
+    const sequence = await storage.updateSequence(req.params.id, req.body);
+    res.json(sequence);
+  } catch (error) {
+    console.error("Error updating sequence:", error);
+    res.status(500).json({ error: "Failed to update sequence" });
+  }
+});
+
 // Add step to sequence
 router.post("/sequences/:id/steps", async (req, res) => {
   try {
