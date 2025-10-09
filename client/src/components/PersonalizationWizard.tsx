@@ -1097,7 +1097,7 @@ export function PersonalizationWizard({
                       )}
                       <Button
                         onClick={handleCompleteWizard}
-                        disabled={!generatedEmail || !selectedProspectId}
+                        disabled={batchMode ? batchGeneratedEmails.size === 0 : (!generatedEmail || !selectedProspectId)}
                         className="bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
                         data-testid="button-complete"
                       >
