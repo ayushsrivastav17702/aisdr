@@ -201,6 +201,30 @@ export class MailboxService {
     await db.delete(emailMailboxes).where(eq(emailMailboxes.id, mailboxId));
   }
 
+  async updateMailbox(mailboxId: string, updates: Partial<InsertEmailMailbox>): Promise<EmailMailbox> {
+    const updateData: any = { ...updates, updatedAt: new Date() };
+    
+    if (updates.smtpPassword) {
+      updateData.smtpPassword = this.encrypt(updates.smtpPassword);
+    }
+    
+    if (updates.apiKey) {
+      updateData.apiKey = this.encrypt(updates.apiKey);
+    }
+    
+    const [updated] = await db
+      .update(emailMailboxes)
+      .set(updateData)
+      .where(eq(emailMailboxes.id, mailboxId))
+      .returning();
+    
+    if (!updated) {
+      throw new Error(`Mailbox ${mailboxId} not found`);
+    }
+    
+    return updated;
+  }
+
   async testConnection(mailboxId: string): Promise<boolean> {
     const mailbox = await this.getMailboxById(mailboxId);
     if (!mailbox) {
