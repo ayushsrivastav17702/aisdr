@@ -234,6 +234,29 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
     },
   });
 
+  const bulkDeleteMutation = useMutation({
+    mutationFn: api.bulkDeleteProspects,
+    onSuccess: (result: any) => {
+      const deleted = result.deleted || 0;
+      const failed = result.failed || 0;
+      
+      toast({
+        title: "Delete Complete",
+        description: `Successfully deleted ${deleted} prospect${deleted !== 1 ? 's' : ''}${failed > 0 ? `. ${failed} failed` : ''}`,
+      });
+      
+      onSelectionChange([]);
+      queryClient.invalidateQueries({ queryKey: ["/api/prospects"] });
+    },
+    onError: (error) => {
+      toast({
+        variant: "destructive",
+        title: "Delete Failed",
+        description: error.message,
+      });
+    },
+  });
+
   const handleSelectAll = (checked: boolean) => {
     if (checked && data) {
       const allIds = data.prospects.map((p: any) => p.id);
@@ -288,6 +311,21 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
     }
     
     apolloBulkEnrichMutation.mutate(selectedIds);
+  };
+
+  const handleBulkDelete = () => {
+    if (selectedIds.length === 0) {
+      toast({
+        variant: "destructive",
+        title: "No Selection",
+        description: "Please select prospects to delete",
+      });
+      return;
+    }
+    
+    if (confirm(`Are you sure you want to delete ${selectedIds.length} prospect${selectedIds.length !== 1 ? 's' : ''}? This action cannot be undone.`)) {
+      bulkDeleteMutation.mutate(selectedIds);
+    }
   };
 
   const getStatusBadge = (status: string) => {
@@ -412,6 +450,17 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
               </div>
               
               <div className="flex items-center gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={handleBulkDelete}
+                  disabled={bulkDeleteMutation.isPending}
+                  className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200"
+                  data-testid="button-bulk-delete"
+                >
+                  <TrashIcon className="w-4 h-4 mr-2" />
+                  {bulkDeleteMutation.isPending ? "Deleting..." : "Delete"}
+                </Button>
                 <Button variant="outline" size="sm" data-testid="button-export">
                   <DownloadIcon className="w-4 h-4 mr-2" />
                   Export
