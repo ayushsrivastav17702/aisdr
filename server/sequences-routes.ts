@@ -78,7 +78,26 @@ async function initializeSequence(sequenceId: string): Promise<void> {
 router.get("/sequences", async (req, res) => {
   try {
     const sequences = await storage.getSequences();
-    res.json(sequences);
+    
+    // Enhance each sequence with tracking stats
+    const sequencesWithStats = await Promise.all(
+      sequences.map(async (sequence) => {
+        const emails = await storage.getSequenceEmails(sequence.id);
+        
+        const sentCount = emails.filter(e => e.sentAt).length;
+        const openedCount = emails.filter(e => e.openedAt).length;
+        const repliedCount = emails.filter(e => e.repliedAt).length;
+        
+        return {
+          ...sequence,
+          sentCount,
+          openedCount,
+          repliedCount,
+        };
+      })
+    );
+    
+    res.json(sequencesWithStats);
   } catch (error) {
     console.error("Error fetching sequences:", error);
     res.status(500).json({ error: "Failed to fetch sequences" });
@@ -94,9 +113,23 @@ router.get("/sequences/:id", async (req, res) => {
       return res.status(404).json({ error: "Sequence not found" });
     }
     
-    const steps = await storage.getSequenceSteps(req.params.id);
+    const [steps, emails] = await Promise.all([
+      storage.getSequenceSteps(req.params.id),
+      storage.getSequenceEmails(req.params.id)
+    ]);
     
-    res.json({ ...sequence, steps });
+    // Add tracking stats
+    const sentCount = emails.filter(e => e.sentAt).length;
+    const openedCount = emails.filter(e => e.openedAt).length;
+    const repliedCount = emails.filter(e => e.repliedAt).length;
+    
+    res.json({ 
+      ...sequence, 
+      steps,
+      sentCount,
+      openedCount,
+      repliedCount,
+    });
   } catch (error) {
     console.error("Error fetching sequence:", error);
     res.status(500).json({ error: "Failed to fetch sequence" });
