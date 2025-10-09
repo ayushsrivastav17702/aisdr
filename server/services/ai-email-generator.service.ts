@@ -83,18 +83,23 @@ export async function generateEmail(request: EmailGenerationRequest): Promise<Ge
     let result;
     if ('choices' in response) {
       // OpenAI format
-      result = JSON.parse((response as any).choices[0].message.content || '{}');
+      const rawContent = (response as any).choices[0].message.content || '{}';
+      console.log('📧 AI Response (OpenAI):', rawContent.substring(0, 300));
+      result = JSON.parse(rawContent);
     } else {
       // Anthropic format
       const content = (response as any).content[0];
       if (content.type === 'text') {
         const text = content.text;
+        console.log('📧 AI Response (Anthropic):', text.substring(0, 300));
         // Strip markdown code blocks if present
         const jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/) || text.match(/```\s*([\s\S]*?)\s*```/);
         const jsonText = jsonMatch ? jsonMatch[1] : text;
         result = JSON.parse(jsonText.trim());
       }
     }
+    
+    console.log('📧 Parsed result - subject:', result.subject?.substring(0, 50), 'body length:', result.body?.length || 0);
     
     const personalizationFactors = [
       'Prospect name and title',
