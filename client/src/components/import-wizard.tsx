@@ -160,8 +160,66 @@ export default function ImportWizard({ open, onClose }: ImportWizardProps) {
     validateCSVMutation.mutate(selectedFile);
   };
 
+  const validateMappings = () => {
+    if (!validation) return { valid: true, warnings: [] };
+    
+    const warnings: string[] = [];
+    
+    // More specific phone number pattern (international format with country code)
+    const phonePattern = /(\+\d{1,3}\s?)?(\(\d{3}\)|\d{3})[-.\s]?\d{3}[-.\s]?\d{4}/;
+    
+    // Check each mapping for suspicious patterns
+    for (const column of validation.columns) {
+      const mappedTo = fieldMappings[column.name];
+      if (!mappedTo || mappedTo === "do_not_import") continue;
+      
+      const samples = column.samples.join(" ");
+      
+      // Check for phone numbers mapped to email
+      if (mappedTo === "primaryEmail" || mappedTo === "secondaryEmail") {
+        const hasPhonePattern = phonePattern.test(samples);
+        const hasEmailPattern = samples.includes("@");
+        
+        if (hasPhonePattern && !hasEmailPattern) {
+          warnings.push(`"${column.name}" contains phone numbers but is mapped to ${mappedTo === "primaryEmail" ? "Primary Email" : "Secondary Email"}`);
+        }
+        if (!hasEmailPattern) {
+          warnings.push(`"${column.name}" doesn't contain email addresses (@) but is mapped to ${mappedTo === "primaryEmail" ? "Primary Email" : "Secondary Email"}`);
+        }
+      }
+      
+      // Check for non-phone numbers mapped to phone
+      if (mappedTo === "phoneNumber") {
+        if (samples.includes("@")) {
+          warnings.push(`"${column.name}" contains email addresses but is mapped to Phone Number`);
+        }
+      }
+      
+      // Check for phone numbers mapped to company name
+      if (mappedTo === "companyName") {
+        if (phonePattern.test(samples)) {
+          warnings.push(`"${column.name}" contains phone numbers but is mapped to Company Name`);
+        }
+      }
+    }
+    
+    return { valid: warnings.length === 0, warnings };
+  };
+
   const handleStartImport = () => {
     if (!selectedFile) return;
+    
+    const { valid, warnings } = validateMappings();
+    
+    if (!valid && warnings.length > 0) {
+      toast({
+        variant: "destructive",
+        title: "Suspicious Field Mappings Detected",
+        description: warnings[0] + (warnings.length > 1 ? ` (${warnings.length - 1} more)` : ""),
+      });
+      return;
+    }
+    
     uploadCSVMutation.mutate({
       file: selectedFile,
       mappings: fieldMappings,
@@ -398,9 +456,33 @@ export default function ImportWizard({ open, onClose }: ImportWizardProps) {
               {validation.columns.map((column, index) => {
                 const mappedField = fieldMappings[column.name] || "";
                 const isMapped = mappedField && mappedField !== "do_not_import";
+                
+                // Check for suspicious mapping (use same pattern as validation)
+                const samples = column.samples.join(" ");
+                const phonePattern = /(\+\d{1,3}\s?)?(\(\d{3}\)|\d{3})[-.\s]?\d{3}[-.\s]?\d{4}/;
+                let isSuspicious = false;
+                let suspiciousReason = "";
+                
+                if (mappedField === "primaryEmail" || mappedField === "secondaryEmail") {
+                  const hasPhonePattern = phonePattern.test(samples);
+                  const hasEmailPattern = samples.includes("@");
+                  
+                  if (hasPhonePattern && !hasEmailPattern) {
+                    isSuspicious = true;
+                    suspiciousReason = "Contains phone numbers";
+                  } else if (!hasEmailPattern) {
+                    isSuspicious = true;
+                    suspiciousReason = "No @ symbol found";
+                  }
+                }
+                
+                if (mappedField === "companyName" && phonePattern.test(samples)) {
+                  isSuspicious = true;
+                  suspiciousReason = "Contains phone numbers";
+                }
 
                 return (
-                  <tr key={index} data-testid={`mapping-row-${index}`}>
+                  <tr key={index} data-testid={`mapping-row-${index}`} className={isSuspicious ? "bg-red-50" : ""}>
                     <td className="px-4 py-4">
                       <div className="flex items-center gap-2">
                         <FileTextIcon className="w-4 h-4 text-muted-foreground" />
@@ -413,7 +495,10 @@ export default function ImportWizard({ open, onClose }: ImportWizardProps) {
                           value={mappedField}
                           onValueChange={(value) => setFieldMappings(prev => ({ ...prev, [column.name]: value }))}
                         >
-                          <SelectTrigger className={`flex-1 ${isMapped ? 'border-emerald-300 bg-emerald-50 text-emerald-900' : ''}`}>
+                          <SelectTrigger className={`flex-1 ${
+                            isSuspicious ? 'border-red-300 bg-red-50 text-red-900' : 
+                            isMapped ? 'border-emerald-300 bg-emerald-50 text-emerald-900' : ''
+                          }`}>
                             <SelectValue placeholder="-- Select Field --" />
                           </SelectTrigger>
                           <SelectContent>
@@ -436,7 +521,14 @@ export default function ImportWizard({ open, onClose }: ImportWizardProps) {
                             <SelectItem value="do_not_import">Do not import</SelectItem>
                           </SelectContent>
                         </Select>
-                        {isMapped ? (
+                        {isSuspicious ? (
+                          <div className="relative group">
+                            <AlertCircleIcon className="w-5 h-5 text-red-500" />
+                            <div className="hidden group-hover:block absolute right-0 top-6 bg-red-900 text-white text-xs rounded px-2 py-1 whitespace-nowrap z-10">
+                              {suspiciousReason}
+                            </div>
+                          </div>
+                        ) : isMapped ? (
                           <CheckCircleIcon className="w-5 h-5 text-emerald-500" />
                         ) : (
                           <TriangleAlert className="w-5 h-5 text-amber-500" />
