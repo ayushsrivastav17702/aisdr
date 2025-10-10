@@ -12,6 +12,8 @@ export class EmailSendingService {
     body: string;
     fromName?: string;
     trackingId?: string;
+    inReplyTo?: string;
+    references?: string;
   }): Promise<{ success: boolean; messageId?: string; error?: string; finalBody?: string }> {
     try {
       const [mailbox] = await db
@@ -62,13 +64,30 @@ export class EmailSendingService {
         emailBody = emailBody + trackingPixel;
       }
 
-      const info = await transporter.sendMail({
+      const mailOptions: any = {
         from: `"${params.fromName || mailbox.name}" <${mailbox.email}>`,
         to: params.to,
         subject: params.subject,
         html: emailBody,
         replyTo: mailbox.email,
-      });
+      };
+      
+      // Add threading headers if provided (for email thread continuity)
+      if (params.inReplyTo) {
+        mailOptions.inReplyTo = params.inReplyTo;
+        mailOptions.headers = {
+          'In-Reply-To': params.inReplyTo,
+        };
+      }
+      
+      if (params.references) {
+        if (!mailOptions.headers) {
+          mailOptions.headers = {};
+        }
+        mailOptions.headers['References'] = params.references;
+      }
+      
+      const info = await transporter.sendMail(mailOptions);
 
       await mailboxService.incrementDailySent(params.mailboxId);
 
