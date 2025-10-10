@@ -105,17 +105,18 @@ export class EmailQueueService {
 
         // Create or update entry in emails table for analytics tracking
         if (email.emailId) {
-          // Update existing email record with final body including signature
+          // Update existing email record with final body including signature and Message-ID
           await db
             .update(emails)
             .set({
               content: result.finalBody || email.body, // Use final body with signature
               sentAt,
               status: "sent",
+              messageId: result.messageId, // Store Message-ID for threading
             })
             .where(eq(emails.id, email.emailId));
         } else {
-          // Create new email record for analytics with final body including signature
+          // Create new email record for analytics with final body including signature and Message-ID
           await db.insert(emails).values({
             prospectId: email.prospectId,
             sequenceId: email.sequenceId || null,
@@ -124,6 +125,7 @@ export class EmailQueueService {
             status: "sent",
             sentAt,
             trackingId: email.id, // Use queue ID as tracking ID
+            messageId: result.messageId, // Store Message-ID for threading
           });
         }
 

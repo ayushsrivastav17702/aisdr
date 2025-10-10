@@ -223,6 +223,7 @@ export const emails = pgTable("emails", {
   deliveredAt: timestamp("delivered_at"),
   bouncedAt: timestamp("bounced_at"),
   trackingId: text("tracking_id"),
+  messageId: text("message_id"), // RFC 5322 Message-ID for email threading
   createdAt: timestamp("created_at").defaultNow(),
 });
 
