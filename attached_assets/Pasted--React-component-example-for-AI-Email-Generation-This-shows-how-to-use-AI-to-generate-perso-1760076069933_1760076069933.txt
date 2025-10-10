@@ -1,0 +1,322 @@
+/**
+ * React component example for AI Email Generation
+ * This shows how to use AI to generate personalized emails from the frontend
+ */
+
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Loader2, Mail, Sparkles, Copy, CheckCircle } from "lucide-react";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+
+interface ProspectData {
+  firstName: string;
+  lastName: string;
+  email: string;
+  jobTitle: string;
+  company: string;
+  linkedinUrl?: string;
+}
+
+interface GeneratedEmail {
+  subject: string;
+  body: string;
+  reasoning: string;
+  personalizationFactors: string[];
+  confidenceScore: number;
+}
+
+export function AIEmailGeneratorExample() {
+  const { toast } = useToast();
+  const [prospect, setProspect] = useState<ProspectData>({
+    firstName: "",
+    lastName: "",
+    email: "",
+    jobTitle: "",
+    company: "",
+    linkedinUrl: ""
+  });
+  
+  const [emailType, setEmailType] = useState("cold_outreach");
+  const [tone, setTone] = useState("professional");
+  const [customPrompt, setCustomPrompt] = useState("");
+  const [generatedEmail, setGeneratedEmail] = useState<GeneratedEmail | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  // Mutation to generate AI email
+  const generateEmailMutation = useMutation({
+    mutationFn: async () => {
+      // First, create or get the prospect
+      const prospectResponse = await apiRequest('/api/prospects/quick-add', 'POST', prospect);
+      
+      // Then generate the email
+      const emailResponse = await apiRequest('/api/ai/generate-email', 'POST', {
+        prospectId: prospectResponse.id,
+        emailType,
+        tone,
+        customPrompt: customPrompt || undefined,
+        includeResearch: true // Enable deep research for better personalization
+      });
+      
+      return emailResponse;
+    },
+    onSuccess: (data) => {
+      setGeneratedEmail(data.email);
+      toast({
+        title: "Email Generated!",
+        description: `Confidence score: ${data.email.confidenceScore}%`,
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Generation Failed",
+        description: error.message || "Failed to generate email",
+        variant: "destructive"
+      });
+    }
+  });
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+    toast({
+      title: "Copied to clipboard",
+      description: "Email content has been copied",
+    });
+  };
+
+  const formatEmailForDisplay = (subject: string, body: string) => {
+    return `Subject: ${subject}\n\n${body}`;
+  };
+
+  return (
+    <div className="max-w-6xl mx-auto p-6 space-y-6">
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Sparkles className="h-6 w-6 text-purple-500" />
+            AI Email Generator
+          </CardTitle>
+          <CardDescription>
+            Generate personalized emails using AI based on prospect information
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* Prospect Information Form */}
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label htmlFor="firstName">First Name *</Label>
+              <Input
+                id="firstName"
+                value={prospect.firstName}
+                onChange={(e) => setProspect({...prospect, firstName: e.target.value})}
+                placeholder="John"
+                data-testid="input-firstName"
+              />
+            </div>
+            <div>
+              <Label htmlFor="lastName">Last Name *</Label>
+              <Input
+                id="lastName"
+                value={prospect.lastName}
+                onChange={(e) => setProspect({...prospect, lastName: e.target.value})}
+                placeholder="Doe"
+                data-testid="input-lastName"
+              />
+            </div>
+            <div>
+              <Label htmlFor="email">Email *</Label>
+              <Input
+                id="email"
+                type="email"
+                value={prospect.email}
+                onChange={(e) => setProspect({...prospect, email: e.target.value})}
+                placeholder="john.doe@company.com"
+                data-testid="input-email"
+              />
+            </div>
+            <div>
+              <Label htmlFor="jobTitle">Job Title *</Label>
+              <Input
+                id="jobTitle"
+                value={prospect.jobTitle}
+                onChange={(e) => setProspect({...prospect, jobTitle: e.target.value})}
+                placeholder="VP of Sales"
+                data-testid="input-jobTitle"
+              />
+            </div>
+            <div>
+              <Label htmlFor="company">Company *</Label>
+              <Input
+                id="company"
+                value={prospect.company}
+                onChange={(e) => setProspect({...prospect, company: e.target.value})}
+                placeholder="Tech Corp"
+                data-testid="input-company"
+              />
+            </div>
+            <div>
+              <Label htmlFor="linkedinUrl">LinkedIn URL (Optional)</Label>
+              <Input
+                id="linkedinUrl"
+                value={prospect.linkedinUrl}
+                onChange={(e) => setProspect({...prospect, linkedinUrl: e.target.value})}
+                placeholder="https://linkedin.com/in/johndoe"
+                data-testid="input-linkedinUrl"
+              />
+            </div>
+          </div>
+
+          {/* Email Configuration */}
+          <div className="space-y-4 border-t pt-4">
+            <h3 className="text-lg font-semibold">Email Configuration</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="emailType">Email Type</Label>
+                <Select value={emailType} onValueChange={setEmailType}>
+                  <SelectTrigger id="emailType" data-testid="select-emailType">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="cold_outreach">Cold Outreach</SelectItem>
+                    <SelectItem value="follow_up">Follow Up</SelectItem>
+                    <SelectItem value="meeting_request">Meeting Request</SelectItem>
+                    <SelectItem value="product_intro">Product Introduction</SelectItem>
+                    <SelectItem value="breakup">Breakup Email</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label htmlFor="tone">Tone</Label>
+                <Select value={tone} onValueChange={setTone}>
+                  <SelectTrigger id="tone" data-testid="select-tone">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="professional">Professional</SelectItem>
+                    <SelectItem value="casual">Casual</SelectItem>
+                    <SelectItem value="friendly">Friendly</SelectItem>
+                    <SelectItem value="urgent">Urgent</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div>
+              <Label htmlFor="customPrompt">Custom Instructions (Optional)</Label>
+              <Textarea
+                id="customPrompt"
+                value={customPrompt}
+                onChange={(e) => setCustomPrompt(e.target.value)}
+                placeholder="E.g., Focus on their recent product launch, mention our 30% cost savings, emphasize Q4 timeline..."
+                className="min-h-[80px]"
+                data-testid="textarea-customPrompt"
+              />
+            </div>
+          </div>
+
+          {/* Generate Button */}
+          <Button
+            onClick={() => generateEmailMutation.mutate()}
+            disabled={generateEmailMutation.isPending || !prospect.firstName || !prospect.lastName || !prospect.email || !prospect.jobTitle || !prospect.company}
+            className="w-full"
+            size="lg"
+            data-testid="button-generate"
+          >
+            {generateEmailMutation.isPending ? (
+              <>
+                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                Generating Personalized Email...
+              </>
+            ) : (
+              <>
+                <Mail className="mr-2 h-5 w-5" />
+                Generate AI Email
+              </>
+            )}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Generated Email Display */}
+      {generatedEmail && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <CheckCircle className="h-5 w-5 text-green-500" />
+                Generated Email
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => copyToClipboard(formatEmailForDisplay(generatedEmail.subject, generatedEmail.body))}
+                data-testid="button-copy"
+              >
+                {copied ? (
+                  <>
+                    <CheckCircle className="mr-2 h-4 w-4" />
+                    Copied!
+                  </>
+                ) : (
+                  <>
+                    <Copy className="mr-2 h-4 w-4" />
+                    Copy Email
+                  </>
+                )}
+              </Button>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Email Preview */}
+            <div className="bg-gray-50 rounded-lg p-4 space-y-3">
+              <div>
+                <span className="font-semibold text-sm text-gray-600">Subject:</span>
+                <p className="mt-1 font-medium" data-testid="text-subject">{generatedEmail.subject}</p>
+              </div>
+              <div>
+                <span className="font-semibold text-sm text-gray-600">Body:</span>
+                <div className="mt-1 whitespace-pre-wrap" data-testid="text-body">{generatedEmail.body}</div>
+              </div>
+            </div>
+
+            {/* Personalization Insights */}
+            <Alert>
+              <AlertDescription>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold">Confidence Score:</span>
+                    <span className="text-lg font-bold text-green-600">
+                      {generatedEmail.confidenceScore}%
+                    </span>
+                  </div>
+                  <div>
+                    <span className="font-semibold">Personalization Factors:</span>
+                    <ul className="mt-1 list-disc list-inside text-sm text-gray-600">
+                      {generatedEmail.personalizationFactors.map((factor, index) => (
+                        <li key={index}>{factor}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  {generatedEmail.reasoning && (
+                    <div>
+                      <span className="font-semibold">AI Reasoning:</span>
+                      <p className="mt-1 text-sm text-gray-600">{generatedEmail.reasoning}</p>
+                    </div>
+                  )}
+                </div>
+              </AlertDescription>
+            </Alert>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
