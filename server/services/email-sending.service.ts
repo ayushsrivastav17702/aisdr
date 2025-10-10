@@ -33,10 +33,15 @@ export class EmailSendingService {
 
       const transporter = await this.createTransporter(mailbox);
 
-      // Convert plain text line breaks to HTML
-      let emailBody = params.body
-        .replace(/\n\n/g, '<br><br>')  // Double line breaks become double <br>
-        .replace(/\n/g, '<br>');        // Single line breaks become single <br>
+      // Convert plain text to properly formatted HTML
+      // Split by line breaks and wrap each paragraph in <p> tags for proper spacing
+      const paragraphs = params.body
+        .split(/\n+/)  // Split by one or more line breaks
+        .filter(p => p.trim().length > 0)  // Remove empty paragraphs
+        .map(p => `<p style="margin: 0 0 16px 0;">${p.trim()}</p>`)  // Wrap in <p> tags with spacing
+        .join('');
+      
+      let emailBody = paragraphs;
       
       if (params.trackingId) {
         const trackingPixel = `<img src="${process.env.API_BASE_URL || ''}/webhooks/pixel/${params.trackingId}" width="1" height="1" />`;
