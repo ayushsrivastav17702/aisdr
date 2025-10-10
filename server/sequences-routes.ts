@@ -3,8 +3,8 @@ import { storage } from "./storage";
 import { generatePersonalizedEmail, type LinkedInData } from "./services/personalization.service";
 import { emailQueueService } from "./services/email-queue.service";
 import { db } from "./db";
-import { sequenceProspects } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { sequenceProspects, emailReplies, emailQueue } from "@shared/schema";
+import { eq, and, sql } from "drizzle-orm";
 import { z } from "zod";
 
 const router = Router();
@@ -490,9 +490,39 @@ router.post("/sequences/followup-preview", async (req, res) => {
       return res.status(400).json({ error: "prospectId is required" });
     }
     
+    // If no email history provided, fetch the actual reply content
+    let finalEmailHistory = emailHistory;
+    if (!finalEmailHistory || finalEmailHistory.trim() === "") {
+      const [latestReply] = await db
+        .select()
+        .from(emailReplies)
+        .where(eq(emailReplies.prospectId, prospectId))
+        .orderBy(sql`${emailReplies.receivedAt} DESC`)
+        .limit(1);
+      
+      const replyContent = latestReply?.replyContent || "";
+      
+      // Get the sent email for context
+      const [sentEmail] = await db
+        .select()
+        .from(emailQueue)
+        .where(
+          and(
+            eq(emailQueue.prospectId, prospectId),
+            eq(emailQueue.status, "sent")
+          )
+        )
+        .orderBy(sql`${emailQueue.scheduledFor} DESC`)
+        .limit(1);
+      
+      finalEmailHistory = sentEmail?.subject && sentEmail?.body
+        ? `Original Email:\nSubject: ${sentEmail.subject}\n\n${sentEmail.body}\n\nProspect Reply:\n${replyContent}`
+        : replyContent;
+    }
+    
     const preview = await aiFollowUpScheduler.generateFollowUpEmailPreview(
       prospectId,
-      emailHistory || "",
+      finalEmailHistory,
       followUpType || "gentle_reminder",
       followUpNumber || 1
     );
@@ -566,7 +596,7 @@ router.post("/sequences/ai-generate-variants", async (req, res) => {
 router.post("/sequences/enhanced-personalization", async (req, res) => {
   try {
     const { generateEnhancedPersonalizedEmail } = await import("./services/enhanced-personalization.service");
-    const { prospectId, linkedInData, companyData } = req.body;
+    const { prospectId } = req.body;
     
     if (!prospectId) {
       return res.status(400).json({ error: "prospectId is required" });
@@ -574,8 +604,7 @@ router.post("/sequences/enhanced-personalization", async (req, res) => {
     
     const result = await generateEnhancedPersonalizedEmail({
       prospectId,
-      linkedInData,
-      companyData,
+      includeLinkedInData: true,
     });
     
     res.json(result);
@@ -593,9 +622,36 @@ router.get("/sequences/ai-followup-preview/:prospectId", async (req, res) => {
     const { aiFollowUpScheduler } = await import("./services/ai-followup-scheduler.service");
     const { prospectId } = req.params;
     
+    // Get the actual reply content for this prospect
+    const [latestReply] = await db
+      .select()
+      .from(emailReplies)
+      .where(eq(emailReplies.prospectId, prospectId))
+      .orderBy(sql`${emailReplies.receivedAt} DESC`)
+      .limit(1);
+    
+    const replyContent = latestReply?.replyContent || "";
+    
+    // Get the sent email for context
+    const [sentEmail] = await db
+      .select()
+      .from(emailQueue)
+      .where(
+        and(
+          eq(emailQueue.prospectId, prospectId),
+          eq(emailQueue.status, "sent")
+        )
+      )
+      .orderBy(sql`${emailQueue.scheduledFor} DESC`)
+      .limit(1);
+    
+    const emailHistory = sentEmail?.subject && sentEmail?.body
+      ? `Original Email:\nSubject: ${sentEmail.subject}\n\n${sentEmail.body}\n\nProspect Reply:\n${replyContent}`
+      : replyContent;
+    
     const preview = await aiFollowUpScheduler.generateFollowUpEmailPreview(
       prospectId,
-      "",
+      emailHistory,
       "gentle_reminder",
       1
     );
