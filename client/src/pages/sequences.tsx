@@ -19,7 +19,7 @@ import {
   Users, MessageSquare, Zap, BarChart3, Settings, Plus, RefreshCw, 
   Sparkles, X, Trash2, Mail, Send, Eye, Target,
   Clock, TrendingUp, Play, Pause, ArrowLeft, FileText, WandIcon,
-  Search, Filter, Grid3x3, List, MoreVertical, Copy, Edit2, MailOpen, Reply
+  Search, Filter, Grid3x3, List, MoreVertical, Copy, Edit2, MailOpen, Reply, Loader2
 } from "lucide-react";
 import { PersonalizationWizard } from "@/components/PersonalizationWizard";
 
@@ -1803,6 +1803,7 @@ function AIReplyComposer({ reply, sequenceId, open, onOpenChange }: { reply: any
   const [generatedEmail, setGeneratedEmail] = useState("");
   const [isGenerating, setIsGenerating] = useState(false);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const generateReplyMutation = useMutation({
     mutationFn: async () => {
@@ -1830,9 +1831,43 @@ function AIReplyComposer({ reply, sequenceId, open, onOpenChange }: { reply: any
     }
   });
 
+  const sendReplyMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/sequences/send-reply`, {
+        prospectId: reply.prospectId,
+        sequenceId,
+        subject: `Re: ${reply.subject || 'Your inquiry'}`,
+        body: generatedEmail,
+      });
+      return await res.json();
+    },
+    onSuccess: () => {
+      onOpenChange(false);
+      setGeneratedEmail("");
+      queryClient.invalidateQueries({ queryKey: ['/api/sequences', sequenceId, 'replies'] });
+      toast({
+        title: "Reply Sent",
+        description: "Your reply has been queued and will be sent within 10 seconds",
+      });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Send Failed",
+        description: error.message || "Failed to send reply",
+        variant: "destructive",
+      });
+    }
+  });
+
   const handleGenerate = () => {
     setIsGenerating(true);
     generateReplyMutation.mutate();
+  };
+
+  const handleSendReply = () => {
+    if (generatedEmail.trim()) {
+      sendReplyMutation.mutate();
+    }
   };
 
   return (
@@ -1891,7 +1926,12 @@ function AIReplyComposer({ reply, sequenceId, open, onOpenChange }: { reply: any
                 <RefreshCw className="w-4 h-4 mr-2" />
                 Regenerate
               </Button>
-              <Button data-testid="button-send-reply">
+              <Button 
+                onClick={handleSendReply}
+                disabled={sendReplyMutation.isPending || !generatedEmail.trim()}
+                data-testid="button-send-reply"
+              >
+                {sendReplyMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                 <Send className="w-4 h-4 mr-2" />
                 Send Reply
               </Button>
