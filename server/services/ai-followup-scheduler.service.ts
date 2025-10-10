@@ -16,7 +16,7 @@ export interface FollowUpConfig {
 
 export interface FollowUpEmail {
   subject: string;
-  content: string;
+  body: string;
   followUpNumber: number;
   reasoning: string;
   scheduledFor: Date;
@@ -74,7 +74,7 @@ export class AIFollowUpScheduler {
 
       return {
         subject: result.subject,
-        content: result.body,
+        body: result.body,
         followUpNumber,
         reasoning: result.reasoning,
         scheduledFor
