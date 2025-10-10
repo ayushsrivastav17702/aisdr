@@ -198,6 +198,17 @@ router.patch("/sequences/:id", async (req, res) => {
   }
 });
 
+// Delete sequence
+router.delete("/sequences/:id", async (req, res) => {
+  try {
+    await storage.deleteSequence(req.params.id);
+    res.json({ success: true });
+  } catch (error) {
+    console.error("Error deleting sequence:", error);
+    res.status(500).json({ error: "Failed to delete sequence" });
+  }
+});
+
 // Add step to sequence
 router.post("/sequences/:id/steps", async (req, res) => {
   try {

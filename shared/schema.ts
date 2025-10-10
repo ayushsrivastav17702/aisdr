@@ -430,7 +430,7 @@ export const emailQueue = pgTable("email_queue", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   emailId: varchar("email_id").references(() => emails.id, { onDelete: "cascade" }),
   mailboxId: varchar("mailbox_id").notNull().references(() => emailMailboxes.id),
-  sequenceId: varchar("sequence_id").references(() => sequences.id),
+  sequenceId: varchar("sequence_id").references(() => sequences.id, { onDelete: "cascade" }),
   prospectId: varchar("prospect_id").notNull().references(() => prospects.id),
   
   status: emailQueueStatusEnum("status").default("pending"),

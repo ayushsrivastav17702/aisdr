@@ -80,6 +80,7 @@ export interface IStorage {
   getSequence(id: string): Promise<Sequence | undefined>;
   createSequence(sequence: InsertSequence): Promise<Sequence>;
   updateSequence(id: string, updates: Partial<Sequence>): Promise<Sequence>;
+  deleteSequence(id: string): Promise<void>;
   
   // Sequence Steps
   getSequenceSteps(sequenceId: string): Promise<SequenceStep[]>;
@@ -481,6 +482,10 @@ export class DatabaseStorage implements IStorage {
       .where(eq(sequences.id, id))
       .returning();
     return updated;
+  }
+
+  async deleteSequence(id: string): Promise<void> {
+    await db.delete(sequences).where(eq(sequences.id, id));
   }
 
   // Sequence Steps

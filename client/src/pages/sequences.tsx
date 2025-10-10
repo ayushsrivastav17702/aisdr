@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { api } from "@/lib/api";
@@ -377,6 +378,8 @@ function CreateSequenceButton() {
 
 function EnhancedSequenceCard({ sequence }: { sequence: any }) {
   const [, setLocation] = useLocation();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
   
   // Calculate metrics
   const emailCount = sequence.steps?.length || 0;
@@ -386,6 +389,20 @@ function EnhancedSequenceCard({ sequence }: { sequence: any }) {
   const repliedCount = sequence.repliedCount || 0;
   const openRate = sentCount > 0 ? Math.round((openedCount / sentCount) * 100) : 0;
   const replyRate = sentCount > 0 ? Math.round((repliedCount / sentCount) * 100) : 0;
+  
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("DELETE", `/api/sequences/${sequence.id}`, undefined);
+      return await res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sequences"] });
+      toast({ title: "Sequence deleted successfully" });
+    },
+    onError: () => {
+      toast({ title: "Failed to delete sequence", variant: "destructive" });
+    },
+  });
   
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -410,9 +427,41 @@ function EnhancedSequenceCard({ sequence }: { sequence: any }) {
               <CardDescription className="mt-1 line-clamp-2">{sequence.description}</CardDescription>
             )}
           </div>
-          <Badge className={`ml-2 ${getStatusColor(sequence.status)}`} data-testid={`badge-status-${sequence.id}`}>
-            {sequence.status}
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Badge className={`${getStatusColor(sequence.status)}`} data-testid={`badge-status-${sequence.id}`}>
+              {sequence.status}
+            </Badge>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+                  onClick={(e) => e.stopPropagation()}
+                  data-testid={`button-delete-${sequence.id}`}
+                >
+                  <Trash2 className="h-4 w-4 text-red-500" />
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete Sequence</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Are you sure you want to delete "{sequence.name}"? This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => deleteMutation.mutate()}
+                    className="bg-red-500 hover:bg-red-600"
+                  >
+                    Delete
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
         </div>
       </CardHeader>
 
@@ -492,6 +541,8 @@ function EnhancedSequenceCard({ sequence }: { sequence: any }) {
 
 function SequenceListItem({ sequence }: { sequence: any }) {
   const [, setLocation] = useLocation();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
   
   const emailCount = sequence.steps?.length || 0;
   const totalProspects = sequence.totalProspects || 0;
@@ -500,6 +551,20 @@ function SequenceListItem({ sequence }: { sequence: any }) {
   const repliedCount = sequence.repliedCount || 0;
   const openRate = sentCount > 0 ? Math.round((openedCount / sentCount) * 100) : 0;
   const replyRate = sentCount > 0 ? Math.round((repliedCount / sentCount) * 100) : 0;
+  
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("DELETE", `/api/sequences/${sequence.id}`, undefined);
+      return await res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sequences"] });
+      toast({ title: "Sequence deleted successfully" });
+    },
+    onError: () => {
+      toast({ title: "Failed to delete sequence", variant: "destructive" });
+    },
+  });
   
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -551,18 +616,49 @@ function SequenceListItem({ sequence }: { sequence: any }) {
             </div>
           </div>
 
-          {/* Action */}
-          <Button 
-            variant="ghost" 
-            size="sm"
-            className="opacity-0 group-hover:opacity-100 transition-opacity"
-            onClick={(e) => {
-              e.stopPropagation();
-              setLocation(`/sequences/${sequence.id}`);
-            }}
-          >
-            Open →
-          </Button>
+          {/* Actions */}
+          <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={(e) => {
+                e.stopPropagation();
+                setLocation(`/sequences/${sequence.id}`);
+              }}
+            >
+              Open →
+            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  className="h-8 w-8"
+                  onClick={(e) => e.stopPropagation()}
+                  data-testid={`button-delete-list-${sequence.id}`}
+                >
+                  <Trash2 className="h-4 w-4 text-red-500" />
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete Sequence</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Are you sure you want to delete "{sequence.name}"? This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => deleteMutation.mutate()}
+                    className="bg-red-500 hover:bg-red-600"
+                  >
+                    Delete
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
         </div>
       </CardContent>
     </Card>
