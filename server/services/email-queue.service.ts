@@ -1,5 +1,5 @@
 import { db } from "../db";
-import { emailQueue, InsertEmailQueueItem, EmailQueueItem, prospects } from "@shared/schema";
+import { emailQueue, InsertEmailQueueItem, EmailQueueItem, prospects, emails } from "@shared/schema";
 import { eq, and, lte, sql } from "drizzle-orm";
 import { emailSendingService } from "./email-sending.service";
 import { mailboxService } from "./mailbox.service";
@@ -90,13 +90,39 @@ export class EmailQueueService {
       });
 
       if (result.success) {
+        const sentAt = new Date();
+        
+        // Update email queue status
         await db
           .update(emailQueue)
           .set({
             status: "sent",
-            sentAt: new Date(),
+            sentAt,
           })
           .where(eq(emailQueue.id, email.id));
+
+        // Create or update entry in emails table for analytics tracking
+        if (email.emailId) {
+          // Update existing email record
+          await db
+            .update(emails)
+            .set({
+              sentAt,
+              status: "sent",
+            })
+            .where(eq(emails.id, email.emailId));
+        } else {
+          // Create new email record for analytics
+          await db.insert(emails).values({
+            prospectId: email.prospectId,
+            sequenceId: email.sequenceId || null,
+            subject: email.subject,
+            content: email.body,
+            status: "sent",
+            sentAt,
+            trackingId: email.id, // Use queue ID as tracking ID
+          });
+        }
 
         console.log(`✅ Email sent successfully: ${email.id} to ${prospect.primaryEmail}`);
       } else {
