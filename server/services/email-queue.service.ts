@@ -87,6 +87,8 @@ export class EmailQueueService {
         body: email.body,
         fromName: email.fromName || undefined,
         trackingId: email.id,
+        inReplyTo: email.inReplyTo || undefined,
+        references: email.references || undefined,
       });
 
       if (result.success) {
