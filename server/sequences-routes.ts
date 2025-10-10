@@ -519,9 +519,17 @@ router.post("/sequences/followup-preview", async (req, res) => {
       return res.status(400).json({ error: "prospectId is required" });
     }
     
-    // If no email history provided, fetch the actual reply content
-    let finalEmailHistory = emailHistory;
-    if (!finalEmailHistory || finalEmailHistory.trim() === "") {
+    // Build proper email history array
+    let emailHistoryArray: string[] = [];
+    
+    if (Array.isArray(emailHistory) && emailHistory.length > 0) {
+      // Use provided array directly
+      emailHistoryArray = emailHistory;
+    } else if (typeof emailHistory === 'string' && emailHistory.trim() !== "") {
+      // Treat single string as one entry (don't split - could be malformed)
+      emailHistoryArray = [emailHistory.trim()];
+    } else {
+      // Fetch from database
       const [latestReply] = await db
         .select()
         .from(emailReplies)
@@ -544,14 +552,18 @@ router.post("/sequences/followup-preview", async (req, res) => {
         .orderBy(sql`${emailQueue.scheduledFor} DESC`)
         .limit(1);
       
-      finalEmailHistory = sentEmail?.subject && sentEmail?.body
-        ? `Original Email:\nSubject: ${sentEmail.subject}\n\n${sentEmail.body}\n\nProspect Reply:\n${replyContent}`
-        : replyContent;
+      // Build proper array with original email and reply
+      if (sentEmail?.subject && sentEmail?.body) {
+        emailHistoryArray.push(`Subject: ${sentEmail.subject}\n\n${sentEmail.body}`);
+      }
+      if (replyContent) {
+        emailHistoryArray.push(`Prospect replied: ${replyContent}`);
+      }
     }
     
     const preview = await aiFollowUpScheduler.generateFollowUpEmailPreview(
       prospectId,
-      finalEmailHistory,
+      emailHistoryArray,
       followUpType || "gentle_reminder",
       followUpNumber || 1
     );
@@ -674,13 +686,18 @@ router.get("/sequences/ai-followup-preview/:prospectId", async (req, res) => {
       .orderBy(sql`${emailQueue.scheduledFor} DESC`)
       .limit(1);
     
-    const emailHistory = sentEmail?.subject && sentEmail?.body
-      ? `Original Email:\nSubject: ${sentEmail.subject}\n\n${sentEmail.body}\n\nProspect Reply:\n${replyContent}`
-      : replyContent;
+    // Build proper array with original email and reply
+    const emailHistoryArray: string[] = [];
+    if (sentEmail?.subject && sentEmail?.body) {
+      emailHistoryArray.push(`Subject: ${sentEmail.subject}\n\n${sentEmail.body}`);
+    }
+    if (replyContent) {
+      emailHistoryArray.push(`Prospect replied: ${replyContent}`);
+    }
     
     const preview = await aiFollowUpScheduler.generateFollowUpEmailPreview(
       prospectId,
-      emailHistory,
+      emailHistoryArray,
       "gentle_reminder",
       1
     );
