@@ -3,8 +3,8 @@ import { storage } from "./storage";
 import { generatePersonalizedEmail, type LinkedInData } from "./services/personalization.service";
 import { emailQueueService } from "./services/email-queue.service";
 import { db } from "./db";
-import { sequenceProspects, emailReplies, emailQueue } from "@shared/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { sequenceProspects, emailReplies, emailQueue, emails, prospects } from "@shared/schema";
+import { eq, and, sql, desc } from "drizzle-orm";
 import { z } from "zod";
 
 const router = Router();
@@ -326,6 +326,24 @@ router.get("/sequences/:id/tracking", async (req, res) => {
   } catch (error) {
     console.error("Error fetching tracking:", error);
     res.status(500).json({ error: "Failed to fetch tracking stats" });
+  }
+});
+
+// Get emails for sequence (for analytics/tracking tab)
+router.get("/sequences/:id/emails", async (req, res) => {
+  try {
+    const sequenceId = req.params.id;
+    
+    // Get all emails for this sequence
+    const sequenceEmails = await db
+      .select()
+      .from(emails)
+      .where(eq(emails.sequenceId, sequenceId));
+    
+    res.json(sequenceEmails);
+  } catch (error) {
+    console.error("Error fetching sequence emails:", error);
+    res.status(500).json({ error: "Failed to fetch sequence emails" });
   }
 });
 
