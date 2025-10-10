@@ -15,6 +15,8 @@ export class EmailQueueService {
     replyTo?: string;
     scheduledFor: Date;
     priority?: number;
+    inReplyTo?: string;
+    references?: string;
   }): Promise<EmailQueueItem> {
     try {
       const mailbox = await mailboxService.getNextMailbox();
