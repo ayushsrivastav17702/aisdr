@@ -194,11 +194,50 @@ export class ReplyDetectionService {
     });
   }
 
+  private cleanReplyContent(rawContent: string): string {
+    // Remove quoted text and signatures from reply
+    let cleaned = rawContent;
+    
+    // Split by lines
+    const lines = cleaned.split('\n');
+    const result: string[] = [];
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      
+      // Stop at quoted content indicators
+      if (
+        line.startsWith('>') || // Quoted line
+        line.startsWith('On ') && line.includes('wrote:') || // Gmail/Outlook quote header
+        line.match(/^[-_]{3,}/) || // Signature separator
+        line.match(/^From:.*Sent:/) // Outlook quote header
+      ) {
+        break;
+      }
+      
+      // Stop at signature indicators
+      if (
+        line === '--' ||
+        line.match(/^Best regards,?$/i) ||
+        line.match(/^Thanks,?$/i) ||
+        line.match(/^Regards,?$/i) ||
+        line.match(/^Sincerely,?$/i)
+      ) {
+        break;
+      }
+      
+      result.push(lines[i]);
+    }
+    
+    return result.join('\n').trim();
+  }
+
   private async processReply(email: any, mailbox: any): Promise<boolean> {
     try {
       const fromEmail = email.from?.value?.[0]?.address || email.from?.text;
       const subject = email.subject || "";
-      const body = email.text || email.html || "";
+      const rawBody = email.text || email.html || "";
+      const body = this.cleanReplyContent(rawBody);
       const messageId = email.messageId;
       const inReplyTo = email.inReplyTo;
 
@@ -207,6 +246,7 @@ export class ReplyDetectionService {
       }
 
       console.log(`📧 Processing reply from ${fromEmail} - Subject: "${subject.substring(0, 50)}..."`);
+      console.log(`📧 Cleaned reply content: "${body.substring(0, 100)}..."`);
 
       // Find the original sent email by matching recipient and subject/message-id
       // Order by scheduled_for DESC to prioritize most recent emails
