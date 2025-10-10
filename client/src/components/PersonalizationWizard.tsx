@@ -146,7 +146,7 @@ export function PersonalizationWizard({
     queryKey: ["/api/content-library"],
     enabled: open
   });
-  const contentItems = (contentLibrary as any)?.items || [];
+  const contentItems = (contentLibrary as any) || [];
 
   // Auto-select all content library items when they load
   useEffect(() => {
@@ -155,7 +155,7 @@ export function PersonalizationWizard({
       setSelectedContentIds(allContentIds);
       console.log(`✅ Auto-selected ${allContentIds.length} content library items for compliance`);
     }
-  }, [contentItems, selectedContentIds.length]);
+  }, [contentItems.length, selectedContentIds.length]);
 
   // Advanced AI analysis mutation
   const advancedAnalyzeMutation = useMutation({
