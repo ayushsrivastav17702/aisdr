@@ -37,6 +37,11 @@ EMAIL STRUCTURE (80 words maximum):
 4. **Solution**: What Increff does in ONE sentence with a specific number from the content library
 5. **CTA**: Ask ONE simple question to start a conversation
 
+FORMATTING REQUIREMENTS:
+- Add a blank line between each paragraph/section for better readability
+- Each section (Opening, Problem, Solution, CTA) should be separated by \n\n
+- The body should have proper spacing: "Opening paragraph\n\nProblem paragraph\n\nSolution paragraph\n\nCTA question"
+
 FORBIDDEN PHRASES:
 ❌ "I hope this email finds you well"
 ❌ "I was impressed by"  
@@ -82,6 +87,10 @@ FOLLOW-UP REQUIREMENTS:
 6. Tone: {{tone}}
 
 If this is step 3 or higher, acknowledge the lack of response professionally and offer an easy out.
+
+FORMATTING REQUIREMENTS:
+- Add blank lines between paragraphs for readability
+- Separate each sentence/section with \n\n for proper spacing
 
 RESPONSE FORMAT:
 {

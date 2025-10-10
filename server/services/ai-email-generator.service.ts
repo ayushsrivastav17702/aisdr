@@ -32,6 +32,41 @@ export interface EmailVariant {
   approach: string;
 }
 
+// Helper function to format email body with proper spacing
+function formatEmailBody(body: string): string {
+  // If body already has proper double line breaks, return as is
+  if (body.includes('\n\n')) {
+    return body;
+  }
+  
+  // Split by single line breaks and rejoin with double line breaks
+  // This adds proper spacing between sentences/paragraphs
+  const lines = body.split('\n').filter(line => line.trim().length > 0);
+  
+  // If there are multiple lines, add spacing between them
+  if (lines.length > 1) {
+    return lines.join('\n\n');
+  }
+  
+  // If it's a single block, try to split by periods followed by capital letters
+  // This handles cases where AI puts everything in one line
+  const sentences = body.split(/\.\s+(?=[A-Z])/);
+  if (sentences.length > 1) {
+    // Group sentences into paragraphs (roughly 1-2 sentences per paragraph)
+    const paragraphs = [];
+    for (let i = 0; i < sentences.length; i++) {
+      let sentence = sentences[i].trim();
+      if (!sentence.endsWith('.') && !sentence.endsWith('?') && !sentence.endsWith('!')) {
+        sentence += '.';
+      }
+      paragraphs.push(sentence);
+    }
+    return paragraphs.join('\n\n');
+  }
+  
+  return body;
+}
+
 export async function generateEmail(request: EmailGenerationRequest): Promise<GeneratedEmail> {
   try {
     const prospect = await storage.getProspect(request.prospectId);
@@ -117,9 +152,12 @@ export async function generateEmail(request: EmailGenerationRequest): Promise<Ge
     
     const confidenceScore = calculateConfidenceScore(prospect, request);
     
+    // Format email body with proper spacing
+    const formattedBody = formatEmailBody(result.body || generateFallbackEmailBody(prospect));
+    
     return {
       subject: result.subject || `Quick question about ${prospect.companyName || 'your business'}`,
-      body: result.body || generateFallbackEmailBody(prospect),
+      body: formattedBody,
       reasoning: result.reasoning || 'AI-generated personalized email',
       personalizationFactors,
       confidenceScore
