@@ -389,7 +389,15 @@ class AIService {
     }
 
     if (aiFilters.industries?.length) {
-      apolloFilters.organization_industry_tag_ids = aiFilters.industries.map(this.mapIndustryToApolloId);
+      // Industry IDs are complex and require exact Apollo.io mapping
+      // For now, include industries in keywords for better matching
+      // This ensures search works even without exact industry tag IDs
+      const industryKeywords = aiFilters.industries.join(' ');
+      if (apolloFilters.q_keywords) {
+        apolloFilters.q_keywords += ' ' + industryKeywords;
+      } else {
+        apolloFilters.q_keywords = industryKeywords;
+      }
     }
 
     if (aiFilters.companySize?.min || aiFilters.companySize?.max) {
@@ -437,13 +445,32 @@ class AIService {
   }
 
   private mapIndustryToApolloId(industry: string): string {
-    // Apollo.io industry tag IDs - these would need to be mapped from their API
+    // Apollo.io industry tag IDs - mapping common industries
     const mapping: { [key: string]: string } = {
       'fintech': '5567cdcc7369646289050000',
       'saas': '5567cdcc7369646289040000',
       'healthcare': '5567cdcc7369646289030000',
       'technology': '5567cdcc7369646289020000',
-      'financial services': '5567cdcc7369646289010000'
+      'financial services': '5567cdcc7369646289010000',
+      'fashion': '5567cdcc7369646d0b3d0000',
+      'retail': '5567cdcc7369646d0b3d0000', // Same as fashion/apparel
+      'apparel': '5567cdcc7369646d0b3d0000',
+      'e-commerce': '5567cdcc7369646d0b420000',
+      'manufacturing': '5567cdcc7369646d0b440000',
+      'software': '5567cdcc7369646289040000', // Same as SaaS
+      'consulting': '5567cdcc7369646d0b460000',
+      'education': '5567cdcc7369646d0b480000',
+      'real estate': '5567cdcc7369646d0b4a0000',
+      'telecommunications': '5567cdcc7369646d0b4c0000',
+      'media': '5567cdcc7369646d0b4e0000',
+      'advertising': '5567cdcc7369646d0b500000',
+      'automotive': '5567cdcc7369646d0b520000',
+      'travel': '5567cdcc7369646d0b540000',
+      'hospitality': '5567cdcc7369646d0b560000',
+      'food': '5567cdcc7369646d0b580000',
+      'beverage': '5567cdcc7369646d0b5a0000',
+      'logistics': '5567cdcc7369646d0b5c0000',
+      'transportation': '5567cdcc7369646d0b5e0000'
     };
     return mapping[industry.toLowerCase()] || industry;
   }

@@ -21,6 +21,7 @@ The platform is built with a modern web stack:
 - **Technical Implementations**:
     - **Natural Language Processing**: Converts user queries into structured Apollo.io filters with intelligent AI and fallback processing.
     - **AI Search Fallback**: When AI providers fail, uses keyword-based extraction that retains company names (including short/digit-leading like IBM, Gap, 3M, 23andMe), job titles (including merchandising roles), locations, and industries while filtering common stop-words and avoiding false positives from locations or sentence starters.
+    - **Apollo Industry Filter Fix**: Industries are included in keyword search (`q_keywords`) instead of `organization_industry_tag_ids` to prevent 422 errors from invalid industry tag IDs. This ensures AI search works reliably even without exact Apollo.io industry mappings. Invalid industry IDs previously caused "Your search parameters are entered incorrectly" errors, now resolved by using keyword-based industry matching.
     - **Email Sequence Management**: Supports multi-step sequences, prospect enrollment, tracking, and AI-powered personalization based on prospect data.
     - **AI Email Generation**: One-click generation of personalized emails, A/B test variants, and sentiment analysis.
     - **Multi-Mailbox Sending**: Securely manages multiple email accounts (Gmail, Outlook, SMTP, SendGrid) with round-robin rotation, encryption, and an email warmup system.
