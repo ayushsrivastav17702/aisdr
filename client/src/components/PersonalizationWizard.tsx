@@ -148,6 +148,15 @@ export function PersonalizationWizard({
   });
   const contentItems = (contentLibrary as any)?.items || [];
 
+  // Auto-select all content library items when they load
+  useEffect(() => {
+    if (contentItems.length > 0 && selectedContentIds.length === 0) {
+      const allContentIds = contentItems.map((item: any) => item.id);
+      setSelectedContentIds(allContentIds);
+      console.log(`✅ Auto-selected ${allContentIds.length} content library items for compliance`);
+    }
+  }, [contentItems, selectedContentIds.length]);
+
   // Advanced AI analysis mutation
   const advancedAnalyzeMutation = useMutation({
     mutationFn: async (prospectId: string) => {
@@ -959,8 +968,13 @@ export function PersonalizationWizard({
 
                   {contentItems.length > 0 && (
                     <div className="mt-4">
-                      <Label>Reference Content (Optional)</Label>
-                      <p className="text-sm text-muted-foreground mb-2">Select content to include in email generation</p>
+                      <Label className="flex items-center gap-2">
+                        Content Library 
+                        <Badge variant="outline" className="bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800">
+                          Auto-selected for Compliance
+                        </Badge>
+                      </Label>
+                      <p className="text-sm text-muted-foreground mb-2">All content items are selected by default to ensure compliance with brand guidelines</p>
                       <ScrollArea className="h-32 border rounded-md p-2">
                         {contentItems.map((item: any) => (
                           <div key={item.id} className="flex items-center gap-2 py-1">
