@@ -12,7 +12,7 @@ export class EmailSendingService {
     body: string;
     fromName?: string;
     trackingId?: string;
-  }): Promise<{ success: boolean; messageId?: string; error?: string }> {
+  }): Promise<{ success: boolean; messageId?: string; error?: string; finalBody?: string }> {
     try {
       const [mailbox] = await db
         .select()
@@ -45,12 +45,16 @@ export class EmailSendingService {
       
       // Add signature if available
       if (mailbox.signature) {
+        console.log(`📝 Appending signature for mailbox ${mailbox.email}:`, mailbox.signature.substring(0, 50) + '...');
         const signatureHtml = mailbox.signature
           .split(/\n+/)
           .filter(p => p.trim().length > 0)
           .map(p => `<p style="margin: 0 0 4px 0; color: #666;">${p.trim()}</p>`)
           .join('');
         emailBody = emailBody + `<br><br>${signatureHtml}`;
+        console.log(`✅ Signature appended successfully`);
+      } else {
+        console.log(`⚠️ No signature found for mailbox ${mailbox.email}`);
       }
       
       if (params.trackingId) {
@@ -80,6 +84,7 @@ export class EmailSendingService {
       return {
         success: true,
         messageId: info.messageId,
+        finalBody: emailBody, // Return the final HTML body with signature
       };
     } catch (error: any) {
       console.error("Email sending failed:", error);
