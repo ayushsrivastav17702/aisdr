@@ -720,6 +720,32 @@ router.post("/sequences/send-reply", async (req, res) => {
       return res.status(400).json({ error: "prospectId, subject, and body are required" });
     }
     
+    // Get the most recent email to this prospect in this sequence for threading
+    let inReplyTo: string | undefined;
+    let references: string | undefined;
+    
+    if (sequenceId) {
+      const [previousEmail] = await db
+        .select()
+        .from(emails)
+        .where(
+          and(
+            eq(emails.prospectId, prospectId),
+            eq(emails.sequenceId, sequenceId),
+            sql`${emails.messageId} IS NOT NULL`
+          )
+        )
+        .orderBy(sql`${emails.sentAt} DESC`)
+        .limit(1);
+      
+      if (previousEmail?.messageId) {
+        inReplyTo = previousEmail.messageId;
+        // References should be the entire thread history
+        references = previousEmail.messageId;
+        console.log(`🔗 Threading reply - In-Reply-To: ${inReplyTo}`);
+      }
+    }
+    
     // Add to email queue with immediate sending (scheduled for now)
     const queueItem = await emailQueueService.addToQueue({
       prospectId,
@@ -728,6 +754,8 @@ router.post("/sequences/send-reply", async (req, res) => {
       body,
       scheduledFor: new Date(), // Send immediately
       priority: 1, // High priority
+      inReplyTo,
+      references,
     });
     
     console.log(`📧 Reply queued for sending: ${queueItem.id}`);
