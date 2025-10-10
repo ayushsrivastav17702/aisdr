@@ -39,6 +39,12 @@ export async function generateEmail(request: EmailGenerationRequest): Promise<Ge
       throw new Error(`Prospect with ID ${request.prospectId} not found`);
     }
 
+    // Check if prospect has minimal data - warn if enrichment needed
+    const hasMinimalData = !prospect.jobTitle || !prospect.companyIndustry;
+    if (hasMinimalData) {
+      console.warn(`⚠️ Prospect ${prospect.id} has limited data. Consider enriching for better personalization.`);
+    }
+
     // Fetch content library items
     const contentLibraryItems = await storage.getContentLibraryItems();
     
@@ -206,20 +212,42 @@ function buildPromptContext(
     contentLibrary = 'Increff provides merchandising solutions for fashion and retail, including demand forecasting, inventory allocation, and markdown optimization.';
   }
 
+  // Use actual seniority from prospect if available, otherwise extract from job title
+  const seniority = prospect.seniority || extractSeniority(prospect.jobTitle || '');
+  
+  // Extract LinkedIn context if URL is available
+  const linkedinContext = prospect.linkedinUrl 
+    ? `LinkedIn: ${prospect.linkedinUrl}` 
+    : '';
+
+  // Build comprehensive prospect context
+  const prospectContext = [
+    prospect.jobTitle ? `Title: ${prospect.jobTitle}` : '',
+    prospect.department ? `Department: ${prospect.department}` : '',
+    seniority ? `Seniority: ${seniority}` : '',
+    prospect.companyName ? `Company: ${prospect.companyName}` : '',
+    prospect.companyIndustry ? `Industry: ${prospect.companyIndustry}` : '',
+    prospect.companySize ? `Company Size: ${prospect.companySize}` : '',
+    prospect.companyLocation ? `Location: ${prospect.companyLocation}` : '',
+    linkedinContext
+  ].filter(Boolean).join('\n');
+
   return {
     prospectName: `${prospect.firstName || ""} ${prospect.lastName || ""}`.trim(),
     prospectTitle: prospect.jobTitle || 'Professional',
     prospectCompany: prospect.companyName || 'their company',
-    prospectIndustry: extractIndustry(prospect),
-    prospectSeniority: extractSeniority(prospect.jobTitle || ''),
-    companySize: 'Unknown',
-    companyRevenue: 'Unknown',
+    prospectIndustry: prospect.companyIndustry || extractIndustry(prospect),
+    prospectSeniority: seniority,
+    companySize: prospect.companySize || undefined,
+    companyRevenue: undefined,
     recentNews: undefined,
     painPoints: generatePainPoints(prospect),
     previousEmails: request.previousEmails,
     sequenceStep: request.sequenceStep,
     tone: request.tone || 'professional',
     contentLibrary,
+    prospectContext, // Add comprehensive context
+    linkedinUrl: prospect.linkedinUrl || undefined,
     ...request.customContext
   };
 }
