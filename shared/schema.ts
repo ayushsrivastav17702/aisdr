@@ -453,6 +453,10 @@ export const emailQueue = pgTable("email_queue", {
   fromName: text("from_name"),
   replyTo: text("reply_to"),
   
+  // Email Threading Headers
+  inReplyTo: text("in_reply_to"), // Message-ID of the email this is replying to
+  references: text("references"), // Space-separated Message-IDs for the entire thread
+  
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
