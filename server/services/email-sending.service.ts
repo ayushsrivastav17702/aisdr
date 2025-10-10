@@ -33,7 +33,11 @@ export class EmailSendingService {
 
       const transporter = await this.createTransporter(mailbox);
 
-      let emailBody = params.body;
+      // Convert plain text line breaks to HTML
+      let emailBody = params.body
+        .replace(/\n\n/g, '<br><br>')  // Double line breaks become double <br>
+        .replace(/\n/g, '<br>');        // Single line breaks become single <br>
+      
       if (params.trackingId) {
         const trackingPixel = `<img src="${process.env.API_BASE_URL || ''}/webhooks/pixel/${params.trackingId}" width="1" height="1" />`;
         emailBody = emailBody + trackingPixel;
