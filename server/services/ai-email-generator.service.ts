@@ -270,6 +270,17 @@ function buildPromptContext(
     linkedinContext
   ].filter(Boolean).join('\n');
 
+  // Format previous emails properly for the AI prompt
+  let formattedPreviousEmails = '';
+  if (request.previousEmails && Array.isArray(request.previousEmails) && request.previousEmails.length > 0) {
+    formattedPreviousEmails = request.previousEmails
+      .filter(email => email && email.trim().length > 0)
+      .map((email, index) => `Email ${index + 1}:\n${email}`)
+      .join('\n\n---\n\n');
+  } else {
+    formattedPreviousEmails = 'No previous email conversation';
+  }
+
   return {
     prospectName: `${prospect.firstName || ""} ${prospect.lastName || ""}`.trim(),
     prospectTitle: prospect.jobTitle || 'Professional',
@@ -280,7 +291,7 @@ function buildPromptContext(
     companyRevenue: undefined,
     recentNews: undefined,
     painPoints: generatePainPoints(prospect),
-    previousEmails: request.previousEmails,
+    previousEmails: formattedPreviousEmails,
     sequenceStep: request.sequenceStep,
     tone: request.tone || 'professional',
     contentLibrary,

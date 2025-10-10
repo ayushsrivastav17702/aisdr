@@ -8,7 +8,7 @@ export interface PromptContext {
   companyRevenue?: string;
   recentNews?: string;
   painPoints?: string[];
-  previousEmails?: string[];
+  previousEmails?: string;  // Changed from string[] to string for better formatting
   sequenceStep?: number;
   tone?: 'professional' | 'casual' | 'urgent' | 'friendly';
   contentLibrary?: string;
@@ -75,16 +75,27 @@ PROSPECT CONTEXT:
 - Company: {{prospectCompany}}
 - Industry: {{prospectIndustry}}
 
-PREVIOUS EMAIL CONTEXT:
+PREVIOUS EMAIL CONVERSATION:
 {{previousEmails}}
 
-FOLLOW-UP REQUIREMENTS:
-1. Reference or build upon the previous email naturally
-2. Introduce a NEW angle or value proposition
-3. Keep it even shorter than the first email (2-3 sentences)
-4. Create gentle urgency without being pushy
-5. Include a different call-to-action
-6. Tone: {{tone}}
+CRITICAL FOLLOW-UP REQUIREMENTS:
+1. **MUST reference the previous email's topic/content** - Show you're following up on the same conversation
+2. Build naturally upon what was discussed in the previous email
+3. Add a NEW angle, insight, or value proposition related to the original topic
+4. Keep it brief (2-3 sentences maximum)
+5. Create gentle urgency without being pushy
+6. Include a different but related call-to-action
+7. Tone: {{tone}}
+
+EXAMPLE GOOD FOLLOW-UP:
+Previous: Discussed inventory challenges at scale
+Follow-up: "Hi {{prospectName}}, following up on inventory allocation - wanted to share how [specific example] reduced stockouts by 36%. Quick 15-min call to discuss your current setup?"
+
+FORBIDDEN:
+❌ Starting fresh with a completely new topic
+❌ Ignoring what was discussed in the previous email
+❌ Generic "just checking in" messages
+❌ Not referencing the previous conversation
 
 If this is step 3 or higher, acknowledge the lack of response professionally and offer an easy out.
 
@@ -94,12 +105,12 @@ FORMATTING REQUIREMENTS:
 
 RESPONSE FORMAT:
 {
-  "subject": "Subject line here",
+  "subject": "Re: [Reference to previous subject]",
   "body": "Email body here",
-  "reasoning": "Brief explanation of approach for this follow-up"
+  "reasoning": "Brief explanation of how this follow-up builds on the previous email"
 }
 
-Generate the follow-up email:`;
+Generate the follow-up email that clearly references and builds upon the previous conversation:`;
 
 export const BREAKUP_EMAIL_PROMPT = `You are writing a final "breakup" email in a sales sequence. This should professionally close the loop while leaving the door open.
 

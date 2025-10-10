@@ -43,6 +43,16 @@ export class EmailSendingService {
       
       let emailBody = paragraphs;
       
+      // Add signature if available
+      if (mailbox.signature) {
+        const signatureHtml = mailbox.signature
+          .split(/\n+/)
+          .filter(p => p.trim().length > 0)
+          .map(p => `<p style="margin: 0 0 4px 0; color: #666;">${p.trim()}</p>`)
+          .join('');
+        emailBody = emailBody + `<br><br>${signatureHtml}`;
+      }
+      
       if (params.trackingId) {
         const trackingPixel = `<img src="${process.env.API_BASE_URL || ''}/webhooks/pixel/${params.trackingId}" width="1" height="1" />`;
         emailBody = emailBody + trackingPixel;

@@ -419,6 +419,9 @@ export const emailMailboxes = pgTable("email_mailboxes", {
   isDefault: boolean("is_default").default(false),
   roundRobinOrder: integer("round_robin_order").default(0),
   
+  // Email Signature
+  signature: text("signature"),
+  
   // Metadata
   lastUsedAt: timestamp("last_used_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
