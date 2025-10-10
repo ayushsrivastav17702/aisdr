@@ -687,6 +687,7 @@ function ProductionSequenceBuilder({ sequenceId }: { sequenceId: string }) {
       const res = await apiRequest("GET", `/api/sequences/${sequenceId}/prospects`, undefined);
       return await res.json();
     },
+    enabled: activeTab === 'prospects' || activeTab === 'ai-followup', // Only load when needed
   });
 
   const { data: repliesData } = useQuery({
@@ -695,7 +696,8 @@ function ProductionSequenceBuilder({ sequenceId }: { sequenceId: string }) {
       const res = await apiRequest("GET", `/api/sequences/${sequenceId}/replies`, undefined);
       return await res.json();
     },
-    refetchInterval: 30000,
+    refetchInterval: activeTab === 'replies' ? 30000 : false, // Only poll when on Replies tab
+    enabled: activeTab === 'replies', // Only load when Replies tab is active
   });
 
   const updateSequenceMutation = useMutation({
