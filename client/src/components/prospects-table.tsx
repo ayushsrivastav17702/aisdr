@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -57,11 +58,16 @@ interface ProspectsTableProps {
 }
 
 export default function ProspectsTable({ selectedIds, onSelectionChange }: ProspectsTableProps) {
+  const [location, setLocation] = useLocation();
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
   const [companyLocation, setCompanyLocation] = useState("all");
   const [jobTitle, setJobTitle] = useState("all");
-  const [page, setPage] = useState(1);
+  const [page, setPage] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlPage = parseInt(params.get("page") || "1", 10);
+    return isNaN(urlPage) || urlPage < 1 ? 1 : urlPage;
+  });
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [personalizationOpen, setPersonalizationOpen] = useState(false);
   const [selectedProspect, setSelectedProspect] = useState<any>(null);
@@ -69,6 +75,34 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
   
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  // Sync page state with URL parameter
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const urlPage = parseInt(params.get("page") || "1", 10);
+    const validPage = isNaN(urlPage) || urlPage < 1 ? 1 : urlPage;
+    if (validPage !== page) {
+      setPage(validPage);
+    }
+  }, [location]);
+
+  // Sync URL when page changes
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const currentUrlPage = params.get("page");
+    const shouldUpdateUrl = page === 1 ? currentUrlPage !== null : currentUrlPage !== page.toString();
+    
+    if (shouldUpdateUrl) {
+      if (page === 1) {
+        params.delete("page");
+      } else {
+        params.set("page", page.toString());
+      }
+      const newSearch = params.toString();
+      const newPath = newSearch ? `/?${newSearch}` : "/";
+      window.history.replaceState({}, "", newPath);
+    }
+  }, [page]);
 
   // Debounce search input
   useEffect(() => {
@@ -94,7 +128,7 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
       companyLocation: companyLocation === "all" ? undefined : companyLocation,
       jobTitle: jobTitle === "all" ? undefined : jobTitle,
       page, 
-      limit: 50 
+      limit: 25 
     }),
   });
 
@@ -650,9 +684,53 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
         {/* Prospects Table */}
         <Card className="overflow-hidden">
           {isLoading ? (
-            <CardContent className="p-6 text-center">
-              <p className="text-muted-foreground">Loading prospects...</p>
-            </CardContent>
+            <table className="w-full">
+              <thead className="bg-muted border-b border-border">
+                <tr>
+                  <th className="w-12 px-4 py-3 text-left"></th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Name</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Title</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Company</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Location</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <tr key={i} className="animate-pulse">
+                    <td className="px-4 py-4"><div className="w-5 h-5 bg-muted rounded"></div></td>
+                    <td className="px-4 py-4">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-muted"></div>
+                        <div className="space-y-2">
+                          <div className="h-4 w-32 bg-muted rounded"></div>
+                          <div className="h-3 w-40 bg-muted rounded"></div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="h-4 w-28 bg-muted rounded"></div>
+                    </td>
+                    <td className="px-4 py-4">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded bg-muted"></div>
+                        <div className="h-4 w-32 bg-muted rounded"></div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-4"><div className="h-4 w-24 bg-muted rounded"></div></td>
+                    <td className="px-4 py-4"><div className="h-6 w-20 bg-muted rounded-full"></div></td>
+                    <td className="px-4 py-4">
+                      <div className="flex gap-2">
+                        <div className="w-8 h-8 bg-muted rounded"></div>
+                        <div className="w-8 h-8 bg-muted rounded"></div>
+                        <div className="w-8 h-8 bg-muted rounded"></div>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           ) : !data?.prospects.length ? (
             <CardContent className="p-6 text-center">
               <p className="text-muted-foreground">No prospects found</p>
@@ -829,8 +907,8 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
               {data && data.totalPages > 1 && (
                 <div className="px-6 py-4 border-t border-border flex items-center justify-between">
                   <p className="text-sm text-muted-foreground">
-                    Showing <span className="font-medium">{((page - 1) * 50) + 1}</span> to{" "}
-                    <span className="font-medium">{Math.min(page * 50, data.total)}</span> of{" "}
+                    Showing <span className="font-medium">{((page - 1) * 25) + 1}</span> to{" "}
+                    <span className="font-medium">{Math.min(page * 25, data.total)}</span> of{" "}
                     <span className="font-medium" data-testid="pagination-total">{data.total}</span> results
                   </p>
                   
@@ -838,7 +916,7 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setPage(p => Math.max(1, p - 1))}
+                      onClick={() => setPage(Math.max(1, page - 1))}
                       disabled={page <= 1}
                       data-testid="button-previous-page"
                     >
@@ -883,7 +961,7 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setPage(p => Math.min(data.totalPages, p + 1))}
+                      onClick={() => setPage(Math.min(data.totalPages, page + 1))}
                       disabled={page >= data.totalPages}
                       data-testid="button-next-page"
                     >
