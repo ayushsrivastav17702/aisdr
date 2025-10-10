@@ -53,7 +53,7 @@ export class AIFollowUpScheduler {
 
   async generateFollowUpEmailPreview(
     prospectId: string,
-    emailHistory: string,
+    emailHistory: string | string[],
     followUpType: string,
     followUpNumber: number
   ): Promise<FollowUpEmail> {
@@ -63,9 +63,11 @@ export class AIFollowUpScheduler {
         throw new Error(`Prospect ${prospectId} not found`);
       }
 
-      const emailHistoryArray = emailHistory ? 
-        emailHistory.split('\n\n').map(entry => entry.trim()).filter(Boolean) : 
-        [];
+      // Handle both string and array inputs
+      // Note: Strings should no longer be split - they come as single entries from the API
+      const emailHistoryArray = Array.isArray(emailHistory) 
+        ? emailHistory 
+        : (typeof emailHistory === 'string' && emailHistory.trim() ? [emailHistory.trim()] : []);
       
       const result = await generateFollowUp(prospectId, emailHistoryArray, followUpNumber);
 
