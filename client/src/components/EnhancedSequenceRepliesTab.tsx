@@ -4,9 +4,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
-import { Loader2, Mail, Bot, TrendingUp, MessageCircle, Clock, Sparkles } from 'lucide-react';
+import { Loader2, Mail, Bot, TrendingUp, MessageCircle, Clock, Sparkles, Send } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { formatDistanceToNow } from 'date-fns';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { useState } from 'react';
 
 interface Reply {
   id: string;
@@ -29,10 +34,17 @@ interface EnhancedSequenceRepliesTabProps {
 
 export function EnhancedSequenceRepliesTab({ sequenceId }: EnhancedSequenceRepliesTabProps) {
   const { toast } = useToast();
+  const [replyDialogOpen, setReplyDialogOpen] = useState(false);
+  const [replyData, setReplyData] = useState<{
+    prospectId: string;
+    prospectEmail: string;
+    subject: string;
+    body: string;
+  } | null>(null);
 
   const { data: replies, isLoading } = useQuery<Reply[]>({
     queryKey: ['/api/sequences', sequenceId, 'replies'],
-    refetchInterval: 30000, // Auto-refresh every 30 seconds
+    refetchInterval: 20000, // Auto-refresh every 20 seconds
   });
 
   const analyzeResponseMutation = useMutation({
@@ -66,16 +78,58 @@ export function EnhancedSequenceRepliesTab({ sequenceId }: EnhancedSequenceRepli
         `/api/sequences/ai-followup-preview/${prospectId}`
       );
     },
-    onSuccess: (data: any) => {
-      toast({
-        title: 'Follow-up Preview',
-        description: `AI generated: ${data.preview?.subject || 'New follow-up email'}`,
-      });
+    onSuccess: (data: any, prospectId: string) => {
+      const reply = replies?.find(r => r.prospectId === prospectId);
+      if (reply && data.subject && data.body) {
+        setReplyData({
+          prospectId,
+          prospectEmail: reply.prospect?.primaryEmail || '',
+          subject: data.subject,
+          body: data.body,
+        });
+        setReplyDialogOpen(true);
+      } else {
+        toast({
+          title: 'Follow-up Preview',
+          description: `AI generated: ${data.subject || 'New follow-up email'}`,
+        });
+      }
     },
     onError: (error) => {
       toast({
         title: 'Generation Failed',
         description: error instanceof Error ? error.message : 'Failed to generate follow-up',
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const sendReplyMutation = useMutation({
+    mutationFn: async (data: { prospectId: string; subject: string; body: string }) => {
+      return await apiRequest(
+        'POST',
+        `/api/sequences/send-reply`,
+        {
+          prospectId: data.prospectId,
+          sequenceId,
+          subject: data.subject,
+          body: data.body,
+        }
+      );
+    },
+    onSuccess: () => {
+      setReplyDialogOpen(false);
+      setReplyData(null);
+      queryClient.invalidateQueries({ queryKey: ['/api/sequences', sequenceId, 'replies'] });
+      toast({
+        title: 'Reply Sent',
+        description: 'Your reply has been queued and will be sent within 10 seconds',
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: 'Send Failed',
+        description: error instanceof Error ? error.message : 'Failed to send reply',
         variant: 'destructive',
       });
     },
@@ -243,6 +297,67 @@ export function EnhancedSequenceRepliesTab({ sequenceId }: EnhancedSequenceRepli
           </Card>
         ))}
       </div>
+
+      <Dialog open={replyDialogOpen} onOpenChange={setReplyDialogOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Send AI Reply</DialogTitle>
+            <DialogDescription>
+              Review and edit the AI-generated reply before sending to {replyData?.prospectEmail}
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="reply-subject">Subject</Label>
+              <Input
+                id="reply-subject"
+                value={replyData?.subject || ''}
+                onChange={(e) => setReplyData(prev => prev ? { ...prev, subject: e.target.value } : null)}
+                data-testid="input-reply-subject"
+              />
+            </div>
+            
+            <div>
+              <Label htmlFor="reply-body">Message</Label>
+              <Textarea
+                id="reply-body"
+                value={replyData?.body || ''}
+                onChange={(e) => setReplyData(prev => prev ? { ...prev, body: e.target.value } : null)}
+                rows={12}
+                data-testid="textarea-reply-body"
+              />
+            </div>
+          </div>
+          
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setReplyDialogOpen(false)}
+              data-testid="button-cancel-reply"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (replyData) {
+                  sendReplyMutation.mutate({
+                    prospectId: replyData.prospectId,
+                    subject: replyData.subject,
+                    body: replyData.body,
+                  });
+                }
+              }}
+              disabled={sendReplyMutation.isPending || !replyData}
+              data-testid="button-send-reply"
+            >
+              {sendReplyMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              <Send className="mr-2 h-4 w-4" />
+              Send Reply
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

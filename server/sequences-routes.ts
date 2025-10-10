@@ -676,4 +676,38 @@ router.get("/sequences/ai-followup-preview/:prospectId", async (req, res) => {
   }
 });
 
+// Send reply to prospect
+router.post("/sequences/send-reply", async (req, res) => {
+  try {
+    const { prospectId, sequenceId, subject, body } = req.body;
+    
+    if (!prospectId || !subject || !body) {
+      return res.status(400).json({ error: "prospectId, subject, and body are required" });
+    }
+    
+    // Add to email queue with immediate sending (scheduled for now)
+    const queueItem = await emailQueueService.addToQueue({
+      prospectId,
+      sequenceId: sequenceId || null,
+      subject,
+      body,
+      scheduledFor: new Date(), // Send immediately
+      priority: 1, // High priority
+    });
+    
+    console.log(`📧 Reply queued for sending: ${queueItem.id}`);
+    
+    res.json({ 
+      success: true, 
+      queueId: queueItem.id,
+      message: "Reply queued for sending"
+    });
+  } catch (error) {
+    console.error("Send reply error:", error);
+    res.status(500).json({ 
+      error: error instanceof Error ? error.message : "Failed to send reply" 
+    });
+  }
+});
+
 export default router;

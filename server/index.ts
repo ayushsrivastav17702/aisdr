@@ -87,7 +87,7 @@ app.use((req, res, next) => {
       } catch (error) {
         console.error("Email queue processor error:", error);
       }
-    }, 60000); // Process every 60 seconds (1 minute)
+    }, 10000); // Process every 10 seconds
     
     // Process immediately on startup
     emailQueueService.processPendingEmails().catch(console.error);
