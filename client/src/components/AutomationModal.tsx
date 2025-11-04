@@ -22,12 +22,15 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { Loader2, Sparkles, Users } from "lucide-react";
+import { Loader2, Sparkles, Users, Database } from "lucide-react";
 
 const automationSchema = z.object({
+  prospectSource: z.enum(["apollo", "existing"]),
   prospectCount: z.coerce.number().int().min(1).max(500),
   aiPersonalizationEnabled: z.boolean(),
   jobTitle: z.string().optional(),
@@ -56,6 +59,7 @@ export function AutomationModal({
   const form = useForm<AutomationFormData>({
     resolver: zodResolver(automationSchema),
     defaultValues: {
+      prospectSource: "apollo",
       prospectCount: 50,
       aiPersonalizationEnabled: true,
       jobTitle: "",
@@ -64,6 +68,8 @@ export function AutomationModal({
     },
   });
 
+  const prospectSource = form.watch("prospectSource");
+
   const startAutomationMutation = useMutation({
     mutationFn: async (data: AutomationFormData) => {
       const response = await apiRequest(
@@ -71,16 +77,17 @@ export function AutomationModal({
         "/api/automation/start",
         {
           sequenceId,
+          prospectSource: data.prospectSource,
           prospectCount: data.prospectCount,
           aiPersonalizationEnabled: data.aiPersonalizationEnabled,
-          apolloFilters: {
+          apolloFilters: data.prospectSource === "apollo" ? {
             person_titles: data.jobTitle ? [data.jobTitle] : [],
             q_organization_name: data.company || undefined,
             person_locations: data.location ? [data.location] : [],
             q_keywords: [data.jobTitle, data.company, data.location]
               .filter(Boolean)
               .join(" "),
-          },
+          } : undefined,
         }
       );
       return response.json();
@@ -122,6 +129,47 @@ export function AutomationModal({
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+            {/* Prospect Source Selection */}
+            <FormField
+              control={form.control}
+              name="prospectSource"
+              render={({ field }) => (
+                <FormItem className="space-y-3">
+                  <FormLabel>Prospect Source</FormLabel>
+                  <FormControl>
+                    <RadioGroup
+                      onValueChange={field.onChange}
+                      defaultValue={field.value}
+                      className="flex flex-col space-y-2"
+                      data-testid="radio-prospect-source"
+                    >
+                      <div className="flex items-center space-x-3 rounded-lg border p-4 cursor-pointer hover:bg-muted/50">
+                        <RadioGroupItem value="apollo" id="apollo" />
+                        <Label htmlFor="apollo" className="flex items-center gap-2 cursor-pointer flex-1">
+                          <Users className="w-4 h-4 text-blue-500" />
+                          <div>
+                            <div className="font-medium">Fetch from Apollo.io</div>
+                            <div className="text-sm text-muted-foreground">Import new prospects from Apollo database</div>
+                          </div>
+                        </Label>
+                      </div>
+                      <div className="flex items-center space-x-3 rounded-lg border p-4 cursor-pointer hover:bg-muted/50">
+                        <RadioGroupItem value="existing" id="existing" />
+                        <Label htmlFor="existing" className="flex items-center gap-2 cursor-pointer flex-1">
+                          <Database className="w-4 h-4 text-green-500" />
+                          <div>
+                            <div className="font-medium">Use existing prospects</div>
+                            <div className="text-sm text-muted-foreground">Enroll prospects from your database</div>
+                          </div>
+                        </Label>
+                      </div>
+                    </RadioGroup>
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
             {/* Prospect Count */}
             <FormField
               control={form.control}
@@ -143,7 +191,9 @@ export function AutomationModal({
                     />
                   </FormControl>
                   <FormDescription>
-                    How many prospects to import and enroll
+                    {prospectSource === "existing" 
+                      ? "How many existing prospects to enroll"
+                      : "How many prospects to import and enroll"}
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -177,15 +227,16 @@ export function AutomationModal({
               )}
             />
 
-            {/* Apollo Filters Section */}
-            <div className="space-y-4 border-t pt-6">
-              <div className="flex items-center gap-2">
-                <Users className="w-5 h-5 text-muted-foreground" />
-                <h3 className="text-lg font-semibold">Apollo.io Filters</h3>
-              </div>
-              <p className="text-sm text-muted-foreground">
-                Define search criteria to find prospects in Apollo.io
-              </p>
+            {/* Apollo Filters Section - Only show when Apollo is selected */}
+            {prospectSource === "apollo" && (
+              <div className="space-y-4 border-t pt-6">
+                <div className="flex items-center gap-2">
+                  <Users className="w-5 h-5 text-muted-foreground" />
+                  <h3 className="text-lg font-semibold">Apollo.io Filters</h3>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Define search criteria to find prospects in Apollo.io
+                </p>
 
               <FormField
                 control={form.control}
@@ -240,7 +291,8 @@ export function AutomationModal({
                   </FormItem>
                 )}
               />
-            </div>
+              </div>
+            )}
 
             <DialogFooter>
               <Button

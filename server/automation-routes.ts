@@ -8,6 +8,7 @@ import { eq } from "drizzle-orm";
 // Request schemas
 const startAutomationSchema = z.object({
   sequenceId: z.string().uuid(),
+  prospectSource: z.enum(["apollo", "existing"]).default("apollo"),
   prospectCount: z.number().int().min(1).max(500),
   aiPersonalizationEnabled: z.boolean().default(true),
   apolloFilters: z.object({
@@ -17,7 +18,7 @@ const startAutomationSchema = z.object({
     q_organization_name: z.string().optional(),
     q_keywords: z.string().optional(),
     person_locations: z.array(z.string()).optional(),
-  }).passthrough(), // Allow additional Apollo filter fields
+  }).passthrough().optional(), // Allow additional Apollo filter fields
 });
 
 export function registerAutomationRoutes(app: Express) {
@@ -29,7 +30,7 @@ export function registerAutomationRoutes(app: Express) {
     try {
       // Validate request body
       const validatedBody = startAutomationSchema.parse(req.body);
-      const { sequenceId, prospectCount, aiPersonalizationEnabled, apolloFilters } = validatedBody;
+      const { sequenceId, prospectSource, prospectCount, aiPersonalizationEnabled, apolloFilters } = validatedBody;
 
       // Verify sequence exists and is active
       const sequence = await db.query.sequences.findFirst({
@@ -65,6 +66,7 @@ export function registerAutomationRoutes(app: Express) {
       automationService.processAutomation(
         automationRun.id,
         sequenceId,
+        prospectSource,
         prospectCount,
         aiPersonalizationEnabled,
         apolloFilters
