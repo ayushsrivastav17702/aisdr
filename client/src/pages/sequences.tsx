@@ -416,10 +416,11 @@ function EnhancedSequenceCard({ sequence }: { sequence: any }) {
   };
 
   return (
-    <Card className="group hover:shadow-xl transition-all duration-200 cursor-pointer relative overflow-hidden" onClick={() => setLocation(`/sequences/${sequence.id}`)} data-testid={`card-sequence-${sequence.id}`}>
-      {sequence.status === 'active' && (
-        <div className="absolute top-0 right-0 w-2 h-full bg-gradient-to-b from-green-500 to-emerald-500"></div>
-      )}
+    <>
+      <Card className="group hover:shadow-xl transition-all duration-200 cursor-pointer relative overflow-hidden" onClick={() => setLocation(`/sequences/${sequence.id}`)} data-testid={`card-sequence-${sequence.id}`}>
+        {sequence.status === 'active' && (
+          <div className="absolute top-0 right-0 w-2 h-full bg-gradient-to-b from-green-500 to-emerald-500"></div>
+        )}
       
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between mb-2">
@@ -550,16 +551,17 @@ function EnhancedSequenceCard({ sequence }: { sequence: any }) {
           </Button>
         </div>
       </CardContent>
-    </Card>
-    
-    {showAutomationModal && (
-      <AutomationModal
-        sequenceId={sequence.id}
-        sequenceName={sequence.name}
-        open={showAutomationModal}
-        onClose={() => setShowAutomationModal(false)}
-      />
-    )}
+      </Card>
+      
+      {showAutomationModal && (
+        <AutomationModal
+          sequenceId={sequence.id}
+          sequenceName={sequence.name}
+          open={showAutomationModal}
+          onClose={() => setShowAutomationModal(false)}
+        />
+      )}
+    </>
   );
 }
 
@@ -601,8 +603,9 @@ function SequenceListItem({ sequence }: { sequence: any }) {
   };
 
   return (
-    <Card className="group hover:shadow-lg transition-all cursor-pointer" onClick={() => setLocation(`/sequences/${sequence.id}`)} data-testid={`list-item-${sequence.id}`}>
-      <CardContent className="p-4">
+    <>
+      <Card className="group hover:shadow-lg transition-all cursor-pointer" onClick={() => setLocation(`/sequences/${sequence.id}`)} data-testid={`list-item-${sequence.id}`}>
+        <CardContent className="p-4">
         <div className="flex items-center gap-4">
           {/* Name & Description */}
           <div className="flex-1 min-w-0">
@@ -699,16 +702,17 @@ function SequenceListItem({ sequence }: { sequence: any }) {
           </div>
         </div>
       </CardContent>
-    </Card>
-    
-    {showAutomationModal && (
-      <AutomationModal
-        sequenceId={sequence.id}
-        sequenceName={sequence.name}
-        open={showAutomationModal}
-        onClose={() => setShowAutomationModal(false)}
-      />
-    )}
+      </Card>
+      
+      {showAutomationModal && (
+        <AutomationModal
+          sequenceId={sequence.id}
+          sequenceName={sequence.name}
+          open={showAutomationModal}
+          onClose={() => setShowAutomationModal(false)}
+        />
+      )}
+    </>
   );
 }
 
