@@ -109,7 +109,7 @@ class ApolloService {
     organization_name?: string;
     linkedin_url?: string;
   }): Promise<ApolloEnrichmentResponse> {
-    const url = `${this.baseUrl}/people/match?reveal_personal_emails=true&reveal_phone_number=true`;
+    const url = `${this.baseUrl}/people/match?reveal_personal_emails=true`;
 
     const response = await fetch(url, {
       method: 'POST',
@@ -147,7 +147,7 @@ class ApolloService {
       throw new Error('Apollo API key not configured. Please set APOLLO_API_KEY environment variable.');
     }
 
-    const url = `${this.baseUrl}/people/bulk_match?reveal_personal_emails=true&reveal_phone_number=true`;
+    const url = `${this.baseUrl}/people/bulk_match?reveal_personal_emails=true`;
 
     const response = await fetch(url, {
       method: 'POST',
