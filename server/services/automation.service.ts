@@ -16,20 +16,47 @@ class AutomationService {
   async processAutomation(
     automationRunId: string,
     sequenceId: string,
+    prospectSource: "apollo" | "existing",
     prospectCount: number,
     aiPersonalizationEnabled: boolean,
-    apolloFilters: any
+    apolloFilters?: any
   ): Promise<void> {
     console.log(`[Automation ${automationRunId}] Starting automation...`);
-    console.log(`[Automation ${automationRunId}] Sequence: ${sequenceId}, Prospects: ${prospectCount}, AI: ${aiPersonalizationEnabled}`);
+    console.log(`[Automation ${automationRunId}] Source: ${prospectSource}, Sequence: ${sequenceId}, Prospects: ${prospectCount}, AI: ${aiPersonalizationEnabled}`);
 
     try {
-      // =====================================
-      // STEP 1: Fetch prospects from Apollo with pagination
-      // =====================================
-      console.log(`[Automation ${automationRunId}] Fetching ${prospectCount} prospects from Apollo...`);
-      
-      const allContacts: any[] = [];
+      let savedProspectIds: string[] = [];
+
+      if (prospectSource === "existing") {
+        // =====================================
+        // STEP 1A: Use existing prospects from database
+        // =====================================
+        console.log(`[Automation ${automationRunId}] Using existing prospects from database...`);
+        
+        const { prospects: prospectsTable } = await import("@shared/schema");
+        const existingProspects = await db.select({ id: prospectsTable.id })
+          .from(prospectsTable)
+          .limit(prospectCount);
+        
+        if (existingProspects.length === 0) {
+          throw new Error('No existing prospects found in database');
+        }
+
+        savedProspectIds = existingProspects.map(p => p.id);
+        console.log(`[Automation ${automationRunId}] Found ${savedProspectIds.length} existing prospects`);
+
+        // Update automation run with prospects added
+        await db.update(automationRuns)
+          .set({ prospectsAdded: savedProspectIds.length })
+          .where(eq(automationRuns.id, automationRunId));
+
+      } else {
+        // =====================================
+        // STEP 1B: Fetch prospects from Apollo with pagination
+        // =====================================
+        console.log(`[Automation ${automationRunId}] Fetching ${prospectCount} prospects from Apollo...`);
+        
+        const allContacts: any[] = [];
       
       // Try multiple search strategies from most specific to least specific
       const searchStrategies = [
@@ -120,16 +147,14 @@ class AutomationService {
       console.log(`[Automation ${automationRunId}] Used strategy: ${strategyUsed}`);
 
 
-      // Trim to exact count requested
-      const contacts = allContacts.slice(0, prospectCount);
-      console.log(`[Automation ${automationRunId}] Found ${contacts.length} prospects from Apollo`);
+        // Trim to exact count requested
+        const contacts = allContacts.slice(0, prospectCount);
+        console.log(`[Automation ${automationRunId}] Found ${contacts.length} prospects from Apollo`);
 
-      // =====================================
-      // STEP 2: Save prospects to database
-      // =====================================
-      const savedProspectIds: string[] = [];
-
-      for (const contact of contacts) {
+        // =====================================
+        // STEP 2: Save prospects to database
+        // =====================================
+        for (const contact of contacts) {
         try {
           const prospect = apolloService.convertApolloContactToProspect(contact);
           
@@ -173,15 +198,16 @@ class AutomationService {
         }
       }
 
-      // Update automation run with prospects added
-      await db.update(automationRuns)
-        .set({ prospectsAdded: savedProspectIds.length })
-        .where(eq(automationRuns.id, automationRunId));
+        // Update automation run with prospects added
+        await db.update(automationRuns)
+          .set({ prospectsAdded: savedProspectIds.length })
+          .where(eq(automationRuns.id, automationRunId));
 
-      console.log(`[Automation ${automationRunId}] Saved ${savedProspectIds.length} prospects`);
+        console.log(`[Automation ${automationRunId}] Saved ${savedProspectIds.length} prospects from Apollo`);
+      }
 
       // =====================================
-      // STEP 3: Enroll prospects in sequence
+      // STEP 2/3: Enroll prospects in sequence (shared for both sources)
       // =====================================
       console.log(`[Automation ${automationRunId}] Enrolling ${savedProspectIds.length} prospects in sequence...`);
 
