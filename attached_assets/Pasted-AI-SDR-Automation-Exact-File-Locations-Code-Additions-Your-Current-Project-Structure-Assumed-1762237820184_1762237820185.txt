@@ -1,0 +1,893 @@
+AI SDR Automation - Exact File Locations & Code Additions
+📂 Your Current Project Structure (Assumed)
+your-aisdr-project/
+├── backend/
+│   ├── routes/
+│   │   ├── sequences.js          ← You have this
+│   │   ├── prospects.js           ← You have this
+│   │   └── apollo.js              ← You have this
+│   ├── services/
+│   │   ├── apolloService.js       ← You have this
+│   │   ├── aiService.js           ← You have this
+│   │   ├── emailService.js        ← You have this
+│   │   └── linkedinService.js     ← You have this
+│   ├── models/
+│   │   ├── Sequence.js            ← You have this
+│   │   └── Prospect.js            ← You have this
+│   └── server.js                  ← Main entry point
+├── frontend/
+│   ├── src/
+│   │   ├── pages/
+│   │   │   ├── Sequences.jsx      ← You have this
+│   │   │   └── Prospects.jsx      ← You have this
+│   │   └── components/
+│   │       └── SequenceCard.jsx   ← You have this
+└── database/
+    └── schema.sql                  ← Your database
+
+🗄️ FILE 1: Database Migration
+Location: database/migrations/add_automation.sql
+Create this new file:
+sql-- ============================================
+-- AUTOMATION TABLES - Add to your existing DB
+-- ============================================
+
+-- Table 1: Track automation runs
+CREATE TABLE IF NOT EXISTS automation_runs (
+    id SERIAL PRIMARY KEY,
+    sequence_id INTEGER NOT NULL,
+    prospect_count INTEGER NOT NULL,
+    ai_personalization_enabled BOOLEAN DEFAULT true,
+    apollo_filters JSONB,
+    status VARCHAR(50) DEFAULT 'running',
+    started_at TIMESTAMP DEFAULT NOW(),
+    completed_at TIMESTAMP,
+    prospects_added INTEGER DEFAULT 0,
+    emails_sent INTEGER DEFAULT 0,
+    replies_received INTEGER DEFAULT 0,
+    errors TEXT,
+    created_by INTEGER,
+    
+    -- Foreign key to your existing sequences table
+    CONSTRAINT fk_sequence 
+        FOREIGN KEY (sequence_id) 
+        REFERENCES sequences(id) 
+        ON DELETE CASCADE
+);
+
+-- Index for faster queries
+CREATE INDEX idx_automation_status ON automation_runs(status);
+CREATE INDEX idx_automation_sequence ON automation_runs(sequence_id);
+
+-- Table 2: Link automation to prospects (if not already exists)
+-- Check if your prospects table has this column first!
+-- If not, add it:
+
+ALTER TABLE prospects 
+ADD COLUMN IF NOT EXISTS automation_run_id INTEGER 
+REFERENCES automation_runs(id);
+
+-- OR if you have a prospect_sequences junction table:
+ALTER TABLE prospect_sequences 
+ADD COLUMN IF NOT EXISTS automation_run_id INTEGER 
+REFERENCES automation_runs(id);
+
+-- Table 3: Unsubscribe tracking (CRITICAL for compliance)
+CREATE TABLE IF NOT EXISTS unsubscribes (
+    id SERIAL PRIMARY KEY,
+    prospect_id INTEGER NOT NULL,
+    email VARCHAR(255) NOT NULL,
+    reason TEXT,
+    unsubscribed_at TIMESTAMP DEFAULT NOW(),
+    
+    CONSTRAINT fk_prospect 
+        FOREIGN KEY (prospect_id) 
+        REFERENCES prospects(id) 
+        ON DELETE CASCADE
+);
+
+CREATE INDEX idx_unsubscribe_email ON unsubscribes(email);
+
+-- Table 4: Add email threading support (if not in your email_logs table)
+-- Check if your email_logs table has these columns:
+-- If not, add them:
+
+ALTER TABLE email_logs 
+ADD COLUMN IF NOT EXISTS message_id VARCHAR(500) UNIQUE,
+ADD COLUMN IF NOT EXISTS in_reply_to VARCHAR(500),
+ADD COLUMN IF NOT EXISTS thread_id VARCHAR(500);
+
+CREATE INDEX idx_email_message_id ON email_logs(message_id);
+CREATE INDEX idx_email_thread ON email_logs(thread_id);
+Run this migration:
+bash# In your Replit shell or database console
+psql $DATABASE_URL < database/migrations/add_automation.sql
+
+🔌 FILE 2: Automation Routes
+Location: backend/routes/automation.js
+Create this NEW file:
+javascript// ============================================
+// AUTOMATION API ROUTES
+// ============================================
+
+import express from 'express';
+import { body, validationResult } from 'express-validator';
+import db from '../config/database.js'; // Your existing DB connection
+import automationService from '../services/automationService.js'; // We'll create this next
+
+const router = express.Router();
+
+// ==========================================
+// POST /api/automation/start
+// Start a new automation run
+// ==========================================
+router.post('/start', [
+  body('sequenceId').isInt().withMessage('Valid sequence ID required'),
+  body('prospectCount').isInt({ min: 1, max: 500 }).withMessage('Prospect count must be 1-500'),
+  body('aiPersonalization').isBoolean(),
+  body('apolloFilters').isObject()
+], async (req, res) => {
+  // Validate input
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  const { sequenceId, prospectCount, aiPersonalization, apolloFilters } = req.body;
+  const userId = req.user?.id || 1; // Get from your auth middleware
+
+  try {
+    // 1. Verify sequence exists
+    const sequenceCheck = await db.query(
+      'SELECT id, name, status FROM sequences WHERE id = $1',
+      [sequenceId]
+    );
+
+    if (sequenceCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Sequence not found' });
+    }
+
+    const sequence = sequenceCheck.rows[0];
+
+    if (sequence.status !== 'active') {
+      return res.status(400).json({ error: 'Sequence must be active to run automation' });
+    }
+
+    // 2. Create automation run record
+    const result = await db.query(
+      `INSERT INTO automation_runs 
+       (sequence_id, prospect_count, ai_personalization_enabled, apollo_filters, created_by, status)
+       VALUES ($1, $2, $3, $4, $5, 'running')
+       RETURNING id`,
+      [sequenceId, prospectCount, aiPersonalization, JSON.stringify(apolloFilters), userId]
+    );
+
+    const automationRunId = result.rows[0].id;
+
+    // 3. Start processing in background (don't await)
+    automationService.processAutomation(
+      automationRunId,
+      sequenceId,
+      prospectCount,
+      aiPersonalization,
+      apolloFilters
+    ).catch(err => {
+      console.error(`Automation ${automationRunId} failed:`, err);
+    });
+
+    // 4. Return immediately
+    res.json({
+      success: true,
+      automationRunId,
+      message: `Automation started. Processing ${prospectCount} prospects in background...`
+    });
+
+  } catch (error) {
+    console.error('Error starting automation:', error);
+    res.status(500).json({ error: 'Failed to start automation' });
+  }
+});
+
+// ==========================================
+// GET /api/automation/list
+// Get all automation runs
+// ==========================================
+router.get('/list', async (req, res) => {
+  try {
+    const result = await db.query(`
+      SELECT 
+        ar.*,
+        s.name as sequence_name
+      FROM automation_runs ar
+      JOIN sequences s ON ar.sequence_id = s.id
+      ORDER BY ar.started_at DESC
+      LIMIT 50
+    `);
+
+    res.json({ automations: result.rows });
+  } catch (error) {
+    console.error('Error fetching automations:', error);
+    res.status(500).json({ error: 'Failed to fetch automations' });
+  }
+});
+
+// ==========================================
+// GET /api/automation/:id
+// Get specific automation details
+// ==========================================
+router.get('/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await db.query(`
+      SELECT 
+        ar.*,
+        s.name as sequence_name,
+        s.steps as sequence_steps
+      FROM automation_runs ar
+      JOIN sequences s ON ar.sequence_id = s.id
+      WHERE ar.id = $1
+    `, [id]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Automation not found' });
+    }
+
+    res.json({ automation: result.rows[0] });
+  } catch (error) {
+    console.error('Error fetching automation:', error);
+    res.status(500).json({ error: 'Failed to fetch automation' });
+  }
+});
+
+// ==========================================
+// POST /api/automation/:id/pause
+// Pause a running automation
+// ==========================================
+router.post('/:id/pause', async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    await db.query(
+      `UPDATE automation_runs SET status = 'paused' WHERE id = $1`,
+      [id]
+    );
+
+    res.json({ success: true, message: 'Automation paused' });
+  } catch (error) {
+    console.error('Error pausing automation:', error);
+    res.status(500).json({ error: 'Failed to pause automation' });
+  }
+});
+
+export default router;
+
+🛠️ FILE 3: Automation Service
+Location: backend/services/automationService.js
+Create this NEW file:
+javascript// ============================================
+// AUTOMATION SERVICE
+// Orchestrates the automation flow using your existing services
+// ============================================
+
+import db from '../config/database.js';
+import apolloService from './apolloService.js';      // Your existing
+import aiService from './aiService.js';              // Your existing
+import emailService from './emailService.js';        // Your existing
+import sequenceService from './sequenceService.js';  // Your existing (or wherever sequence logic is)
+
+class AutomationService {
+  
+  // ==========================================
+  // Main automation processing function
+  // ==========================================
+  async processAutomation(automationRunId, sequenceId, prospectCount, aiPersonalization, apolloFilters) {
+    console.log(`[Automation ${automationRunId}] Starting...`);
+
+    try {
+      // =====================================
+      // STEP 1: Fetch prospects from Apollo
+      // =====================================
+      console.log(`[Automation ${automationRunId}] Fetching ${prospectCount} prospects from Apollo...`);
+      
+      // Call YOUR existing Apollo function
+      const apolloProspects = await apolloService.searchProspects({
+        ...apolloFilters,
+        limit: prospectCount
+      });
+
+      if (!apolloProspects || apolloProspects.length === 0) {
+        throw new Error('No prospects found from Apollo with given filters');
+      }
+
+      console.log(`[Automation ${automationRunId}] Found ${apolloProspects.length} prospects`);
+
+      // =====================================
+      // STEP 2: Save prospects to database
+      // =====================================
+      const savedProspectIds = [];
+
+      for (const apolloProspect of apolloProspects) {
+        try {
+          // Call YOUR existing save prospect function
+          // Adjust this based on your actual function name
+          const prospectId = await this.saveOrUpdateProspect(apolloProspect, automationRunId);
+          
+          savedProspectIds.push(prospectId);
+
+        } catch (error) {
+          console.error(`Error saving prospect ${apolloProspect.email}:`, error.message);
+          // Continue with other prospects
+        }
+      }
+
+      // Update automation run
+      await db.query(
+        'UPDATE automation_runs SET prospects_added = $1 WHERE id = $2',
+        [savedProspectIds.length, automationRunId]
+      );
+
+      console.log(`[Automation ${automationRunId}] Saved ${savedProspectIds.length} prospects`);
+
+      // =====================================
+      // STEP 3: Enroll prospects in sequence
+      // =====================================
+      for (const prospectId of savedProspectIds) {
+        try {
+          await this.enrollProspectInSequence(
+            prospectId,
+            sequenceId,
+            automationRunId,
+            aiPersonalization
+          );
+        } catch (error) {
+          console.error(`Error enrolling prospect ${prospectId}:`, error.message);
+        }
+      }
+
+      // =====================================
+      // STEP 4: Mark automation as completed
+      // =====================================
+      await db.query(
+        `UPDATE automation_runs 
+         SET status = 'completed', completed_at = NOW() 
+         WHERE id = $1`,
+        [automationRunId]
+      );
+
+      console.log(`[Automation ${automationRunId}] Completed successfully!`);
+
+    } catch (error) {
+      console.error(`[Automation ${automationRunId}] Failed:`, error);
+
+      // Mark as failed
+      await db.query(
+        `UPDATE automation_runs 
+         SET status = 'failed', errors = $1 
+         WHERE id = $2`,
+        [error.message, automationRunId]
+      );
+    }
+  }
+
+  // ==========================================
+  // Save or update prospect in database
+  // ==========================================
+  async saveOrUpdateProspect(apolloProspect, automationRunId) {
+    // Check if prospect already exists
+    const existing = await db.query(
+      'SELECT id FROM prospects WHERE email = $1',
+      [apolloProspect.email]
+    );
+
+    let prospectId;
+
+    if (existing.rows.length > 0) {
+      // Update existing prospect
+      prospectId = existing.rows[0].id;
+
+      await db.query(
+        `UPDATE prospects SET 
+         first_name = $1,
+         last_name = $2,
+         company = $3,
+         job_title = $4,
+         linkedin_url = $5,
+         location = $6,
+         automation_run_id = $7,
+         updated_at = NOW()
+         WHERE id = $8`,
+        [
+          apolloProspect.first_name,
+          apolloProspect.last_name,
+          apolloProspect.organization?.name || apolloProspect.company,
+          apolloProspect.title || apolloProspect.job_title,
+          apolloProspect.linkedin_url,
+          apolloProspect.city || apolloProspect.location,
+          automationRunId,
+          prospectId
+        ]
+      );
+
+    } else {
+      // Insert new prospect
+      const result = await db.query(
+        `INSERT INTO prospects 
+         (email, first_name, last_name, company, job_title, linkedin_url, location, automation_run_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+         RETURNING id`,
+        [
+          apolloProspect.email,
+          apolloProspect.first_name,
+          apolloProspect.last_name,
+          apolloProspect.organization?.name || apolloProspect.company,
+          apolloProspect.title || apolloProspect.job_title,
+          apolloProspect.linkedin_url,
+          apolloProspect.city || apolloProspect.location,
+          automationRunId
+        ]
+      );
+
+      prospectId = result.rows[0].id;
+    }
+
+    return prospectId;
+  }
+
+  // ==========================================
+  // Enroll prospect in sequence
+  // ==========================================
+  async enrollProspectInSequence(prospectId, sequenceId, automationRunId, aiPersonalization) {
+    // Get sequence steps
+    const stepsResult = await db.query(
+      'SELECT * FROM sequence_steps WHERE sequence_id = $1 ORDER BY step_number',
+      [sequenceId]
+    );
+
+    if (stepsResult.rows.length === 0) {
+      throw new Error('Sequence has no steps');
+    }
+
+    // Check if prospect already enrolled (prevent duplicates)
+    const existingEnrollment = await db.query(
+      'SELECT id FROM prospect_sequences WHERE prospect_id = $1 AND sequence_id = $2',
+      [prospectId, sequenceId]
+    );
+
+    if (existingEnrollment.rows.length > 0) {
+      console.log(`Prospect ${prospectId} already enrolled in sequence ${sequenceId}`);
+      return;
+    }
+
+    // Create prospect_sequence record
+    await db.query(
+      `INSERT INTO prospect_sequences 
+       (prospect_id, sequence_id, automation_run_id, current_step, status)
+       VALUES ($1, $2, $3, 1, 'active')`,
+      [prospectId, sequenceId, automationRunId]
+    );
+
+    // Schedule first email
+    const firstStep = stepsResult.rows[0];
+    
+    // Call YOUR existing email scheduling function
+    // This should use your existing delay logic, AI generation, etc.
+    await emailService.scheduleEmail({
+      prospectId,
+      sequenceId,
+      stepNumber: 1,
+      delayDays: firstStep.delay_days || 0,
+      aiPersonalization
+    });
+
+    console.log(`Enrolled prospect ${prospectId} in sequence ${sequenceId}`);
+  }
+}
+
+export default new AutomationService();
+
+🔧 FILE 4: Update Your Existing Email Service
+Location: backend/services/emailService.js
+ADD THESE FUNCTIONS to your existing emailService.js:
+javascript// ============================================
+// ADD THESE TO YOUR EXISTING emailService.js
+// ============================================
+
+// 1. ADD: Email threading support
+function generateMessageId() {
+  const uuid = require('crypto').randomUUID();
+  return `<${uuid}@yourdomain.com>`;
+}
+
+// 2. ADD: Get previous email for threading
+async function getPreviousEmailMessageId(prospectId, sequenceId, currentStep) {
+  if (currentStep === 1) return null;
+
+  const result = await db.query(
+    `SELECT message_id FROM email_logs 
+     WHERE prospect_id = $1 AND sequence_id = $2 AND step_number = $3
+     ORDER BY sent_at DESC LIMIT 1`,
+    [prospectId, sequenceId, currentStep - 1]
+  );
+
+  return result.rows.length > 0 ? result.rows[0].message_id : null;
+}
+
+// 3. MODIFY YOUR EXISTING sendEmail function:
+// Add this at the beginning of your sendEmail function:
+
+async function sendEmail(prospectId, sequenceId, stepNumber, subject, body) {
+  // NEW: Generate message ID
+  const messageId = generateMessageId();
+  
+  // NEW: Get previous message for threading
+  const previousMessageId = await getPreviousEmailMessageId(prospectId, sequenceId, stepNumber);
+
+  // NEW: Build email headers
+  const headers = {
+    'Message-ID': messageId
+  };
+
+  if (previousMessageId && stepNumber > 1) {
+    headers['In-Reply-To'] = previousMessageId;
+    headers['References'] = previousMessageId;
+  }
+
+  // Get prospect
+  const prospectResult = await db.query('SELECT * FROM prospects WHERE id = $1', [prospectId]);
+  const prospect = prospectResult.rows[0];
+
+  // NEW: Add unsubscribe link (CRITICAL!)
+  const unsubscribeToken = generateUnsubscribeToken(prospectId); // We'll create this
+  const unsubscribeLink = `${process.env.APP_URL}/unsubscribe?token=${unsubscribeToken}`;
+  
+  body = body + `
+    <br><br>
+    <div style="font-size: 10px; color: #999; margin-top: 20px; padding-top: 10px; border-top: 1px solid #ddd;">
+      <a href="${unsubscribeLink}" style="color: #999;">Unsubscribe</a> from future emails
+    </div>
+  `;
+
+  // YOUR EXISTING SEND LOGIC HERE
+  // But add the headers:
+  await yourEmailProvider.send({
+    to: prospect.email,
+    from: process.env.SENDGRID_FROM_EMAIL,
+    subject: subject,
+    html: body,
+    headers: headers  // ← ADD THIS
+  });
+
+  // NEW: Save message_id to database
+  await db.query(
+    `INSERT INTO email_logs 
+     (prospect_id, sequence_id, step_number, subject, body, message_id, in_reply_to, sent_at, status)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), 'sent')`,
+    [prospectId, sequenceId, stepNumber, subject, body, messageId, previousMessageId]
+  );
+
+  console.log(`Email sent to ${prospect.email} (Step ${stepNumber})`);
+}
+
+// 4. ADD: Unsubscribe token generation
+function generateUnsubscribeToken(prospectId) {
+  const crypto = require('crypto');
+  const secret = process.env.UNSUBSCRIBE_SECRET || 'change-this-secret';
+  
+  const data = `${prospectId}-${Date.now()}`;
+  return crypto.createHmac('sha256', secret).update(data).digest('hex') + '.' + prospectId;
+}
+
+function verifyUnsubscribeToken(token) {
+  try {
+    const [hash, prospectId] = token.split('.');
+    return parseInt(prospectId);
+  } catch {
+    return null;
+  }
+}
+
+// Export new functions
+export {
+  sendEmail,
+  generateMessageId,
+  generateUnsubscribeToken,
+  verifyUnsubscribeToken
+};
+
+📨 FILE 5: Reply Detection Updates
+Location: backend/services/replyService.js
+ADD THIS FUNCTION to your existing replyService.js:
+javascript// ============================================
+// ADD TO YOUR EXISTING replyService.js
+// ============================================
+
+// BEFORE your AI follow-up code, ADD this classification:
+
+function classifyReply(replyText) {
+  const text = replyText.toLowerCase();
+  
+  // 1. Check for unsubscribe requests
+  const unsubscribeKeywords = [
+    'unsubscribe',
+    'stop emailing',
+    'remove me',
+    'take me off',
+    'stop sending',
+    'do not contact',
+    'leave me alone'
+  ];
+  
+  if (unsubscribeKeywords.some(keyword => text.includes(keyword))) {
+    return 'UNSUBSCRIBE';
+  }
+  
+  // 2. Check for out of office
+  const oooKeywords = [
+    'out of office',
+    'out of the office',
+    'ooo',
+    'away from office',
+    'automatic reply',
+    'auto-reply',
+    'on vacation'
+  ];
+  
+  if (oooKeywords.some(keyword => text.includes(keyword))) {
+    return 'OUT_OF_OFFICE';
+  }
+  
+  // 3. Check for negative responses
+  const negativeKeywords = [
+    'not interested',
+    'no thank',
+    'don\'t contact',
+    'already have',
+    'not a good fit',
+    'not the right time',
+    'pass on this'
+  ];
+  
+  if (negativeKeywords.some(keyword => text.includes(keyword))) {
+    return 'NEGATIVE';
+  }
+  
+  // 4. Check for questions (positive engagement)
+  if (text.includes('?') || text.includes('tell me more') || text.includes('interested')) {
+    return 'QUESTION';
+  }
+  
+  // 5. Default to positive
+  return 'POSITIVE';
+}
+
+// THEN in your existing reply processing code, ADD:
+
+async function handleReply(reply, prospectId, sequenceId) {
+  // Classify the reply
+  const classification = classifyReply(reply.body);
+  
+  console.log(`Reply from prospect ${prospectId} classified as: ${classification}`);
+  
+  // Save reply to database
+  await db.query(
+    `INSERT INTO replies 
+     (prospect_id, subject, body, classification, received_at)
+     VALUES ($1, $2, $3, $4, NOW())`,
+    [prospectId, reply.subject, reply.body, classification]
+  );
+  
+  // Handle based on classification
+  switch (classification) {
+    case 'UNSUBSCRIBE':
+      // STOP ALL sequences for this prospect
+      await db.query(
+        `UPDATE prospect_sequences 
+         SET status = 'unsubscribed', updated_at = NOW() 
+         WHERE prospect_id = $1`,
+        [prospectId]
+      );
+      
+      await db.query(
+        `INSERT INTO unsubscribes (prospect_id, email, reason)
+         VALUES ($1, (SELECT email FROM prospects WHERE id = $1), 'Email request')`,
+        [prospectId]
+      );
+      
+      console.log(`Prospect ${prospectId} unsubscribed via email`);
+      return; // Don't send AI follow-up
+      
+    case 'NEGATIVE':
+      // Pause sequence but don't unsubscribe
+      await db.query(
+        `UPDATE prospect_sequences 
+         SET status = 'opted_out', updated_at = NOW() 
+         WHERE prospect_id = $1 AND sequence_id = $2`,
+        [prospectId, sequenceId]
+      );
+      
+      console.log(`Prospect ${prospectId} opted out (negative response)`);
+      return; // Don't send AI follow-up
+      
+    case 'OUT_OF_OFFICE':
+      // Don't send AI follow-up, but keep sequence active
+      console.log(`Prospect ${prospectId} sent OOO, skipping AI response`);
+      return;
+      
+    case 'QUESTION':
+    case 'POSITIVE':
+      // STOP sequence (they replied!)
+      await db.query(
+        `UPDATE prospect_sequences 
+         SET status = 'replied', updated_at = NOW() 
+         WHERE prospect_id = $1 AND sequence_id = $2`,
+        [prospectId, sequenceId]
+      );
+      
+      // NOW call YOUR existing AI follow-up function
+      await yourExistingAIFollowUpFunction(prospectId, reply.body);
+      break;
+  }
+}
+
+export { classifyReply, handleReply };
+
+🎨 FILE 6: Frontend - Update Sequences Page
+Location: frontend/src/pages/Sequences.jsx
+ADD THIS to your existing Sequences component:
+jsx// ============================================
+// ADD TO YOUR EXISTING Sequences.jsx
+// ============================================
+
+import React, { useState } from 'react';
+import AutomationModal from '../components/AutomationModal'; // We'll create this next
+
+function Sequences() {
+  const [sequences, setSequences] = useState([]); // Your existing state
+  const [showAutomationModal, setShowAutomationModal] = useState(false);
+  const [selectedSequence, setSelectedSequence] = useState(null);
+
+  // Your existing code...
+
+  const handleRunAutomation = (sequence) => {
+    setSelectedSequence(sequence);
+    setShowAutomationModal(true);
+  };
+
+  return (
+    <div className="sequences-page">
+      <h1>Sequences</h1>
+      
+      {/* Your existing sequence list */}
+      {sequences.map(sequence => (
+        <div key={sequence.id} className="sequence-card">
+          <h3>{sequence.name}</h3>
+          <p>{sequence.steps} steps</p>
+          
+          {/* Your existing buttons */}
+          <button onClick={() => handleEdit(sequence)}>Edit</button>
+          <button onClick={() => handleDelete(sequence.id)}>Delete</button>
+          
+          {/* NEW: Add automation button */}
+          <button 
+            className="btn-automation"
+            onClick={() => handleRunAutomation(sequence)}
+            style={{
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              color: 'white',
+              border: 'none',
+              padding: '10px 20px',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontWeight: 'bold'
+            }}
+          >
+            🤖 Run Automation
+          </button>
+        </div>
+      ))}
+
+      {/* NEW: Automation modal */}
+      {showAutomationModal && (
+        <AutomationModal
+          sequence={selectedSequence}
+          onClose={() => setShowAutomationModal(false)}
+          onSuccess={() => {
+            setShowAutomationModal(false);
+            // Optionally redirect to automation dashboard
+            // navigate('/automations');
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+export default Sequences;
+
+🎨 FILE 7: Frontend - Automation Modal Component
+Location: frontend/src/components/AutomationModal.jsx
+CREATE THIS NEW FILE:
+jsx// ============================================
+// NEW FILE: AutomationModal.jsx
+// ============================================
+
+import React, { useState } from 'react';
+import './AutomationModal.css'; // We'll create CSS next
+
+function AutomationModal({ sequence, onClose, onSuccess }) {
+  const [config, setConfig] = useState({
+    prospectCount: 50,
+    aiPersonalization: true,
+    apolloFilters: {
+      jobTitle: '',
+      company: '',
+      location: '',
+      industry: ''
+    }
+  });
+
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    setError('');
+
+    try {
+      const response = await fetch('/api/automation/start', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          // Add your auth token header here
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        },
+        body: JSON.stringify({
+          sequenceId: sequence.id,
+          prospectCount: config.prospectCount,
+          aiPersonalization: config.aiPersonalization,
+          apolloFilters: config.apolloFilters
+        })
+      });
+
+      const data = await response.json();
+
+      if (data.success) {
+        alert(`Automation started! ID: ${data.automationRunId}\n\nProcessing ${config.prospectCount} prospects in background.`);
+        onSuccess();
+      } else {
+        setError(data.error || 'Failed to start automation');
+      }
+    } catch (err) {
+      console.error('Automation error:', err);
+      setError('Failed to start automation. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h2>🤖 Run Automation</h2>
+          <button className="close-btn" onClick={onClose}>×</button>
+        </div>
+
+        <form onSubmit={handleSubmit}>
+          <div className="form-section">
+            <h3>Sequence: {sequence.name}</h3>
+            <p className="text-muted">{sequence.steps} steps configured</p>
+          </div>
+
+          <div className="form-group">
+            <label>
+              Number of Prospects *
+              <input
+                type="number"
+                min="1"
+                max="500"
+                value={config.prospectCount}
+                onChange={(e) => setConfig({...config, prospectCount: parseInt(e.target.value)})}
+                required

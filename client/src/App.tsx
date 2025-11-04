@@ -7,6 +7,7 @@ import Dashboard from "@/pages/dashboard";
 import Sequences from "@/pages/sequences";
 import Mailboxes from "@/pages/mailboxes";
 import ContentManagement from "@/pages/content-management";
+import AutomationDashboard from "@/pages/AutomationDashboard";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -18,6 +19,7 @@ function Router() {
       <Route path="/sequences/:id" component={Sequences} />
       <Route path="/mailboxes" component={Mailboxes} />
       <Route path="/content-management" component={ContentManagement} />
+      <Route path="/automation-dashboard" component={AutomationDashboard} />
       <Route component={NotFound} />
     </Switch>
   );

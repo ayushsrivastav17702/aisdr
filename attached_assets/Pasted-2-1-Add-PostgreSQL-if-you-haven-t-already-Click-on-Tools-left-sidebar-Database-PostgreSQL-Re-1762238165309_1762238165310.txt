@@ -1,0 +1,122 @@
+2.1 Add PostgreSQL (if you haven't already)
+Click on Tools (left sidebar) → Database → PostgreSQL
+Replit will automatically:
+
+Create a PostgreSQL database
+Add DATABASE_URL to your environment variables
+
+2.2 Run Database Migrations
+Open the Shell (bottom of Replit) and run:
+bash# Check if database is connected
+echo $DATABASE_URL
+
+# If it shows a URL, you're good. Now create tables:
+Create a new file: setup-database.js in your project root:
+javascript// setup-database.js
+import pg from 'pg';
+import dotenv from 'dotenv';
+
+dotenv.config();
+
+const { Pool } = pg;
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false
+  }
+});
+
+async function setupDatabase() {
+  console.log('🔧 Setting up database...');
+  
+  try {
+    // Create automation_runs table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS automation_runs (
+        id SERIAL PRIMARY KEY,
+        sequence_id INTEGER NOT NULL,
+        prospect_count INTEGER NOT NULL,
+        ai_personalization_enabled BOOLEAN DEFAULT true,
+        apollo_filters JSONB,
+        status VARCHAR(50) DEFAULT 'running',
+        started_at TIMESTAMP DEFAULT NOW(),
+        completed_at TIMESTAMP,
+        prospects_added INTEGER DEFAULT 0,
+        emails_sent INTEGER DEFAULT 0,
+        replies_received INTEGER DEFAULT 0,
+        errors TEXT,
+        created_by INTEGER
+      );
+    `);
+    console.log('✅ automation_runs table created');
+
+    // Create indexes
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_automation_status ON automation_runs(status);
+      CREATE INDEX IF NOT EXISTS idx_automation_sequence ON automation_runs(sequence_id);
+    `);
+    console.log('✅ Indexes created');
+
+    // Add automation_run_id to prospects (if column doesn't exist)
+    await pool.query(`
+      DO $$ 
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name='prospects' AND column_name='automation_run_id'
+        ) THEN
+          ALTER TABLE prospects ADD COLUMN automation_run_id INTEGER;
+        END IF;
+      END $$;
+    `);
+    console.log('✅ prospects table updated');
+
+    // Create unsubscribes table
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS unsubscribes (
+        id SERIAL PRIMARY KEY,
+        prospect_id INTEGER NOT NULL,
+        email VARCHAR(255) NOT NULL,
+        reason TEXT,
+        unsubscribed_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_unsubscribe_email ON unsubscribes(email);
+    `);
+    console.log('✅ unsubscribes table created');
+
+    // Add email threading columns
+    await pool.query(`
+      DO $$ 
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.columns 
+          WHERE table_name='email_logs' AND column_name='message_id'
+        ) THEN
+          ALTER TABLE email_logs 
+            ADD COLUMN message_id VARCHAR(500),
+            ADD COLUMN in_reply_to VARCHAR(500),
+            ADD COLUMN thread_id VARCHAR(500);
+        END IF;
+      END $$;
+    `);
+    console.log('✅ email_logs table updated');
+
+    console.log('\n🎉 Database setup complete!');
+    process.exit(0);
+
+  } catch (error) {
+    console.error('❌ Database setup failed:', error);
+    process.exit(1);
+  }
+}
+
+setupDatabase();
+Run it:
+bashnode setup-database.js
+You should see:
+✅ automation_runs table created
+✅ Indexes created
+✅ prospects table updated
+✅ unsubscribes table created
+✅ email_logs table updated
+🎉 Database setup complete!

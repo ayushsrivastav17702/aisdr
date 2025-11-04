@@ -1,0 +1,271 @@
+import { db } from "../db";
+import { 
+  automationRuns, 
+  sequenceProspects,
+  type AutomationRun,
+  type InsertAutomationRun 
+} from "@shared/schema";
+import { eq } from "drizzle-orm";
+import { apolloService } from "./apollo.service";
+
+class AutomationService {
+  /**
+   * Main automation processing function
+   * Runs in background after automation is started
+   */
+  async processAutomation(
+    automationRunId: string,
+    sequenceId: string,
+    prospectCount: number,
+    aiPersonalizationEnabled: boolean,
+    apolloFilters: any
+  ): Promise<void> {
+    console.log(`[Automation ${automationRunId}] Starting automation...`);
+    console.log(`[Automation ${automationRunId}] Sequence: ${sequenceId}, Prospects: ${prospectCount}, AI: ${aiPersonalizationEnabled}`);
+
+    try {
+      // =====================================
+      // STEP 1: Fetch prospects from Apollo with pagination
+      // =====================================
+      console.log(`[Automation ${automationRunId}] Fetching ${prospectCount} prospects from Apollo...`);
+      
+      const allContacts: any[] = [];
+      let currentPage = 1;
+      const perPage = 100; // Apollo max per page
+      
+      while (allContacts.length < prospectCount) {
+        const apolloSearchParams = {
+          ...apolloFilters,
+          page: currentPage,
+          per_page: perPage,
+        };
+
+        const searchResponse = await apolloService.searchContacts(apolloSearchParams);
+        const contacts = searchResponse.people || searchResponse.contacts || [];
+
+        if (contacts.length === 0) {
+          // No more results
+          break;
+        }
+
+        allContacts.push(...contacts);
+        console.log(`[Automation ${automationRunId}] Fetched page ${currentPage}: ${contacts.length} prospects (total: ${allContacts.length})`);
+
+        // Check if we have enough or if there are no more pages
+        if (allContacts.length >= prospectCount || contacts.length < perPage) {
+          break;
+        }
+
+        currentPage++;
+      }
+
+      if (allContacts.length === 0) {
+        throw new Error('No prospects found from Apollo with given filters');
+      }
+
+      // Trim to exact count requested
+      const contacts = allContacts.slice(0, prospectCount);
+      console.log(`[Automation ${automationRunId}] Found ${contacts.length} prospects from Apollo`);
+
+      // =====================================
+      // STEP 2: Save prospects to database
+      // =====================================
+      const savedProspectIds: string[] = [];
+
+      for (const contact of contacts) {
+        try {
+          const prospect = apolloService.convertApolloContactToProspect(contact);
+          
+          // Check if prospect already exists - build condition array to avoid undefined in or()
+          const existingProspects = await db.query.prospects.findFirst({
+            where: (prospects, { eq, or }) => {
+              const conditions = [eq(prospects.primaryEmail, prospect.primaryEmail)];
+              if (prospect.apolloId) {
+                conditions.push(eq(prospects.apolloId, prospect.apolloId));
+              }
+              return conditions.length > 1 ? or(...conditions) : conditions[0];
+            }
+          });
+
+          let prospectId: string;
+          
+          if (existingProspects) {
+            console.log(`[Automation ${automationRunId}] Prospect already exists: ${prospect.primaryEmail}`);
+            prospectId = existingProspects.id;
+          } else {
+            // Save new prospect
+            const { prospects: prospectsTable } = await import("@shared/schema");
+            const [newProspect] = await db.insert(prospectsTable)
+              .values(prospect)
+              .returning();
+            prospectId = newProspect.id;
+            console.log(`[Automation ${automationRunId}] Saved new prospect: ${prospect.primaryEmail}`);
+          }
+
+          savedProspectIds.push(prospectId);
+
+          // Stop if we've reached the requested count
+          if (savedProspectIds.length >= prospectCount) {
+            console.log(`[Automation ${automationRunId}] Reached target prospect count: ${prospectCount}`);
+            break;
+          }
+
+        } catch (error) {
+          console.error(`[Automation ${automationRunId}] Error saving prospect:`, error);
+          // Continue with other prospects
+        }
+      }
+
+      // Update automation run with prospects added
+      await db.update(automationRuns)
+        .set({ prospectsAdded: savedProspectIds.length })
+        .where(eq(automationRuns.id, automationRunId));
+
+      console.log(`[Automation ${automationRunId}] Saved ${savedProspectIds.length} prospects`);
+
+      // =====================================
+      // STEP 3: Enroll prospects in sequence
+      // =====================================
+      console.log(`[Automation ${automationRunId}] Enrolling ${savedProspectIds.length} prospects in sequence...`);
+
+      for (const prospectId of savedProspectIds) {
+        try {
+          // Check if already enrolled
+          const existingEnrollment = await db.query.sequenceProspects.findFirst({
+            where: (sp, { eq, and }) => 
+              and(
+                eq(sp.sequenceId, sequenceId),
+                eq(sp.prospectId, prospectId)
+              )
+          });
+
+          if (existingEnrollment) {
+            console.log(`[Automation ${automationRunId}] Prospect ${prospectId} already enrolled`);
+            continue;
+          }
+
+          // Enroll prospect
+          await db.insert(sequenceProspects).values({
+            sequenceId,
+            prospectId,
+            automationRunId,
+            status: "active",
+          });
+
+          console.log(`[Automation ${automationRunId}] Enrolled prospect ${prospectId}`);
+
+          // TODO: Schedule first email if AI personalization is enabled
+          // This will be handled by the email queue service
+
+        } catch (error) {
+          console.error(`[Automation ${automationRunId}] Error enrolling prospect ${prospectId}:`, error);
+        }
+      }
+
+      // =====================================
+      // STEP 4: Mark automation as completed
+      // =====================================
+      await db.update(automationRuns)
+        .set({ 
+          status: "completed",
+          completedAt: new Date()
+        })
+        .where(eq(automationRuns.id, automationRunId));
+
+      console.log(`[Automation ${automationRunId}] ✅ Completed successfully!`);
+
+    } catch (error) {
+      console.error(`[Automation ${automationRunId}] ❌ Failed:`, error);
+
+      // Mark as failed
+      await db.update(automationRuns)
+        .set({ 
+          status: "failed",
+          errors: error instanceof Error ? error.message : "Unknown error"
+        })
+        .where(eq(automationRuns.id, automationRunId));
+    }
+  }
+
+  /**
+   * Create a new automation run
+   */
+  async createAutomationRun(data: Omit<InsertAutomationRun, 'createdAt' | 'startedAt'>): Promise<AutomationRun> {
+    const [automationRun] = await db.insert(automationRuns)
+      .values(data)
+      .returning();
+    
+    return automationRun;
+  }
+
+  /**
+   * Get all automation runs
+   */
+  async getAutomationRuns(limit = 50): Promise<Array<AutomationRun & { sequenceName?: string }>> {
+    const runs = await db.query.automationRuns.findMany({
+      limit,
+      orderBy: (runs, { desc }) => [desc(runs.startedAt)],
+      with: {
+        sequence: {
+          columns: {
+            name: true,
+          }
+        }
+      }
+    });
+
+    return runs.map(run => ({
+      ...run,
+      sequenceName: run.sequence?.name
+    }));
+  }
+
+  /**
+   * Get a specific automation run
+   */
+  async getAutomationRun(id: string): Promise<(AutomationRun & { sequenceName?: string }) | undefined> {
+    const run = await db.query.automationRuns.findFirst({
+      where: (runs, { eq }) => eq(runs.id, id),
+      with: {
+        sequence: {
+          columns: {
+            name: true,
+          }
+        }
+      }
+    });
+
+    if (!run) return undefined;
+
+    return {
+      ...run,
+      sequenceName: run.sequence?.name
+    };
+  }
+
+  /**
+   * Pause a running automation
+   */
+  async pauseAutomation(id: string): Promise<void> {
+    await db.update(automationRuns)
+      .set({ status: "paused" })
+      .where(eq(automationRuns.id, id));
+  }
+
+  /**
+   * Update automation stats
+   */
+  async updateAutomationStats(
+    automationRunId: string,
+    updates: {
+      emailsSent?: number;
+      repliesReceived?: number;
+    }
+  ): Promise<void> {
+    await db.update(automationRuns)
+      .set(updates)
+      .where(eq(automationRuns.id, automationRunId));
+  }
+}
+
+export default new AutomationService();

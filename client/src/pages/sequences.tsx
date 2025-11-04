@@ -22,6 +22,7 @@ import {
   Search, Filter, Grid3x3, List, MoreVertical, Copy, Edit2, MailOpen, Reply, Loader2
 } from "lucide-react";
 import { PersonalizationWizard } from "@/components/PersonalizationWizard";
+import { AutomationModal } from "@/components/AutomationModal";
 
 export default function SequencesPage() {
   const [match, params] = useRoute("/sequences/:id");
@@ -380,6 +381,7 @@ function EnhancedSequenceCard({ sequence }: { sequence: any }) {
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const [showAutomationModal, setShowAutomationModal] = useState(false);
   
   // Calculate metrics
   const emailCount = sequence.steps?.length || 0;
@@ -431,6 +433,19 @@ function EnhancedSequenceCard({ sequence }: { sequence: any }) {
             <Badge className={`${getStatusColor(sequence.status)}`} data-testid={`badge-status-${sequence.id}`}>
               {sequence.status}
             </Badge>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowAutomationModal(true);
+              }}
+              data-testid={`button-automation-${sequence.id}`}
+              title="Run Automation"
+            >
+              <Zap className="h-4 w-4 text-blue-500" />
+            </Button>
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button 
@@ -535,6 +550,13 @@ function EnhancedSequenceCard({ sequence }: { sequence: any }) {
           </Button>
         </div>
       </CardContent>
+      
+      <AutomationModal
+        sequenceId={sequence.id}
+        sequenceName={sequence.name}
+        open={showAutomationModal}
+        onClose={() => setShowAutomationModal(false)}
+      />
     </Card>
   );
 }
@@ -543,6 +565,7 @@ function SequenceListItem({ sequence }: { sequence: any }) {
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const [showAutomationModal, setShowAutomationModal] = useState(false);
   
   const emailCount = sequence.steps?.length || 0;
   const totalProspects = sequence.totalProspects || 0;
@@ -628,6 +651,19 @@ function SequenceListItem({ sequence }: { sequence: any }) {
             >
               Open →
             </Button>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              className="h-8 w-8"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowAutomationModal(true);
+              }}
+              data-testid={`button-automation-list-${sequence.id}`}
+              title="Run Automation"
+            >
+              <Zap className="h-4 w-4 text-blue-500" />
+            </Button>
             <AlertDialog>
               <AlertDialogTrigger asChild>
                 <Button 
@@ -661,6 +697,13 @@ function SequenceListItem({ sequence }: { sequence: any }) {
           </div>
         </div>
       </CardContent>
+      
+      <AutomationModal
+        sequenceId={sequence.id}
+        sequenceName={sequence.name}
+        open={showAutomationModal}
+        onClose={() => setShowAutomationModal(false)}
+      />
     </Card>
   );
 }
