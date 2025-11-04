@@ -22,7 +22,8 @@ import {
   PlusIcon,
   Mail,
   Inbox,
-  FileText
+  FileText,
+  Zap
 } from "lucide-react";
 
 export default function Dashboard() {
@@ -122,6 +123,17 @@ export default function Dashboard() {
             >
               <Mail className="w-4 h-4" />
               <span>Sequences</span>
+            </Button>
+          </Link>
+
+          <Link href="/automation-dashboard">
+            <Button
+              variant="ghost"
+              className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
+              data-testid="nav-automation"
+            >
+              <Zap className="w-4 h-4" />
+              <span>Automation</span>
             </Button>
           </Link>
 
