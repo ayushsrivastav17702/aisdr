@@ -25,7 +25,7 @@ import {
   MoreVertical,
   Pause,
   Play,
-  CloudArrowUp,
+  CloudUpload,
   Loader2,
 } from "lucide-react";
 import { Link } from "wouter";
@@ -199,7 +199,7 @@ export default function AutomationDashboard() {
         <CardContent>
           {automations.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
-              <CloudArrowUp className="w-16 h-16 text-muted-foreground mb-4" />
+              <CloudUpload className="w-16 h-16 text-muted-foreground mb-4" />
               <h3 className="text-lg font-semibold mb-2">
                 No automations configured
               </h3>

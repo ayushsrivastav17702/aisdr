@@ -550,14 +550,16 @@ function EnhancedSequenceCard({ sequence }: { sequence: any }) {
           </Button>
         </div>
       </CardContent>
-      
+    </Card>
+    
+    {showAutomationModal && (
       <AutomationModal
         sequenceId={sequence.id}
         sequenceName={sequence.name}
         open={showAutomationModal}
         onClose={() => setShowAutomationModal(false)}
       />
-    </Card>
+    )}
   );
 }
 
@@ -697,14 +699,16 @@ function SequenceListItem({ sequence }: { sequence: any }) {
           </div>
         </div>
       </CardContent>
-      
+    </Card>
+    
+    {showAutomationModal && (
       <AutomationModal
         sequenceId={sequence.id}
         sequenceName={sequence.name}
         open={showAutomationModal}
         onClose={() => setShowAutomationModal(false)}
       />
-    </Card>
+    )}
   );
 }
 
