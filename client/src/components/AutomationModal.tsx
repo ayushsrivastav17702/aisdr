@@ -135,9 +135,10 @@ export function AutomationModal({
                       min={1}
                       max={500}
                       {...field}
-                      onChange={(e) =>
-                        field.onChange(parseInt(e.target.value, 10))
-                      }
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        field.onChange(value === '' ? 50 : parseInt(value, 10));
+                      }}
                       data-testid="input-prospect-count"
                     />
                   </FormControl>
