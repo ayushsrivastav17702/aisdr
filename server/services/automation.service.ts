@@ -30,38 +30,95 @@ class AutomationService {
       console.log(`[Automation ${automationRunId}] Fetching ${prospectCount} prospects from Apollo...`);
       
       const allContacts: any[] = [];
-      let currentPage = 1;
-      const perPage = 100; // Apollo max per page
       
-      while (allContacts.length < prospectCount) {
-        const apolloSearchParams = {
-          ...apolloFilters,
-          page: currentPage,
-          per_page: perPage,
-        };
+      // Try multiple search strategies from most specific to least specific
+      const searchStrategies = [
+        // Strategy 1: Full filters with exact matching
+        {
+          name: 'Full filters',
+          params: apolloFilters
+        },
+        // Strategy 2: Keyword-only search (most flexible)
+        {
+          name: 'Keyword search',
+          params: {
+            q_keywords: [
+              apolloFilters.person_titles?.[0],
+              apolloFilters.q_organization_name,
+              apolloFilters.person_locations?.[0]
+            ].filter(Boolean).join(' ')
+          }
+        },
+        // Strategy 3: Job title + keyword search
+        {
+          name: 'Title and keywords',
+          params: {
+            person_titles: apolloFilters.person_titles,
+            q_keywords: [apolloFilters.q_organization_name, apolloFilters.person_locations?.[0]]
+              .filter(Boolean).join(' ')
+          }
+        },
+        // Strategy 4: Just job title (broadest)
+        {
+          name: 'Title only',
+          params: apolloFilters.person_titles?.[0] ? {
+            q_keywords: apolloFilters.person_titles[0]
+          } : null
+        }
+      ].filter(s => s.params);
 
-        const searchResponse = await apolloService.searchContacts(apolloSearchParams);
-        const contacts = searchResponse.people || searchResponse.contacts || [];
+      let strategyUsed = '';
+      
+      for (const strategy of searchStrategies) {
+        console.log(`[Automation ${automationRunId}] Trying strategy: ${strategy.name}`);
+        
+        let currentPage = 1;
+        const perPage = 100; // Apollo max per page
+        const tempContacts: any[] = [];
+        
+        while (tempContacts.length < prospectCount) {
+          const apolloSearchParams = {
+            ...strategy.params,
+            page: currentPage,
+            per_page: perPage,
+          };
 
-        if (contacts.length === 0) {
-          // No more results
-          break;
+          try {
+            const searchResponse = await apolloService.searchContacts(apolloSearchParams);
+            const contacts = searchResponse.people || searchResponse.contacts || [];
+
+            if (contacts.length === 0) {
+              break;
+            }
+
+            tempContacts.push(...contacts);
+            console.log(`[Automation ${automationRunId}] Fetched page ${currentPage}: ${contacts.length} prospects (total: ${tempContacts.length})`);
+
+            if (tempContacts.length >= prospectCount || contacts.length < perPage) {
+              break;
+            }
+
+            currentPage++;
+          } catch (error) {
+            console.error(`[Automation ${automationRunId}] Error with ${strategy.name}:`, error);
+            break;
+          }
         }
 
-        allContacts.push(...contacts);
-        console.log(`[Automation ${automationRunId}] Fetched page ${currentPage}: ${contacts.length} prospects (total: ${allContacts.length})`);
-
-        // Check if we have enough or if there are no more pages
-        if (allContacts.length >= prospectCount || contacts.length < perPage) {
+        if (tempContacts.length > 0) {
+          allContacts.push(...tempContacts);
+          strategyUsed = strategy.name;
+          console.log(`[Automation ${automationRunId}] ✅ Success with ${strategy.name}: ${tempContacts.length} prospects`);
           break;
         }
-
-        currentPage++;
       }
 
       if (allContacts.length === 0) {
-        throw new Error('No prospects found from Apollo with given filters');
+        throw new Error('No prospects found from Apollo with any search strategy. Try broader search terms.');
       }
+      
+      console.log(`[Automation ${automationRunId}] Used strategy: ${strategyUsed}`);
+
 
       // Trim to exact count requested
       const contacts = allContacts.slice(0, prospectCount);
