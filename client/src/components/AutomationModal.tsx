@@ -67,8 +67,8 @@ export function AutomationModal({
   const startAutomationMutation = useMutation({
     mutationFn: async (data: AutomationFormData) => {
       const response = await apiRequest(
-        "/api/automation/start",
         "POST",
+        "/api/automation/start",
         {
           sequenceId,
           prospectCount: data.prospectCount,
@@ -83,7 +83,7 @@ export function AutomationModal({
           },
         }
       );
-      return response;
+      return response.json();
     },
     onSuccess: (data) => {
       toast({
