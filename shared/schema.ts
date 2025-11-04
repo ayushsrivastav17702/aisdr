@@ -194,6 +194,7 @@ export const sequenceProspects = pgTable("sequence_prospects", {
   sequenceId: varchar("sequence_id").notNull().references(() => sequences.id, { onDelete: "cascade" }),
   prospectId: varchar("prospect_id").notNull().references(() => prospects.id, { onDelete: "cascade" }),
   currentStepId: varchar("current_step_id").references(() => sequenceSteps.id),
+  automationRunId: varchar("automation_run_id"),
   status: text("status").notNull().default("active"),
   enrolledAt: timestamp("enrolled_at").notNull().defaultNow(),
   lastContactedAt: timestamp("last_contacted_at"),
@@ -377,6 +378,69 @@ export const insertSequenceProspectSchema = createInsertSchema(sequenceProspects
 export const insertPersonalizationResultSchema = createInsertSchema(personalizationResults).omit({
   id: true,
   createdAt: true,
+});
+
+// ============================================
+// AUTOMATION MODULE
+// ============================================
+
+// Automation status enum
+export const automationStatusEnum = pgEnum("automation_status", ["running", "completed", "paused", "failed"]);
+
+// Automation runs table
+export const automationRuns = pgTable("automation_runs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sequenceId: varchar("sequence_id").notNull().references(() => sequences.id, { onDelete: "cascade" }),
+  prospectCount: integer("prospect_count").notNull(),
+  aiPersonalizationEnabled: boolean("ai_personalization_enabled").default(true),
+  apolloFilters: jsonb("apollo_filters"),
+  status: automationStatusEnum("status").default("running"),
+  startedAt: timestamp("started_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+  prospectsAdded: integer("prospects_added").default(0),
+  emailsSent: integer("emails_sent").default(0),
+  repliesReceived: integer("replies_received").default(0),
+  errors: text("errors"),
+  createdBy: integer("created_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Unsubscribes table
+export const unsubscribes = pgTable("unsubscribes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  prospectId: varchar("prospect_id").notNull().references(() => prospects.id, { onDelete: "cascade" }),
+  email: text("email").notNull(),
+  reason: text("reason"),
+  unsubscribedAt: timestamp("unsubscribed_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Automation relations
+export const automationRunsRelations = relations(automationRuns, ({ one }) => ({
+  sequence: one(sequences, {
+    fields: [automationRuns.sequenceId],
+    references: [sequences.id],
+  }),
+}));
+
+// Automation types
+export type AutomationRun = typeof automationRuns.$inferSelect;
+export type InsertAutomationRun = typeof automationRuns.$inferInsert;
+export type Unsubscribe = typeof unsubscribes.$inferSelect;
+export type InsertUnsubscribe = typeof unsubscribes.$inferInsert;
+
+// Automation schemas
+export const insertAutomationRunSchema = createInsertSchema(automationRuns).omit({
+  id: true,
+  createdAt: true,
+  startedAt: true,
+  completedAt: true,
+});
+
+export const insertUnsubscribeSchema = createInsertSchema(unsubscribes).omit({
+  id: true,
+  createdAt: true,
+  unsubscribedAt: true,
 });
 
 // ============================================

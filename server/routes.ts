@@ -20,6 +20,7 @@ import { parse } from "csv-parse/sync";
 import { readFileSync } from "fs";
 import sequenceRoutes from "./sequences-routes";
 import mailboxRoutes from "./mailbox-routes";
+import { registerAutomationRoutes } from "./automation-routes";
 
 const upload = multer({ 
   dest: 'uploads/',
@@ -1035,6 +1036,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Mailbox module routes
   app.use("/api", mailboxRoutes);
+
+  // Automation module routes
+  registerAutomationRoutes(app);
 
   // Intelligent Personalization - Deep AI prospect analysis
   app.post("/api/personalization/analyze", async (req, res) => {

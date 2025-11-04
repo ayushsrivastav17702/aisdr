@@ -10,6 +10,8 @@ import {
   emailReplies,
   personalizationResults,
   contentLibrary,
+  automationRuns,
+  unsubscribes,
   type Prospect, 
   type InsertProspect,
   type Search,
@@ -31,7 +33,11 @@ import {
   type PersonalizationResult,
   type InsertPersonalizationResult,
   type ContentLibraryItem,
-  type InsertContentLibraryItem
+  type InsertContentLibraryItem,
+  type AutomationRun,
+  type InsertAutomationRun,
+  type Unsubscribe,
+  type InsertUnsubscribe
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, inArray, and, or, ilike, count } from "drizzle-orm";

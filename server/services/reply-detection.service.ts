@@ -232,6 +232,84 @@ export class ReplyDetectionService {
     return result.join('\n').trim();
   }
 
+  /**
+   * Classify reply sentiment based on content
+   * Returns: "positive", "negative", "unsubscribe", or "neutral"
+   */
+  private classifyReply(replyContent: string): string {
+    const lowerContent = replyContent.toLowerCase();
+
+    // Check for unsubscribe/opt-out requests first (highest priority)
+    const unsubscribeKeywords = [
+      "unsubscribe",
+      "opt out",
+      "opt-out",
+      "remove me",
+      "stop emailing",
+      "stop sending",
+      "don't contact",
+      "do not contact",
+      "don't email",
+      "do not email",
+      "take me off",
+      "remove from list",
+      "not interested",
+    ];
+
+    if (unsubscribeKeywords.some(keyword => lowerContent.includes(keyword))) {
+      return "unsubscribe";
+    }
+
+    // Check for positive indicators
+    const positiveKeywords = [
+      "interested",
+      "tell me more",
+      "sounds good",
+      "let's talk",
+      "schedule",
+      "meeting",
+      "demo",
+      "yes",
+      "sure",
+      "absolutely",
+      "definitely",
+      "great",
+      "sounds interesting",
+      "can you share",
+      "i'd like to",
+      "would love to",
+      "perfect",
+      "excellent",
+    ];
+
+    const positiveCount = positiveKeywords.filter(keyword => lowerContent.includes(keyword)).length;
+
+    // Check for negative indicators
+    const negativeKeywords = [
+      "no thanks",
+      "not now",
+      "maybe later",
+      "too busy",
+      "don't need",
+      "already have",
+      "not looking",
+      "not a fit",
+      "wrong person",
+      "not the right",
+    ];
+
+    const negativeCount = negativeKeywords.filter(keyword => lowerContent.includes(keyword)).length;
+
+    // Classification logic
+    if (positiveCount > 0 && positiveCount >= negativeCount) {
+      return "positive";
+    } else if (negativeCount > 0) {
+      return "negative";
+    }
+
+    return "neutral";
+  }
+
   private async processReply(email: any, mailbox: any): Promise<boolean> {
     try {
       const fromEmail = email.from?.value?.[0]?.address || email.from?.text;
@@ -320,25 +398,46 @@ export class ReplyDetectionService {
         return true; // Already processed - mark as seen
       }
 
+      // Classify the reply
+      const sentiment = this.classifyReply(body);
+      console.log(`🏷️ Reply classified as: ${sentiment}`);
+
       // Store the reply
       await db.insert(emailReplies).values({
         emailId: matchedEmail.emailId || null,
         sequenceId: matchedEmail.sequenceId || null,
         prospectId: matchedEmail.prospectId,
         replyContent: body,
-        sentiment: "neutral",
+        sentiment,
         receivedAt: new Date(email.date || Date.now()),
         aiSummary: null,
         nextAction: null,
       });
 
-      // Update sequence prospect: increment reply counter and set status to 'replied'
+      // Update sequence prospect based on reply classification
       if (matchedEmail.sequenceId) {
+        let newStatus = "replied";
+        
+        // If unsubscribe detected, mark as unsubscribed and stop sequence
+        if (sentiment === "unsubscribe") {
+          newStatus = "unsubscribed";
+          
+          // Create unsubscribe record
+          const { unsubscribes } = await import("@shared/schema");
+          await db.insert(unsubscribes).values({
+            prospectId: matchedEmail.prospectId,
+            email: fromEmail,
+            reason: body.substring(0, 500), // Store up to 500 chars of reason
+          });
+          
+          console.log(`🚫 Prospect ${matchedEmail.prospectId} unsubscribed - sequence stopped`);
+        }
+
         await db
           .update(sequenceProspects)
           .set({
             replies: sql`${sequenceProspects.replies} + 1`,
-            status: "replied",
+            status: newStatus,
           })
           .where(
             and(

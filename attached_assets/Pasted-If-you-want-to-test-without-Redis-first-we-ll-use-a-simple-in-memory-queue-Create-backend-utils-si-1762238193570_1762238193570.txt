@@ -1,0 +1,624 @@
+If you want to test without Redis first, we'll use a simple in-memory queue.
+Create backend/utils/simpleQueue.js:
+javascript// Simple in-memory queue (for testing without Redis)
+class SimpleQueue {
+  constructor() {
+    this.jobs = [];
+    this.processing = false;
+  }
+
+  async add(jobName, data, options = {}) {
+    const job = {
+      id: Date.now(),
+      name: jobName,
+      data,
+      options,
+      status: 'pending'
+    };
+    
+    this.jobs.push(job);
+    console.log(`📥 Job added: ${jobName}`, data);
+    
+    // Start processing if not already
+    if (!this.processing) {
+      this.processJobs();
+    }
+    
+    return job;
+  }
+
+  async processJobs() {
+    this.processing = true;
+    
+    while (this.jobs.length > 0) {
+      const job = this.jobs.shift();
+      console.log(`⚙️ Processing job: ${job.name}`);
+      
+      try {
+        // Import and run the handler
+        if (job.name === 'automation') {
+          const automationService = await import('../services/automationService.js');
+          await automationService.default.processAutomation(
+            job.data.automationRunId,
+            job.data.sequenceId,
+            job.data.prospectCount,
+            job.data.aiPersonalization,
+            job.data.apolloFilters
+          );
+        }
+        
+        job.status = 'completed';
+        console.log(`✅ Job completed: ${job.name}`);
+        
+      } catch (error) {
+        job.status = 'failed';
+        console.error(`❌ Job failed: ${job.name}`, error);
+      }
+    }
+    
+    this.processing = false;
+  }
+}
+
+export const automationQueue = new SimpleQueue();
+
+STEP 4: Add Environment Variables
+In Replit Secrets (🔒 icon), add these:
+# Database (auto-added by Replit)
+DATABASE_URL=<already set>
+
+# Redis (from Upstash or skip if using simple queue)
+REDIS_URL=rediss://...
+
+# Apollo.io
+APOLLO_API_KEY=your_apollo_key_here
+
+# Email Provider (SendGrid example)
+SENDGRID_API_KEY=your_sendgrid_key
+SENDGRID_FROM_EMAIL=noreply@yourdomain.com
+
+# OpenAI
+OPENAI_API_KEY=your_openai_key
+
+# App Settings
+APP_URL=https://your-repl-name.your-username.repl.co
+UNSUBSCRIBE_SECRET=random-secret-string-here
+PORT=3000
+How to find your Replit APP_URL:
+
+After you start your server, Replit shows the URL at the top
+Usually: https://[repl-name].[username].repl.co
+
+
+STEP 5: Create the New Files
+In Replit, create these files by clicking + Add file:
+File Structure:
+your-project/
+├── backend/
+│   ├── routes/
+│   │   └── automation.js          ← CREATE THIS
+│   ├── services/
+│   │   └── automationService.js   ← CREATE THIS
+│   └── utils/
+│       └── simpleQueue.js         ← CREATE THIS (if no Redis)
+├── frontend/
+│   └── src/
+│       ├── components/
+│       │   ├── AutomationModal.jsx     ← CREATE THIS
+│       │   └── AutomationModal.css     ← CREATE THIS
+│       └── pages/
+│           ├── AutomationDashboard.jsx ← CREATE THIS
+│           └── AutomationDashboard.css ← CREATE THIS
+└── setup-database.js              ← CREATE THIS (already done in Step 2)
+Copy the code from the previous artifact into each file.
+
+STEP 6: Update Existing Files
+6.1 Update backend/server.js
+Find this section:
+javascript// Your existing routes
+app.use('/api/sequences', sequenceRoutes);
+app.use('/api/prospects', prospectRoutes);
+Add after it:
+javascript// NEW: Import automation routes
+import automationRoutes from './routes/automation.js';
+
+// NEW: Add automation routes
+app.use('/api/automation', automationRoutes);
+
+// NEW: Unsubscribe endpoint
+app.get('/unsubscribe', async (req, res) => {
+  const { token } = req.query;
+  
+  if (!token) {
+    return res.status(400).send('Invalid unsubscribe link');
+  }
+
+  try {
+    const parts = token.split('.');
+    const prospectId = parseInt(parts[1]);
+    
+    if (!prospectId) {
+      return res.status(400).send('Invalid unsubscribe link');
+    }
+
+    await db.query(
+      `UPDATE prospect_sequences SET status = 'unsubscribed' WHERE prospect_id = $1`,
+      [prospectId]
+    );
+
+    await db.query(
+      `INSERT INTO unsubscribes (prospect_id, email, reason)
+       VALUES ($1, (SELECT email FROM prospects WHERE id = $1), 'Unsubscribe link')`,
+      [prospectId]
+    );
+
+    res.send(`
+      <!DOCTYPE html>
+      <html>
+      <head><title>Unsubscribed</title>
+      <style>
+        body { font-family: sans-serif; display: flex; justify-content: center; 
+               align-items: center; height: 100vh; margin: 0; 
+               background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }
+        .container { background: white; padding: 48px; border-radius: 16px; 
+                     text-align: center; }
+        h1 { margin: 0 0 16px 0; }
+        .emoji { font-size: 64px; margin-bottom: 24px; }
+      </style></head>
+      <body>
+        <div class="container">
+          <div class="emoji">✅</div>
+          <h1>You're Unsubscribed</h1>
+          <p>You won't receive any more emails from us.</p>
+        </div>
+      </body>
+      </html>
+    `);
+  } catch (error) {
+    console.error('Unsubscribe error:', error);
+    res.status(500).send('Error processing unsubscribe');
+  }
+});
+6.2 Update frontend/src/pages/Sequences.jsx
+Find where you render your sequence cards/list. Add the button:
+jsximport { useState } from 'react';
+import AutomationModal from '../components/AutomationModal';
+
+function Sequences() {
+  const [showAutomationModal, setShowAutomationModal] = useState(false);
+  const [selectedSequence, setSelectedSequence] = useState(null);
+
+  // Your existing code...
+
+  return (
+    <div>
+      {sequences.map(sequence => (
+        <div key={sequence.id} className="sequence-card">
+          <h3>{sequence.name}</h3>
+          
+          {/* Your existing buttons */}
+          <button onClick={() => editSequence(sequence)}>Edit</button>
+          
+          {/* NEW: Add this button */}
+          <button 
+            onClick={() => {
+              setSelectedSequence(sequence);
+              setShowAutomationModal(true);
+            }}
+            style={{
+              background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+              color: 'white',
+              border: 'none',
+              padding: '10px 20px',
+              borderRadius: '8px',
+              cursor: 'pointer',
+              fontWeight: 'bold',
+              marginLeft: '8px'
+            }}
+          >
+            🤖 Run Automation
+          </button>
+        </div>
+      ))}
+
+      {/* NEW: Add modal */}
+      {showAutomationModal && (
+        <AutomationModal
+          sequence={selectedSequence}
+          onClose={() => setShowAutomationModal(false)}
+          onSuccess={() => {
+            setShowAutomationModal(false);
+            alert('Automation started!');
+          }}
+        />
+      )}
+    </div>
+  );
+}
+6.3 Update frontend/src/App.jsx
+Add the dashboard route:
+jsximport AutomationDashboard from './pages/AutomationDashboard';
+
+// In your Routes:
+<Routes>
+  <Route path="/sequences" element={<Sequences />} />
+  <Route path="/prospects" element={<Prospects />} />
+  
+  {/* NEW: Add this */}
+  <Route path="/automations" element={<AutomationDashboard />} />
+</Routes>
+
+STEP 7: Install Missing Dependencies
+In Replit Shell:
+bashnpm install express-validator
+
+STEP 8: Start Your Server
+Click the Run button in Replit or:
+bashnpm run dev
+If you see errors, check the Debug section below!
+
+PART 2: Debugging Common Errors
+ERROR 1: "Cannot find module 'pg'"
+Solution:
+bashnpm install pg
+
+ERROR 2: "relation 'automation_runs' does not exist"
+Solution: Database migration didn't run.
+bashnode setup-database.js
+
+ERROR 3: "Cannot find module './routes/automation.js'"
+Solution: File not created or wrong location.
+Check:
+backend/
+  routes/
+    automation.js  ← Must be here
+Verify the file exists in Replit file tree (left sidebar).
+
+ERROR 4: "apolloService.searchProspects is not a function"
+Issue: Your Apollo service has a different function name.
+Solution: Open backend/services/automationService.js and find this line:
+javascriptconst apolloProspects = await apolloService.searchProspects({
+Change to match YOUR existing function name:
+
+If you have apolloService.fetchProspects(), use that
+If you have apolloService.getProspects(), use that
+Check your existing apolloService.js file to see the function name
+
+Example fix:
+javascript// Find YOUR function name in apolloService.js
+// Then use it here:
+const apolloProspects = await apolloService.fetchProspects({
+  ...apolloFilters,
+  per_page: prospectCount
+});
+
+ERROR 5: "db is not defined"
+Issue: Database connection not imported.
+Solution: At the top of backend/routes/automation.js, add:
+javascriptimport db from '../config/database.js'; // or wherever your db connection is
+If you don't have a separate db file:
+Create backend/config/database.js:
+javascriptimport pg from 'pg';
+const { Pool } = pg;
+
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false
+  }
+});
+
+export default pool;
+
+ERROR 6: "emailService.scheduleEmail is not a function"
+Issue: Your email service has different function names.
+Solution: In backend/services/automationService.js, find:
+javascriptawait emailService.scheduleEmail({
+Replace with YOUR existing email function:
+javascript// Use YOUR existing function
+await emailService.sendEmail(prospectId, sequenceId, 1, subject, body);
+// OR
+await yourEmailFunction(prospectData);
+
+ERROR 7: CORS Error in Browser Console
+Error: Access to XMLHttpRequest blocked by CORS policy
+Solution: In backend/server.js, ensure CORS is configured:
+javascriptimport cors from 'cors';
+
+app.use(cors({
+  origin: true, // Allow all origins in development
+  credentials: true
+}));
+
+ERROR 8: Modal Not Showing
+Check 1: Browser Console (F12) for React errors
+Check 2: Make sure AutomationModal.jsx is imported:
+javascriptimport AutomationModal from '../components/AutomationModal';
+Check 3: CSS file imported in modal:
+javascriptimport './AutomationModal.css';
+Quick Debug: Add console.log:
+javascriptconst handleRunAutomation = (sequence) => {
+  console.log('Button clicked!', sequence);
+  setSelectedSequence(sequence);
+  setShowAutomationModal(true);
+};
+
+ERROR 9: "Cannot read property 'id' of undefined"
+Issue: Sequence object structure doesn't match.
+Solution: Add console.log to check structure:
+javascriptconsole.log('Sequence data:', sequence);
+Then adjust the code to match YOUR sequence structure:
+javascript// If your sequence is like: { _id, title, numSteps }
+<h3>{sequence.title}</h3>
+<p>{sequence.numSteps} steps</p>
+
+// Update modal:
+sequenceId: sequence._id,  // or sequence.id
+
+ERROR 10: Redis Connection Fails
+Temporary Solution: Use the simple queue instead.
+In backend/routes/automation.js, change:
+javascript// OLD (Redis):
+import { automationQueue } from '../utils/queue.js';
+
+// NEW (Simple):
+import { automationQueue } from '../utils/simpleQueue.js';
+
+PART 3: Testing the Complete Flow
+TEST 1: Database Setup Verification
+bash# In Replit Shell
+node -e "
+const pg = require('pg');
+const pool = new pg.Pool({ 
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }
+});
+pool.query('SELECT * FROM automation_runs LIMIT 1')
+  .then(() => console.log('✅ Database working!'))
+  .catch(err => console.error('❌ Error:', err.message));
+"
+Expected: ✅ Database working!
+
+TEST 2: API Endpoint Test
+Create test-automation-api.js:
+javascript// test-automation-api.js
+async function testAPI() {
+  try {
+    const response = await fetch('http://localhost:3000/api/automation/start', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        sequenceId: 1, // Use a real sequence ID from your DB
+        prospectCount: 5,
+        aiPersonalization: true,
+        apolloFilters: {
+          jobTitle: 'CEO',
+          location: 'San Francisco'
+        }
+      })
+    });
+
+    const data = await response.json();
+    console.log('API Response:', data);
+    
+    if (data.success) {
+      console.log('✅ API working! Automation ID:', data.automationRunId);
+    } else {
+      console.log('❌ API error:', data.error);
+    }
+  } catch (error) {
+    console.error('❌ Request failed:', error);
+  }
+}
+
+testAPI();
+Run it:
+bashnode test-automation-api.js
+Expected:
+API Response: { success: true, automationRunId: 1, message: '...' }
+✅ API working! Automation ID: 1
+
+TEST 3: Full Flow Test (Manual)
+Step 1: Open your Replit app in browser
+Step 2: Go to Sequences page
+Step 3: Click "🤖 Run Automation" on any sequence
+Expected: Modal opens
+Step 4: Fill in the form:
+
+Prospect Count: 5
+AI Personalization: ✅ Checked
+Job Title: CEO
+Location: San Francisco
+
+Step 5: Click "Start Automation"
+Expected: Alert shows "Automation started! ID: X"
+Step 6: Check Server Logs in Replit Console
+You should see:
+[Automation 1] Starting...
+[Automation 1] Fetching 5 prospects from Apollo...
+[Automation 1] Found 5 prospects
+[Automation 1] Saved 5 prospects
+Enrolled prospect 123 in sequence 1
+[Automation 1] Completed successfully!
+Step 7: Check Database
+bashnode -e "
+const pg = require('pg');
+const pool = new pg.Pool({ 
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }
+});
+pool.query('SELECT * FROM automation_runs ORDER BY id DESC LIMIT 1')
+  .then(res => console.log('Latest automation:', res.rows[0]))
+  .finally(() => process.exit());
+"
+Expected:
+javascriptLatest automation: {
+  id: 1,
+  sequence_id: 1,
+  prospect_count: 5,
+  prospects_added: 5,
+  status: 'completed',
+  ...
+}
+Step 8: Go to /automations page
+Expected: See your automation run with progress bars
+
+TEST 4: Reply Classification Test
+Create test-reply-classification.js:
+javascript// test-reply-classification.js
+function classifyReply(replyText) {
+  const text = replyText.toLowerCase();
+  
+  if (text.includes('unsubscribe')) return 'UNSUBSCRIBE';
+  if (text.includes('out of office')) return 'OUT_OF_OFFICE';
+  if (text.includes('not interested')) return 'NEGATIVE';
+  if (text.includes('?')) return 'QUESTION';
+  
+  return 'POSITIVE';
+}
+
+// Test cases
+const tests = [
+  { text: 'Please unsubscribe me', expected: 'UNSUBSCRIBE' },
+  { text: 'I am out of office until Monday', expected: 'OUT_OF_OFFICE' },
+  { text: 'Not interested, thanks', expected: 'NEGATIVE' },
+  { text: 'Can you tell me more?', expected: 'QUESTION' },
+  { text: 'Yes, I would like to learn more', expected: 'POSITIVE' }
+];
+
+console.log('Testing Reply Classification:\n');
+
+tests.forEach(test => {
+  const result = classifyReply(test.text);
+  const status = result === test.expected ? '✅' : '❌';
+  console.log(`${status} "${test.text}" → ${result} (expected: ${test.expected})`);
+});
+Run:
+bashnode test-reply-classification.js
+Expected: All ✅
+
+TEST 5: Email Threading Test
+Send a test email and check database:
+javascript// Check if message_id is being saved
+node -e "
+const pg = require('pg');
+const pool = new pg.Pool({ 
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }
+});
+pool.query('SELECT message_id, in_reply_to FROM email_logs ORDER BY id DESC LIMIT 1')
+  .then(res => {
+    const email = res.rows[0];
+    if (email.message_id) {
+      console.log('✅ Message ID saved:', email.message_id);
+      console.log('In-Reply-To:', email.in_reply_to || 'null (first email)');
+    } else {
+      console.log('❌ Message ID not saved - check emailService.js');
+    }
+  })
+  .finally(() => process.exit());
+"
+
+TEST 6: Unsubscribe Link Test
+
+Send a test email to yourself
+Click the unsubscribe link
+Should see: "✅ You're Unsubscribed" page
+
+Check database:
+bashnode -e "
+const pg = require('pg');
+const pool = new pg.Pool({ 
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }
+});
+pool.query('SELECT * FROM unsubscribes ORDER BY id DESC LIMIT 1')
+  .then(res => console.log('Unsubscribe record:', res.rows[0]))
+  .finally(() => process.exit());
+"
+
+PART 4: Quick Troubleshooting Checklist
+Automation Not Starting?
+
+ Check browser console (F12) for errors
+ Check Replit console for server errors
+ Verify DATABASE_URL in Secrets
+ Verify Apollo API key in Secrets
+ Check automation_runs table exists
+ Check /api/automation/start endpoint responds
+
+Prospects Not Being Fetched?
+
+ Test Apollo API key separately
+ Check Apollo service function name matches
+ Look for Apollo errors in console
+ Check Apollo API rate limits
+ Verify filters are valid (job title exists)
+
+Emails Not Sending?
+
+ Check email provider credentials (SendGrid, etc.)
+ Verify your existing email service works
+ Check email service function name matches
+ Look for email provider errors in logs
+
+Dashboard Not Loading?
+
+ Check /api/automation/list endpoint works
+ Open browser console for errors
+ Verify route added to App.jsx
+ Check if CSS file is imported
+
+
+🆘 Still Stuck? Debug Commands
+1. Check all tables exist:
+bashnode -e "
+const pg = require('pg');
+const pool = new pg.Pool({ 
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }
+});
+pool.query(\"SELECT tablename FROM pg_tables WHERE schemaname='public'\")
+  .then(res => console.log('Tables:', res.rows.map(r => r.tablename)))
+  .finally(() => process.exit());
+"
+2. Check latest automation:
+bashnode -e "
+const pg = require('pg');
+const pool = new pg.Pool({ 
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }
+});
+pool.query('SELECT * FROM automation_runs ORDER BY id DESC LIMIT 1')
+  .then(res => console.log('Latest:', res.rows[0] || 'No automations yet'))
+  .finally(() => process.exit());
+"
+3. Test database connection:
+bashnode -e "
+const pg = require('pg');
+const pool = new pg.Pool({ 
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }
+});
+pool.query('SELECT NOW()')
+  .then(() => console.log('✅ Database connected'))
+  .catch(err => console.error('❌ Database error:', err.message))
+  .finally(() => process.exit());
+"
+
+📝 Final Checklist Before Going Live
+
+ Database tables created (automation_runs, unsubscribes)
+ All new files created (7 files)
+ All existing files updated (5 files)
+ Environment variables set in Secrets
+ Server starts without errors
+ Automation button appears on Sequences page
+ Modal opens and validates input
+ Test automation with 5 prospects succeeds
+ Dashboard shows automation status
+ Reply classification works
+ Unsubscribe link works
+ Email threading works (Step 2 replies to Step 1)
