@@ -56,6 +56,8 @@ The platform is built with a modern web stack:
     - **Cascade Delete Constraints**: Email queue properly cascades prospect deletions to prevent foreign key violations, enabling clean bulk prospect deletion.
     - **Email Sequence Threading**: Manual follow-up steps support "Use previous step's subject line" checkbox that automatically prepends "Re: " to create proper email thread continuity. Preserves user's manual subject when toggling on/off.
     - **Reply Analytics Fix**: Corrected reply detection to properly update the `replied_at` field in the emails table for accurate sequence analytics. Reply detection now queries the emails table by prospect_id and sequence_id to find the matching email record, then updates its replied_at timestamp when a reply is received.
+    - **Step Deletion Feature**: Users can now delete individual sequence steps through the sequence builder. The DELETE route includes security validation to ensure steps can only be deleted from their parent sequence.
+    - **Contextual AI Email Generation**: AI email personalization and generation now automatically fetches and includes previous sequence step data when generating new emails. This provides contextual continuity, allowing the AI to build upon prior communications naturally and create more coherent follow-up sequences.
 
 ## External Dependencies
 - **Apollo.io**: Primary API for prospect search, data enrichment, and bulk matching.

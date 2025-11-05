@@ -1361,7 +1361,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Generate personalized email with AI
   app.post("/api/personalization/generate-email", async (req, res) => {
     try {
-      const { prospectId, personalizationData, settings, customPrompt, useAdvanced, contentItemIds } = req.body;
+      const { prospectId, personalizationData, settings, customPrompt, useAdvanced, contentItemIds, sequenceId, sequenceStep } = req.body;
       
       if (!process.env.OPENAI_API_KEY) {
         return res.status(500).json({ 
@@ -1372,6 +1372,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const prospect = await storage.getProspect(prospectId);
       if (!prospect) {
         return res.status(404).json({ error: "Prospect not found" });
+      }
+
+      // Fetch previous steps from sequence if sequenceId is provided
+      let previousStepsContext = '';
+      if (sequenceId) {
+        try {
+          const steps = await storage.getSequenceSteps(sequenceId);
+          if (steps && steps.length > 0) {
+            const previousSteps = sequenceStep 
+              ? steps.slice(0, sequenceStep - 1) 
+              : steps;
+            
+            if (previousSteps.length > 0) {
+              previousStepsContext = `\n\nPREVIOUS EMAILS IN THIS SEQUENCE:\n` +
+                previousSteps.map((step, index) => 
+                  `Email ${index + 1}:\nSubject: ${step.subject}\nBody:\n${step.body}`
+                ).join('\n\n---\n\n') + '\n\nIMPORTANT: Build upon the previous emails naturally. Reference or acknowledge the prior communication and progress the conversation forward.\n';
+              
+              console.log(`📧 Loaded ${previousSteps.length} previous steps for personalization context`);
+            }
+          }
+        } catch (error) {
+          console.error("Error fetching previous steps:", error);
+        }
       }
 
       // Build context for AI email generation
@@ -1451,7 +1475,7 @@ EMAIL SETTINGS:
 - Tone: ${context.tone}
 - Focus: ${context.focus}
 - Urgency: ${context.urgency}
-${customPrompt ? `\nADDITIONAL INSTRUCTIONS:\n${customPrompt}` : ''}
+${customPrompt || previousStepsContext ? `\nADDITIONAL INSTRUCTIONS:\n${customPrompt || ''}${previousStepsContext}` : ''}
 
 MANDATORY EMAIL STRUCTURE (WITH LINE BREAKS):
 1. Opening: Reference ONE concrete detail about their company or role
@@ -1502,7 +1526,7 @@ EMAIL SETTINGS:
 - Tone: ${context.tone}
 - Focus: ${context.focus}
 - Urgency: ${context.urgency}
-${customPrompt ? `\nADDITIONAL INSTRUCTIONS:\n${customPrompt}` : ''}
+${customPrompt || previousStepsContext ? `\nADDITIONAL INSTRUCTIONS:\n${customPrompt || ''}${previousStepsContext}` : ''}
 
 MANDATORY EMAIL STRUCTURE (WITH LINE BREAKS):
 1. Opening: Reference ONE concrete detail about their company or role
