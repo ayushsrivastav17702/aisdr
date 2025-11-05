@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -928,8 +929,10 @@ function SequenceTab({
   const [showAIPersonalization, setShowAIPersonalization] = useState(false);
   const [showAITemplate, setShowAITemplate] = useState(false);
   const [subject, setSubject] = useState("");
+  const [manualSubject, setManualSubject] = useState("");
   const [body, setBody] = useState("");
   const [delayDays, setDelayDays] = useState("0");
+  const [usePreviousSubject, setUsePreviousSubject] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -942,8 +945,10 @@ function SequenceTab({
       queryClient.invalidateQueries({ queryKey: ['/api/sequences', sequenceId] });
       setShowAddModal(false);
       setSubject("");
+      setManualSubject("");
       setBody("");
       setDelayDays("0");
+      setUsePreviousSubject(false);
       toast({ title: "Success", description: "Email step added successfully" });
     },
   });
@@ -1103,14 +1108,53 @@ function SequenceTab({
             <DialogTitle>Add Email Step</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
-            <div>
-              <Label>Subject Line</Label>
-              <Input
-                value={subject}
-                onChange={(e) => setSubject(e.target.value)}
-                placeholder="Enter email subject..."
-                data-testid="input-step-subject"
-              />
+            <div className="space-y-3">
+              <div className="flex items-center space-x-2">
+                <Checkbox
+                  id="use-previous-subject"
+                  checked={usePreviousSubject}
+                  onCheckedChange={(checked) => {
+                    setUsePreviousSubject(checked === true);
+                    if (checked && steps.length > 0) {
+                      setManualSubject(subject);
+                      const lastStep = steps[steps.length - 1];
+                      setSubject(`Re: ${lastStep.subject}`);
+                    } else {
+                      setSubject(manualSubject);
+                    }
+                  }}
+                  disabled={steps.length === 0}
+                  data-testid="checkbox-use-previous-subject"
+                />
+                <Label 
+                  htmlFor="use-previous-subject"
+                  className="text-sm font-normal cursor-pointer"
+                >
+                  Use previous step's subject line (for threading replies)
+                  {steps.length === 0 && <span className="text-muted-foreground ml-1">(Add first step to enable)</span>}
+                </Label>
+              </div>
+              
+              <div>
+                <Label>Subject Line</Label>
+                <Input
+                  value={subject}
+                  onChange={(e) => {
+                    setSubject(e.target.value);
+                    if (!usePreviousSubject) {
+                      setManualSubject(e.target.value);
+                    }
+                  }}
+                  placeholder={usePreviousSubject && steps.length > 0 ? `Re: ${steps[steps.length - 1].subject}` : "Enter email subject..."}
+                  disabled={usePreviousSubject}
+                  data-testid="input-step-subject"
+                />
+                {usePreviousSubject && steps.length > 0 && (
+                  <p className="text-sm text-muted-foreground mt-1">
+                    ✓ Will use: "Re: {steps[steps.length - 1].subject}"
+                  </p>
+                )}
+              </div>
             </div>
             <div>
               <Label>Email Body</Label>
@@ -1138,15 +1182,15 @@ function SequenceTab({
               </Button>
               <Button
                 onClick={() => {
-                  if (subject.trim() && body.trim()) {
+                  if (body.trim() && subject.trim()) {
                     addStepMutation.mutate({
-                      subject,
+                      subject: subject,
                       body,
                       delayDays: parseInt(delayDays) || 0
                     });
                   }
                 }}
-                disabled={!subject.trim() || !body.trim() || addStepMutation.isPending}
+                disabled={!body.trim() || !subject.trim() || addStepMutation.isPending}
                 data-testid="button-save-step"
               >
                 {addStepMutation.isPending ? "Adding..." : "Add Step"}
