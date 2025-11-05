@@ -98,7 +98,6 @@ class ApolloService {
       ...params,
       per_page: params.per_page || 50,
       page: params.page || 1,
-      reveal_personal_emails: true,
     };
 
     const response = await fetch(url, {
@@ -160,6 +159,15 @@ class ApolloService {
     }
 
     const data = await response.json();
+    
+    // Log enrichment response for debugging
+    console.log('🔍 Apollo enrichment response:', JSON.stringify({
+      email: data.contact?.email,
+      locked: data.contact?.email?.includes('email_not_unlocked'),
+      firstName: data.contact?.first_name,
+      lastName: data.contact?.last_name,
+      organization: data.contact?.organization?.name
+    }, null, 2));
     
     // Track API usage
     await rateLimiterService.trackApiUsage('apollo', 1);
