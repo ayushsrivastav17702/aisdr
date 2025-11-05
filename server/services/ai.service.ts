@@ -300,9 +300,25 @@ class AIService {
     ];
     
     const locationKeywords = [
+      // North America
       'nyc', 'new york', 'san francisco', 'sf', 'bay area', 'boston', 'austin',
       'seattle', 'los angeles', 'la', 'chicago', 'miami', 'atlanta', 'denver',
-      'dallas', 'houston', 'portland', 'philadelphia', 'dc', 'washington'
+      'dallas', 'houston', 'portland', 'philadelphia', 'dc', 'washington',
+      'toronto', 'vancouver', 'montreal',
+      // Europe
+      'london', 'paris', 'berlin', 'amsterdam', 'madrid', 'barcelona', 'rome',
+      'dublin', 'stockholm', 'copenhagen', 'oslo', 'helsinki', 'zurich', 'geneva',
+      'munich', 'frankfurt', 'vienna', 'brussels', 'lisbon',
+      // Asia Pacific
+      'singapore', 'hong kong', 'tokyo', 'shanghai', 'beijing', 'seoul',
+      'bangalore', 'mumbai', 'delhi', 'hyderabad', 'sydney', 'melbourne',
+      'auckland', 'bangkok', 'manila', 'jakarta', 'kuala lumpur',
+      // Middle East & Africa
+      'dubai', 'abu dhabi', 'tel aviv', 'riyadh', 'cairo', 'johannesburg',
+      'cape town', 'nairobi',
+      // Latin America
+      'mexico city', 'são paulo', 'rio de janeiro', 'buenos aires', 'santiago',
+      'bogota', 'lima'
     ];
     
     const industryKeywords = [
@@ -310,9 +326,17 @@ class AIService {
       'retail', 'ecommerce', 'fashion', 'technology', 'software', 'hardware'
     ];
     
-    // NOTE: We intentionally do NOT extract company names in fallback mode
-    // Reason: Too many false positives (locations, sentence-starting words, etc.)
-    // The general keyword search (q_keywords) is safer and more reliable
+    // Extract potential company names - use a smarter approach
+    // Known major companies to detect even in fallback mode
+    const knownCompanies = [
+      'nike', 'adidas', 'puma', 'reebok', 'under armour', 'google', 'apple', 'microsoft',
+      'amazon', 'meta', 'facebook', 'netflix', 'tesla', 'uber', 'airbnb', 'spotify',
+      'salesforce', 'oracle', 'sap', 'ibm', 'intel', 'cisco', 'hp', 'dell', 'lenovo',
+      'target', 'walmart', 'costco', 'nordstrom', 'macys', 'gap', 'zara', 'h&m',
+      'uniqlo', 'lululemon', 'patagonia', 'columbia', 'north face', 'vans', 'converse',
+      'disney', 'warner', 'universal', 'sony', 'samsung', 'lg', 'toyota', 'honda'
+    ];
+    
     const commonWords = ['the', 'a', 'an', 'in', 'on', 'to', 'of', 'and', 'or', 'with', 'find', 'looking', 'search', 'get', 'at', 'from', 'for'];
     const words = query.split(/\s+/);
     
@@ -328,6 +352,11 @@ class AIService {
     
     const extractedIndustries = industryKeywords.filter(keyword => 
       lowerQuery.includes(keyword)
+    );
+    
+    // Extract known company names
+    const extractedCompanies = knownCompanies.filter(company => 
+      lowerQuery.includes(company)
     );
 
     // If no job titles found but query contains common job-related words, use them
@@ -361,7 +390,7 @@ class AIService {
       jobTitles: extractedTitles.length > 0 ? extractedTitles : undefined,
       locations: extractedLocations.length > 0 ? extractedLocations : undefined,
       industries: extractedIndustries.length > 0 ? extractedIndustries : undefined,
-      // companyNames intentionally omitted in fallback mode to avoid false positives
+      companyNames: extractedCompanies.length > 0 ? extractedCompanies : undefined,
       keywords: keywords.length > 0 ? keywords : undefined
     };
 

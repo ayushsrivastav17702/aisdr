@@ -20,7 +20,7 @@ The platform is built with a modern web stack:
 - **UI/UX Decisions**: Employs a clean, modern design with a focus on user-friendly workflows for AI search, prospect management, and campaign creation. Key features include a detailed email sequence builder with real-time reply detection, AI-powered email generation with customizable tones, and multi-mailbox email sending with warmup and round-robin capabilities.
 - **Technical Implementations**:
     - **Natural Language Processing**: Converts user queries into structured Apollo.io filters with intelligent AI and fallback processing.
-    - **AI Search Fallback**: When AI providers fail, uses keyword-based extraction that retains company names, job titles, locations, and industries while filtering common stop-words.
+    - **AI Search Fallback**: When AI providers fail, uses keyword-based extraction that intelligently detects job titles, locations (70+ global cities including Singapore, London, Tokyo, etc.), known company names (Puma, Nike, etc.), and industries while filtering common stop-words.
     - **Apollo Industry Filter Fix**: Industries are included in keyword search (`q_keywords`) instead of `organization_industry_tag_ids` to prevent 422 errors from invalid industry tag IDs.
     - **Email Sequence Management**: Supports multi-step sequences, prospect enrollment, tracking, and AI-powered personalization based on prospect data.
     - **AI Email Generation**: One-click generation of personalized emails, A/B test variants, and sentiment analysis.
