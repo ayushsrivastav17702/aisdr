@@ -356,6 +356,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Get all prospect IDs (for bulk selection)
+  app.get("/api/prospects/all-ids", async (req, res) => {
+    try {
+      const allProspects = await storage.getAllProspectIds();
+      
+      res.json({
+        prospectIds: allProspects,
+        count: allProspects.length
+      });
+    } catch (error) {
+      console.error("Get all prospect IDs error:", error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Failed to get prospect IDs" 
+      });
+    }
+  });
+
   // Get prospects with filters
   app.get("/api/prospects", async (req, res) => {
     try {

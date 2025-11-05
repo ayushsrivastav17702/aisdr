@@ -58,6 +58,7 @@ export interface IStorage {
   updateProspect(id: string, updates: Partial<InsertProspect>): Promise<Prospect>;
   deleteProspect(id: string): Promise<void>;
   getProspectsByIds(ids: string[]): Promise<Prospect[]>;
+  getAllProspectIds(): Promise<string[]>;
   checkDuplicateProspects(emails: string[], domains?: string[]): Promise<Prospect[]>;
   findProspectByEmailOrApolloId(email: string | null, apolloId: string | null): Promise<Prospect | undefined>;
   searchLocalProspects(aiFilters: any): Promise<Prospect[]>;
@@ -221,6 +222,11 @@ export class DatabaseStorage implements IStorage {
   async getProspectsByIds(ids: string[]): Promise<Prospect[]> {
     if (ids.length === 0) return [];
     return await db.select().from(prospects).where(inArray(prospects.id, ids));
+  }
+
+  async getAllProspectIds(): Promise<string[]> {
+    const result = await db.select({ id: prospects.id }).from(prospects);
+    return result.map(r => r.id);
   }
 
   async checkDuplicateProspects(emails: string[], domains?: string[]): Promise<Prospect[]> {
