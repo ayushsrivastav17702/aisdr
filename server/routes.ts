@@ -503,25 +503,40 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "prospectIds array is required" });
       }
 
-      let deletedCount = 0;
-      let failedCount = 0;
-      const errors: string[] = [];
+      console.log(`🗑️ Starting bulk delete of ${prospectIds.length.toLocaleString()} prospects...`);
 
-      for (const id of prospectIds) {
+      // Delete in batches of 1000 to avoid query size limits and timeouts
+      const BATCH_SIZE = 1000;
+      let totalDeleted = 0;
+      
+      for (let i = 0; i < prospectIds.length; i += BATCH_SIZE) {
+        const batch = prospectIds.slice(i, i + BATCH_SIZE);
+        const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+        const totalBatches = Math.ceil(prospectIds.length / BATCH_SIZE);
+        
+        console.log(`🗑️ Deleting batch ${batchNum}/${totalBatches} (${batch.length} prospects)...`);
+        
         try {
-          await storage.deleteProspect(id);
-          deletedCount++;
+          // Use batch delete with SQL IN clause
+          const { prospects } = await import("@shared/schema");
+          const deleted = await db.delete(prospects)
+            .where(inArray(prospects.id, batch));
+          
+          totalDeleted += batch.length;
+          console.log(`✅ Batch ${batchNum} deleted: ${batch.length} prospects (${totalDeleted.toLocaleString()}/${prospectIds.length.toLocaleString()} total)`);
         } catch (error) {
-          failedCount++;
-          errors.push(`Failed to delete ${id}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          console.error(`❌ Batch ${batchNum} failed:`, error);
+          // Continue with next batch even if one fails
         }
       }
 
+      console.log(`✅ Bulk delete complete: ${totalDeleted.toLocaleString()}/${prospectIds.length.toLocaleString()} prospects deleted`);
+
       res.json({ 
         success: true,
-        deleted: deletedCount,
-        failed: failedCount,
-        errors: errors.slice(0, 5) // Return first 5 errors
+        deleted: totalDeleted,
+        failed: prospectIds.length - totalDeleted,
+        total: prospectIds.length
       });
     } catch (error) {
       console.error("Bulk delete prospects error:", error);
