@@ -267,6 +267,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const savedProspects = [];
       let skippedCount = 0;
       let errorCount = 0;
+      let newCount = 0;
+      let updatedCount = 0;
       
       for (const contact of contacts) {
         try {
@@ -289,6 +291,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               tags: mergedTags
             });
             savedProspects.push(updated);
+            updatedCount++;
           } else {
             // Create new prospect with tag
             const created = await storage.createProspect({
@@ -296,6 +299,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               tags: tag ? [tag] : undefined
             });
             savedProspects.push(created);
+            newCount++;
           }
         } catch (error) {
           errorCount++;
@@ -303,7 +307,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       
-      console.log(`  Saved: ${savedProspects.length}, Errors: ${errorCount}`);
+      console.log(`  New: ${newCount}, Updated: ${updatedCount}, Errors: ${errorCount}`);
 
       // Create search record if extraction name is provided
       let searchRecord = null;
@@ -327,6 +331,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         prospects: savedProspects,
         pagination: searchResponse.pagination,
         saved: savedProspects.length,
+        newCount,
+        updatedCount,
         searchId: searchRecord?.id,
         searchStrategy,
         searchStrategyMessage: contacts.length === 0 

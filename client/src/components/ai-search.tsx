@@ -184,10 +184,22 @@ export default function AISearch() {
       
       console.log('  ✅ Showing success toast and navigating');
       
-      // Show different message if fallback strategy was used
-      const successMessage = data.searchStrategyMessage 
-        ? `${data.searchStrategyMessage}. Saved ${data.saved} prospects (${totalFound.toLocaleString()} total available).`
-        : `Saved ${data.saved} prospects (${totalFound.toLocaleString()} total available). Navigating to Prospects page...`;
+      // Show different message with clear breakdown of new vs updated
+      let successMessage = '';
+      const newCount = data.newCount || 0;
+      const updatedCount = data.updatedCount || 0;
+      
+      if (newCount > 0 && updatedCount > 0) {
+        successMessage = `Added ${newCount} new prospect${newCount === 1 ? '' : 's'}, updated ${updatedCount} existing (${totalFound.toLocaleString()} total available).`;
+      } else if (newCount > 0) {
+        successMessage = `Added ${newCount} new prospect${newCount === 1 ? '' : 's'} (${totalFound.toLocaleString()} total available).`;
+      } else if (updatedCount > 0) {
+        successMessage = `Updated ${updatedCount} existing prospect${updatedCount === 1 ? '' : 's'} - all were duplicates (${totalFound.toLocaleString()} total available).`;
+      }
+      
+      if (data.searchStrategyMessage) {
+        successMessage = `${data.searchStrategyMessage}. ${successMessage}`;
+      }
       
       toast({
         title: "Prospects Saved Successfully",
