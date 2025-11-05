@@ -55,6 +55,7 @@ The platform is built with a modern web stack:
     - **Smart Search Fallback**: Multi-strategy Apollo search system automatically tries alternative approaches when initial search returns zero results. Falls back from strict filter matching → keyword search → seniority-only search, maximizing prospect discovery while maintaining relevance. Provides user feedback on which strategy successfully found results.
     - **Cascade Delete Constraints**: Email queue properly cascades prospect deletions to prevent foreign key violations, enabling clean bulk prospect deletion.
     - **Email Sequence Threading**: Manual follow-up steps support "Use previous step's subject line" checkbox that automatically prepends "Re: " to create proper email thread continuity. Preserves user's manual subject when toggling on/off.
+    - **Reply Analytics Fix**: Corrected reply detection to properly update the `replied_at` field in the emails table for accurate sequence analytics. Reply detection now queries the emails table by prospect_id and sequence_id to find the matching email record, then updates its replied_at timestamp when a reply is received.
 
 ## External Dependencies
 - **Apollo.io**: Primary API for prospect search, data enrichment, and bulk matching.
