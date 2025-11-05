@@ -236,6 +236,33 @@ router.post("/sequences/:id/steps", async (req, res) => {
   }
 });
 
+// Delete sequence step
+router.delete("/sequences/:id/steps/:stepId", async (req, res) => {
+  try {
+    const sequenceId = req.params.id;
+    const stepId = req.params.stepId;
+    
+    // Fetch all steps for this sequence
+    const steps = await storage.getSequenceSteps(sequenceId);
+    
+    // Verify the step belongs to this sequence
+    const stepExists = steps.find(step => step.id === stepId);
+    
+    if (!stepExists) {
+      return res.status(404).json({ 
+        error: "Step not found or does not belong to this sequence" 
+      });
+    }
+    
+    // Delete the step
+    await storage.deleteSequenceStep(stepId);
+    res.json({ success: true, message: "Step deleted successfully" });
+  } catch (error) {
+    console.error("Error deleting step:", error);
+    res.status(500).json({ error: "Failed to delete step" });
+  }
+});
+
 // Get prospects in sequence
 router.get("/sequences/:id/prospects", async (req, res) => {
   try {
@@ -415,17 +442,40 @@ router.post("/webhooks/email-opened", async (req, res) => {
 router.post("/sequences/ai-generate-email", async (req, res) => {
   try {
     const { emailGenerationService } = await import("./services/ai-email-generator.service");
-    const { prospectId, emailType, sequenceStep, previousEmails, tone } = req.body;
+    const { prospectId, emailType, sequenceStep, previousEmails, tone, sequenceId } = req.body;
     
     if (!prospectId || !emailType) {
       return res.status(400).json({ error: "prospectId and emailType are required" });
+    }
+    
+    // Fetch previous steps from sequence if sequenceId is provided
+    let enrichedPreviousEmails = previousEmails || [];
+    if (sequenceId && !previousEmails) {
+      try {
+        const steps = await storage.getSequenceSteps(sequenceId);
+        if (steps && steps.length > 0) {
+          // Get all steps except the current one being written
+          const previousSteps = sequenceStep 
+            ? steps.slice(0, sequenceStep - 1) 
+            : steps;
+          
+          enrichedPreviousEmails = previousSteps.map((step, index) => 
+            `Step ${index + 1} - Subject: ${step.subject}\n\nBody:\n${step.body}`
+          );
+          
+          console.log(`📧 Loaded ${enrichedPreviousEmails.length} previous steps from sequence for context`);
+        }
+      } catch (error) {
+        console.error("Error fetching previous steps:", error);
+        // Continue without previous steps if fetch fails
+      }
     }
     
     const result = await emailGenerationService.generateWithRetry({
       prospectId,
       emailType,
       sequenceStep,
-      previousEmails,
+      previousEmails: enrichedPreviousEmails,
       tone
     });
     
@@ -466,16 +516,40 @@ router.post("/sequences/ai-generate-variants", async (req, res) => {
 router.post("/sequences/enhanced-personalization", async (req, res) => {
   try {
     const { generateEnhancedPersonalizedEmail } = await import("./services/enhanced-personalization.service");
-    const { prospectId, includeLinkedInData, customPrompt, emailSettings } = req.body;
+    const { prospectId, includeLinkedInData, customPrompt, emailSettings, sequenceId, sequenceStep } = req.body;
     
     if (!prospectId) {
       return res.status(400).json({ error: "prospectId is required" });
     }
     
+    // Fetch previous steps from sequence if sequenceId is provided
+    let previousStepsContext = '';
+    if (sequenceId) {
+      try {
+        const steps = await storage.getSequenceSteps(sequenceId);
+        if (steps && steps.length > 0) {
+          const previousSteps = sequenceStep 
+            ? steps.slice(0, sequenceStep - 1) 
+            : steps;
+          
+          if (previousSteps.length > 0) {
+            previousStepsContext = `\n\nPREVIOUS EMAILS IN THIS SEQUENCE:\n` +
+              previousSteps.map((step, index) => 
+                `Email ${index + 1}:\nSubject: ${step.subject}\n${step.body}`
+              ).join('\n\n---\n\n');
+            
+            console.log(`📧 Loaded ${previousSteps.length} previous steps for enhanced personalization`);
+          }
+        }
+      } catch (error) {
+        console.error("Error fetching previous steps:", error);
+      }
+    }
+    
     const result = await generateEnhancedPersonalizedEmail({
       prospectId,
       includeLinkedInData,
-      customPrompt,
+      customPrompt: previousStepsContext ? `${customPrompt || ''}\n${previousStepsContext}` : customPrompt,
       emailSettings
     });
     
