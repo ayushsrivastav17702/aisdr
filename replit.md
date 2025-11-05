@@ -54,6 +54,7 @@ The platform is built with a modern web stack:
     - **Advanced Apollo Filters**: Extended search capabilities include revenue range filtering, technology stack identification, and funding stage targeting.
     - **Smart Search Fallback**: Multi-strategy Apollo search system automatically tries alternative approaches when initial search returns zero results. Falls back from strict filter matching → keyword search → seniority-only search, maximizing prospect discovery while maintaining relevance. Provides user feedback on which strategy successfully found results.
     - **Cascade Delete Constraints**: Email queue properly cascades prospect deletions to prevent foreign key violations, enabling clean bulk prospect deletion.
+    - **Email Sequence Threading**: Manual follow-up steps support "Use previous step's subject line" checkbox that automatically prepends "Re: " to create proper email thread continuity. Preserves user's manual subject when toggling on/off.
 
 ## External Dependencies
 - **Apollo.io**: Primary API for prospect search, data enrichment, and bulk matching.
