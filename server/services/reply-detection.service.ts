@@ -2,7 +2,7 @@ import Imap from "imap";
 // @ts-ignore - mailparser doesn't have types
 import { simpleParser } from "mailparser";
 import { db } from "../db";
-import { emailReplies, emailQueue, emailMailboxes, sequenceProspects } from "@shared/schema";
+import { emailReplies, emailQueue, emailMailboxes, sequenceProspects, emails } from "@shared/schema";
 import { eq, and, sql, desc } from "drizzle-orm";
 import { mailboxService } from "./mailbox.service";
 
@@ -402,17 +402,41 @@ export class ReplyDetectionService {
       const sentiment = this.classifyReply(body);
       console.log(`🏷️ Reply classified as: ${sentiment}`);
 
+      // Find the email record in the emails table for analytics
+      const [emailRecord] = await db
+        .select()
+        .from(emails)
+        .where(
+          and(
+            eq(emails.prospectId, matchedEmail.prospectId),
+            eq(emails.sequenceId, matchedEmail.sequenceId || "")
+          )
+        )
+        .orderBy(desc(emails.sentAt))
+        .limit(1);
+
       // Store the reply
+      const replyReceivedAt = new Date(email.date || Date.now());
       await db.insert(emailReplies).values({
-        emailId: matchedEmail.emailId || null,
+        emailId: emailRecord?.id || null,
         sequenceId: matchedEmail.sequenceId || null,
         prospectId: matchedEmail.prospectId,
         replyContent: body,
         sentiment,
-        receivedAt: new Date(email.date || Date.now()),
+        receivedAt: replyReceivedAt,
         aiSummary: null,
         nextAction: null,
       });
+
+      // Update the emails table to mark as replied for analytics
+      if (emailRecord) {
+        await db
+          .update(emails)
+          .set({ repliedAt: replyReceivedAt })
+          .where(eq(emails.id, emailRecord.id));
+        
+        console.log(`📊 Updated email ${emailRecord.id} with repliedAt timestamp for analytics`);
+      }
 
       // Update sequence prospect based on reply classification
       if (matchedEmail.sequenceId) {
