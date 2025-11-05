@@ -505,37 +505,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log(`🗑️ Starting bulk delete of ${prospectIds.length.toLocaleString()} prospects...`);
 
-      // Delete in batches of 1000 to avoid query size limits and timeouts
-      const BATCH_SIZE = 1000;
-      let totalDeleted = 0;
+      // Use storage's batch delete method
+      const result = await storage.bulkDeleteProspects(prospectIds);
       
-      for (let i = 0; i < prospectIds.length; i += BATCH_SIZE) {
-        const batch = prospectIds.slice(i, i + BATCH_SIZE);
-        const batchNum = Math.floor(i / BATCH_SIZE) + 1;
-        const totalBatches = Math.ceil(prospectIds.length / BATCH_SIZE);
-        
-        console.log(`🗑️ Deleting batch ${batchNum}/${totalBatches} (${batch.length} prospects)...`);
-        
-        try {
-          // Use batch delete with SQL IN clause
-          const { prospects } = await import("@shared/schema");
-          const deleted = await db.delete(prospects)
-            .where(inArray(prospects.id, batch));
-          
-          totalDeleted += batch.length;
-          console.log(`✅ Batch ${batchNum} deleted: ${batch.length} prospects (${totalDeleted.toLocaleString()}/${prospectIds.length.toLocaleString()} total)`);
-        } catch (error) {
-          console.error(`❌ Batch ${batchNum} failed:`, error);
-          // Continue with next batch even if one fails
-        }
-      }
-
-      console.log(`✅ Bulk delete complete: ${totalDeleted.toLocaleString()}/${prospectIds.length.toLocaleString()} prospects deleted`);
+      console.log(`✅ Bulk delete complete: ${result.deleted.toLocaleString()}/${prospectIds.length.toLocaleString()} prospects deleted`);
 
       res.json({ 
         success: true,
-        deleted: totalDeleted,
-        failed: prospectIds.length - totalDeleted,
+        deleted: result.deleted,
+        failed: result.failed,
         total: prospectIds.length
       });
     } catch (error) {

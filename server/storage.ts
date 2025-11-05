@@ -57,6 +57,7 @@ export interface IStorage {
   bulkCreateProspects(prospects: InsertProspect[]): Promise<Prospect[]>;
   updateProspect(id: string, updates: Partial<InsertProspect>): Promise<Prospect>;
   deleteProspect(id: string): Promise<void>;
+  bulkDeleteProspects(ids: string[]): Promise<{ deleted: number; failed: number }>;
   getProspectsByIds(ids: string[]): Promise<Prospect[]>;
   getAllProspectIds(): Promise<string[]>;
   checkDuplicateProspects(emails: string[], domains?: string[]): Promise<Prospect[]>;
@@ -217,6 +218,37 @@ export class DatabaseStorage implements IStorage {
 
   async deleteProspect(id: string): Promise<void> {
     await db.delete(prospects).where(eq(prospects.id, id));
+  }
+
+  async bulkDeleteProspects(ids: string[]): Promise<{ deleted: number; failed: number }> {
+    if (ids.length === 0) {
+      return { deleted: 0, failed: 0 };
+    }
+
+    // Delete in batches of 1000 to avoid query size limits
+    const BATCH_SIZE = 1000;
+    let totalDeleted = 0;
+    let totalFailed = 0;
+    
+    for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+      const batch = ids.slice(i, i + BATCH_SIZE);
+      const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+      const totalBatches = Math.ceil(ids.length / BATCH_SIZE);
+      
+      console.log(`🗑️ Deleting batch ${batchNum}/${totalBatches} (${batch.length} prospects)...`);
+      
+      try {
+        await db.delete(prospects).where(inArray(prospects.id, batch));
+        totalDeleted += batch.length;
+        console.log(`✅ Batch ${batchNum} deleted: ${batch.length} prospects (${totalDeleted.toLocaleString()}/${ids.length.toLocaleString()} total)`);
+      } catch (error) {
+        console.error(`❌ Batch ${batchNum} failed:`, error);
+        totalFailed += batch.length;
+        // Continue with next batch even if one fails
+      }
+    }
+
+    return { deleted: totalDeleted, failed: totalFailed };
   }
 
   async getProspectsByIds(ids: string[]): Promise<Prospect[]> {
