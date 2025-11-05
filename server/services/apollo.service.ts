@@ -7,6 +7,12 @@ interface ApolloSearchParams {
   person_locations?: string[];
   q_organization_name?: string;
   q_keywords?: string;
+  revenue_range?: {
+    min?: number;
+    max?: number;
+  };
+  organization_latest_funding_stage_cd?: string[];
+  currently_using_any_of_technology_uids?: string[];
   page?: number;
   per_page?: number;
 }
@@ -75,6 +81,17 @@ class ApolloService {
       throw new Error('Apollo API key not configured. Please set APOLLO_API_KEY environment variable.');
     }
 
+    // Check rate limit
+    const { rateLimiterService } = await import('./rate-limiter.service');
+    const rateCheck = await rateLimiterService.checkRateLimit('apollo', 'search');
+    if (!rateCheck.allowed) {
+      const error: any = new Error(`Rate limit exceeded. Please try again after ${rateCheck.resetAt.toISOString()}`);
+      error.status = 429;
+      error.remaining = rateCheck.remaining;
+      error.resetAt = rateCheck.resetAt;
+      throw error;
+    }
+
     const url = `${this.baseUrl}/mixed_people/search`;
     
     const requestBody = {
@@ -99,6 +116,10 @@ class ApolloService {
     }
 
     const data = await response.json();
+    
+    // Track API usage
+    await rateLimiterService.trackApiUsage('apollo', 1);
+    
     return data;
   }
 
@@ -109,6 +130,17 @@ class ApolloService {
     organization_name?: string;
     linkedin_url?: string;
   }): Promise<ApolloEnrichmentResponse> {
+    // Check rate limit
+    const { rateLimiterService } = await import('./rate-limiter.service');
+    const rateCheck = await rateLimiterService.checkRateLimit('apollo', 'enrichment');
+    if (!rateCheck.allowed) {
+      const error: any = new Error(`Rate limit exceeded. Please try again after ${rateCheck.resetAt.toISOString()}`);
+      error.status = 429;
+      error.remaining = rateCheck.remaining;
+      error.resetAt = rateCheck.resetAt;
+      throw error;
+    }
+
     const url = `${this.baseUrl}/people/match?reveal_personal_emails=true`;
 
     const response = await fetch(url, {
@@ -127,6 +159,10 @@ class ApolloService {
     }
 
     const data = await response.json();
+    
+    // Track API usage
+    await rateLimiterService.trackApiUsage('apollo', 1);
+    
     return data;
   }
 
@@ -145,6 +181,17 @@ class ApolloService {
   }> {
     if (!this.apiKey) {
       throw new Error('Apollo API key not configured. Please set APOLLO_API_KEY environment variable.');
+    }
+
+    // Check rate limit
+    const { rateLimiterService } = await import('./rate-limiter.service');
+    const rateCheck = await rateLimiterService.checkRateLimit('apollo', 'bulk_enrichment');
+    if (!rateCheck.allowed) {
+      const error: any = new Error(`Rate limit exceeded. Please try again after ${rateCheck.resetAt.toISOString()}`);
+      error.status = 429;
+      error.remaining = rateCheck.remaining;
+      error.resetAt = rateCheck.resetAt;
+      throw error;
     }
 
     const url = `${this.baseUrl}/people/bulk_match?reveal_personal_emails=true`;
@@ -167,12 +214,16 @@ class ApolloService {
 
     const data = await response.json();
     
+    // Track API usage
+    const creditsConsumed = data.credits_consumed || 0;
+    await rateLimiterService.trackApiUsage('apollo', creditsConsumed);
+    
     return {
       matches: data.matches || [],
       totalRequested: data.total_requested_enrichments || 0,
       uniqueEnriched: data.unique_enriched_records || 0,
       missingRecords: data.missing_records || 0,
-      creditsConsumed: data.credits_consumed || 0,
+      creditsConsumed,
     };
   }
 
@@ -199,7 +250,7 @@ class ApolloService {
     const phoneNumber = contact.phone_numbers?.[0]?.sanitized_number || 
                        contact.phone_numbers?.[0]?.raw_number || '';
 
-    return {
+    const prospect = {
       apolloId: contact.id || '',
       firstName: contact.first_name || '',
       lastName: contact.last_name || '',
@@ -219,8 +270,16 @@ class ApolloService {
       enrichmentData: {
         apollo: contact,
         enrichedAt: new Date().toISOString(),
-      }
+      },
+      leadScore: 0
     };
+
+    // Calculate lead score
+    const { leadScoringService } = require('./lead-scoring.service');
+    const scoreBreakdown = leadScoringService.calculateLeadScore(prospect as any);
+    prospect.leadScore = scoreBreakdown.total;
+
+    return prospect;
   }
 
   private extractDomainFromUrl(url: string): string {

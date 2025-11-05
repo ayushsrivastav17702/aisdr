@@ -79,6 +79,11 @@ app.use((req, res, next) => {
   }, async () => {
     log(`serving on port ${port}`);
     
+    // Initialize default ICP templates
+    const { icpTemplateService } = await import("./services/icp-template.service");
+    await icpTemplateService.initializeDefaultTemplates();
+    log(`✅ ICP templates initialized`);
+    
     // Start email queue processor
     log(`📧 Starting email queue processor...`);
     setInterval(async () => {
