@@ -11,6 +11,7 @@ declare module 'http' {
   }
 }
 app.use(express.json({
+  limit: '10mb', // Increased limit to handle bulk operations (e.g., deleting 48k+ prospects)
   verify: (req, _res, buf) => {
     req.rawBody = buf;
   }
