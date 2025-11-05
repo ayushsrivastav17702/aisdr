@@ -301,12 +301,36 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
     },
   });
 
+  const [selectingAll, setSelectingAll] = useState(false);
+
   const handleSelectAll = (checked: boolean | 'indeterminate') => {
     if (checked === true && data) {
       const allIds = data.prospects.map((p: any) => p.id);
       onSelectionChange(allIds);
     } else {
       onSelectionChange([]);
+    }
+  };
+
+  const handleSelectAllProspects = async () => {
+    setSelectingAll(true);
+    try {
+      // Fetch all prospect IDs (without full data for performance)
+      const response = await fetch('/api/prospects/all-ids');
+      const { prospectIds } = await response.json();
+      onSelectionChange(prospectIds);
+      toast({
+        title: "All Prospects Selected",
+        description: `Selected ${prospectIds.length.toLocaleString()} prospects across all pages`,
+      });
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Selection Failed",
+        description: "Failed to select all prospects",
+      });
+    } finally {
+      setSelectingAll(false);
     }
   };
 
@@ -609,10 +633,11 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
                   variant="ghost" 
                   size="sm" 
                   className="text-sm text-primary hover:text-primary/80"
-                  onClick={() => handleSelectAll(true)}
+                  onClick={handleSelectAllProspects}
+                  disabled={selectingAll}
                   data-testid="button-select-all"
                 >
-                  Select all {data?.total}
+                  {selectingAll ? "Selecting..." : `Select all ${data?.total?.toLocaleString()}`}
                 </Button>
               </div>
               
@@ -626,7 +651,7 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
                   data-testid="button-bulk-delete"
                 >
                   <TrashIcon className="w-4 h-4 mr-2" />
-                  {bulkDeleteMutation.isPending ? "Deleting..." : "Delete"}
+                  {bulkDeleteMutation.isPending ? "Deleting..." : `Delete ${selectedIds.length.toLocaleString()}`}
                 </Button>
                 <Button 
                   variant="outline" 
