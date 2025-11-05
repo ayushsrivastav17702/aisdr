@@ -1671,6 +1671,93 @@ Return ONLY the email body text, no subject line needed.`;
     }
   });
 
+  // ICP Templates - Get all templates
+  app.get("/api/icp-templates", async (req, res) => {
+    try {
+      const { icpTemplateService } = await import("./services/icp-template.service");
+      const templates = await icpTemplateService.getAllTemplates();
+      res.json(templates);
+    } catch (error) {
+      console.error("Get ICP templates error:", error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Failed to get ICP templates" 
+      });
+    }
+  });
+
+  // ICP Templates - Get default templates
+  app.get("/api/icp-templates/defaults", async (req, res) => {
+    try {
+      const { icpTemplateService } = await import("./services/icp-template.service");
+      const templates = await icpTemplateService.getDefaultTemplates();
+      res.json(templates);
+    } catch (error) {
+      console.error("Get default ICP templates error:", error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Failed to get default ICP templates" 
+      });
+    }
+  });
+
+  // ICP Templates - Get by ID
+  app.get("/api/icp-templates/:id", async (req, res) => {
+    try {
+      const { icpTemplateService } = await import("./services/icp-template.service");
+      const template = await icpTemplateService.getTemplateById(req.params.id);
+      if (!template) {
+        return res.status(404).json({ error: "Template not found" });
+      }
+      res.json(template);
+    } catch (error) {
+      console.error("Get ICP template error:", error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Failed to get ICP template" 
+      });
+    }
+  });
+
+  // ICP Templates - Create
+  app.post("/api/icp-templates", async (req, res) => {
+    try {
+      const { icpTemplateService } = await import("./services/icp-template.service");
+      const template = await icpTemplateService.createTemplate(req.body);
+      res.json(template);
+    } catch (error) {
+      console.error("Create ICP template error:", error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Failed to create ICP template" 
+      });
+    }
+  });
+
+  // ICP Templates - Update
+  app.put("/api/icp-templates/:id", async (req, res) => {
+    try {
+      const { icpTemplateService } = await import("./services/icp-template.service");
+      const template = await icpTemplateService.updateTemplate(req.params.id, req.body);
+      res.json(template);
+    } catch (error) {
+      console.error("Update ICP template error:", error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Failed to update ICP template" 
+      });
+    }
+  });
+
+  // ICP Templates - Delete
+  app.delete("/api/icp-templates/:id", async (req, res) => {
+    try {
+      const { icpTemplateService } = await import("./services/icp-template.service");
+      await icpTemplateService.deleteTemplate(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete ICP template error:", error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Failed to delete ICP template" 
+      });
+    }
+  });
+
   // Generate email from template
   app.post("/api/content-library/generate-email", async (req, res) => {
     try {

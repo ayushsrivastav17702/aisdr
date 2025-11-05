@@ -36,6 +36,7 @@ export const prospects = pgTable("prospects", {
   tags: text("tags").array(),
   enrichmentStatus: enrichmentStatusEnum("enrichment_status").default("new"),
   enrichmentData: jsonb("enrichment_data"),
+  leadScore: integer("lead_score").default(0),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -87,6 +88,17 @@ export const importRecords = pgTable("import_records", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// ICP Templates table
+export const icpTemplates = pgTable("icp_templates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  description: text("description"),
+  isDefault: boolean("is_default").default(false),
+  config: jsonb("config").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // Relations
 export const jobsRelations = relations(jobs, ({ many }) => ({
   importRecords: many(importRecords),
@@ -123,6 +135,12 @@ export const insertImportRecordSchema = createInsertSchema(importRecords).omit({
   createdAt: true,
 });
 
+export const insertIcpTemplateSchema = createInsertSchema(icpTemplates).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
 // Types
 export type Prospect = typeof prospects.$inferSelect;
 export type InsertProspect = z.infer<typeof insertProspectSchema>;
@@ -132,6 +150,30 @@ export type Job = typeof jobs.$inferSelect;
 export type InsertJob = z.infer<typeof insertJobSchema>;
 export type ImportRecord = typeof importRecords.$inferSelect;
 export type InsertImportRecord = z.infer<typeof insertImportRecordSchema>;
+export type IcpTemplate = typeof icpTemplates.$inferSelect;
+export type InsertIcpTemplate = z.infer<typeof insertIcpTemplateSchema>;
+
+// ICP Configuration Types
+export interface ICPConfig {
+  jobTitles?: string[];
+  seniority?: string[];
+  departments?: string[];
+  industries?: string[];
+  companySize?: {
+    min?: number;
+    max?: number;
+    ranges?: string[];
+  };
+  locations?: string[];
+  companyNames?: string[];
+  revenueRange?: {
+    min?: number;
+    max?: number;
+  };
+  technologies?: string[];
+  fundingStages?: string[];
+  keywords?: string[];
+}
 
 // Additional validation schemas
 export const aiSearchSchema = z.object({
