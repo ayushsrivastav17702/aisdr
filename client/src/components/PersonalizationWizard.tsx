@@ -134,7 +134,7 @@ export function PersonalizationWizard({
   }, [prospectSearchTerm]);
 
   // Load prospects for selection with backend search
-  const { data } = useQuery<{ prospects: any[]; total: number }>({
+  const { data, isLoading: isLoadingProspects } = useQuery<{ prospects: any[]; total: number }>({
     queryKey: ["/api/prospects", { search: debouncedSearchTerm, limit: 100 }],
     queryFn: () => api.getProspects({ search: debouncedSearchTerm, limit: 100 }),
     enabled: open
@@ -578,23 +578,46 @@ export function PersonalizationWizard({
                           <SelectValue placeholder="Choose a prospect to personalize email for..." />
                         </SelectTrigger>
                         <SelectContent>
-                          {Array.isArray(prospects) && prospects.map((prospect: any) => (
-                            <SelectItem key={prospect.id} value={prospect.id.toString()}>
-                              <div className="flex items-center gap-2">
-                                <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-sm font-medium">
-                                  {prospect.firstName?.[0]}{prospect.lastName?.[0]}
-                                </div>
-                                <div>
-                                  <div className="font-medium">
-                                    {prospect.fullName || `${prospect.firstName} ${prospect.lastName}`}
+                          {isLoadingProspects ? (
+                            <div className="p-4 text-center text-sm text-gray-500">
+                              <RefreshCw className="w-4 h-4 animate-spin mx-auto mb-2" />
+                              Loading prospects...
+                            </div>
+                          ) : prospects.length === 0 ? (
+                            <div className="p-4 text-center text-sm text-gray-500">
+                              {debouncedSearchTerm ? (
+                                <>
+                                  <Search className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+                                  <p>No prospects found matching "{debouncedSearchTerm}"</p>
+                                  <p className="text-xs mt-1">Try a different search term</p>
+                                </>
+                              ) : (
+                                <>
+                                  <Users className="w-8 h-8 mx-auto mb-2 text-gray-400" />
+                                  <p>No prospects available</p>
+                                  <p className="text-xs mt-1">Import prospects first or try searching</p>
+                                </>
+                              )}
+                            </div>
+                          ) : (
+                            Array.isArray(prospects) && prospects.map((prospect: any) => (
+                              <SelectItem key={prospect.id} value={prospect.id.toString()}>
+                                <div className="flex items-center gap-2">
+                                  <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-sm font-medium">
+                                    {prospect.firstName?.[0]}{prospect.lastName?.[0]}
                                   </div>
-                                  <div className="text-sm text-gray-600">
-                                    {prospect.jobTitle} at {prospect.companyName || 'Unknown Company'}
+                                  <div>
+                                    <div className="font-medium">
+                                      {prospect.fullName || `${prospect.firstName} ${prospect.lastName}`}
+                                    </div>
+                                    <div className="text-sm text-gray-600">
+                                      {prospect.jobTitle} at {prospect.companyName || 'Unknown Company'}
+                                    </div>
                                   </div>
                                 </div>
-                              </div>
-                            </SelectItem>
-                          ))}
+                              </SelectItem>
+                            ))
+                          )}
                         </SelectContent>
                       </Select>
                     ) : (
@@ -625,41 +648,64 @@ export function PersonalizationWizard({
                           </div>
                         </div>
                         <div className="max-h-64 overflow-y-auto border rounded-lg p-2 space-y-1">
-                          {Array.isArray(prospects) && prospects.map((prospect: any) => (
-                            <div 
-                              key={prospect.id}
-                              className={`flex items-center gap-3 p-2 rounded cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 ${
-                                selectedProspectIds.includes(prospect.id.toString()) ? 'bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800 border' : ''
-                              }`}
-                              onClick={() => {
-                                const prospectId = prospect.id.toString();
-                                if (selectedProspectIds.includes(prospectId)) {
-                                  setSelectedProspectIds(selectedProspectIds.filter(id => id !== prospectId));
-                                } else if (selectedProspectIds.length < 10) {
-                                  setSelectedProspectIds([...selectedProspectIds, prospectId]);
-                                }
-                              }}
-                              data-testid={`prospect-item-${prospect.id}`}
-                            >
-                              <input
-                                type="checkbox"
-                                checked={selectedProspectIds.includes(prospect.id.toString())}
-                                onChange={() => {}} // Handled by parent div onClick
-                                className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
-                              />
-                              <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-sm font-medium">
-                                {prospect.firstName?.[0]}{prospect.lastName?.[0]}
-                              </div>
-                              <div>
-                                <div className="font-medium">
-                                  {prospect.fullName || `${prospect.firstName} ${prospect.lastName}`}
-                                </div>
-                                <div className="text-sm text-gray-600 dark:text-gray-400">
-                                  {prospect.jobTitle} at {prospect.companyName || 'Unknown Company'}
-                                </div>
-                              </div>
+                          {isLoadingProspects ? (
+                            <div className="p-8 text-center text-sm text-gray-500">
+                              <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2" />
+                              <p>Loading prospects...</p>
                             </div>
-                          ))}
+                          ) : prospects.length === 0 ? (
+                            <div className="p-8 text-center text-sm text-gray-500">
+                              {debouncedSearchTerm ? (
+                                <>
+                                  <Search className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                                  <p className="font-medium">No prospects found matching "{debouncedSearchTerm}"</p>
+                                  <p className="text-xs mt-1">Try a different search term or clear the search</p>
+                                </>
+                              ) : (
+                                <>
+                                  <Users className="w-12 h-12 mx-auto mb-3 text-gray-400" />
+                                  <p className="font-medium">No prospects available</p>
+                                  <p className="text-xs mt-1">Import prospects first or try searching with a different term</p>
+                                </>
+                              )}
+                            </div>
+                          ) : (
+                            Array.isArray(prospects) && prospects.map((prospect: any) => (
+                              <div 
+                                key={prospect.id}
+                                className={`flex items-center gap-3 p-2 rounded cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 ${
+                                  selectedProspectIds.includes(prospect.id.toString()) ? 'bg-purple-50 dark:bg-purple-900/20 border-purple-200 dark:border-purple-800 border' : ''
+                                }`}
+                                onClick={() => {
+                                  const prospectId = prospect.id.toString();
+                                  if (selectedProspectIds.includes(prospectId)) {
+                                    setSelectedProspectIds(selectedProspectIds.filter(id => id !== prospectId));
+                                  } else if (selectedProspectIds.length < 10) {
+                                    setSelectedProspectIds([...selectedProspectIds, prospectId]);
+                                  }
+                                }}
+                                data-testid={`prospect-item-${prospect.id}`}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={selectedProspectIds.includes(prospect.id.toString())}
+                                  onChange={() => {}} // Handled by parent div onClick
+                                  className="rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+                                />
+                                <div className="w-8 h-8 bg-gradient-to-r from-blue-500 to-purple-600 rounded-full flex items-center justify-center text-white text-sm font-medium">
+                                  {prospect.firstName?.[0]}{prospect.lastName?.[0]}
+                                </div>
+                                <div>
+                                  <div className="font-medium">
+                                    {prospect.fullName || `${prospect.firstName} ${prospect.lastName}`}
+                                  </div>
+                                  <div className="text-sm text-gray-600 dark:text-gray-400">
+                                    {prospect.jobTitle} at {prospect.companyName || 'Unknown Company'}
+                                  </div>
+                                </div>
+                              </div>
+                            ))
+                          )}
                         </div>
                         {selectedProspectIds.length > 0 && (
                           <div className="text-sm text-purple-600 dark:text-purple-400 font-medium">
