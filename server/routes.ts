@@ -97,14 +97,61 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { apolloFilters, page = 1, per_page = 50 } = req.body;
       
-      const searchResponse = await apolloService.searchContacts({
+      // Try multiple search strategies if initial search returns 0 results
+      let searchResponse;
+      let contacts: any[] = [];
+      let searchStrategy = 'full_filters';
+      
+      // Strategy 1: Try full filters first
+      searchResponse = await apolloService.searchContacts({
         ...apolloFilters,
         page,
         per_page,
       });
+      contacts = searchResponse.people || searchResponse.contacts || [];
+      
+      if (contacts.length === 0) {
+        console.log('Apollo search: Initial search returned 0 results, trying fallback strategies...');
+        
+        // Strategy 2: Try keyword-only search
+        const keywords = [
+          apolloFilters.person_titles?.[0],
+          apolloFilters.q_organization_name,
+          apolloFilters.person_departments?.[0]
+        ].filter(Boolean).join(' ');
+        
+        if (keywords) {
+          const keywordResponse = await apolloService.searchContacts({
+            q_keywords: keywords,
+            person_seniorities: apolloFilters.person_seniorities,
+            page,
+            per_page,
+          });
+          contacts = keywordResponse.people || keywordResponse.contacts || [];
+          
+          if (contacts.length > 0) {
+            searchResponse = keywordResponse;
+            searchStrategy = 'keyword_search';
+            console.log(`Found ${contacts.length} prospects with keyword search`);
+          } else if (apolloFilters.person_seniorities?.length > 0) {
+            // Strategy 3: Try seniority only
+            const seniorityResponse = await apolloService.searchContacts({
+              person_seniorities: apolloFilters.person_seniorities,
+              page,
+              per_page: Math.min(per_page, 25),
+            });
+            contacts = seniorityResponse.people || seniorityResponse.contacts || [];
+            
+            if (contacts.length > 0) {
+              searchResponse = seniorityResponse;
+              searchStrategy = 'seniority_only';
+              console.log(`Found ${contacts.length} prospects with seniority filter`);
+            }
+          }
+        }
+      }
 
-      // Convert contacts to prospect format (Apollo returns in 'people' or 'contacts' array)
-      const contacts = searchResponse.people || searchResponse.contacts || [];
+      // Convert contacts to prospect format
       const prospects = contacts.map(contact => 
         apolloService.convertApolloContactToProspect(contact)
       );
@@ -112,6 +159,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({
         prospects,
         pagination: searchResponse.pagination,
+        searchStrategy,
+        searchStrategyMessage: contacts.length === 0 
+          ? 'No prospects found. Try different search terms.'
+          : searchStrategy !== 'full_filters'
+          ? `Used ${searchStrategy.replace(/_/g, ' ')} to find results`
+          : undefined
       });
     } catch (error) {
       console.error("Apollo search error:", error);
@@ -132,16 +185,75 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log('  Filters:', JSON.stringify(apolloFilters, null, 2));
       console.log('  Page:', page, 'Per Page:', per_page);
       
-      const searchResponse = await apolloService.searchContacts({
-        ...apolloFilters,
-        page,
-        per_page,
-      });
-
-      // Convert contacts to prospect format and save to database
-      const contacts = searchResponse.people || searchResponse.contacts || [];
+      // Try multiple search strategies if initial search returns 0 results
+      let searchResponse;
+      let contacts: any[] = [];
+      let searchStrategy = 'full_filters';
+      
+      // Strategy 1: Try full filters first
+      try {
+        searchResponse = await apolloService.searchContacts({
+          ...apolloFilters,
+          page,
+          per_page,
+        });
+        contacts = searchResponse.people || searchResponse.contacts || [];
+        
+        if (contacts.length === 0) {
+          console.log('  ⚠️  Strategy 1 (Full Filters): 0 results');
+          
+          // Strategy 2: Try keyword-only search (more flexible)
+          console.log('  🔄 Trying Strategy 2: Keyword Search...');
+          const keywords = [
+            apolloFilters.person_titles?.[0],
+            apolloFilters.q_organization_name,
+            apolloFilters.person_departments?.[0]
+          ].filter(Boolean).join(' ');
+          
+          if (keywords) {
+            const keywordResponse = await apolloService.searchContacts({
+              q_keywords: keywords,
+              person_seniorities: apolloFilters.person_seniorities,
+              page,
+              per_page,
+            });
+            contacts = keywordResponse.people || keywordResponse.contacts || [];
+            searchResponse = keywordResponse;
+            searchStrategy = 'keyword_search';
+            
+            if (contacts.length > 0) {
+              console.log(`  ✅ Strategy 2: Found ${contacts.length} prospects with keyword search`);
+            } else {
+              console.log('  ⚠️  Strategy 2: Still 0 results');
+              
+              // Strategy 3: Try even broader (just seniority if available)
+              if (apolloFilters.person_seniorities?.length > 0) {
+                console.log('  🔄 Trying Strategy 3: Seniority Only...');
+                const seniorityResponse = await apolloService.searchContacts({
+                  person_seniorities: apolloFilters.person_seniorities,
+                  page,
+                  per_page: Math.min(per_page, 25), // Reduce count for very broad searches
+                });
+                contacts = seniorityResponse.people || seniorityResponse.contacts || [];
+                searchResponse = seniorityResponse;
+                searchStrategy = 'seniority_only';
+                
+                if (contacts.length > 0) {
+                  console.log(`  ✅ Strategy 3: Found ${contacts.length} prospects with seniority filter`);
+                }
+              }
+            }
+          }
+        } else {
+          console.log(`  ✅ Strategy 1: Found ${contacts.length} prospects with full filters`);
+        }
+      } catch (searchError) {
+        console.error('  ❌ Apollo search failed:', searchError);
+        throw searchError;
+      }
       
       console.log('\n========== APOLLO SEARCH RESPONSE ==========');
+      console.log('  Strategy Used:', searchStrategy);
       console.log('  Total Entries:', searchResponse.pagination?.total_entries || 0);
       console.log('  Contacts Returned:', contacts.length);
       if (contacts.length > 0) {
@@ -149,8 +261,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
       
       if (contacts.length === 0) {
-        console.log('  WARNING: No contacts found with current filters!');
-        console.log('  Suggestion: Try broadening search criteria or checking Apollo API response');
+        console.log('  WARNING: No contacts found even after trying multiple search strategies!');
+        console.log('  Suggestion: Try different search terms or check if Apollo API has data for this query');
       }
       const savedProspects = [];
       let skippedCount = 0;
@@ -216,6 +328,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         pagination: searchResponse.pagination,
         saved: savedProspects.length,
         searchId: searchRecord?.id,
+        searchStrategy,
+        searchStrategyMessage: contacts.length === 0 
+          ? 'No prospects found. Try different search terms or check if Apollo has data for this query.'
+          : searchStrategy !== 'full_filters'
+          ? `Used ${searchStrategy.replace(/_/g, ' ')} to find results (initial search was too specific)`
+          : undefined
       });
     } catch (error) {
       console.error("Apollo search and save error:", error);

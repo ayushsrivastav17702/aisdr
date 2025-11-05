@@ -52,6 +52,7 @@ The platform is built with a modern web stack:
     - **Duplicate Detection**: Intelligent duplicate prevention checks prospects by email, Apollo ID, LinkedIn URL, and name+company combinations.
     - **API Rate Limiting**: Enforced rate limits on Apollo API calls to manage usage and credit consumption.
     - **Advanced Apollo Filters**: Extended search capabilities include revenue range filtering, technology stack identification, and funding stage targeting.
+    - **Smart Search Fallback**: Multi-strategy Apollo search system automatically tries alternative approaches when initial search returns zero results. Falls back from strict filter matching → keyword search → seniority-only search, maximizing prospect discovery while maintaining relevance. Provides user feedback on which strategy successfully found results.
 
 ## External Dependencies
 - **Apollo.io**: Primary API for prospect search, data enrichment, and bulk matching.
