@@ -161,6 +161,8 @@ export default function AISearch() {
       console.log('🔍 Apollo search mutation onSuccess:', data);
       console.log('  data.saved:', data.saved);
       console.log('  data.pagination:', data.pagination);
+      console.log('  data.searchStrategy:', data.searchStrategy);
+      console.log('  data.searchStrategyMessage:', data.searchStrategyMessage);
       
       // Invalidate prospects query to show newly saved prospects
       queryClient.invalidateQueries({ queryKey: ["/api/prospects"] });
@@ -175,15 +177,21 @@ export default function AISearch() {
         toast({
           variant: "destructive",
           title: "No Prospects Found",
-          description: `No prospects matched your search criteria. Try broadening your filters or adjusting your search terms.`,
+          description: data.searchStrategyMessage || `No prospects matched your search criteria. Apollo tried multiple search strategies but found no results. Try different search terms or check if Apollo has data for this query.`,
         });
         return;
       }
       
       console.log('  ✅ Showing success toast and navigating');
+      
+      // Show different message if fallback strategy was used
+      const successMessage = data.searchStrategyMessage 
+        ? `${data.searchStrategyMessage}. Saved ${data.saved} prospects (${totalFound.toLocaleString()} total available).`
+        : `Saved ${data.saved} prospects (${totalFound.toLocaleString()} total available). Navigating to Prospects page...`;
+      
       toast({
         title: "Prospects Saved Successfully",
-        description: `Saved ${data.saved} prospects (${totalFound.toLocaleString()} total available). Navigating to Prospects page...`,
+        description: successMessage,
       });
 
       // Navigate to Prospects page after a short delay to show the toast
