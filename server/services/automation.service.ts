@@ -156,7 +156,7 @@ class AutomationService {
         // =====================================
         for (const contact of contacts) {
         try {
-          const prospect = apolloService.convertApolloContactToProspect(contact);
+          const prospect = await apolloService.convertApolloContactToProspect(contact);
           
           // Check if prospect already exists - build condition array to avoid undefined in or()
           const existingProspects = await db.query.prospects.findFirst({

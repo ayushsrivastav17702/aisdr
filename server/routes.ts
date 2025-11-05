@@ -152,8 +152,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Convert contacts to prospect format
-      const prospects = contacts.map(contact => 
-        apolloService.convertApolloContactToProspect(contact)
+      const prospects = await Promise.all(
+        contacts.map(contact => apolloService.convertApolloContactToProspect(contact))
       );
 
       res.json({
@@ -270,7 +270,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       for (const contact of contacts) {
         try {
-          const prospectData = apolloService.convertApolloContactToProspect(contact);
+          const prospectData = await apolloService.convertApolloContactToProspect(contact);
           
           // Check if prospect already exists (by email or apollo_id)
           const existing = await storage.findProspectByEmailOrApolloId(
@@ -572,7 +572,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               const enrichmentResponse = await apolloService.enrichContact(contactData);
               
               if (enrichmentResponse?.contact) {
-                const enrichedProspect = apolloService.convertApolloContactToProspect(enrichmentResponse.contact);
+                const enrichedProspect = await apolloService.convertApolloContactToProspect(enrichmentResponse.contact);
                 
                 // Check if email is locked
                 const emailLocked = enrichedProspect.primaryEmail?.includes('email_not_unlocked') || 
@@ -790,42 +790,84 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // Call Apollo bulk match API
-      const bulkResult = await apolloService.bulkEnrichContacts(contacts);
+      console.log(`📦 Bulk enriching ${contacts.length} prospects (batching in groups of 10)...`);
+
+      // Apollo limits bulk enrichment to 10 records per request
+      // Split into batches of 10 and process sequentially
+      const BATCH_SIZE = 10;
+      const batches = [];
+      for (let i = 0; i < contacts.length; i += BATCH_SIZE) {
+        batches.push(contacts.slice(i, i + BATCH_SIZE));
+      }
+
+      console.log(`📦 Processing ${batches.length} batches...`);
+
+      // Process all batches and collect results
+      const allMatches = [];
+      for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+        const batch = batches[batchIndex];
+        console.log(`📦 Processing batch ${batchIndex + 1}/${batches.length} (${batch.length} contacts)...`);
+        
+        try {
+          const bulkResult = await apolloService.bulkEnrichContacts(batch);
+          allMatches.push(...bulkResult.matches);
+          console.log(`✅ Batch ${batchIndex + 1} completed: ${bulkResult.matches.length} matches`);
+        } catch (error) {
+          console.error(`❌ Batch ${batchIndex + 1} failed:`, error);
+          // Continue processing other batches even if one fails
+        }
+      }
+
+      console.log(`✅ All batches complete: ${allMatches.length} total matches`);
 
       // Update prospects with enriched data
       const results = [];
-      for (let i = 0; i < bulkResult.matches.length; i++) {
-        const match = bulkResult.matches[i];
+      for (let i = 0; i < Math.min(allMatches.length, prospects.length); i++) {
+        const match = allMatches[i];
         const prospect = prospects[i];
         
-        if (!prospect) continue;
+        // Skip if prospect doesn't exist or match is null/invalid
+        if (!prospect || !match || !match.id) {
+          console.log(`⚠️ Skipping prospect ${i + 1}: ${!prospect ? 'prospect missing' : 'match missing or invalid'}`);
+          continue;
+        }
 
-        const enrichedData = apolloService.convertApolloContactToProspect(match);
-        
-        const updated = await storage.updateProspect(prospect.id, {
-          ...enrichedData,
-          enrichmentStatus: 'enriched' as const,
-          enrichmentData: {
-            ...(prospect.enrichmentData || {}),
-            apollo: match,
-            apolloEnrichedAt: new Date().toISOString(),
-          }
-        });
+        try {
+          const enrichedData = await apolloService.convertApolloContactToProspect(match);
+          
+          const updated = await storage.updateProspect(prospect.id, {
+            ...enrichedData,
+            enrichmentStatus: 'enriched' as const,
+            enrichmentData: {
+              ...(prospect.enrichmentData || {}),
+              apollo: match,
+              apolloEnrichedAt: new Date().toISOString(),
+            }
+          });
 
-        results.push({
-          id: prospect.id,
-          success: true,
-          prospect: updated,
-        });
+          results.push({
+            id: prospect.id,
+            success: true,
+            prospect: updated,
+          });
+        } catch (error) {
+          console.error(`❌ Error enriching prospect ${prospect.id}:`, error);
+          results.push({
+            id: prospect.id,
+            success: false,
+            error: error instanceof Error ? error.message : 'Enrichment failed',
+          });
+        }
       }
+
+      console.log(`✅ Enrichment complete: ${results.filter(r => r.success).length}/${prospects.length} prospects enriched`);
 
       res.json({
         results,
-        total: bulkResult.totalRequested,
-        enriched: bulkResult.uniqueEnriched,
-        missing: bulkResult.missingRecords,
-        creditsConsumed: bulkResult.creditsConsumed,
+        total: prospects.length,
+        enriched: results.length,
+        missing: prospects.length - results.length,
+        creditsConsumed: allMatches.length, // Apollo charges per match
       });
     } catch (error) {
       console.error("Apollo bulk enrichment error:", error);
@@ -1717,7 +1759,7 @@ Return ONLY the email body text, no subject line needed.`;
       });
 
       if (enrichmentResult.contact) {
-        const updatedProspect = apolloService.convertApolloContactToProspect(enrichmentResult.contact);
+        const updatedProspect = await apolloService.convertApolloContactToProspect(enrichmentResult.contact);
         await storage.updateProspect(prospectId, updatedProspect);
       }
 
@@ -1726,7 +1768,7 @@ Return ONLY the email body text, no subject line needed.`;
         source: enrichmentResult.source,
         email: enrichmentResult.enrichedEmail,
         prospect: enrichmentResult.contact ? 
-          apolloService.convertApolloContactToProspect(enrichmentResult.contact) : null
+          await apolloService.convertApolloContactToProspect(enrichmentResult.contact) : null
       });
     } catch (error) {
       console.error("Enhanced enrichment error:", error);

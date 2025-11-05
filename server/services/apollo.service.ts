@@ -228,7 +228,7 @@ class ApolloService {
   }
 
   // Convert Apollo contact to our prospect format
-  convertApolloContactToProspect(contact: ApolloContact) {
+  async convertApolloContactToProspect(contact: ApolloContact) {
     // Validate contact has minimum required fields
     if (!contact.id && !contact.email) {
       throw new Error(`Invalid Apollo contact: missing both ID and email`);
@@ -275,7 +275,7 @@ class ApolloService {
     };
 
     // Calculate lead score
-    const { leadScoringService } = require('./lead-scoring.service');
+    const { leadScoringService } = await import('./lead-scoring.service');
     const scoreBreakdown = leadScoringService.calculateLeadScore(prospect as any);
     prospect.leadScore = scoreBreakdown.total;
 

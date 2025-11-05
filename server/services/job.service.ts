@@ -202,7 +202,7 @@ class JobService {
             try {
               if (enrichedContact?.contact) {
                 // Full enrichment successful
-                const enrichedProspect = apolloService.convertApolloContactToProspect(enrichedContact.contact);
+                const enrichedProspect = await apolloService.convertApolloContactToProspect(enrichedContact.contact);
                 await storage.updateProspect(prospect.id, {
                   ...enrichedProspect,
                   enrichmentStatus: 'enriched',
@@ -389,7 +389,7 @@ class JobService {
         // Convert and save prospects
         for (const contact of searchResponse.contacts) {
           try {
-            const prospectData = apolloService.convertApolloContactToProspect(contact);
+            const prospectData = await apolloService.convertApolloContactToProspect(contact);
             
             // Check for duplicates
             const duplicates = await storage.checkDuplicateProspects([prospectData.primaryEmail!]);
