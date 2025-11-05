@@ -301,8 +301,8 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
     },
   });
 
-  const handleSelectAll = (checked: boolean) => {
-    if (checked && data) {
+  const handleSelectAll = (checked: boolean | 'indeterminate') => {
+    if (checked === true && data) {
       const allIds = data.prospects.map((p: any) => p.id);
       onSelectionChange(allIds);
     } else {
@@ -310,8 +310,8 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
     }
   };
 
-  const handleSelectProspect = (prospectId: string, checked: boolean) => {
-    if (checked) {
+  const handleSelectProspect = (prospectId: string, checked: boolean | 'indeterminate') => {
+    if (checked === true) {
       onSelectionChange([...selectedIds, prospectId]);
     } else {
       onSelectionChange(selectedIds.filter(id => id !== prospectId));
@@ -745,7 +745,13 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
                   <tr>
                     <th className="w-12 px-4 py-3 text-left">
                       <Checkbox
-                        checked={selectedIds.length === data.prospects.length && data.prospects.length > 0}
+                        checked={
+                          selectedIds.length === data.prospects.length && data.prospects.length > 0
+                            ? true
+                            : selectedIds.length > 0
+                            ? 'indeterminate'
+                            : false
+                        }
                         onCheckedChange={handleSelectAll}
                         data-testid="checkbox-select-all"
                       />
