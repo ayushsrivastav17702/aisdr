@@ -2232,6 +2232,7 @@ function SettingsTab({ sequenceId, sequence }: { sequenceId: string; sequence: a
   const [name, setName] = useState(sequence?.name || "");
   const [description, setDescription] = useState(sequence?.description || "");
   const [status, setStatus] = useState(sequence?.status || "draft");
+  const [showAutomationModal, setShowAutomationModal] = useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -2258,6 +2259,7 @@ function SettingsTab({ sequenceId, sequence }: { sequenceId: string; sequence: a
   });
 
   return (
+    <>
     <Card>
       <CardHeader>
         <CardTitle>Sequence Settings</CardTitle>
@@ -2320,6 +2322,72 @@ function SettingsTab({ sequenceId, sequence }: { sequenceId: string; sequence: a
         </div>
       </CardContent>
     </Card>
+    
+    <Card className="mt-6">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Zap className="w-5 h-5 text-blue-600" />
+          Automation
+        </CardTitle>
+        <CardDescription>Automatically import prospects and enroll them in this sequence</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-4">
+          <div className="flex items-start gap-3 p-4 bg-blue-50 dark:bg-blue-950 rounded-lg border border-blue-200 dark:border-blue-800">
+            <div className="flex-shrink-0">
+              <div className="w-10 h-10 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
+                <Zap className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+              </div>
+            </div>
+            <div className="flex-1">
+              <h4 className="font-semibold text-sm mb-1">Automated Prospect Enrollment</h4>
+              <p className="text-sm text-muted-foreground mb-3">
+                Automatically find prospects using Apollo.io or use existing prospects from your database, 
+                then enroll them in this sequence with optional AI-powered personalization.
+              </p>
+              <Button 
+                onClick={() => setShowAutomationModal(true)}
+                className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+                data-testid="button-start-automation"
+              >
+                <Zap className="w-4 h-4 mr-2" />
+                Start Automation
+              </Button>
+            </div>
+          </div>
+          
+          <div className="text-sm text-muted-foreground">
+            <p className="font-medium mb-2">Features:</p>
+            <ul className="list-disc list-inside space-y-1 ml-2">
+              <li>Fetch prospects from Apollo.io with custom filters</li>
+              <li>Use existing prospects from your database</li>
+              <li>AI-powered email personalization</li>
+              <li>Automatic sequence enrollment</li>
+              <li>Real-time progress tracking</li>
+            </ul>
+          </div>
+          
+          <div className="pt-2">
+            <Link href="/automation">
+              <Button variant="outline" size="sm">
+                <BarChart3 className="w-4 h-4 mr-2" />
+                View Automation Dashboard
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+
+    {showAutomationModal && (
+      <AutomationModal
+        sequenceId={sequenceId}
+        sequenceName={sequence?.name || ""}
+        open={showAutomationModal}
+        onClose={() => setShowAutomationModal(false)}
+      />
+    )}
+  </>
   );
 }
 
