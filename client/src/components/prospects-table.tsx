@@ -289,7 +289,11 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
         description: `Successfully deleted ${deleted} prospect${deleted !== 1 ? 's' : ''}${failed > 0 ? `. ${failed} failed` : ''}`,
       });
       
+      // Clear selection state completely
       onSelectionChange([]);
+      setSelectingAll(false);
+      
+      // Invalidate all prospect-related queries to refresh the UI
       queryClient.invalidateQueries({ queryKey: ["/api/prospects"] });
     },
     onError: (error) => {
