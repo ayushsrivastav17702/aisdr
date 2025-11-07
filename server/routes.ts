@@ -21,6 +21,8 @@ import { readFileSync } from "fs";
 import sequenceRoutes from "./sequences-routes";
 import mailboxRoutes from "./mailbox-routes";
 import { registerAutomationRoutes } from "./automation-routes";
+import authRoutes from "./routes/auth.routes";
+import userRoutes from "./routes/user.routes";
 
 const upload = multer({ 
   dest: 'uploads/',
@@ -1206,6 +1208,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     }
   });
+
+  // Authentication routes
+  app.use(authRoutes);
+  
+  // User management routes
+  app.use(userRoutes);
 
   // Sequence module routes
   app.use("/api", sequenceRoutes);
