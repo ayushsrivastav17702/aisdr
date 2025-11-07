@@ -31,7 +31,8 @@ class LushaService {
   private baseUrl = 'https://api.lusha.com/person';
 
   constructor() {
-    this.apiKey = process.env.LUSHA_API_KEY || '';
+    // Support both naming conventions for API key
+    this.apiKey = process.env.LUSHA_API_KEY || process.env.Lusha_api_keys || '';
   }
 
   isConfigured(): boolean {
