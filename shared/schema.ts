@@ -80,6 +80,7 @@ export const jobs = pgTable("jobs", {
 // Import records table
 export const importRecords = pgTable("import_records", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id"), // Will be required after migration
   jobId: varchar("job_id").references(() => jobs.id),
   fileName: text("file_name").notNull(),
   totalRows: integer("total_rows").default(0),
@@ -254,6 +255,7 @@ export const sequenceProspects = pgTable("sequence_prospects", {
 // Emails table
 export const emails = pgTable("emails", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id"), // Will be required after migration
   prospectId: varchar("prospect_id").notNull().references(() => prospects.id, { onDelete: "cascade" }),
   sequenceId: varchar("sequence_id").references(() => sequences.id, { onDelete: "set null" }),
   subject: text("subject").notNull(),
@@ -457,6 +459,7 @@ export const automationRuns = pgTable("automation_runs", {
 // Unsubscribes table
 export const unsubscribes = pgTable("unsubscribes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id"), // Will be required after migration
   prospectId: varchar("prospect_id").notNull().references(() => prospects.id, { onDelete: "cascade" }),
   email: text("email").notNull(),
   reason: text("reason"),
