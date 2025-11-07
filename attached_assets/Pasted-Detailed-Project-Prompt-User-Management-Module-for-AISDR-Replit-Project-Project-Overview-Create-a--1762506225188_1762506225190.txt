@@ -1,0 +1,747 @@
+Detailed Project Prompt: User Management Module for AISDR Replit Project
+
+Project Overview
+Create a comprehensive user management system for an existing AISDR application on Replit that allows multi-user access with granular permission controls, role-based feature access, and isolated user workspaces.
+
+Core Requirements
+1. User Management Features
+User Creation & Authentication
+
+Invitation System
+
+Admin sends invitation links via email (no password creation by admin)
+Invitation link contains unique token with expiry (24-48 hours)
+New user clicks link and creates their own password
+Option to resend invitation if expired
+Track invitation status (pending, accepted, expired)
+
+
+User Authentication
+
+Secure login/logout functionality
+Password encryption and secure storage (bcrypt/argon2)
+Email verification on first login
+Two-factor authentication (optional but recommended)
+
+
+Password Management
+
+Self-service password reset via email
+Password strength requirements
+Password history (prevent reuse of last N passwords)
+Force password change on first login (optional)
+
+
+User Profile Management
+
+Users can update their profile information
+Avatar/profile picture upload
+Contact information
+Notification preferences
+
+
+
+Session Management
+
+Concurrent Login Handling
+
+Option 1: Allow multiple simultaneous sessions from different devices
+Option 2: Limit to single active session (logout other sessions on new login)
+Option 3: Configurable per user/role
+Display active sessions to user with ability to terminate specific sessions
+
+
+Session Security
+
+Configurable session timeout (e.g., 30 minutes of inactivity)
+"Remember Me" functionality with extended token (7-30 days)
+Secure session storage (httpOnly, secure cookies)
+Session refresh mechanism before expiry
+Auto-logout on suspicious activity
+
+
+Session Monitoring
+
+Track session start time, last activity, IP address, device info
+Admin can view all active sessions
+Force logout capability for admin (security purposes)
+
+
+
+2. Role-Based Access Control (RBAC)
+Admin Role
+
+Full access to all features
+Can create/edit/delete users
+Can assign roles and permissions
+Can view all user activities (optional)
+Can modify global settings
+Can send user invitations
+Can manage inactive/deleted users
+
+Custom User Roles
+
+Ability to create custom roles (e.g., "Viewer", "Editor", "Analyst")
+Granular module-level permissions (enable/disable specific features)
+Feature-level access control (read-only vs full access)
+Copy/clone existing roles as templates
+Role priority/hierarchy system
+
+3. Module Access Control
+Permissions Matrix
+Create a permissions matrix for each module/feature in your app:
+
+Dashboard access
+Data entry/editing
+Report generation
+Export functionality
+Settings modification
+API access
+Analytics view
+User management (for admin)
+
+Permission Types
+
+No Access: Feature completely hidden/disabled
+View Only: Read-only access to data
+Edit: Read + write capabilities
+Full Control: Read + write + delete + share
+Custom: Granular sub-permissions within modules
+
+4. Data Isolation & Workspace Management
+User Data Separation
+
+Each user's data stored separately in database with user_id foreign key
+Users cannot see or access other users' data
+Proper database indexing with user_id for performance
+Query-level filtering to ensure data isolation
+Middleware to automatically inject user_id filters
+
+Shared Resources
+
+Global settings managed by admin
+Shared templates or resources (if applicable)
+Common configurations with read-only access for users
+Shared data with explicit permission grants
+
+Data Export/Import System
+Export Functionality:
+
+Users can export their own data only
+Multiple export formats: CSV, JSON, Excel, PDF
+Full data export or selective module export
+Include metadata (export date, user info)
+Automated scheduled exports (optional)
+Export history tracking
+Admin can export any user's data (for compliance/support)
+
+Import Functionality:
+
+Users can import data in supported formats
+Data validation before import
+Preview import data before committing
+Option to update existing records or create new ones
+Rollback capability if import fails
+Import logs and error reporting
+Duplicate detection and handling
+
+Data Portability:
+
+GDPR-compliant data export format
+Include all user data across all modules
+Machine-readable format for portability
+Clear documentation of data structure
+
+5. Dynamic Feature Updates
+Auto-Propagation System
+
+When admin adds new features to the app, automatically make them available to users based on their role
+New features inherit default permissions from user roles
+Admin can then fine-tune access per user or role
+Feature toggle system for gradual rollout
+Notification system when new features become available
+
+Version Control
+
+Track feature versions and release notes
+Notify users of new features (if they have access)
+Maintain backward compatibility
+Feature changelog visible to users
+Deprecation warnings for sunset features
+
+6. Settings Isolation
+User-Level Settings
+
+Personal preferences (theme, language, notifications)
+Workspace configurations
+Custom views/filters
+Dashboard layouts
+Keyboard shortcuts
+
+Admin-Level Settings
+
+Global configurations
+System-wide defaults
+Feature flags
+Security settings
+Email templates
+
+Non-Interference Rule
+
+Admin changes to global settings should not override user's personal settings
+User settings take precedence over defaults
+Clear hierarchy: User Settings > Role Defaults > Global Settings
+Granular override control for emergency admin actions
+Change notification for settings that do affect users
+
+7. User Lifecycle Management
+Soft Delete System
+
+Never permanently delete users from database
+Mark users as is_active: false or status: 'inactive'
+Preserve all user data and history for audit/compliance
+Retain data for configurable period (e.g., 90 days, 1 year)
+Option to anonymize data after retention period
+
+User Status Management
+
+Active: Normal operating status
+Inactive: Soft deleted, cannot login, data preserved
+Suspended: Temporarily blocked, can be reactivated
+Invited: Invitation sent, awaiting acceptance
+Pending: Account created but email not verified
+
+Reactivation Process
+
+Admin can reactivate inactive users
+Restore all previous settings and data
+Send reactivation notification email
+Option to require password reset on reactivation
+
+Data Retention Policy
+
+Define retention periods per data type
+Automated archival of old inactive user data
+Compliance with data protection regulations (GDPR, CCPA)
+User data deletion request handling (right to be forgotten)
+
+
+Technical Implementation Requirements
+Database Schema
+sqlUsers Table:
+- user_id (primary key, UUID)
+- username (unique, indexed)
+- email (unique, indexed)
+- password_hash
+- role_id (foreign key, indexed)
+- status (active/inactive/suspended/invited/pending)
+- is_active (boolean, indexed for quick filtering)
+- email_verified (boolean)
+- created_at (timestamp)
+- updated_at (timestamp)
+- deleted_at (timestamp, null if active)
+- last_login (timestamp)
+- created_by (foreign key to admin user_id)
+
+Roles Table:
+- role_id (primary key)
+- role_name (unique)
+- description
+- is_default (boolean)
+- priority (integer, for hierarchy)
+- created_at
+- updated_at
+
+Permissions Table:
+- permission_id (primary key)
+- role_id (foreign key, indexed)
+- module_name (indexed)
+- permission_level (none/view/edit/full)
+- created_at
+- updated_at
+
+User_Settings Table:
+- setting_id (primary key)
+- user_id (foreign key, indexed)
+- setting_key (indexed)
+- setting_value (JSON or TEXT)
+- created_at
+- updated_at
+
+User_Data Table:
+- data_id (primary key)
+- user_id (foreign key, indexed)
+- [your existing data columns]
+- created_at
+- updated_at
+- deleted_at (for soft delete of records)
+
+User_Invitations Table:
+- invitation_id (primary key)
+- email (indexed)
+- token (unique, indexed)
+- role_id (foreign key)
+- invited_by (foreign key to user_id)
+- status (pending/accepted/expired/cancelled)
+- expires_at (timestamp)
+- accepted_at (timestamp, null if pending)
+- created_at
+
+User_Sessions Table:
+- session_id (primary key)
+- user_id (foreign key, indexed)
+- token (unique, hashed)
+- ip_address
+- user_agent
+- device_info
+- is_active (boolean, indexed)
+- remember_me (boolean)
+- expires_at (timestamp, indexed)
+- last_activity (timestamp)
+- created_at
+
+Audit_Logs Table:
+- log_id (primary key)
+- user_id (foreign key, indexed)
+- action (indexed)
+- module
+- details (JSON)
+- ip_address
+- created_at (indexed for time-based queries)
+
+Data_Exports Table:
+- export_id (primary key)
+- user_id (foreign key, indexed)
+- export_type (full/partial/module_specific)
+- format (csv/json/excel/pdf)
+- status (pending/processing/completed/failed)
+- file_path
+- file_size
+- created_at (indexed)
+- expires_at (timestamp)
+
+Data_Imports Table:
+- import_id (primary key)
+- user_id (foreign key, indexed)
+- import_type
+- format
+- status (pending/processing/completed/failed)
+- records_total
+- records_success
+- records_failed
+- error_log (JSON)
+- created_at (indexed)
+
+Backups Table:
+- backup_id (primary key)
+- user_id (foreign key, indexed - null for full backups)
+- backup_type (full/user/incremental)
+- file_path
+- file_size
+- status (completed/failed)
+- created_at (indexed)
+- expires_at
+Database Indexing Strategy (Performance)
+Critical Indexes for Performance
+sql-- User table indexes
+CREATE INDEX idx_users_email ON Users(email);
+CREATE INDEX idx_users_status ON Users(status);
+CREATE INDEX idx_users_role_id ON Users(role_id);
+CREATE INDEX idx_users_is_active ON Users(is_active);
+CREATE INDEX idx_users_deleted_at ON Users(deleted_at);
+
+-- Composite indexes for common queries
+CREATE INDEX idx_users_status_role ON Users(status, role_id);
+CREATE INDEX idx_users_active_email ON Users(is_active, email);
+
+-- User data indexes (most critical for multi-user performance)
+CREATE INDEX idx_user_data_user_id ON User_Data(user_id);
+CREATE INDEX idx_user_data_user_created ON User_Data(user_id, created_at);
+CREATE INDEX idx_user_data_user_active ON User_Data(user_id, deleted_at);
+
+-- Session indexes for quick lookups
+CREATE INDEX idx_sessions_user_id ON User_Sessions(user_id);
+CREATE INDEX idx_sessions_token ON User_Sessions(token);
+CREATE INDEX idx_sessions_active_expires ON User_Sessions(is_active, expires_at);
+
+-- Audit log indexes
+CREATE INDEX idx_audit_user_id ON Audit_Logs(user_id);
+CREATE INDEX idx_audit_created ON Audit_Logs(created_at);
+CREATE INDEX idx_audit_action ON Audit_Logs(action);
+
+-- Invitation indexes
+CREATE INDEX idx_invitations_email ON User_Invitations(email);
+CREATE INDEX idx_invitations_token ON User_Invitations(token);
+CREATE INDEX idx_invitations_status_expires ON User_Invitations(status, expires_at);
+
+-- Settings indexes
+CREATE INDEX idx_settings_user_key ON User_Settings(user_id, setting_key);
+Performance Optimization Guidelines
+
+Use connection pooling for database connections
+Implement query result caching for frequently accessed data
+Use pagination for large data sets (limit/offset or cursor-based)
+Implement lazy loading for related data
+Monitor slow queries and optimize with EXPLAIN
+Archive old audit logs periodically
+Use database partitioning for large tables (by user_id or date)
+Implement read replicas for read-heavy operations
+
+Backup Strategy
+User-Specific Backups
+
+Automated Daily Backups: Each user's data backed up separately
+On-Demand Backups: Users can trigger manual backup before major changes
+Backup Scope: Include all user data, settings, and configurations
+Backup Format: Compressed archive (ZIP/TAR.GZ) with JSON/CSV data
+Retention Policy: Keep last N backups per user (e.g., 30 days)
+
+Backup Storage Structure
+/backups
+  /user_backups
+    /user_[user_id]
+      /2025-11-07_backup.zip
+      /2025-11-06_backup.zip
+  /full_backups
+    /2025-11-07_full_backup.zip
+  /incremental_backups
+    /2025-11-07_incremental.zip
+Restore Functionality
+
+Admin can restore specific user's data from backup
+User-initiated restore from their own backups
+Preview restore contents before applying
+Selective restore (choose specific modules/data to restore)
+Data Isolation During Restore: Ensure restore doesn't mix user data
+
+Verify user_id in all restored records
+Validate data integrity before committing
+Rollback capability if restore fails
+Create restore point before overwriting current data
+
+
+
+Backup Verification
+
+Automated backup integrity checks
+Test restore process periodically
+Verify user_id consistency in backups
+Alert admin if backup fails or is corrupted
+Maintain backup logs with success/failure status
+
+Disaster Recovery
+
+Full system backup (all users) on regular schedule
+Off-site backup storage (cloud storage like S3, Google Cloud)
+Documented recovery procedures
+RTO (Recovery Time Objective) and RPO (Recovery Point Objective) definitions
+
+Security Considerations
+Authentication Security
+
+Implement middleware to check permissions on every request
+Use JWT tokens or session-based authentication with secure storage
+Hash passwords with bcrypt or argon2 (cost factor 12+)
+Implement rate limiting for login attempts (e.g., 5 attempts per 15 minutes)
+Account lockout after repeated failed attempts
+CAPTCHA on login after failed attempts
+
+Data Security
+
+Prevent SQL injection (use parameterized queries/ORMs)
+Prevent XSS attacks (sanitize inputs, use CSP headers)
+Implement CSRF protection (tokens for state-changing operations)
+Encrypt sensitive data at rest (database encryption)
+Use HTTPS for all communications
+Implement input validation and sanitization
+
+Audit & Compliance
+
+Log all authentication attempts (success and failure)
+Log all permission changes and admin actions
+Log data access for sensitive modules
+GDPR compliance (data export, deletion, consent)
+Regular security audits and penetration testing
+
+
+User Interface Components
+Admin Panel
+
+User Management
+
+User list with search/filter (by status, role, date)
+Add user via invitation system
+Edit user details and roles
+View user activity and login history
+Activate/deactivate/suspend users (no hard delete)
+Bulk actions (suspend multiple users, send bulk invitations)
+
+
+Invitation Management
+
+Send new invitations
+View pending invitations
+Resend expired invitations
+Cancel pending invitations
+
+
+Permission Management
+
+Visual permissions matrix
+Role assignment interface
+Module access toggle switches
+Copy permissions from one user/role to another
+
+
+Session Management
+
+View all active sessions across all users
+Force logout specific sessions
+View session history
+
+
+Backup & Export
+
+Trigger manual backups
+Schedule automated backups
+Download backup files
+Restore from backup interface
+
+
+Audit Logs
+
+Searchable audit log viewer
+Filter by user, action, date range
+Export audit logs
+
+
+System Settings
+
+Global configurations
+Email templates for invitations
+Session timeout settings
+Backup schedule configuration
+
+
+
+User Dashboard
+
+Personalized Experience
+
+Personalized welcome message
+Show only modules user has access to
+Hide/disable features they can't access
+Role badge or indicator
+
+
+User Profile
+
+Edit profile information
+Change password
+View active sessions with logout capability
+Download personal data (GDPR compliance)
+
+
+Settings Panel
+
+Personal preferences (theme, language)
+Notification settings
+Dashboard layout customization
+
+
+Data Management
+
+Export my data button (triggers export job)
+Import data interface
+View export/import history
+
+
+
+Invitation Acceptance Page
+
+Clean, branded invitation landing page
+Display inviter's name and company info
+Invitation details (role, access level)
+Password creation form with strength indicator
+Terms of service acceptance
+Email verification step
+
+
+Implementation Checklist
+Phase 1: Core Authentication & Invitation System
+
+ Set up user database tables with proper indexing
+ Implement invitation system (email sending, token generation)
+ Create invitation acceptance flow with password creation
+ Build login/logout system with session management
+ Implement "Remember Me" functionality
+ Create session timeout and refresh mechanism
+ Build basic admin panel for user management
+ Add email verification on first login
+
+Phase 2: Permission System & RBAC
+
+ Design comprehensive permissions matrix
+ Implement RBAC middleware for route protection
+ Create role management interface
+ Add permission checking to all routes and API endpoints
+ Build custom role creation system
+ Implement role hierarchy and inheritance
+
+Phase 3: Data Isolation & Performance
+
+ Refactor existing code to include user_id in all queries
+ Add database queries filtering by user_id
+ Implement all critical database indexes
+ Add connection pooling and query optimization
+ Test data isolation thoroughly with multiple users
+ Implement workspace separation UI
+ Set up query performance monitoring
+
+Phase 4: Session & Security Management
+
+ Build concurrent session handling system
+ Create active sessions viewer for users and admin
+ Implement force logout capability
+ Add session activity tracking (IP, device, timestamp)
+ Set up rate limiting and account lockout
+ Implement CSRF protection
+ Add security audit logging
+
+Phase 5: Soft Delete & User Lifecycle
+
+ Implement soft delete for users (is_active flag)
+ Create user status management system
+ Build user reactivation workflow
+ Add data retention policy configuration
+ Implement anonymization for deleted users
+ Create audit trail for user status changes
+
+Phase 6: Data Export/Import System
+
+ Build data export functionality (multiple formats)
+ Create export job queue and processing
+ Implement import validation and preview
+ Add import error handling and rollback
+ Create export/import history tracking
+ Build user-facing export/import UI
+ Add admin capability to export any user's data
+
+Phase 7: Backup & Disaster Recovery
+
+ Design user-specific backup structure
+ Implement automated daily backup system
+ Create manual backup trigger for users
+ Build restore functionality with preview
+ Add backup integrity verification
+ Set up off-site backup storage
+ Test complete disaster recovery process
+ Document backup and restore procedures
+
+Phase 8: Dynamic Updates & Settings
+
+ Create feature registry system
+ Build auto-permission assignment for new features
+ Add version tracking and changelog
+ Implement update notifications
+ Separate user vs admin settings
+ Create settings hierarchy system (User > Role > Global)
+ Build comprehensive settings UI
+ Test non-interference of admin changes on user settings
+
+Phase 9: UI & User Experience
+
+ Design and build admin panel
+ Create personalized user dashboard
+ Build invitation acceptance page
+ Implement user profile management
+ Create permission management interface
+ Add session management UI
+ Build audit log viewer
+ Ensure mobile responsiveness across all interfaces
+
+Phase 10: Testing & Optimization
+
+ Unit tests for authentication and permissions
+ Integration tests for user workflows
+ Load testing with multiple concurrent users
+ Security penetration testing
+ Test data isolation with edge cases
+ Verify backup and restore accuracy
+ Test soft delete and reactivation
+ Validate export/import with large datasets
+ Performance benchmarking and optimization
+ User acceptance testing (UAT)
+
+
+Additional Considerations
+Scalability Planning
+
+Design for horizontal scaling from the start
+Use Redis or similar for session storage (instead of database)
+Implement caching layer (Redis/Memcached) for frequently accessed data
+Consider microservices architecture for future growth
+Plan for CDN integration for static assets
+
+Monitoring & Alerting
+
+Set up application performance monitoring (APM)
+Monitor database query performance
+Track failed login attempts and security events
+Alert on backup failures
+Monitor session counts and concurrent users
+Track API response times
+
+Documentation
+
+Admin user guide for user management
+User guide for invitation acceptance and onboarding
+API documentation for developers
+Security best practices guide
+Disaster recovery runbook
+Database schema documentation
+
+Compliance & Legal
+
+Privacy policy and terms of service
+Data processing agreements
+GDPR compliance checklist
+Data retention policy documentation
+User consent management
+Right to be forgotten implementation
+
+Future Enhancements
+
+Single Sign-On (SSO) integration (OAuth, SAML)
+Multi-factor authentication (MFA)
+API key management for programmatic access
+Webhooks for user events
+Advanced analytics on user behavior
+White-labeling capabilities
+Mobile app with same user management
+
+
+Success Metrics
+Technical Metrics
+
+Page load time < 2 seconds
+Database query time < 100ms for 95th percentile
+Zero data leakage between users (verified through testing)
+99.9% uptime
+Successful backup completion rate > 99%
+Session response time < 500ms
+
+User Experience Metrics
+
+Invitation acceptance rate > 80%
+User onboarding completion rate > 90%
+Average time to first successful login < 5 minutes
+User satisfaction score > 4/5
+Support tickets related to access issues < 5% of total tickets
+
+Security Metrics
+
+Zero unauthorized data access incidents
+Failed login attempt rate (monitoring for attacks)
+Password reset completion rate
+Audit log completeness: 100% of sensitive actions logged
