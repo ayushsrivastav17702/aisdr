@@ -16,6 +16,7 @@ export const emailSendStatusEnum = pgEnum("email_send_status", ["success", "fail
 // Prospects table
 export const prospects = pgTable("prospects", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id"), // Will be required after migration
   firstName: text("first_name"),
   lastName: text("last_name"),
   fullName: text("full_name"),
@@ -44,6 +45,7 @@ export const prospects = pgTable("prospects", {
 // Searches table
 export const searches = pgTable("searches", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id"), // Will be required after migration
   extractionName: text("extraction_name"),
   tag: text("tag"),
   query: text("query").notNull(),
@@ -57,6 +59,7 @@ export const searches = pgTable("searches", {
 // Jobs table
 export const jobs = pgTable("jobs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id"), // Will be required after migration
   type: jobTypeEnum("type").notNull(),
   status: jobStatusEnum("status").default("queued"),
   title: text("title").notNull(),
@@ -91,6 +94,7 @@ export const importRecords = pgTable("import_records", {
 // ICP Templates table
 export const icpTemplates = pgTable("icp_templates", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id"), // Will be required after migration
   name: text("name").notNull(),
   description: text("description"),
   isDefault: boolean("is_default").default(false),
@@ -202,6 +206,7 @@ export type CSVImportRequest = z.infer<typeof csvImportSchema>;
 // Sequences table
 export const sequences = pgTable("sequences", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id"), // Will be required after migration
   name: text("name").notNull(),
   description: text("description"),
   type: text("type").notNull().default("outbound"),
@@ -314,6 +319,7 @@ export const personalizationResults = pgTable("personalization_results", {
 // Content library table
 export const contentLibrary = pgTable("content_library", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id"), // Will be required after migration
   title: text("title").notNull(),
   type: text("type").notNull(),
   description: text("description"),
@@ -432,6 +438,7 @@ export const automationStatusEnum = pgEnum("automation_status", ["running", "com
 // Automation runs table
 export const automationRuns = pgTable("automation_runs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id"), // Will be required after migration
   sequenceId: varchar("sequence_id").notNull().references(() => sequences.id, { onDelete: "cascade" }),
   prospectCount: integer("prospect_count").notNull(),
   aiPersonalizationEnabled: boolean("ai_personalization_enabled").default(true),
@@ -492,6 +499,7 @@ export const insertUnsubscribeSchema = createInsertSchema(unsubscribes).omit({
 // Email Mailboxes table
 export const emailMailboxes = pgTable("email_mailboxes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id"), // Will be required after migration
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
   provider: mailboxProviderEnum("provider").notNull(),
@@ -609,4 +617,135 @@ export const insertEmailQueueSchema = createInsertSchema(emailQueue).omit({
   createdAt: true,
   sentAt: true,
   failedAt: true,
+});
+
+// ============================================
+// USER MANAGEMENT MODULE
+// ============================================
+
+// User status enum
+export const userStatusEnum = pgEnum("user_status", ["active", "inactive", "suspended", "invited", "pending"]);
+
+// User role enum
+export const userRoleEnum = pgEnum("user_role", ["admin", "user"]);
+
+// Users table
+export const users = pgTable("users", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  username: text("username").notNull().unique(),
+  email: text("email").notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
+  role: userRoleEnum("role").notNull().default("user"),
+  status: userStatusEnum("status").notNull().default("active"),
+  isActive: boolean("is_active").notNull().default(true),
+  emailVerified: boolean("email_verified").default(false),
+  lastLogin: timestamp("last_login"),
+  createdBy: varchar("created_by"), // References users.id (self-referential)
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  deletedAt: timestamp("deleted_at"),
+});
+
+// User sessions table
+export const userSessions = pgTable("user_sessions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  token: text("token").notNull().unique(),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  deviceInfo: text("device_info"),
+  isActive: boolean("is_active").notNull().default(true),
+  rememberMe: boolean("remember_me").default(false),
+  expiresAt: timestamp("expires_at").notNull(),
+  lastActivity: timestamp("last_activity").notNull().defaultNow(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// User invitations table
+export const userInvitations = pgTable("user_invitations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  email: text("email").notNull(),
+  token: text("token").notNull().unique(),
+  role: userRoleEnum("role").notNull().default("user"),
+  invitedBy: varchar("invited_by").notNull().references(() => users.id),
+  status: text("status").notNull().default("pending"), // pending, accepted, expired, cancelled
+  expiresAt: timestamp("expires_at").notNull(),
+  acceptedAt: timestamp("accepted_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// Audit logs table
+export const auditLogs = pgTable("audit_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "set null" }),
+  action: text("action").notNull(),
+  module: text("module"),
+  details: jsonb("details"),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+// User relations
+export const usersRelations = relations(users, ({ many }) => ({
+  sessions: many(userSessions),
+  sentInvitations: many(userInvitations),
+  auditLogs: many(auditLogs),
+}));
+
+export const userSessionsRelations = relations(userSessions, ({ one }) => ({
+  user: one(users, {
+    fields: [userSessions.userId],
+    references: [users.id],
+  }),
+}));
+
+export const userInvitationsRelations = relations(userInvitations, ({ one }) => ({
+  inviter: one(users, {
+    fields: [userInvitations.invitedBy],
+    references: [users.id],
+  }),
+}));
+
+export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
+  user: one(users, {
+    fields: [auditLogs.userId],
+    references: [users.id],
+  }),
+}));
+
+// User types
+export type User = typeof users.$inferSelect;
+export type InsertUser = typeof users.$inferInsert;
+export type UserSession = typeof userSessions.$inferSelect;
+export type InsertUserSession = typeof userSessions.$inferInsert;
+export type UserInvitation = typeof userInvitations.$inferSelect;
+export type InsertUserInvitation = typeof userInvitations.$inferInsert;
+export type AuditLog = typeof auditLogs.$inferSelect;
+export type InsertAuditLog = typeof auditLogs.$inferInsert;
+
+// User schemas
+export const insertUserSchema = createInsertSchema(users).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  deletedAt: true,
+  lastLogin: true,
+});
+
+export const insertUserSessionSchema = createInsertSchema(userSessions).omit({
+  id: true,
+  createdAt: true,
+  lastActivity: true,
+});
+
+export const insertUserInvitationSchema = createInsertSchema(userInvitations).omit({
+  id: true,
+  createdAt: true,
+  acceptedAt: true,
+});
+
+export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({
+  id: true,
+  createdAt: true,
 });
