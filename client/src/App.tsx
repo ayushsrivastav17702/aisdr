@@ -11,12 +11,26 @@ import Mailboxes from "@/pages/mailboxes";
 import ContentManagement from "@/pages/content-management";
 import AutomationDashboard from "@/pages/AutomationDashboard";
 import LoginPage from "@/pages/login";
+import AcceptInvitationPage from "@/pages/accept-invitation";
+import AdminPanel from "@/pages/admin-panel";
+import ProfilePage from "@/pages/profile";
 import NotFound from "@/pages/not-found";
 
 function Router() {
   return (
     <Switch>
       <Route path="/login" component={LoginPage} />
+      <Route path="/accept-invitation" component={AcceptInvitationPage} />
+      <Route path="/admin/users">
+        <ProtectedRoute requireAdmin>
+          <AdminPanel />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/profile">
+        <ProtectedRoute>
+          <ProfilePage />
+        </ProtectedRoute>
+      </Route>
       <Route path="/">
         <ProtectedRoute>
           <Dashboard />
