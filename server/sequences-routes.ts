@@ -1,21 +1,22 @@
 import { Router } from "express";
-import { storage } from "./storage";
+import { storage, type RequestContext } from "./storage";
 import { generatePersonalizedEmail, type LinkedInData } from "./services/personalization.service";
 import { emailQueueService } from "./services/email-queue.service";
 import { db } from "./db";
 import { sequenceProspects, emailReplies, emailQueue, emails, prospects } from "@shared/schema";
 import { eq, and, sql, desc } from "drizzle-orm";
 import { z } from "zod";
+import { authenticate } from "./middleware/auth.middleware";
 
 const router = Router();
 
 // Helper function to initialize sequence when activated
-async function initializeSequence(sequenceId: string): Promise<void> {
+async function initializeSequence(userContext: RequestContext, sequenceId: string): Promise<void> {
   try {
     console.log(`🚀 Initializing sequence ${sequenceId}...`);
     
     // Get all enrolled prospects
-    const enrolledProspects = await storage.getSequenceProspects(sequenceId);
+    const enrolledProspects = await storage.getSequenceProspects(userContext, sequenceId);
     console.log(`  Found ${enrolledProspects.length} enrolled prospects`);
     
     if (enrolledProspects.length === 0) {
@@ -24,7 +25,7 @@ async function initializeSequence(sequenceId: string): Promise<void> {
     }
     
     // Get sequence steps
-    const steps = await storage.getSequenceSteps(sequenceId);
+    const steps = await storage.getSequenceSteps(userContext, sequenceId);
     console.log(`  Found ${steps.length} sequence steps`);
     
     if (steps.length === 0) {
@@ -75,14 +76,14 @@ async function initializeSequence(sequenceId: string): Promise<void> {
 }
 
 // Get all sequences
-router.get("/sequences", async (req, res) => {
+router.get("/sequences", authenticate, async (req, res) => {
   try {
-    const sequences = await storage.getSequences();
+    const sequences = await storage.getSequences(req.userContext!);
     
     // Enhance each sequence with tracking stats
     const sequencesWithStats = await Promise.all(
       sequences.map(async (sequence) => {
-        const emails = await storage.getSequenceEmails(sequence.id);
+        const emails = await storage.getSequenceEmails(req.userContext!, sequence.id);
         
         const sentCount = emails.filter(e => e.sentAt).length;
         const openedCount = emails.filter(e => e.openedAt).length;
@@ -105,17 +106,17 @@ router.get("/sequences", async (req, res) => {
 });
 
 // Get single sequence with steps
-router.get("/sequences/:id", async (req, res) => {
+router.get("/sequences/:id", authenticate, async (req, res) => {
   try {
-    const sequence = await storage.getSequence(req.params.id);
+    const sequence = await storage.getSequence(req.userContext!, req.params.id);
     
     if (!sequence) {
       return res.status(404).json({ error: "Sequence not found" });
     }
     
     const [steps, emails] = await Promise.all([
-      storage.getSequenceSteps(req.params.id),
-      storage.getSequenceEmails(req.params.id)
+      storage.getSequenceSteps(req.userContext!, req.params.id),
+      storage.getSequenceEmails(req.userContext!, req.params.id)
     ]);
     
     // Add tracking stats
@@ -137,7 +138,7 @@ router.get("/sequences/:id", async (req, res) => {
 });
 
 // Create sequence
-router.post("/sequences", async (req, res) => {
+router.post("/sequences", authenticate, async (req, res) => {
   try {
     const { name, description, type } = req.body;
     
@@ -145,7 +146,7 @@ router.post("/sequences", async (req, res) => {
       return res.status(400).json({ error: "Sequence name is required" });
     }
     
-    const sequence = await storage.createSequence({
+    const sequence = await storage.createSequence(req.userContext!, {
       name,
       description: description || null,
       type: type || "outbound",
@@ -165,13 +166,13 @@ router.post("/sequences", async (req, res) => {
 });
 
 // Update sequence
-router.put("/sequences/:id", async (req, res) => {
+router.put("/sequences/:id", authenticate, async (req, res) => {
   try {
-    const sequence = await storage.updateSequence(req.params.id, req.body);
+    const sequence = await storage.updateSequence(req.userContext!, req.params.id, req.body);
     
     // If status changed to active, initialize the sequence
     if (req.body.status === "active") {
-      await initializeSequence(req.params.id);
+      await initializeSequence(req.userContext!, req.params.id);
     }
     
     res.json(sequence);
@@ -182,13 +183,13 @@ router.put("/sequences/:id", async (req, res) => {
 });
 
 // Update sequence (PATCH)
-router.patch("/sequences/:id", async (req, res) => {
+router.patch("/sequences/:id", authenticate, async (req, res) => {
   try {
-    const sequence = await storage.updateSequence(req.params.id, req.body);
+    const sequence = await storage.updateSequence(req.userContext!, req.params.id, req.body);
     
     // If status changed to active, initialize the sequence
     if (req.body.status === "active") {
-      await initializeSequence(req.params.id);
+      await initializeSequence(req.userContext!, req.params.id);
     }
     
     res.json(sequence);
@@ -199,9 +200,9 @@ router.patch("/sequences/:id", async (req, res) => {
 });
 
 // Delete sequence
-router.delete("/sequences/:id", async (req, res) => {
+router.delete("/sequences/:id", authenticate, async (req, res) => {
   try {
-    await storage.deleteSequence(req.params.id);
+    await storage.deleteSequence(req.userContext!, req.params.id);
     res.json({ success: true });
   } catch (error) {
     console.error("Error deleting sequence:", error);
@@ -210,7 +211,7 @@ router.delete("/sequences/:id", async (req, res) => {
 });
 
 // Add step to sequence
-router.post("/sequences/:id/steps", async (req, res) => {
+router.post("/sequences/:id/steps", authenticate, async (req, res) => {
   try {
     const { subject, body, stepOrder, delayDays } = req.body;
     
@@ -218,7 +219,7 @@ router.post("/sequences/:id/steps", async (req, res) => {
       return res.status(400).json({ error: "Subject and body are required" });
     }
     
-    const step = await storage.createSequenceStep({
+    const step = await storage.createSequenceStep(req.userContext!, {
       sequenceId: req.params.id,
       subject,
       body,
@@ -237,13 +238,13 @@ router.post("/sequences/:id/steps", async (req, res) => {
 });
 
 // Delete sequence step
-router.delete("/sequences/:id/steps/:stepId", async (req, res) => {
+router.delete("/sequences/:id/steps/:stepId", authenticate, async (req, res) => {
   try {
     const sequenceId = req.params.id;
     const stepId = req.params.stepId;
     
     // Fetch all steps for this sequence
-    const steps = await storage.getSequenceSteps(sequenceId);
+    const steps = await storage.getSequenceSteps(req.userContext!, sequenceId);
     
     // Verify the step belongs to this sequence
     const stepExists = steps.find(step => step.id === stepId);
@@ -255,7 +256,7 @@ router.delete("/sequences/:id/steps/:stepId", async (req, res) => {
     }
     
     // Delete the step
-    await storage.deleteSequenceStep(stepId);
+    await storage.deleteSequenceStep(req.userContext!, stepId);
     res.json({ success: true, message: "Step deleted successfully" });
   } catch (error) {
     console.error("Error deleting step:", error);
@@ -264,9 +265,9 @@ router.delete("/sequences/:id/steps/:stepId", async (req, res) => {
 });
 
 // Get prospects in sequence
-router.get("/sequences/:id/prospects", async (req, res) => {
+router.get("/sequences/:id/prospects", authenticate, async (req, res) => {
   try {
-    const prospects = await storage.getSequenceProspects(req.params.id);
+    const prospects = await storage.getSequenceProspects(req.userContext!, req.params.id);
     res.json({ total: prospects.length, prospects });
   } catch (error) {
     console.error("Error fetching sequence prospects:", error);
@@ -275,7 +276,7 @@ router.get("/sequences/:id/prospects", async (req, res) => {
 });
 
 // Add prospects to sequence
-router.post("/sequences/:id/prospects", async (req, res) => {
+router.post("/sequences/:id/prospects", authenticate, async (req, res) => {
   try {
     const { prospectIds } = req.body;
     
@@ -283,11 +284,11 @@ router.post("/sequences/:id/prospects", async (req, res) => {
       return res.status(400).json({ error: "prospectIds array is required" });
     }
     
-    const enrolled = await storage.enrollProspects(req.params.id, prospectIds);
+    const enrolled = await storage.enrollProspects(req.userContext!, req.params.id, prospectIds);
     
-    const sequence = await storage.getSequence(req.params.id);
+    const sequence = await storage.getSequence(req.userContext!, req.params.id);
     if (sequence) {
-      await storage.updateSequence(req.params.id, {
+      await storage.updateSequence(req.userContext!, req.params.id, {
         totalProspects: (sequence.totalProspects || 0) + enrolled.length,
         activeProspects: (sequence.activeProspects || 0) + enrolled.length,
       });
@@ -301,9 +302,9 @@ router.post("/sequences/:id/prospects", async (req, res) => {
 });
 
 // Get email replies for sequence
-router.get("/sequences/:id/replies", async (req, res) => {
+router.get("/sequences/:id/replies", authenticate, async (req, res) => {
   try {
-    const replies = await storage.getEmailReplies(req.params.id);
+    const replies = await storage.getEmailReplies(req.userContext!, req.params.id);
     
     const total = replies.length;
     const responseRate = 0;
@@ -324,12 +325,12 @@ router.get("/sequences/:id/replies", async (req, res) => {
 });
 
 // Get tracking stats for sequence
-router.get("/sequences/:id/tracking", async (req, res) => {
+router.get("/sequences/:id/tracking", authenticate, async (req, res) => {
   try {
     const sequenceId = req.params.id;
     
     // Get all emails for this sequence
-    const emails = await storage.getSequenceEmails(sequenceId);
+    const emails = await storage.getSequenceEmails(req.userContext!, sequenceId);
     
     // Calculate stats
     const sent = emails.filter(e => e.sentAt).length;
@@ -357,7 +358,7 @@ router.get("/sequences/:id/tracking", async (req, res) => {
 });
 
 // Get emails for sequence (for analytics/tracking tab)
-router.get("/sequences/:id/emails", async (req, res) => {
+router.get("/sequences/:id/emails", authenticate, async (req, res) => {
   try {
     const sequenceId = req.params.id;
     
@@ -375,7 +376,7 @@ router.get("/sequences/:id/emails", async (req, res) => {
 });
 
 // Manual LinkedIn personalization
-router.post("/personalization/manual-linkedin", async (req, res) => {
+router.post("/personalization/manual-linkedin", authenticate, async (req, res) => {
   try {
     const { prospectId, linkedInData } = req.body;
     
@@ -402,7 +403,9 @@ router.post("/personalization/manual-linkedin", async (req, res) => {
 });
 
 // Webhook: Email reply
-router.post("/webhooks/email-reply", async (req, res) => {
+// TODO: Webhooks need special authentication (API key, webhook secret, etc.)
+// For now, using authenticate middleware which might need adjustment for webhook providers
+router.post("/webhooks/email-reply", authenticate, async (req, res) => {
   try {
     const { emailId, prospectId, from, body, receivedAt } = req.body;
     
@@ -410,7 +413,7 @@ router.post("/webhooks/email-reply", async (req, res) => {
       return res.status(400).json({ error: "emailId, prospectId, and body are required" });
     }
     
-    await storage.createEmailReply({
+    await storage.createEmailReply(req.userContext!, {
       emailId,
       prospectId,
       replyContent: body,
@@ -439,7 +442,7 @@ router.post("/webhooks/email-opened", async (req, res) => {
 });
 
 // AI Email Generation
-router.post("/sequences/ai-generate-email", async (req, res) => {
+router.post("/sequences/ai-generate-email", authenticate, async (req, res) => {
   try {
     const { emailGenerationService } = await import("./services/ai-email-generator.service");
     const { prospectId, emailType, sequenceStep, previousEmails, tone, sequenceId } = req.body;
@@ -452,7 +455,7 @@ router.post("/sequences/ai-generate-email", async (req, res) => {
     let enrichedPreviousEmails = previousEmails || [];
     if (sequenceId && !previousEmails) {
       try {
-        const steps = await storage.getSequenceSteps(sequenceId);
+        const steps = await storage.getSequenceSteps(req.userContext!, sequenceId);
         if (steps && steps.length > 0) {
           // Get all steps except the current one being written
           const previousSteps = sequenceStep 
@@ -489,7 +492,7 @@ router.post("/sequences/ai-generate-email", async (req, res) => {
 });
 
 // Generate Email Variants (A/B Testing)
-router.post("/sequences/ai-generate-variants", async (req, res) => {
+router.post("/sequences/ai-generate-variants", authenticate, async (req, res) => {
   try {
     const { generateEmailVariants } = await import("./services/ai-email-generator.service");
     const { prospectId, emailType, variantCount } = req.body;
@@ -513,7 +516,7 @@ router.post("/sequences/ai-generate-variants", async (req, res) => {
 });
 
 // Enhanced Personalization
-router.post("/sequences/enhanced-personalization", async (req, res) => {
+router.post("/sequences/enhanced-personalization", authenticate, async (req, res) => {
   try {
     const { generateEnhancedPersonalizedEmail } = await import("./services/enhanced-personalization.service");
     const { prospectId, includeLinkedInData, customPrompt, emailSettings, sequenceId, sequenceStep } = req.body;
@@ -526,7 +529,7 @@ router.post("/sequences/enhanced-personalization", async (req, res) => {
     let previousStepsContext = '';
     if (sequenceId) {
       try {
-        const steps = await storage.getSequenceSteps(sequenceId);
+        const steps = await storage.getSequenceSteps(req.userContext!, sequenceId);
         if (steps && steps.length > 0) {
           const previousSteps = sequenceStep 
             ? steps.slice(0, sequenceStep - 1) 
@@ -563,7 +566,7 @@ router.post("/sequences/enhanced-personalization", async (req, res) => {
 });
 
 // Analyze Email Response
-router.post("/sequences/analyze-response", async (req, res) => {
+router.post("/sequences/analyze-response", authenticate, async (req, res) => {
   try {
     const { analyzeEmailResponse } = await import("./services/enhanced-personalization.service");
     const { originalEmail, prospectResponse, prospectId } = req.body;

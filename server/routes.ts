@@ -23,6 +23,7 @@ import mailboxRoutes from "./mailbox-routes";
 import { registerAutomationRoutes } from "./automation-routes";
 import authRoutes from "./routes/auth.routes";
 import userRoutes from "./routes/user.routes";
+import { authenticate } from "./middleware/auth.middleware";
 
 const upload = multer({ 
   dest: 'uploads/',
@@ -34,7 +35,7 @@ const upload = multer({
 export async function registerRoutes(app: Express): Promise<Server> {
   
   // AI Search endpoint
-  app.post("/api/ai-search", async (req, res) => {
+  app.post("/api/ai-search", authenticate, async (req, res) => {
     try {
       const validatedBody = aiSearchSchema.extend({ 
         includeLocalProspects: z.boolean().default(true) 
@@ -49,7 +50,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log('Apollo Filters:', JSON.stringify(apolloFilters, null, 2));
       
       // Save search record
-      const search = await storage.createSearch({
+      const search = await storage.createSearch(req.userContext!, {
         query,
         aiFilters,
         apolloFilters,
@@ -59,7 +60,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let localProspects: any[] = [];
       if (includeLocalProspects) {
         try {
-          localProspects = await storage.searchLocalProspects(aiFilters);
+          localProspects = await storage.searchLocalProspects(req.userContext!, aiFilters);
           console.log(`Found ${localProspects.length} local prospects matching query`);
         } catch (localSearchError) {
           console.warn("Local prospect search failed:", localSearchError instanceof Error ? localSearchError.message : "Unknown error");
@@ -95,7 +96,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Direct Apollo search (for immediate results)
-  app.post("/api/apollo-search", async (req, res) => {
+  app.post("/api/apollo-search", authenticate, async (req, res) => {
     try {
       const { apolloFilters, page = 1, per_page = 50 } = req.body;
       
@@ -177,7 +178,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Apollo search and save to database (synchronous alternative to job queue)
-  app.post("/api/apollo-search-and-save", async (req, res) => {
+  app.post("/api/apollo-search-and-save", authenticate, async (req, res) => {
     try {
       const { apolloFilters, page = 1, per_page = 50, extractionName, tag } = req.body;
       
@@ -278,6 +279,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           // Check if prospect already exists (by email or apollo_id)
           const existing = await storage.findProspectByEmailOrApolloId(
+            req.userContext!,
             prospectData.primaryEmail,
             prospectData.apolloId
           );
@@ -288,7 +290,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const newTags = tag ? [tag] : [];
             const mergedTags = Array.from(new Set([...existingTags, ...newTags]));
             
-            const updated = await storage.updateProspect(existing.id, {
+            const updated = await storage.updateProspect(req.userContext!, existing.id, {
               ...prospectData,
               tags: mergedTags
             });
@@ -296,7 +298,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             updatedCount++;
           } else {
             // Create new prospect with tag
-            const created = await storage.createProspect({
+            const created = await storage.createProspect(req.userContext!, {
               ...prospectData,
               tags: tag ? [tag] : undefined
             });
@@ -314,7 +316,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Create search record if extraction name is provided
       let searchRecord = null;
       if (extractionName) {
-        searchRecord = await storage.createSearch({
+        searchRecord = await storage.createSearch(req.userContext!, {
           extractionName,
           tag,
           query: extractionName, // Use extraction name as query for now
@@ -352,9 +354,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get unique filter values for dropdowns
-  app.get("/api/prospects/filters", async (req, res) => {
+  app.get("/api/prospects/filters", authenticate, async (req, res) => {
     try {
-      const filterValues = await storage.getUniqueFilterValues();
+      const filterValues = await storage.getUniqueFilterValues(req.userContext!);
       res.json(filterValues);
     } catch (error) {
       console.error("Get filter values error:", error);
@@ -365,9 +367,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get all prospect IDs (for bulk selection)
-  app.get("/api/prospects/all-ids", async (req, res) => {
+  app.get("/api/prospects/all-ids", authenticate, async (req, res) => {
     try {
-      const allProspects = await storage.getAllProspectIds();
+      const allProspects = await storage.getAllProspectIds(req.userContext!);
       
       res.json({
         prospectIds: allProspects,
@@ -382,7 +384,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get prospects with filters
-  app.get("/api/prospects", async (req, res) => {
+  app.get("/api/prospects", authenticate, async (req, res) => {
     try {
       const { 
         search, 
@@ -397,7 +399,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const limitNum = parseInt(limit as string);
       const offset = (pageNum - 1) * limitNum;
 
-      const result = await storage.getProspects({
+      const result = await storage.getProspects(req.userContext!, {
         search: search as string,
         status: status as string,
         companyLocation: companyLocation as string,
@@ -422,7 +424,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get prospects by IDs (for export)
-  app.post("/api/prospects/by-ids", async (req, res) => {
+  app.post("/api/prospects/by-ids", authenticate, async (req, res) => {
     try {
       const { prospectIds } = req.body;
       
@@ -430,7 +432,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: "prospectIds array is required" });
       }
 
-      const prospects = await storage.getProspectsByIds(prospectIds);
+      const prospects = await storage.getProspectsByIds(req.userContext!, prospectIds);
       res.json(prospects);
     } catch (error) {
       console.error("Get prospects by IDs error:", error);
@@ -441,10 +443,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get single prospect
-  app.get("/api/prospects/:id", async (req, res) => {
+  app.get("/api/prospects/:id", authenticate, async (req, res) => {
     try {
       const { id } = req.params;
-      const prospect = await storage.getProspect(id);
+      const prospect = await storage.getProspect(req.userContext!, id);
       
       if (!prospect) {
         return res.status(404).json({ error: "Prospect not found" });
@@ -460,10 +462,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Create prospect
-  app.post("/api/prospects", async (req, res) => {
+  app.post("/api/prospects", authenticate, async (req, res) => {
     try {
       const prospectData = insertProspectSchema.parse(req.body);
-      const prospect = await storage.createProspect(prospectData);
+      const prospect = await storage.createProspect(req.userContext!, prospectData);
       res.json(prospect);
     } catch (error) {
       console.error("Create prospect error:", error);
@@ -474,11 +476,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Update prospect
-  app.patch("/api/prospects/:id", async (req, res) => {
+  app.patch("/api/prospects/:id", authenticate, async (req, res) => {
     try {
       const { id } = req.params;
       const updates = insertProspectSchema.partial().parse(req.body);
-      const prospect = await storage.updateProspect(id, updates);
+      const prospect = await storage.updateProspect(req.userContext!, id, updates);
       res.json(prospect);
     } catch (error) {
       console.error("Update prospect error:", error);
@@ -489,10 +491,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Delete prospect
-  app.delete("/api/prospects/:id", async (req, res) => {
+  app.delete("/api/prospects/:id", authenticate, async (req, res) => {
     try {
       const { id } = req.params;
-      await storage.deleteProspect(id);
+      await storage.deleteProspect(req.userContext!, id);
       res.json({ success: true });
     } catch (error) {
       console.error("Delete prospect error:", error);
@@ -503,7 +505,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Bulk delete prospects
-  app.post("/api/prospects/bulk-delete", async (req, res) => {
+  app.post("/api/prospects/bulk-delete", authenticate, async (req, res) => {
     try {
       const { prospectIds } = req.body;
       
@@ -514,7 +516,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log(`🗑️ Starting bulk delete of ${prospectIds.length.toLocaleString()} prospects...`);
 
       // Use storage's batch delete method
-      const result = await storage.bulkDeleteProspects(prospectIds);
+      const result = await storage.bulkDeleteProspects(req.userContext!, prospectIds);
       
       console.log(`✅ Bulk delete complete: ${result.deleted.toLocaleString()}/${prospectIds.length.toLocaleString()} prospects deleted`);
 
@@ -533,7 +535,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Enrich prospects (uses job queue if Redis available, otherwise direct enrichment)
-  app.post("/api/enrich", async (req, res) => {
+  app.post("/api/enrich", authenticate, async (req, res) => {
     try {
       const { prospectIds } = enrichmentRequestSchema.parse(req.body);
       
@@ -552,7 +554,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         
         for (const prospectId of prospectIds) {
           try {
-            const prospect = await storage.getProspect(prospectId);
+            const prospect = await storage.getProspect(req.userContext!, prospectId);
             if (!prospect) {
               results.push({ id: prospectId, success: false, error: "Prospect not found" });
               failureCount++;
@@ -581,7 +583,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 
                 if (emailLocked) {
                   console.log(`⚠️ Apollo returned locked email for prospect ${prospectId}: ${enrichedProspect.primaryEmail}`);
-                  await storage.updateProspect(prospectId, {
+                  await storage.updateProspect(req.userContext!, prospectId, {
                     enrichmentStatus: 'partial',
                     enrichmentData: {
                       error: 'Email is locked - Apollo credits may be required',
@@ -597,7 +599,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   });
                   failureCount++;
                 } else {
-                  await storage.updateProspect(prospectId, {
+                  await storage.updateProspect(req.userContext!, prospectId, {
                     ...enrichedProspect,
                     enrichmentStatus: 'enriched',
                   });
@@ -605,7 +607,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   successCount++;
                 }
               } else {
-                await storage.updateProspect(prospectId, {
+                await storage.updateProspect(req.userContext!, prospectId, {
                   enrichmentStatus: 'partial',
                   enrichmentData: {
                     error: 'No data found',
@@ -616,7 +618,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 failureCount++;
               }
             } catch (enrichError) {
-              await storage.updateProspect(prospectId, {
+              await storage.updateProspect(req.userContext!, prospectId, {
                 enrichmentStatus: 'failed',
                 enrichmentData: {
                   error: enrichError instanceof Error ? enrichError.message : 'Enrichment failed',
@@ -658,7 +660,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Lusha email enrichment
-  app.post("/api/lusha-enrich", async (req, res) => {
+  app.post("/api/lusha-enrich", authenticate, async (req, res) => {
     try {
       const { prospectIds } = z.object({ 
         prospectIds: z.array(z.string()).min(1) 
@@ -677,7 +679,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const results = [];
       
       for (const prospectId of prospectIds) {
-        const prospect = await storage.getProspect(prospectId);
+        const prospect = await storage.getProspect(req.userContext!, prospectId);
         
         if (!prospect) {
           results.push({ id: prospectId, success: false, error: "Prospect not found" });
@@ -732,7 +734,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           updates.phoneNumber = phone;
         }
 
-        const updated = await storage.updateProspect(prospectId, updates);
+        const updated = await storage.updateProspect(req.userContext!, prospectId, updates);
         results.push({ 
           id: prospectId, 
           success: true, 
@@ -757,7 +759,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Apollo bulk enrichment
-  app.post("/api/apollo-bulk-enrich", async (req, res) => {
+  app.post("/api/apollo-bulk-enrich", authenticate, async (req, res) => {
     try {
       const { prospectIds } = z.object({ 
         prospectIds: z.array(z.string()).min(1) 
@@ -766,7 +768,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Fetch prospects from database
       const prospects = [];
       for (const id of prospectIds) {
-        const prospect = await storage.getProspect(id);
+        const prospect = await storage.getProspect(req.userContext!, id);
         if (prospect) {
           prospects.push(prospect);
         }
@@ -836,7 +838,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         try {
           const enrichedData = await apolloService.convertApolloContactToProspect(match);
           
-          const updated = await storage.updateProspect(prospect.id, {
+          const updated = await storage.updateProspect(req.userContext!, prospect.id, {
             ...enrichedData,
             enrichmentStatus: 'enriched' as const,
             enrichmentData: {
@@ -879,7 +881,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // CSV upload and import
-  app.post("/api/import/csv", upload.single('file'), async (req, res) => {
+  app.post("/api/import/csv", authenticate, upload.single('file'), async (req, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ error: "No file uploaded" });
@@ -954,7 +956,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
           // Check duplicates in database in one query
           if (allEmails.length > 0) {
-            const duplicates = await storage.checkDuplicateProspects(allEmails);
+            const duplicates = await storage.checkDuplicateProspects(req.userContext!, allEmails);
             console.log(`  Database returned ${duplicates.length} duplicate prospects`);
             duplicates.forEach(dup => {
               if (dup.primaryEmail) duplicateEmails.add(dup.primaryEmail);
@@ -1004,7 +1006,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         for (let i = 0; i < prospectsToInsert.length; i += BATCH_SIZE) {
           const batch = prospectsToInsert.slice(i, i + BATCH_SIZE);
           try {
-            await storage.bulkCreateProspects(batch);
+            await storage.bulkCreateProspects(req.userContext!, batch);
             successCount += batch.length;
             console.log(`  Batch ${Math.floor(i / BATCH_SIZE) + 1}: Inserted ${batch.length} prospects (total: ${successCount}/${prospectsToInsert.length})`);
           } catch (error) {
@@ -1012,7 +1014,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             console.log(`  Batch insert failed, trying individual inserts for batch ${Math.floor(i / BATCH_SIZE) + 1}`);
             for (let j = 0; j < batch.length; j++) {
               try {
-                await storage.createProspect(batch[j]);
+                await storage.createProspect(req.userContext!, batch[j]);
                 successCount++;
               } catch (err) {
                 failureCount++;
@@ -1052,7 +1054,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Validate CSV data (for field mapping preview)
-  app.post("/api/import/validate-csv", upload.single('file'), async (req, res) => {
+  app.post("/api/import/validate-csv", authenticate, upload.single('file'), async (req, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ error: "No file uploaded" });
@@ -1136,10 +1138,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get jobs
-  app.get("/api/jobs", async (req, res) => {
+  app.get("/api/jobs", authenticate, async (req, res) => {
     try {
       const { status, limit = "20" } = req.query;
-      const jobs = await storage.getJobs(status as string, parseInt(limit as string));
+      const jobs = await storage.getJobs(req.userContext!, status as string, parseInt(limit as string));
       res.json(jobs);
     } catch (error) {
       console.error("Get jobs error:", error);
@@ -1150,9 +1152,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get active jobs
-  app.get("/api/jobs/active", async (req, res) => {
+  app.get("/api/jobs/active", authenticate, async (req, res) => {
     try {
-      const jobs = await storage.getActiveJobs();
+      const jobs = await storage.getActiveJobs(req.userContext!);
       res.json(jobs);
     } catch (error) {
       console.error("Get active jobs error:", error);
@@ -1163,10 +1165,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get job status
-  app.get("/api/jobs/:id", async (req, res) => {
+  app.get("/api/jobs/:id", authenticate, async (req, res) => {
     try {
       const { id } = req.params;
-      const job = await storage.getJob(id);
+      const job = await storage.getJob(req.userContext!, id);
       
       if (!job) {
         return res.status(404).json({ error: "Job not found" });
@@ -1196,10 +1198,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get searches
-  app.get("/api/searches", async (req, res) => {
+  app.get("/api/searches", authenticate, async (req, res) => {
     try {
       const { limit = "20" } = req.query;
-      const searches = await storage.getSearches(parseInt(limit as string));
+      const searches = await storage.getSearches(req.userContext!, parseInt(limit as string));
       res.json(searches);
     } catch (error) {
       console.error("Get searches error:", error);
@@ -1225,11 +1227,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerAutomationRoutes(app);
 
   // Intelligent Personalization - Deep AI prospect analysis
-  app.post("/api/personalization/analyze", async (req, res) => {
+  app.post("/api/personalization/analyze", authenticate, async (req, res) => {
     try {
       const { prospectId, includeWebScraping = false } = req.body;
       
-      const prospect = await storage.getProspect(prospectId);
+      const prospect = await storage.getProspect(req.userContext!, prospectId);
       if (!prospect) {
         return res.status(404).json({ error: "Prospect not found" });
       }
@@ -1256,7 +1258,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
 
       // Save personalization result
-      await storage.createPersonalizationResult({
+      await storage.createPersonalizationResult(req.userContext!, {
         prospectId,
         personalizationScore: analysis.personalizationScore,
         insights: {
@@ -1278,11 +1280,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Advanced AI analysis - Enhanced version with scoring and variables
-  app.post("/api/personalization/advanced-analyze", async (req, res) => {
+  app.post("/api/personalization/advanced-analyze", authenticate, async (req, res) => {
     try {
       const { prospectId } = req.body;
       
-      const prospect = await storage.getProspect(prospectId);
+      const prospect = await storage.getProspect(req.userContext!, prospectId);
       if (!prospect) {
         return res.status(404).json({ error: "Prospect not found" });
       }
@@ -1373,7 +1375,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Generate personalized email with AI
-  app.post("/api/personalization/generate-email", async (req, res) => {
+  app.post("/api/personalization/generate-email", authenticate, async (req, res) => {
     try {
       const { prospectId, personalizationData, settings, customPrompt, useAdvanced, contentItemIds, sequenceId, sequenceStep } = req.body;
       
@@ -1383,7 +1385,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      const prospect = await storage.getProspect(prospectId);
+      const prospect = await storage.getProspect(req.userContext!, prospectId);
       if (!prospect) {
         return res.status(404).json({ error: "Prospect not found" });
       }
@@ -1392,7 +1394,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let previousStepsContext = '';
       if (sequenceId) {
         try {
-          const steps = await storage.getSequenceSteps(sequenceId);
+          const steps = await storage.getSequenceSteps(req.userContext!, sequenceId);
           if (steps && steps.length > 0) {
             const previousSteps = sequenceStep 
               ? steps.slice(0, sequenceStep - 1) 
@@ -1444,7 +1446,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let contentContext = '';
       let hasContentLibrary = false;
       if (contentItemIds && contentItemIds.length > 0) {
-        const allContentItems = await storage.getContentLibraryItems();
+        const allContentItems = await storage.getContentLibraryItems(req.userContext!);
         const selectedContent = allContentItems.filter(item => contentItemIds.includes(item.id));
         
         if (selectedContent.length > 0) {
@@ -1684,7 +1686,7 @@ Subject: [Your subject line here]
   });
 
   // Generate AI reply to prospect response
-  app.post("/api/sequences/:sequenceId/generate-reply", async (req, res) => {
+  app.post("/api/sequences/:sequenceId/generate-reply", authenticate, async (req, res) => {
     try {
       const { replyId, prospectId, replyContent } = req.body;
       
@@ -1694,7 +1696,7 @@ Subject: [Your subject line here]
         });
       }
 
-      const prospect = await storage.getProspect(prospectId);
+      const prospect = await storage.getProspect(req.userContext!, prospectId);
       if (!prospect) {
         return res.status(404).json({ error: "Prospect not found" });
       }
@@ -1730,7 +1732,7 @@ Return ONLY the email body text, no subject line needed.`;
   });
 
   // Company enrichment via web scraping
-  app.post("/api/personalization/company-enrichment", async (req, res) => {
+  app.post("/api/personalization/company-enrichment", authenticate, async (req, res) => {
     try {
       const { companyWebsite } = req.body;
       
@@ -1749,7 +1751,7 @@ Return ONLY the email body text, no subject line needed.`;
   });
 
   // Apollo company search
-  app.post("/api/apollo/company-search", async (req, res) => {
+  app.post("/api/apollo/company-search", authenticate, async (req, res) => {
     try {
       const { query, filters = {} } = req.body;
       
@@ -1772,11 +1774,11 @@ Return ONLY the email body text, no subject line needed.`;
   });
 
   // Enhanced enrichment with automatic Lusha fallback
-  app.post("/api/prospects/enrich-with-fallback", async (req, res) => {
+  app.post("/api/prospects/enrich-with-fallback", authenticate, async (req, res) => {
     try {
       const { prospectId } = req.body;
       
-      const prospect = await storage.getProspect(prospectId);
+      const prospect = await storage.getProspect(req.userContext!, prospectId);
       if (!prospect) {
         return res.status(404).json({ error: "Prospect not found" });
       }
@@ -1791,7 +1793,7 @@ Return ONLY the email body text, no subject line needed.`;
 
       if (enrichmentResult.contact) {
         const updatedProspect = await apolloService.convertApolloContactToProspect(enrichmentResult.contact);
-        await storage.updateProspect(prospectId, updatedProspect);
+        await storage.updateProspect(req.userContext!, prospectId, updatedProspect);
       }
 
       res.json({
@@ -1810,7 +1812,7 @@ Return ONLY the email body text, no subject line needed.`;
   });
 
   // Content Library - Get all items
-  app.get("/api/content-library", async (req, res) => {
+  app.get("/api/content-library", authenticate, async (req, res) => {
     try {
       const items = await contentManagementService.getContentLibraryItems();
       res.json(items);
@@ -1823,7 +1825,7 @@ Return ONLY the email body text, no subject line needed.`;
   });
 
   // Content Library - Get templates
-  app.get("/api/content-library/templates", async (req, res) => {
+  app.get("/api/content-library/templates", authenticate, async (req, res) => {
     try {
       const { category } = req.query;
       const templates = category 
@@ -1839,7 +1841,7 @@ Return ONLY the email body text, no subject line needed.`;
   });
 
   // Content Library - Create item
-  app.post("/api/content-library", async (req, res) => {
+  app.post("/api/content-library", authenticate, async (req, res) => {
     try {
       const item = await contentManagementService.addContentItem(req.body);
       res.json(item);
@@ -1852,7 +1854,7 @@ Return ONLY the email body text, no subject line needed.`;
   });
 
   // Content Library - Update item
-  app.put("/api/content-library/:id", async (req, res) => {
+  app.put("/api/content-library/:id", authenticate, async (req, res) => {
     try {
       const { id } = req.params;
       const item = await contentManagementService.updateContentItem(id, req.body);
@@ -1866,7 +1868,7 @@ Return ONLY the email body text, no subject line needed.`;
   });
 
   // Content Library - Delete item
-  app.delete("/api/content-library/:id", async (req, res) => {
+  app.delete("/api/content-library/:id", authenticate, async (req, res) => {
     try {
       const { id } = req.params;
       await contentManagementService.deleteContentItem(id);
@@ -1925,7 +1927,7 @@ Return ONLY the email body text, no subject line needed.`;
   });
 
   // ICP Templates - Create
-  app.post("/api/icp-templates", async (req, res) => {
+  app.post("/api/icp-templates", authenticate, async (req, res) => {
     try {
       const { icpTemplateService } = await import("./services/icp-template.service");
       const template = await icpTemplateService.createTemplate(req.body);
@@ -1939,7 +1941,7 @@ Return ONLY the email body text, no subject line needed.`;
   });
 
   // ICP Templates - Update
-  app.put("/api/icp-templates/:id", async (req, res) => {
+  app.put("/api/icp-templates/:id", authenticate, async (req, res) => {
     try {
       const { icpTemplateService } = await import("./services/icp-template.service");
       const template = await icpTemplateService.updateTemplate(req.params.id, req.body);
@@ -1953,7 +1955,7 @@ Return ONLY the email body text, no subject line needed.`;
   });
 
   // ICP Templates - Delete
-  app.delete("/api/icp-templates/:id", async (req, res) => {
+  app.delete("/api/icp-templates/:id", authenticate, async (req, res) => {
     try {
       const { icpTemplateService } = await import("./services/icp-template.service");
       await icpTemplateService.deleteTemplate(req.params.id);
@@ -1967,11 +1969,11 @@ Return ONLY the email body text, no subject line needed.`;
   });
 
   // Generate email from template
-  app.post("/api/content-library/generate-email", async (req, res) => {
+  app.post("/api/content-library/generate-email", authenticate, async (req, res) => {
     try {
       const { templateId, prospectId, customVariables } = req.body;
       
-      const prospect = await storage.getProspect(prospectId);
+      const prospect = await storage.getProspect(req.userContext!, prospectId);
       if (!prospect) {
         return res.status(404).json({ error: "Prospect not found" });
       }
@@ -2001,7 +2003,7 @@ Return ONLY the email body text, no subject line needed.`;
   });
 
   // AI Email Template Generator - Generate template from content library
-  app.post("/api/content-library/ai-generate-template", async (req, res) => {
+  app.post("/api/content-library/ai-generate-template", authenticate, async (req, res) => {
     try {
       const { prompt, contentItemIds, settings } = req.body;
       
@@ -2020,7 +2022,7 @@ Return ONLY the email body text, no subject line needed.`;
       }
 
       // Fetch selected content items
-      const allContentItems = await storage.getContentLibraryItems();
+      const allContentItems = await storage.getContentLibraryItems(req.userContext!);
       const selectedContent = allContentItems.filter(item => contentItemIds.includes(item.id));
 
       if (selectedContent.length === 0) {

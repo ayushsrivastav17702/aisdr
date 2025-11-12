@@ -1,11 +1,13 @@
 import { Request, Response, NextFunction } from 'express';
 import { authService, AuthUser } from '../services/auth.service';
+import { RequestContext } from '../storage';
 
 declare global {
   namespace Express {
     interface Request {
       user?: AuthUser;
       sessionId?: string;
+      userContext?: RequestContext;
     }
   }
 }
@@ -30,6 +32,22 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
     req.user = user;
     req.sessionId = decoded?.sessionId;
     
+    const actingAs = req.query.actingAs as string | undefined;
+    
+    if (actingAs && user.role !== 'admin') {
+      return res.status(403).json({ error: 'Only administrators can use actingAs' });
+    }
+    
+    if (actingAs) {
+      console.log(`🔐 Admin impersonation: ${user.email} (${user.id}) acting as user ${actingAs}`);
+    }
+    
+    req.userContext = {
+      userId: user.id,
+      roles: [user.role],
+      actingAs: actingAs
+    };
+    
     next();
   } catch (error) {
     console.error('Authentication error:', error);
@@ -52,6 +70,25 @@ export function optionalAuth(req: Request, res: Response, next: NextFunction) {
         const decoded = authService.verifyToken(token);
         req.user = user;
         req.sessionId = decoded?.sessionId;
+        
+        const actingAs = req.query.actingAs as string | undefined;
+        
+        if (actingAs && user.role !== 'admin') {
+          console.warn(`⚠️ Non-admin user ${user.email} attempted to use actingAs`);
+          req.userContext = {
+            userId: user.id,
+            roles: [user.role]
+          };
+        } else {
+          if (actingAs) {
+            console.log(`🔐 Admin impersonation: ${user.email} (${user.id}) acting as user ${actingAs}`);
+          }
+          req.userContext = {
+            userId: user.id,
+            roles: [user.role],
+            actingAs: actingAs
+          };
+        }
       }
       next();
     })
