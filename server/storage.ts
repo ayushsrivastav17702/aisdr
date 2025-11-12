@@ -40,11 +40,48 @@ import {
   type InsertUnsubscribe
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, inArray, and, or, ilike, count } from "drizzle-orm";
+import { eq, desc, inArray, and, or, ilike, count, SQL } from "drizzle-orm";
+
+export type RequestContext = {
+  userId: string;
+  roles: string[];
+  actingAs?: string;
+};
+
+function isAdmin(ctx: RequestContext): boolean {
+  return ctx.roles.includes('admin');
+}
+
+function getEffectiveUserId(ctx: RequestContext): string {
+  if (ctx.actingAs && !isAdmin(ctx)) {
+    throw new Error('Only administrators can use actingAs');
+  }
+  return ctx.actingAs ?? ctx.userId;
+}
+
+function scopedWhere<T extends { userId: any }>(
+  table: T,
+  ctx: RequestContext,
+  extraConditions?: SQL[]
+): SQL | undefined {
+  const conditions: SQL[] = [];
+  
+  if (!isAdmin(ctx)) {
+    conditions.push(eq(table.userId, ctx.userId));
+  } else if (ctx.actingAs) {
+    conditions.push(eq(table.userId, ctx.actingAs));
+  }
+  
+  if (extraConditions) {
+    conditions.push(...extraConditions);
+  }
+  
+  return conditions.length > 0 ? and(...conditions) : undefined;
+}
 
 export interface IStorage {
   // Prospects
-  getProspects(filters?: {
+  getProspects(ctx: RequestContext, filters?: {
     search?: string;
     status?: string;
     companyLocation?: string;
@@ -52,75 +89,75 @@ export interface IStorage {
     limit?: number;
     offset?: number;
   }): Promise<{ prospects: Prospect[]; total: number }>;
-  getProspect(id: string): Promise<Prospect | undefined>;
-  createProspect(prospect: InsertProspect): Promise<Prospect>;
-  bulkCreateProspects(prospects: InsertProspect[]): Promise<Prospect[]>;
-  updateProspect(id: string, updates: Partial<InsertProspect>): Promise<Prospect>;
-  deleteProspect(id: string): Promise<void>;
-  bulkDeleteProspects(ids: string[]): Promise<{ deleted: number; failed: number }>;
-  getProspectsByIds(ids: string[]): Promise<Prospect[]>;
-  getAllProspectIds(): Promise<string[]>;
-  checkDuplicateProspects(emails: string[], domains?: string[]): Promise<Prospect[]>;
-  findProspectByEmailOrApolloId(email: string | null, apolloId: string | null): Promise<Prospect | undefined>;
-  searchLocalProspects(aiFilters: any): Promise<Prospect[]>;
-  getUniqueFilterValues(): Promise<{ locations: string[]; jobTitles: string[] }>;
+  getProspect(ctx: RequestContext, id: string): Promise<Prospect | undefined>;
+  createProspect(ctx: RequestContext, prospect: InsertProspect): Promise<Prospect>;
+  bulkCreateProspects(ctx: RequestContext, prospects: InsertProspect[]): Promise<Prospect[]>;
+  updateProspect(ctx: RequestContext, id: string, updates: Partial<InsertProspect>): Promise<Prospect>;
+  deleteProspect(ctx: RequestContext, id: string): Promise<void>;
+  bulkDeleteProspects(ctx: RequestContext, ids: string[]): Promise<{ deleted: number; failed: number }>;
+  getProspectsByIds(ctx: RequestContext, ids: string[]): Promise<Prospect[]>;
+  getAllProspectIds(ctx: RequestContext): Promise<string[]>;
+  checkDuplicateProspects(ctx: RequestContext, emails: string[], domains?: string[]): Promise<Prospect[]>;
+  findProspectByEmailOrApolloId(ctx: RequestContext, email: string | null, apolloId: string | null): Promise<Prospect | undefined>;
+  searchLocalProspects(ctx: RequestContext, aiFilters: any): Promise<Prospect[]>;
+  getUniqueFilterValues(ctx: RequestContext): Promise<{ locations: string[]; jobTitles: string[] }>;
   
   // Searches
-  getSearches(limit?: number): Promise<Search[]>;
-  getSearch(id: string): Promise<Search | undefined>;
-  createSearch(search: InsertSearch): Promise<Search>;
-  updateSearch(id: string, updates: Partial<InsertSearch>): Promise<Search>;
+  getSearches(ctx: RequestContext, limit?: number): Promise<Search[]>;
+  getSearch(ctx: RequestContext, id: string): Promise<Search | undefined>;
+  createSearch(ctx: RequestContext, search: InsertSearch): Promise<Search>;
+  updateSearch(ctx: RequestContext, id: string, updates: Partial<InsertSearch>): Promise<Search>;
   
   // Jobs
-  getJobs(status?: string, limit?: number): Promise<Job[]>;
-  getJob(id: string): Promise<Job | undefined>;
-  createJob(job: InsertJob): Promise<Job>;
-  updateJob(id: string, updates: Partial<Job>): Promise<Job>;
-  getActiveJobs(): Promise<Job[]>;
+  getJobs(ctx: RequestContext, status?: string, limit?: number): Promise<Job[]>;
+  getJob(ctx: RequestContext, id: string): Promise<Job | undefined>;
+  createJob(ctx: RequestContext, job: InsertJob): Promise<Job>;
+  updateJob(ctx: RequestContext, id: string, updates: Partial<Job>): Promise<Job>;
+  getActiveJobs(ctx: RequestContext): Promise<Job[]>;
   
   // Import Records
-  getImportRecord(id: string): Promise<ImportRecord | undefined>;
-  createImportRecord(record: InsertImportRecord): Promise<ImportRecord>;
-  updateImportRecord(id: string, updates: Partial<InsertImportRecord>): Promise<ImportRecord>;
+  getImportRecord(ctx: RequestContext, id: string): Promise<ImportRecord | undefined>;
+  createImportRecord(ctx: RequestContext, record: InsertImportRecord): Promise<ImportRecord>;
+  updateImportRecord(ctx: RequestContext, id: string, updates: Partial<InsertImportRecord>): Promise<ImportRecord>;
   
   // Sequences
-  getSequences(limit?: number): Promise<Sequence[]>;
-  getSequence(id: string): Promise<Sequence | undefined>;
-  createSequence(sequence: InsertSequence): Promise<Sequence>;
-  updateSequence(id: string, updates: Partial<Sequence>): Promise<Sequence>;
-  deleteSequence(id: string): Promise<void>;
+  getSequences(ctx: RequestContext, limit?: number): Promise<Sequence[]>;
+  getSequence(ctx: RequestContext, id: string): Promise<Sequence | undefined>;
+  createSequence(ctx: RequestContext, sequence: InsertSequence): Promise<Sequence>;
+  updateSequence(ctx: RequestContext, id: string, updates: Partial<Sequence>): Promise<Sequence>;
+  deleteSequence(ctx: RequestContext, id: string): Promise<void>;
   
   // Sequence Steps
-  getSequenceSteps(sequenceId: string): Promise<SequenceStep[]>;
-  createSequenceStep(step: InsertSequenceStep): Promise<SequenceStep>;
-  deleteSequenceStep(stepId: string): Promise<void>;
+  getSequenceSteps(ctx: RequestContext, sequenceId: string): Promise<SequenceStep[]>;
+  createSequenceStep(ctx: RequestContext, step: InsertSequenceStep): Promise<SequenceStep>;
+  deleteSequenceStep(ctx: RequestContext, stepId: string): Promise<void>;
   
   // Sequence Prospects
-  getSequenceProspects(sequenceId: string): Promise<Array<SequenceProspect & { prospect?: Prospect }>>;
-  enrollProspects(sequenceId: string, prospectIds: string[]): Promise<SequenceProspect[]>;
+  getSequenceProspects(ctx: RequestContext, sequenceId: string): Promise<Array<SequenceProspect & { prospect?: Prospect }>>;
+  enrollProspects(ctx: RequestContext, sequenceId: string, prospectIds: string[]): Promise<SequenceProspect[]>;
   
   // Emails
-  getSequenceEmails(sequenceId: string): Promise<Email[]>;
+  getSequenceEmails(ctx: RequestContext, sequenceId: string): Promise<Email[]>;
   
   // Email Replies
-  getEmailReplies(sequenceId: string): Promise<Array<EmailReply & { prospect?: Prospect }>>;
-  createEmailReply(reply: InsertEmailReply): Promise<EmailReply>;
+  getEmailReplies(ctx: RequestContext, sequenceId: string): Promise<Array<EmailReply & { prospect?: Prospect }>>;
+  createEmailReply(ctx: RequestContext, reply: InsertEmailReply): Promise<EmailReply>;
   
   // Personalization
-  createPersonalizationResult(result: InsertPersonalizationResult): Promise<PersonalizationResult>;
-  getPersonalizationResult(prospectId: string): Promise<PersonalizationResult | undefined>;
+  createPersonalizationResult(ctx: RequestContext, result: InsertPersonalizationResult): Promise<PersonalizationResult>;
+  getPersonalizationResult(ctx: RequestContext, prospectId: string): Promise<PersonalizationResult | undefined>;
   
   // Content Library
-  getContentLibraryItems(): Promise<ContentLibraryItem[]>;
-  getContentLibraryItem(id: string): Promise<ContentLibraryItem | undefined>;
-  createContentLibraryItem(item: InsertContentLibraryItem): Promise<ContentLibraryItem>;
-  updateContentLibraryItem(id: string, updates: Partial<InsertContentLibraryItem>): Promise<ContentLibraryItem>;
-  deleteContentLibraryItem(id: string): Promise<void>;
+  getContentLibraryItems(ctx: RequestContext): Promise<ContentLibraryItem[]>;
+  getContentLibraryItem(ctx: RequestContext, id: string): Promise<ContentLibraryItem | undefined>;
+  createContentLibraryItem(ctx: RequestContext, item: InsertContentLibraryItem): Promise<ContentLibraryItem>;
+  updateContentLibraryItem(ctx: RequestContext, id: string, updates: Partial<InsertContentLibraryItem>): Promise<ContentLibraryItem>;
+  deleteContentLibraryItem(ctx: RequestContext, id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
   // Prospects
-  async getProspects(filters: {
+  async getProspects(ctx: RequestContext, filters: {
     search?: string;
     status?: string;
     companyLocation?: string;
@@ -133,7 +170,7 @@ export class DatabaseStorage implements IStorage {
     let query = db.select().from(prospects);
     let countQuery = db.select({ count: count() }).from(prospects);
     
-    const conditions = [];
+    const conditions: SQL[] = [];
     
     if (search) {
       conditions.push(
@@ -144,26 +181,26 @@ export class DatabaseStorage implements IStorage {
           ilike(prospects.primaryEmail, `%${search}%`),
           ilike(prospects.companyName, `%${search}%`),
           ilike(prospects.jobTitle, `%${search}%`)
-        )
+        ) as SQL
       );
     }
     
     if (status) {
-      conditions.push(eq(prospects.enrichmentStatus, status as any));
+      conditions.push(eq(prospects.enrichmentStatus, status as any) as SQL);
     }
 
     if (companyLocation) {
-      conditions.push(ilike(prospects.contactLocation, `%${companyLocation}%`));
+      conditions.push(ilike(prospects.contactLocation, `%${companyLocation}%`) as SQL);
     }
 
     if (jobTitle) {
-      conditions.push(ilike(prospects.jobTitle, `%${jobTitle}%`));
+      conditions.push(ilike(prospects.jobTitle, `%${jobTitle}%`) as SQL);
     }
     
-    if (conditions.length > 0) {
-      const whereClause = and(...conditions);
-      query = query.where(whereClause);
-      countQuery = countQuery.where(whereClause);
+    const whereClause = scopedWhere(prospects, ctx, conditions.length > 0 ? conditions : undefined);
+    if (whereClause) {
+      query = query.where(whereClause) as any;
+      countQuery = countQuery.where(whereClause) as any;
     }
     
     const [prospectResults, countResult] = await Promise.all([
@@ -180,24 +217,29 @@ export class DatabaseStorage implements IStorage {
     };
   }
 
-  async getProspect(id: string): Promise<Prospect | undefined> {
-    const [prospect] = await db.select().from(prospects).where(eq(prospects.id, id));
+  async getProspect(ctx: RequestContext, id: string): Promise<Prospect | undefined> {
+    const whereClause = scopedWhere(prospects, ctx, [eq(prospects.id, id)]);
+    if (!whereClause) {
+      return undefined;
+    }
+    const [prospect] = await db.select().from(prospects).where(whereClause);
     return prospect || undefined;
   }
 
-  async createProspect(prospect: InsertProspect): Promise<Prospect> {
+  async createProspect(ctx: RequestContext, prospect: InsertProspect): Promise<Prospect> {
     const [created] = await db
       .insert(prospects)
-      .values({ ...prospect, updatedAt: new Date() })
+      .values({ ...prospect, userId: getEffectiveUserId(ctx), updatedAt: new Date() })
       .returning();
     return created;
   }
 
-  async bulkCreateProspects(prospectsToCreate: InsertProspect[]): Promise<Prospect[]> {
+  async bulkCreateProspects(ctx: RequestContext, prospectsToCreate: InsertProspect[]): Promise<Prospect[]> {
     if (prospectsToCreate.length === 0) return [];
     
     const prospectsWithUpdatedAt = prospectsToCreate.map(p => ({ 
-      ...p, 
+      ...p,
+      userId: getEffectiveUserId(ctx),
       updatedAt: new Date() 
     }));
     
@@ -208,7 +250,12 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
-  async updateProspect(id: string, updates: Partial<InsertProspect>): Promise<Prospect> {
+  async updateProspect(ctx: RequestContext, id: string, updates: Partial<InsertProspect>): Promise<Prospect> {
+    const existing = await this.getProspect(ctx, id);
+    if (!existing) {
+      throw new Error('Prospect not found');
+    }
+    
     const [updated] = await db
       .update(prospects)
       .set({ ...updates, updatedAt: new Date() })
@@ -217,11 +264,16 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async deleteProspect(id: string): Promise<void> {
+  async deleteProspect(ctx: RequestContext, id: string): Promise<void> {
+    const existing = await this.getProspect(ctx, id);
+    if (!existing) {
+      throw new Error('Prospect not found');
+    }
+    
     await db.delete(prospects).where(eq(prospects.id, id));
   }
 
-  async bulkDeleteProspects(ids: string[]): Promise<{ deleted: number; failed: number }> {
+  async bulkDeleteProspects(ctx: RequestContext, ids: string[]): Promise<{ deleted: number; failed: number }> {
     if (ids.length === 0) {
       return { deleted: 0, failed: 0 };
     }
@@ -239,70 +291,90 @@ export class DatabaseStorage implements IStorage {
       console.log(`🗑️ Deleting batch ${batchNum}/${totalBatches} (${batch.length} prospects)...`);
       
       try {
-        await db.delete(prospects).where(inArray(prospects.id, batch));
+        const whereClause = scopedWhere(prospects, ctx, [inArray(prospects.id, batch)]);
+        if (whereClause) {
+          await db.delete(prospects).where(whereClause);
+        }
         totalDeleted += batch.length;
         console.log(`✅ Batch ${batchNum} deleted: ${batch.length} prospects (${totalDeleted.toLocaleString()}/${ids.length.toLocaleString()} total)`);
       } catch (error) {
         console.error(`❌ Batch ${batchNum} failed:`, error);
         totalFailed += batch.length;
-        // Continue with next batch even if one fails
       }
     }
 
     return { deleted: totalDeleted, failed: totalFailed };
   }
 
-  async getProspectsByIds(ids: string[]): Promise<Prospect[]> {
+  async getProspectsByIds(ctx: RequestContext, ids: string[]): Promise<Prospect[]> {
     if (ids.length === 0) return [];
-    return await db.select().from(prospects).where(inArray(prospects.id, ids));
+    const whereClause = scopedWhere(prospects, ctx, [inArray(prospects.id, ids)]);
+    if (!whereClause) {
+      return [];
+    }
+    return await db.select().from(prospects).where(whereClause);
   }
 
-  async getAllProspectIds(): Promise<string[]> {
-    const result = await db.select({ id: prospects.id }).from(prospects);
+  async getAllProspectIds(ctx: RequestContext): Promise<string[]> {
+    let query = db.select({ id: prospects.id }).from(prospects);
+    const whereClause = scopedWhere(prospects, ctx);
+    if (whereClause) {
+      query = query.where(whereClause) as any;
+    }
+    const result = await query;
     return result.map(r => r.id);
   }
 
-  async checkDuplicateProspects(emails: string[], domains?: string[]): Promise<Prospect[]> {
-    const conditions = [];
+  async checkDuplicateProspects(ctx: RequestContext, emails: string[], domains?: string[]): Promise<Prospect[]> {
+    const conditions: SQL[] = [];
     
     if (emails.length > 0) {
       conditions.push(
         or(
           inArray(prospects.primaryEmail, emails),
           inArray(prospects.secondaryEmail, emails)
-        )
+        ) as SQL
       );
     }
     
     if (domains && domains.length > 0) {
-      conditions.push(inArray(prospects.companyDomain, domains));
+      conditions.push(inArray(prospects.companyDomain, domains) as SQL);
     }
     
     if (conditions.length === 0) return [];
     
-    return await db.select().from(prospects).where(or(...conditions));
+    const whereClause = scopedWhere(prospects, ctx, conditions);
+    if (!whereClause) {
+      return [];
+    }
+    return await db.select().from(prospects).where(whereClause);
   }
 
-  async findProspectByEmailOrApolloId(email: string | null, apolloId: string | null): Promise<Prospect | undefined> {
+  async findProspectByEmailOrApolloId(ctx: RequestContext, email: string | null, apolloId: string | null): Promise<Prospect | undefined> {
     if (!email && !apolloId) return undefined;
     
-    const conditions = [];
+    const conditions: SQL[] = [];
     if (email) {
       conditions.push(
         or(
           eq(prospects.primaryEmail, email),
           eq(prospects.secondaryEmail, email)
-        )
+        ) as SQL
       );
     }
     if (apolloId) {
-      conditions.push(eq(prospects.apolloId, apolloId));
+      conditions.push(eq(prospects.apolloId, apolloId) as SQL);
+    }
+    
+    const whereClause = scopedWhere(prospects, ctx, conditions);
+    if (!whereClause) {
+      return undefined;
     }
     
     const [prospect] = await db
       .select()
       .from(prospects)
-      .where(or(...conditions))
+      .where(whereClause)
       .limit(1);
     
     return prospect || undefined;
@@ -321,19 +393,19 @@ export class DatabaseStorage implements IStorage {
       })
       .filter((v: string | null) => v && v.length > 0) as string[];
     
-    const uniqueValues = [...new Set(normalized)];
+    const uniqueValues = Array.from(new Set(normalized));
     return uniqueValues.slice(0, 10);
   }
 
-  async searchLocalProspects(aiFilters: any): Promise<Prospect[]> {
-    const conditions = [];
+  async searchLocalProspects(ctx: RequestContext, aiFilters: any): Promise<Prospect[]> {
+    const conditions: SQL[] = [];
     
     const jobTitles = this.normalizeFilterArray(aiFilters.jobTitles);
     if (jobTitles.length > 0) {
       const titleConditions = jobTitles.map((title: string) => 
         ilike(prospects.jobTitle, `%${title}%`)
       );
-      conditions.push(titleConditions.length === 1 ? titleConditions[0] : or(...titleConditions));
+      conditions.push((titleConditions.length === 1 ? titleConditions[0] : or(...titleConditions)) as SQL);
     }
     
     const companyNames = this.normalizeFilterArray(aiFilters.companyNames);
@@ -341,7 +413,7 @@ export class DatabaseStorage implements IStorage {
       const companyConditions = companyNames.map((company: string) => 
         ilike(prospects.companyName, `%${company}%`)
       );
-      conditions.push(companyConditions.length === 1 ? companyConditions[0] : or(...companyConditions));
+      conditions.push((companyConditions.length === 1 ? companyConditions[0] : or(...companyConditions)) as SQL);
     }
     
     const locations = this.normalizeFilterArray(aiFilters.locations);
@@ -350,7 +422,7 @@ export class DatabaseStorage implements IStorage {
         ilike(prospects.contactLocation, `%${location}%`),
         ilike(prospects.companyLocation, `%${location}%`)
       ]);
-      conditions.push(locationConditions.length === 1 ? locationConditions[0] : or(...locationConditions));
+      conditions.push((locationConditions.length === 1 ? locationConditions[0] : or(...locationConditions)) as SQL);
     }
     
     const industries = this.normalizeFilterArray(aiFilters.industries);
@@ -358,7 +430,7 @@ export class DatabaseStorage implements IStorage {
       const industryConditions = industries.map((industry: string) => 
         ilike(prospects.companyIndustry, `%${industry}%`)
       );
-      conditions.push(industryConditions.length === 1 ? industryConditions[0] : or(...industryConditions));
+      conditions.push((industryConditions.length === 1 ? industryConditions[0] : or(...industryConditions)) as SQL);
     }
     
     const keywords = this.normalizeFilterArray(aiFilters.keywords).slice(0, 5);
@@ -368,68 +440,93 @@ export class DatabaseStorage implements IStorage {
         ilike(prospects.jobTitle, `%${keyword}%`),
         ilike(prospects.companyName, `%${keyword}%`)
       ]);
-      conditions.push(keywordConditions.length === 1 ? keywordConditions[0] : or(...keywordConditions));
+      conditions.push((keywordConditions.length === 1 ? keywordConditions[0] : or(...keywordConditions)) as SQL);
     }
     
     if (conditions.length === 0) {
       return [];
     }
     
+    const whereClause = scopedWhere(prospects, ctx, conditions);
+    if (!whereClause) {
+      return [];
+    }
+    
     const results = await db
       .select()
       .from(prospects)
-      .where(conditions.length === 1 ? conditions[0] : and(...conditions))
+      .where(whereClause)
       .limit(200);
     
     return results;
   }
 
-  async getUniqueFilterValues(): Promise<{ locations: string[]; jobTitles: string[] }> {
-    // Get all prospects with non-null locations and job titles
-    const allProspects = await db
+  async getUniqueFilterValues(ctx: RequestContext): Promise<{ locations: string[]; jobTitles: string[] }> {
+    let query = db
       .select({
         contactLocation: prospects.contactLocation,
         jobTitle: prospects.jobTitle,
       })
       .from(prospects);
+    
+    const whereClause = scopedWhere(prospects, ctx);
+    if (whereClause) {
+      query = query.where(whereClause) as any;
+    }
+    
+    const allProspects = await query;
 
-    // Extract unique, non-null countries from contact location
-    const locations = [...new Set(
+    const locations = Array.from(new Set(
       allProspects
         .map(p => p.contactLocation)
         .filter((loc): loc is string => !!loc && loc.trim().length > 0)
-    )].sort();
+    )).sort();
 
-    // Extract unique, non-null job titles
-    const jobTitles = [...new Set(
+    const jobTitles = Array.from(new Set(
       allProspects
         .map(p => p.jobTitle)
         .filter((title): title is string => !!title && title.trim().length > 0)
-    )].sort();
+    )).sort();
 
     return { locations, jobTitles };
   }
 
   // Searches
-  async getSearches(limit = 20): Promise<Search[]> {
-    return await db
+  async getSearches(ctx: RequestContext, limit = 20): Promise<Search[]> {
+    let query = db
       .select()
       .from(searches)
       .orderBy(desc(searches.createdAt))
       .limit(limit);
+    
+    const whereClause = scopedWhere(searches, ctx);
+    if (whereClause) {
+      query = query.where(whereClause) as any;
+    }
+    
+    return await query;
   }
 
-  async getSearch(id: string): Promise<Search | undefined> {
-    const [search] = await db.select().from(searches).where(eq(searches.id, id));
+  async getSearch(ctx: RequestContext, id: string): Promise<Search | undefined> {
+    const whereClause = scopedWhere(searches, ctx, [eq(searches.id, id)]);
+    if (!whereClause) {
+      return undefined;
+    }
+    const [search] = await db.select().from(searches).where(whereClause);
     return search || undefined;
   }
 
-  async createSearch(search: InsertSearch): Promise<Search> {
-    const [created] = await db.insert(searches).values(search).returning();
+  async createSearch(ctx: RequestContext, search: InsertSearch): Promise<Search> {
+    const [created] = await db.insert(searches).values({ ...search, userId: getEffectiveUserId(ctx) }).returning();
     return created;
   }
 
-  async updateSearch(id: string, updates: Partial<InsertSearch>): Promise<Search> {
+  async updateSearch(ctx: RequestContext, id: string, updates: Partial<InsertSearch>): Promise<Search> {
+    const existing = await this.getSearch(ctx, id);
+    if (!existing) {
+      throw new Error('Search not found');
+    }
+    
     const [updated] = await db
       .update(searches)
       .set(updates)
@@ -439,11 +536,17 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Jobs
-  async getJobs(status?: string, limit = 20): Promise<Job[]> {
+  async getJobs(ctx: RequestContext, status?: string, limit = 20): Promise<Job[]> {
     let query = db.select().from(jobs);
     
+    const conditions = [];
     if (status) {
-      query = query.where(eq(jobs.status, status as any));
+      conditions.push(eq(jobs.status, status as any));
+    }
+    
+    const whereClause = scopedWhere(jobs, ctx, conditions.length > 0 ? conditions : undefined);
+    if (whereClause) {
+      query = query.where(whereClause) as any;
     }
     
     return await query
@@ -451,17 +554,26 @@ export class DatabaseStorage implements IStorage {
       .limit(limit);
   }
 
-  async getJob(id: string): Promise<Job | undefined> {
-    const [job] = await db.select().from(jobs).where(eq(jobs.id, id));
+  async getJob(ctx: RequestContext, id: string): Promise<Job | undefined> {
+    const whereClause = scopedWhere(jobs, ctx, [eq(jobs.id, id)]);
+    if (!whereClause) {
+      return undefined;
+    }
+    const [job] = await db.select().from(jobs).where(whereClause);
     return job || undefined;
   }
 
-  async createJob(job: InsertJob): Promise<Job> {
-    const [created] = await db.insert(jobs).values(job).returning();
+  async createJob(ctx: RequestContext, job: InsertJob): Promise<Job> {
+    const [created] = await db.insert(jobs).values({ ...job, userId: getEffectiveUserId(ctx) }).returning();
     return created;
   }
 
-  async updateJob(id: string, updates: Partial<Job>): Promise<Job> {
+  async updateJob(ctx: RequestContext, id: string, updates: Partial<Job>): Promise<Job> {
+    const existing = await this.getJob(ctx, id);
+    if (!existing) {
+      throw new Error('Job not found');
+    }
+    
     const [updated] = await db
       .update(jobs)
       .set(updates)
@@ -470,26 +582,41 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async getActiveJobs(): Promise<Job[]> {
-    return await db
+  async getActiveJobs(ctx: RequestContext): Promise<Job[]> {
+    let query = db
       .select()
       .from(jobs)
-      .where(or(eq(jobs.status, "queued"), eq(jobs.status, "running")))
       .orderBy(desc(jobs.createdAt));
+    
+    const whereClause = scopedWhere(jobs, ctx, [or(eq(jobs.status, "queued"), eq(jobs.status, "running")) as SQL]);
+    if (whereClause) {
+      query = query.where(whereClause) as any;
+    }
+    
+    return await query;
   }
 
   // Import Records
-  async getImportRecord(id: string): Promise<ImportRecord | undefined> {
-    const [record] = await db.select().from(importRecords).where(eq(importRecords.id, id));
+  async getImportRecord(ctx: RequestContext, id: string): Promise<ImportRecord | undefined> {
+    const whereClause = scopedWhere(importRecords, ctx, [eq(importRecords.id, id)]);
+    if (!whereClause) {
+      return undefined;
+    }
+    const [record] = await db.select().from(importRecords).where(whereClause);
     return record || undefined;
   }
 
-  async createImportRecord(record: InsertImportRecord): Promise<ImportRecord> {
-    const [created] = await db.insert(importRecords).values(record).returning();
+  async createImportRecord(ctx: RequestContext, record: InsertImportRecord): Promise<ImportRecord> {
+    const [created] = await db.insert(importRecords).values({ ...record, userId: getEffectiveUserId(ctx) }).returning();
     return created;
   }
 
-  async updateImportRecord(id: string, updates: Partial<InsertImportRecord>): Promise<ImportRecord> {
+  async updateImportRecord(ctx: RequestContext, id: string, updates: Partial<InsertImportRecord>): Promise<ImportRecord> {
+    const existing = await this.getImportRecord(ctx, id);
+    if (!existing) {
+      throw new Error('Import record not found');
+    }
+    
     const [updated] = await db
       .update(importRecords)
       .set(updates)
@@ -499,28 +626,44 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Sequences
-  async getSequences(limit = 20): Promise<Sequence[]> {
-    return await db
+  async getSequences(ctx: RequestContext, limit = 20): Promise<Sequence[]> {
+    let query = db
       .select()
       .from(sequences)
       .orderBy(desc(sequences.createdAt))
       .limit(limit);
+    
+    const whereClause = scopedWhere(sequences, ctx);
+    if (whereClause) {
+      query = query.where(whereClause) as any;
+    }
+    
+    return await query;
   }
 
-  async getSequence(id: string): Promise<Sequence | undefined> {
-    const [sequence] = await db.select().from(sequences).where(eq(sequences.id, id));
+  async getSequence(ctx: RequestContext, id: string): Promise<Sequence | undefined> {
+    const whereClause = scopedWhere(sequences, ctx, [eq(sequences.id, id)]);
+    if (!whereClause) {
+      return undefined;
+    }
+    const [sequence] = await db.select().from(sequences).where(whereClause);
     return sequence || undefined;
   }
 
-  async createSequence(sequence: InsertSequence): Promise<Sequence> {
+  async createSequence(ctx: RequestContext, sequence: InsertSequence): Promise<Sequence> {
     const [created] = await db
       .insert(sequences)
-      .values({ ...sequence, updatedAt: new Date() })
+      .values({ ...sequence, userId: getEffectiveUserId(ctx), updatedAt: new Date() })
       .returning();
     return created;
   }
 
-  async updateSequence(id: string, updates: Partial<Sequence>): Promise<Sequence> {
+  async updateSequence(ctx: RequestContext, id: string, updates: Partial<Sequence>): Promise<Sequence> {
+    const existing = await this.getSequence(ctx, id);
+    if (!existing) {
+      throw new Error('Sequence not found');
+    }
+    
     const [updated] = await db
       .update(sequences)
       .set({ ...updates, updatedAt: new Date() })
@@ -529,12 +672,22 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async deleteSequence(id: string): Promise<void> {
+  async deleteSequence(ctx: RequestContext, id: string): Promise<void> {
+    const existing = await this.getSequence(ctx, id);
+    if (!existing) {
+      throw new Error('Sequence not found');
+    }
+    
     await db.delete(sequences).where(eq(sequences.id, id));
   }
 
   // Sequence Steps
-  async getSequenceSteps(sequenceId: string): Promise<SequenceStep[]> {
+  async getSequenceSteps(ctx: RequestContext, sequenceId: string): Promise<SequenceStep[]> {
+    const sequence = await this.getSequence(ctx, sequenceId);
+    if (!sequence) {
+      throw new Error('Sequence not found');
+    }
+    
     return await db
       .select()
       .from(sequenceSteps)
@@ -542,7 +695,12 @@ export class DatabaseStorage implements IStorage {
       .orderBy(sequenceSteps.stepOrder);
   }
 
-  async createSequenceStep(step: InsertSequenceStep): Promise<SequenceStep> {
+  async createSequenceStep(ctx: RequestContext, step: InsertSequenceStep): Promise<SequenceStep> {
+    const sequence = await this.getSequence(ctx, step.sequenceId);
+    if (!sequence) {
+      throw new Error('Sequence not found');
+    }
+    
     const [created] = await db
       .insert(sequenceSteps)
       .values({ ...step, updatedAt: new Date() })
@@ -550,18 +708,34 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
-  async deleteSequenceStep(stepId: string): Promise<void> {
+  async deleteSequenceStep(ctx: RequestContext, stepId: string): Promise<void> {
+    const [step] = await db.select().from(sequenceSteps).where(eq(sequenceSteps.id, stepId));
+    if (!step) {
+      throw new Error('Sequence step not found');
+    }
+    
+    const sequence = await this.getSequence(ctx, step.sequenceId);
+    if (!sequence) {
+      throw new Error('Sequence not found');
+    }
+    
     await db.delete(sequenceSteps).where(eq(sequenceSteps.id, stepId));
   }
 
   // Sequence Prospects
-  async getSequenceProspects(sequenceId: string): Promise<Array<SequenceProspect & { prospect?: Prospect }>> {
-    return await db
+  async getSequenceProspects(ctx: RequestContext, sequenceId: string): Promise<Array<SequenceProspect & { prospect?: Prospect }>> {
+    const sequence = await this.getSequence(ctx, sequenceId);
+    if (!sequence) {
+      throw new Error('Sequence not found');
+    }
+    
+    const results = await db
       .select({
         id: sequenceProspects.id,
         sequenceId: sequenceProspects.sequenceId,
         prospectId: sequenceProspects.prospectId,
         currentStepId: sequenceProspects.currentStepId,
+        automationRunId: sequenceProspects.automationRunId,
         status: sequenceProspects.status,
         enrolledAt: sequenceProspects.enrolledAt,
         lastContactedAt: sequenceProspects.lastContactedAt,
@@ -574,9 +748,26 @@ export class DatabaseStorage implements IStorage {
       .from(sequenceProspects)
       .leftJoin(prospects, eq(sequenceProspects.prospectId, prospects.id))
       .where(eq(sequenceProspects.sequenceId, sequenceId));
+    
+    return results.map(r => ({
+      ...r,
+      prospect: r.prospect || undefined
+    }));
   }
 
-  async enrollProspects(sequenceId: string, prospectIds: string[]): Promise<SequenceProspect[]> {
+  async enrollProspects(ctx: RequestContext, sequenceId: string, prospectIds: string[]): Promise<SequenceProspect[]> {
+    const sequence = await this.getSequence(ctx, sequenceId);
+    if (!sequence) {
+      throw new Error('Sequence not found');
+    }
+    
+    for (const prospectId of prospectIds) {
+      const prospect = await this.getProspect(ctx, prospectId);
+      if (!prospect) {
+        throw new Error(`Prospect ${prospectId} not found`);
+      }
+    }
+    
     const enrolled: SequenceProspect[] = [];
     for (const prospectId of prospectIds) {
       const [result] = await db
@@ -594,7 +785,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Emails
-  async getSequenceEmails(sequenceId: string): Promise<Email[]> {
+  async getSequenceEmails(ctx: RequestContext, sequenceId: string): Promise<Email[]> {
+    const sequence = await this.getSequence(ctx, sequenceId);
+    if (!sequence) {
+      throw new Error('Sequence not found');
+    }
+    
     return await db
       .select()
       .from(emails)
@@ -602,8 +798,13 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Email Replies
-  async getEmailReplies(sequenceId: string): Promise<Array<EmailReply & { prospect?: Prospect }>> {
-    return await db
+  async getEmailReplies(ctx: RequestContext, sequenceId: string): Promise<Array<EmailReply & { prospect?: Prospect | undefined }>> {
+    const sequence = await this.getSequence(ctx, sequenceId);
+    if (!sequence) {
+      throw new Error('Sequence not found');
+    }
+    
+    const results = await db
       .select({
         id: emailReplies.id,
         emailId: emailReplies.emailId,
@@ -621,20 +822,42 @@ export class DatabaseStorage implements IStorage {
       .leftJoin(prospects, eq(emailReplies.prospectId, prospects.id))
       .where(eq(emailReplies.sequenceId, sequenceId))
       .orderBy(desc(emailReplies.receivedAt));
+    
+    return results.map(r => ({
+      ...r,
+      prospect: r.prospect || undefined
+    }));
   }
 
-  async createEmailReply(reply: InsertEmailReply): Promise<EmailReply> {
+  async createEmailReply(ctx: RequestContext, reply: InsertEmailReply): Promise<EmailReply> {
+    if (reply.sequenceId) {
+      const sequence = await this.getSequence(ctx, reply.sequenceId);
+      if (!sequence) {
+        throw new Error('Sequence not found');
+      }
+    }
+    
     const [created] = await db.insert(emailReplies).values(reply).returning();
     return created;
   }
 
   // Personalization
-  async createPersonalizationResult(result: InsertPersonalizationResult): Promise<PersonalizationResult> {
+  async createPersonalizationResult(ctx: RequestContext, result: InsertPersonalizationResult): Promise<PersonalizationResult> {
+    const prospect = await this.getProspect(ctx, result.prospectId);
+    if (!prospect) {
+      throw new Error('Prospect not found');
+    }
+    
     const [created] = await db.insert(personalizationResults).values(result).returning();
     return created;
   }
 
-  async getPersonalizationResult(prospectId: string): Promise<PersonalizationResult | undefined> {
+  async getPersonalizationResult(ctx: RequestContext, prospectId: string): Promise<PersonalizationResult | undefined> {
+    const prospect = await this.getProspect(ctx, prospectId);
+    if (!prospect) {
+      return undefined;
+    }
+    
     const [result] = await db
       .select()
       .from(personalizationResults)
@@ -645,21 +868,37 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Content Library
-  async getContentLibraryItems(): Promise<ContentLibraryItem[]> {
-    return await db.select().from(contentLibrary).orderBy(desc(contentLibrary.createdAt));
+  async getContentLibraryItems(ctx: RequestContext): Promise<ContentLibraryItem[]> {
+    let query = db.select().from(contentLibrary).orderBy(desc(contentLibrary.createdAt));
+    
+    const whereClause = scopedWhere(contentLibrary, ctx);
+    if (whereClause) {
+      query = query.where(whereClause) as any;
+    }
+    
+    return await query;
   }
 
-  async getContentLibraryItem(id: string): Promise<ContentLibraryItem | undefined> {
-    const [item] = await db.select().from(contentLibrary).where(eq(contentLibrary.id, id));
+  async getContentLibraryItem(ctx: RequestContext, id: string): Promise<ContentLibraryItem | undefined> {
+    const whereClause = scopedWhere(contentLibrary, ctx, [eq(contentLibrary.id, id)]);
+    if (!whereClause) {
+      return undefined;
+    }
+    const [item] = await db.select().from(contentLibrary).where(whereClause);
     return item || undefined;
   }
 
-  async createContentLibraryItem(item: InsertContentLibraryItem): Promise<ContentLibraryItem> {
-    const [created] = await db.insert(contentLibrary).values(item).returning();
+  async createContentLibraryItem(ctx: RequestContext, item: InsertContentLibraryItem): Promise<ContentLibraryItem> {
+    const [created] = await db.insert(contentLibrary).values({ ...item, userId: getEffectiveUserId(ctx) }).returning();
     return created;
   }
 
-  async updateContentLibraryItem(id: string, updates: Partial<InsertContentLibraryItem>): Promise<ContentLibraryItem> {
+  async updateContentLibraryItem(ctx: RequestContext, id: string, updates: Partial<InsertContentLibraryItem>): Promise<ContentLibraryItem> {
+    const existing = await this.getContentLibraryItem(ctx, id);
+    if (!existing) {
+      throw new Error('Content library item not found');
+    }
+    
     const [updated] = await db
       .update(contentLibrary)
       .set({ ...updates, updatedAt: new Date() })
@@ -668,7 +907,12 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async deleteContentLibraryItem(id: string): Promise<void> {
+  async deleteContentLibraryItem(ctx: RequestContext, id: string): Promise<void> {
+    const existing = await this.getContentLibraryItem(ctx, id);
+    if (!existing) {
+      throw new Error('Content library item not found');
+    }
+    
     await db.delete(contentLibrary).where(eq(contentLibrary.id, id));
   }
 }
