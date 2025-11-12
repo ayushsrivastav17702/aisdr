@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { authService, AuthUser } from '../services/auth.service';
+import { auditService } from '../services/audit.service';
 import { RequestContext } from '../storage';
 
 declare global {
@@ -40,6 +41,7 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
     
     if (actingAs) {
       console.log(`🔐 Admin impersonation: ${user.email} (${user.id}) acting as user ${actingAs}`);
+      auditService.logImpersonation(req, actingAs);
     }
     
     req.userContext = {
@@ -82,6 +84,7 @@ export function optionalAuth(req: Request, res: Response, next: NextFunction) {
         } else {
           if (actingAs) {
             console.log(`🔐 Admin impersonation: ${user.email} (${user.id}) acting as user ${actingAs}`);
+            auditService.logImpersonation(req, actingAs);
           }
           req.userContext = {
             userId: user.id,
