@@ -10,7 +10,7 @@ export interface InvitationEmailData {
 }
 
 export class EmailService {
-  private fromEmail = 'onboarding@resend.dev'; // Default Resend test email
+  private fromEmail = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev'; // Configurable sender email
   private productName = 'AI SDR Platform';
 
   async sendInvitationEmail(data: InvitationEmailData): Promise<void> {
