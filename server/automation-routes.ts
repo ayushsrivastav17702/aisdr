@@ -4,6 +4,7 @@ import automationService from "./services/automation.service";
 import { db } from "./db";
 import { sequences } from "@shared/schema";
 import { eq } from "drizzle-orm";
+import { authenticate } from "./middleware/auth.middleware";
 
 // Request schemas
 const startAutomationSchema = z.object({
@@ -24,10 +25,15 @@ const startAutomationSchema = z.object({
 export function registerAutomationRoutes(app: Express) {
   /**
    * POST /api/automation/start
-   * Start a new automation run
+   * Start a new automation run (PROTECTED: requires authentication)
    */
-  app.post("/api/automation/start", async (req: Request, res: Response) => {
+  app.post("/api/automation/start", authenticate, async (req: Request, res: Response) => {
     try {
+      // Ensure userId is available for multi-tenant security
+      if (!req.userContext?.userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
       // Validate request body
       const validatedBody = startAutomationSchema.parse(req.body);
       const { sequenceId, prospectSource, prospectCount, aiPersonalizationEnabled, apolloFilters } = validatedBody;
@@ -49,9 +55,10 @@ export function registerAutomationRoutes(app: Express) {
         });
       }
 
-      // Create automation run record
+      // Create automation run record with userId for multi-tenant isolation
       const automationRun = await automationService.createAutomationRun({
         sequenceId,
+        userId: req.userContext.userId, // Store user ID for tenant isolation
         prospectCount,
         aiPersonalizationEnabled,
         apolloFilters,
@@ -59,17 +66,18 @@ export function registerAutomationRoutes(app: Express) {
         prospectsAdded: 0,
         emailsSent: 0,
         repliesReceived: 0,
-        createdBy: 1, // TODO: Get from auth middleware
+        createdBy: 1, // Legacy field, keeping for compatibility
       });
 
-      // Start processing in background (don't await)
+      // Start processing in background (don't await) with userId for mailbox selection
       automationService.processAutomation(
         automationRun.id,
         sequenceId,
         prospectSource,
         prospectCount,
         aiPersonalizationEnabled,
-        apolloFilters
+        apolloFilters,
+        req.userContext.userId // Pass userId for user-scoped mailbox selection
       ).catch(err => {
         console.error(`Automation ${automationRun.id} background processing failed:`, err);
       });

@@ -63,6 +63,7 @@ async function initializeSequence(userContext: RequestContext, sequenceId: strin
         body: firstStep.body,
         scheduledFor,
         priority: 5,
+        userId: userContext.userId, // Pass userId for user-scoped mailbox selection
       });
       
       console.log(`  ✅ Added email to queue for prospect ${enrolledProspect.prospectId}`);
@@ -823,6 +824,11 @@ router.post("/sequences/send-reply", async (req, res) => {
       }
     }
     
+    // Ensure userId is available (should always be present via authenticate middleware)
+    if (!req.userContext?.userId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
     // Add to email queue with immediate sending (scheduled for now)
     const queueItem = await emailQueueService.addToQueue({
       prospectId,
@@ -833,6 +839,7 @@ router.post("/sequences/send-reply", async (req, res) => {
       priority: 1, // High priority
       inReplyTo,
       references,
+      userId: req.userContext.userId, // Pass userId for user-scoped mailbox selection
     });
     
     console.log(`📧 Reply queued for sending: ${queueItem.id}`);
