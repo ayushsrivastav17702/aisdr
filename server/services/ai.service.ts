@@ -343,7 +343,13 @@ class AIService {
       }
     }`;
 
-    // Check if model supports JSON mode (OpenAI and Anthropic models do, but not all models on OpenRouter)
+    // JSON Mode Compatibility Check
+    // OpenAI's response_format: { type: "json_object" } is only supported by:
+    // - OpenAI models (gpt-4o, gpt-4, gpt-3.5-turbo)
+    // - Anthropic models (claude-sonnet-4, etc.) via OpenRouter
+    // Models like Gemini, Llama, and most open-source models do NOT support this feature
+    // For unsupported models, we omit response_format and parse markdown code blocks instead
+    // See AI_PROVIDER.md for full compatibility matrix and model recommendations
     const supportsJsonMode = DEFAULT_OPENROUTER_MODEL.includes('openai/') || 
                              DEFAULT_OPENROUTER_MODEL.includes('anthropic/');
     

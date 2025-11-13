@@ -122,6 +122,9 @@ export async function generateEmail(request: EmailGenerationRequest): Promise<Ge
       // OpenRouter fallback - uses OpenAI-compatible API
       (client) => {
         const openRouterModel = process.env.OPENROUTER_MODEL || "openai/gpt-4o";
+        
+        // JSON Mode Compatibility: Only OpenAI and Anthropic models support response_format
+        // See AI_PROVIDER.md for full compatibility matrix
         const supportsJsonMode = openRouterModel.includes('openai/') || openRouterModel.includes('anthropic/');
         
         const requestParams: any = {
