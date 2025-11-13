@@ -36,6 +36,106 @@ export default function SequencesPage() {
   return <SequencesList />;
 }
 
+// Pre-defined sequence templates
+const SEQUENCE_TEMPLATES = [
+  {
+    id: 'cold-outreach',
+    name: 'Cold Outreach',
+    description: 'Classic 4-step cold outreach sequence for new prospects',
+    icon: Mail,
+    category: 'Sales',
+    steps: [
+      {
+        subject: 'Quick question about {{companyName}}',
+        body: '<p>Hi {{firstName}},</p><p>I noticed {{companyName}} is growing fast in the {{industry}} space. I wanted to reach out because we help companies like yours solve [specific problem].</p><p>Would you be open to a quick 15-minute call this week to explore how we can help?</p><p>Best regards</p>',
+        delayDays: 0,
+      },
+      {
+        subject: 'Following up - {{companyName}}',
+        body: '<p>Hi {{firstName}},</p><p>I wanted to follow up on my previous email. I understand you\'re busy, so I\'ll keep this brief.</p><p>We\'ve helped similar companies in {{industry}} achieve [specific result]. I think we could do the same for {{companyName}}.</p><p>Are you available for a quick chat this week?</p><p>Thanks!</p>',
+        delayDays: 3,
+      },
+      {
+        subject: 'Thought you might find this helpful',
+        body: '<p>Hi {{firstName}},</p><p>I came across this case study that reminded me of {{companyName}}. [Company X] faced similar challenges and saw [specific results] after implementing our solution.</p><p>I thought this might be relevant to your goals. Would you like to discuss how we can help {{companyName}} achieve similar results?</p><p>Let me know!</p>',
+        delayDays: 5,
+      },
+      {
+        subject: 'Should I close your file?',
+        body: '<p>Hi {{firstName}},</p><p>I haven\'t heard back from you, so I\'m assuming this isn\'t a priority right now. I\'ll go ahead and close your file.</p><p>If I\'m wrong and you\'d still like to explore how we can help {{companyName}}, just reply to this email and I\'ll reopen it.</p><p>All the best!</p>',
+        delayDays: 7,
+      },
+    ],
+  },
+  {
+    id: 'product-launch',
+    name: 'Product Launch',
+    description: '3-step sequence for announcing new products or features',
+    icon: Sparkles,
+    category: 'Marketing',
+    steps: [
+      {
+        subject: 'Exciting news for {{companyName}}!',
+        body: '<p>Hi {{firstName}},</p><p>I\'m excited to share that we just launched [Product Name], designed specifically for companies like {{companyName}} in the {{industry}} space.</p><p>[Product Name] helps you [key benefit] without [common pain point].</p><p>I\'d love to give you an exclusive early access demo. Are you available this week?</p><p>Cheers!</p>',
+        delayDays: 0,
+      },
+      {
+        subject: 'Early access demo for {{companyName}}',
+        body: '<p>Hi {{firstName}},</p><p>Just wanted to make sure you saw my email about [Product Name]. We\'re offering early access to select companies, and I thought {{companyName}} would be a perfect fit.</p><p>The demo only takes 20 minutes, and I think you\'ll love what you see.</p><p>Can I book you in for this week?</p><p>Thanks!</p>',
+        delayDays: 4,
+      },
+      {
+        subject: 'Last chance for early access',
+        body: '<p>Hi {{firstName}},</p><p>We\'re closing early access registration soon, and I didn\'t want {{companyName}} to miss out.</p><p>Companies that have seen the demo are already seeing [specific results]. I\'d hate for you to miss this opportunity.</p><p>Let me know if you\'d like to jump on a quick call!</p><p>Best,</p>',
+        delayDays: 6,
+      },
+    ],
+  },
+  {
+    id: 'follow-up',
+    name: 'Follow-up Sequence',
+    description: 'Gentle 3-step follow-up for warm leads',
+    icon: Reply,
+    category: 'Sales',
+    steps: [
+      {
+        subject: 'Following up from our conversation',
+        body: '<p>Hi {{firstName}},</p><p>It was great speaking with you about {{companyName}}\'s goals. As promised, I\'m sending over some additional information that might be helpful.</p><p>[Attach relevant resources or links]</p><p>Let me know if you have any questions, or if you\'d like to schedule a follow-up call.</p><p>Thanks!</p>',
+        delayDays: 0,
+      },
+      {
+        subject: 'Checking in - {{companyName}}',
+        body: '<p>Hi {{firstName}},</p><p>I wanted to check in and see if you had a chance to review the information I sent over.</p><p>I\'m happy to answer any questions or set up a time to discuss next steps.</p><p>Looking forward to hearing from you!</p>',
+        delayDays: 4,
+      },
+      {
+        subject: 'Any questions about what we discussed?',
+        body: '<p>Hi {{firstName}},</p><p>I haven\'t heard back, so I wanted to make sure everything is clear on your end.</p><p>If you need more information or would like to explore this further, just let me know. Otherwise, I\'ll follow up in a few weeks.</p><p>Thanks for your time!</p>',
+        delayDays: 6,
+      },
+    ],
+  },
+  {
+    id: 'reengagement',
+    name: 'Re-engagement',
+    description: '2-step sequence to re-engage inactive prospects',
+    icon: RefreshCw,
+    category: 'Sales',
+    steps: [
+      {
+        subject: 'Are you still interested in [solution]?',
+        body: '<p>Hi {{firstName}},</p><p>We spoke a while back about how we could help {{companyName}} with [specific challenge]. I wanted to reach out and see if this is still a priority for you.</p><p>A lot has changed since we last spoke - we\'ve added [new features/results] that I think would be really valuable for {{companyName}}.</p><p>Would you like to reconnect for a quick call?</p><p>Best,</p>',
+        delayDays: 0,
+      },
+      {
+        subject: 'Last check-in for {{companyName}}',
+        body: '<p>Hi {{firstName}},</p><p>I understand priorities change, so this will be my last email unless I hear back from you.</p><p>If you\'re still interested in [solution], I\'d be happy to reconnect. Otherwise, I wish you and {{companyName}} all the best!</p><p>Thanks,</p>',
+        delayDays: 5,
+      },
+    ],
+  },
+];
+
 function SequencesList() {
   const { data: sequences, isLoading } = useQuery({
     queryKey: ["/api/sequences"],
@@ -166,6 +266,8 @@ function CreateSequenceButton() {
   const [creationMethod, setCreationMethod] = useState<'scratch' | 'template' | 'ai' | 'auto-ai' | null>(null);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [selectedTemplate, setSelectedTemplate] = useState<string | null>(null);
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -192,12 +294,41 @@ function CreateSequenceButton() {
     },
   });
 
+  const aiGenerateMutation = useMutation({
+    mutationFn: async (data: { prompt: string; name: string; method: 'ai' | 'auto-ai' }) => {
+      const res = await apiRequest("POST", "/api/sequences/generate-with-ai", data);
+      return await res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sequences"] });
+      toast({ title: "AI-powered sequence created successfully" });
+      setShowMethodSelector(false);
+      setCreationMethod(null);
+      setName("");
+      setDescription("");
+      setAiPrompt("");
+      // Navigate to the newly created sequence builder
+      if (data?.sequence?.id) {
+        setLocation(`/sequences/${data.sequence.id}`);
+      }
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: "Failed to generate sequence", 
+        description: error?.message || "Please try again",
+        variant: "destructive" 
+      });
+    },
+  });
+
   const handleMethodSelect = (method: 'scratch' | 'template' | 'ai' | 'auto-ai') => {
     setCreationMethod(method);
   };
 
   const handleBackToMethods = () => {
     setCreationMethod(null);
+    setSelectedTemplate(null);
+    setAiPrompt("");
   };
 
   return (
@@ -348,28 +479,268 @@ function CreateSequenceButton() {
               </div>
             </div>
           ) : creationMethod === 'template' ? (
-            <div className="text-center py-8">
+            <div className="space-y-4">
               <Button variant="ghost" onClick={handleBackToMethods} data-testid="button-back">
                 <ArrowLeft className="w-4 h-4 mr-2" />
                 Back to Methods
               </Button>
-              <p className="text-muted-foreground mt-4">Template Library coming soon...</p>
+              
+              <div>
+                <h3 className="text-lg font-semibold mb-4">Choose a Template</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-96 overflow-y-auto">
+                  {SEQUENCE_TEMPLATES.map((template) => {
+                    const IconComponent = template.icon;
+                    return (
+                      <Card
+                        key={template.id}
+                        className={`cursor-pointer transition-colors ${
+                          selectedTemplate === template.id
+                            ? 'border-primary bg-primary/5'
+                            : 'hover:border-primary/50'
+                        }`}
+                        onClick={() => {
+                          setSelectedTemplate(template.id);
+                          setName(template.name);
+                          setDescription(template.description);
+                        }}
+                        data-testid={`template-${template.id}`}
+                      >
+                        <CardHeader className="pb-3">
+                          <div className="flex items-start gap-3">
+                            <div className="w-10 h-10 rounded-lg bg-blue-100 dark:bg-blue-900 flex items-center justify-center flex-shrink-0">
+                              <IconComponent className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <CardTitle className="text-base">{template.name}</CardTitle>
+                              <CardDescription className="text-sm mt-1">{template.description}</CardDescription>
+                              <div className="mt-2 flex items-center gap-2">
+                                <Badge variant="outline" className="text-xs">{template.category}</Badge>
+                                <span className="text-xs text-muted-foreground">{template.steps.length} steps</span>
+                              </div>
+                            </div>
+                          </div>
+                        </CardHeader>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {selectedTemplate && (
+                <div className="space-y-4 pt-4 border-t">
+                  <div>
+                    <Label>Sequence Name</Label>
+                    <Input
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      placeholder="Sequence name"
+                      data-testid="input-template-name"
+                    />
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      onClick={async () => {
+                        if (!name.trim() || !selectedTemplate) return;
+                        
+                        const template = SEQUENCE_TEMPLATES.find(t => t.id === selectedTemplate);
+                        if (!template) return;
+
+                        try {
+                          // Create sequence
+                          const res = await apiRequest("POST", "/api/sequences", {
+                            name,
+                            description: template.description,
+                          });
+                          const sequence = await res.json();
+
+                          // Add template steps
+                          for (const step of template.steps) {
+                            await apiRequest("POST", `/api/sequences/${sequence.id}/steps`, step);
+                          }
+
+                          queryClient.invalidateQueries({ queryKey: ["/api/sequences"] });
+                          toast({ title: "Sequence created from template successfully" });
+                          setShowMethodSelector(false);
+                          setCreationMethod(null);
+                          setName("");
+                          setDescription("");
+                          setSelectedTemplate(null);
+                          setLocation(`/sequences/${sequence.id}`);
+                        } catch (error) {
+                          toast({
+                            title: "Failed to create sequence",
+                            variant: "destructive"
+                          });
+                        }
+                      }}
+                      disabled={!name.trim() || !selectedTemplate}
+                      data-testid="button-create-from-template"
+                    >
+                      Create from Template
+                    </Button>
+                    <Button variant="outline" onClick={handleBackToMethods}>
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
             </div>
           ) : creationMethod === 'ai' ? (
-            <div className="text-center py-8">
+            <div className="space-y-4">
               <Button variant="ghost" onClick={handleBackToMethods} data-testid="button-back">
                 <ArrowLeft className="w-4 h-4 mr-2" />
                 Back to Methods
               </Button>
-              <p className="text-muted-foreground mt-4">AI Generation coming soon...</p>
+              
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-lg font-semibold mb-2">Generate with AI</h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Describe the email you want to create, and AI will generate it for you
+                  </p>
+                </div>
+
+                <div>
+                  <Label>Sequence Name</Label>
+                  <Input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="e.g., Product Demo Outreach"
+                    data-testid="input-ai-name"
+                  />
+                </div>
+
+                <div>
+                  <Label>Describe your email</Label>
+                  <Textarea
+                    value={aiPrompt}
+                    onChange={(e) => setAiPrompt(e.target.value)}
+                    placeholder="e.g., Write a friendly outreach email to software engineers at mid-sized tech companies, introducing our new API product that helps with authentication. Keep it under 100 words and include a clear call-to-action to book a demo."
+                    rows={6}
+                    data-testid="input-ai-prompt"
+                  />
+                  <p className="text-xs text-muted-foreground mt-2">
+                    💡 Tip: Be specific about tone, target audience, and what action you want recipients to take
+                  </p>
+                </div>
+
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => {
+                      if (name.trim() && aiPrompt.trim()) {
+                        aiGenerateMutation.mutate({
+                          name,
+                          prompt: aiPrompt,
+                          method: 'ai'
+                        });
+                      }
+                    }}
+                    disabled={!name.trim() || !aiPrompt.trim() || aiGenerateMutation.isPending}
+                    data-testid="button-generate-ai"
+                  >
+                    {aiGenerateMutation.isPending ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4 mr-2" />
+                        Generate Email
+                      </>
+                    )}
+                  </Button>
+                  <Button variant="outline" onClick={handleBackToMethods}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
             </div>
           ) : (
-            <div className="text-center py-8">
+            <div className="space-y-4">
               <Button variant="ghost" onClick={handleBackToMethods} data-testid="button-back">
                 <ArrowLeft className="w-4 h-4 mr-2" />
                 Back to Methods
               </Button>
-              <p className="text-muted-foreground mt-4">Auto Create with AI coming soon...</p>
+              
+              <div className="space-y-4">
+                <div>
+                  <h3 className="text-lg font-semibold mb-2">Auto Create with AI</h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    AI will automatically generate a complete multi-step outreach sequence for you
+                  </p>
+                </div>
+
+                <div>
+                  <Label>Sequence Name</Label>
+                  <Input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="e.g., SaaS Product Launch Campaign"
+                    data-testid="input-auto-ai-name"
+                  />
+                </div>
+
+                <div>
+                  <Label>Describe your campaign</Label>
+                  <Textarea
+                    value={aiPrompt}
+                    onChange={(e) => setAiPrompt(e.target.value)}
+                    placeholder="e.g., Create a 4-step cold outreach sequence for CTOs at enterprise companies in the healthcare industry. We're launching a HIPAA-compliant data analytics platform. Tone should be professional yet approachable."
+                    rows={6}
+                    data-testid="input-auto-ai-prompt"
+                  />
+                  <p className="text-xs text-muted-foreground mt-2">
+                    💡 Tip: Include target audience, product/service, industry, desired tone, and any specific requirements
+                  </p>
+                </div>
+
+                <div className="bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+                  <div className="flex items-start gap-3">
+                    <Zap className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+                    <div className="text-sm">
+                      <p className="font-medium text-blue-900 dark:text-blue-100 mb-1">AI will generate:</p>
+                      <ul className="text-blue-700 dark:text-blue-300 space-y-1">
+                        <li>• Initial outreach email (sent immediately)</li>
+                        <li>• Follow-up email (2-3 days later)</li>
+                        <li>• Value-add email (4-5 days later)</li>
+                        <li>• Break-up email (final touchpoint)</li>
+                      </ul>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => {
+                      if (name.trim() && aiPrompt.trim()) {
+                        aiGenerateMutation.mutate({
+                          name,
+                          prompt: aiPrompt,
+                          method: 'auto-ai'
+                        });
+                      }
+                    }}
+                    disabled={!name.trim() || !aiPrompt.trim() || aiGenerateMutation.isPending}
+                    data-testid="button-generate-auto-ai"
+                  >
+                    {aiGenerateMutation.isPending ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Generating Sequence...
+                      </>
+                    ) : (
+                      <>
+                        <Zap className="w-4 h-4 mr-2" />
+                        Auto Create Sequence
+                      </>
+                    )}
+                  </Button>
+                  <Button variant="outline" onClick={handleBackToMethods}>
+                    Cancel
+                  </Button>
+                </div>
+              </div>
             </div>
           )}
         </DialogContent>

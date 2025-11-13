@@ -751,6 +751,192 @@ class AIService {
     
     throw new Error('No AI provider configured. Please set OPENAI_API_KEY, OPENAI_API_KEY_BACKUP, or ANTHROPIC_API_KEY.');
   }
+
+  // Generate email sequence with AI
+  async generateEmailSequence(params: {
+    prompt: string;
+    method: 'ai' | 'auto-ai';
+  }): Promise<{
+    description: string;
+    steps: Array<{
+      subject: string;
+      body: string;
+      delayDays: number;
+    }>;
+  }> {
+    const { prompt, method } = params;
+    
+    let systemPrompt = '';
+    let expectedSteps = 1;
+    
+    if (method === 'auto-ai') {
+      // Auto Create with AI - generates a complete multi-step sequence
+      systemPrompt = `You are an expert SDR email copywriter. Generate a complete, multi-step email outreach sequence based on the user's prompt.
+
+The sequence should include:
+1. Initial outreach email (sent immediately)
+2. Follow-up email (2-3 days later)
+3. Value-add email (4-5 days after follow-up)
+4. Break-up email (5-7 days after value-add)
+
+For each email, provide:
+- subject: Clear, compelling subject line
+- body: Professional email body in HTML format using <p> tags for paragraphs
+- delayDays: Number of days after the previous email (0 for first email)
+
+Rules:
+- Keep emails concise (100-150 words max)
+- Use personalization placeholders: {{firstName}}, {{companyName}}, {{title}}
+- Be professional but friendly
+- Include clear call-to-action
+- Use HTML <p> tags for proper spacing
+
+Return a JSON object with this structure:
+{
+  "description": "Brief description of the sequence",
+  "steps": [
+    {"subject": "...", "body": "...", "delayDays": 0},
+    {"subject": "...", "body": "...", "delayDays": 3},
+    ...
+  ]
+}`;
+      expectedSteps = 4;
+    } else {
+      // Generate with AI - generates a single email
+      systemPrompt = `You are an expert SDR email copywriter. Generate a single, compelling outreach email based on the user's prompt.
+
+Provide:
+- subject: Clear, compelling subject line
+- body: Professional email body in HTML format using <p> tags for paragraphs
+- delayDays: 0 (immediate send)
+
+Rules:
+- Keep email concise (100-150 words max)
+- Use personalization placeholders: {{firstName}}, {{companyName}}, {{title}}
+- Be professional but friendly
+- Include clear call-to-action
+- Use HTML <p> tags for proper spacing
+
+Return a JSON object with this structure:
+{
+  "description": "Brief description",
+  "steps": [
+    {"subject": "...", "body": "...", "delayDays": 0}
+  ]
+}`;
+      expectedSteps = 1;
+    }
+    
+    const userPrompt = `Generate an email sequence with the following requirements:\n\n${prompt}`;
+    
+    // Try OpenAI first (with automatic backup key fallback)
+    if (this.openai || this.openaiBackup) {
+      try {
+        const response = await this.callOpenAI((client) => 
+          client.chat.completions.create({
+            model: DEFAULT_OPENAI_MODEL,
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: userPrompt }
+            ],
+            max_completion_tokens: method === 'auto-ai' ? 2000 : 800,
+            response_format: { type: "json_object" },
+          })
+        );
+        
+        const content = response.choices[0].message.content || '{}';
+        const result = JSON.parse(content);
+        
+        // Validate the response
+        if (!result.steps || !Array.isArray(result.steps) || result.steps.length === 0) {
+          throw new Error('Invalid AI response: missing or empty steps array');
+        }
+        
+        return result;
+      } catch (error: any) {
+        console.error('OpenAI sequence generation failed:', error?.message || error);
+        
+        // If OpenAI fails (including backup), try Anthropic as fallback
+        if (this.anthropic) {
+          console.log('⚠️ OpenAI failed, falling back to Anthropic for sequence generation...');
+          try {
+            const anthropicResponse = await this.anthropic.messages.create({
+              model: DEFAULT_ANTHROPIC_MODEL,
+              max_tokens: method === 'auto-ai' ? 2000 : 800,
+              messages: [
+                { role: "user", content: `${systemPrompt}\n\n${userPrompt}` }
+              ],
+            });
+            
+            const textContent = anthropicResponse.content.find(block => block.type === 'text');
+            if (!textContent || textContent.type !== 'text') {
+              throw new Error('No text response from Anthropic');
+            }
+            
+            // Extract JSON from the response (Anthropic might include extra text)
+            const jsonMatch = textContent.text.match(/\{[\s\S]*\}/);
+            if (!jsonMatch) {
+              throw new Error('Could not extract JSON from Anthropic response');
+            }
+            
+            const result = JSON.parse(jsonMatch[0]);
+            
+            // Validate the response
+            if (!result.steps || !Array.isArray(result.steps) || result.steps.length === 0) {
+              throw new Error('Invalid AI response: missing or empty steps array');
+            }
+            
+            return result;
+          } catch (anthropicError: any) {
+            console.error('Anthropic sequence generation also failed:', anthropicError?.message || anthropicError);
+            throw new Error(`AI sequence generation failed. OpenAI error: ${error?.message}. Anthropic error: ${anthropicError?.message}`);
+          }
+        } else {
+          console.warn('⚠️ Anthropic not configured - cannot fallback. Set ANTHROPIC_API_KEY to enable fallback.');
+          throw error;
+        }
+      }
+    }
+    
+    // If no OpenAI available, try Anthropic directly
+    if (this.anthropic) {
+      try {
+        console.log('🤖 Using Anthropic for sequence generation (OpenAI not configured)...');
+        const response = await this.anthropic.messages.create({
+          model: DEFAULT_ANTHROPIC_MODEL,
+          max_tokens: method === 'auto-ai' ? 2000 : 800,
+          messages: [
+            { role: "user", content: `${systemPrompt}\n\n${userPrompt}` }
+          ],
+        });
+        
+        const textContent = response.content.find(block => block.type === 'text');
+        if (!textContent || textContent.type !== 'text') {
+          throw new Error('No text response from Anthropic');
+        }
+        
+        // Extract JSON from the response (Anthropic might include extra text)
+        const jsonMatch = textContent.text.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+          throw new Error('Could not extract JSON from Anthropic response');
+        }
+        
+        const result = JSON.parse(jsonMatch[0]);
+        
+        // Validate the response
+        if (!result.steps || !Array.isArray(result.steps) || result.steps.length === 0) {
+          throw new Error('Invalid AI response: missing or empty steps array');
+        }
+        
+        return result;
+      } catch (error: any) {
+        console.error('Anthropic sequence generation failed:', error);
+        throw error;
+      }
+    }
+    
+    throw new Error('No AI provider configured. Please set OPENAI_API_KEY, OPENAI_API_KEY_BACKUP, or ANTHROPIC_API_KEY.');
+  }
 }
 
 export const aiService = new AIService();
