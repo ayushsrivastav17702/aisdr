@@ -46,24 +46,38 @@ export class EmailQueueService {
     }
   }
 
-  async processPendingEmails(): Promise<void> {
+  async processPendingEmails(userId?: string): Promise<void> {
     try {
       const now = new Date();
+      
+      // Build where conditions - CRITICAL: Filter by userId when provided for multi-tenancy
+      const whereConditions = [
+        eq(emailQueue.status, "pending"),
+        lte(emailQueue.scheduledFor, now)
+      ];
+      
+      if (userId) {
+        whereConditions.push(eq(emailQueue.userId, userId));
+        console.log(`📨 Processing pending emails for user ${userId}...`);
+      } else {
+        console.log(`📨 Processing pending emails for ALL users (background job)...`);
+      }
+      
       const pendingEmails = await db
         .select()
         .from(emailQueue)
-        .where(
-          and(
-            eq(emailQueue.status, "pending"),
-            lte(emailQueue.scheduledFor, now)
-          )
-        )
+        .where(and(...whereConditions))
         .orderBy(emailQueue.priority, emailQueue.scheduledFor)
         .limit(50);
 
-      console.log(`📨 Processing ${pendingEmails.length} pending emails`);
+      console.log(`📨 Found ${pendingEmails.length} pending emails`);
 
       for (const email of pendingEmails) {
+        // SECURITY: Verify email belongs to the user if userId is provided
+        if (userId && email.userId !== userId) {
+          console.error(`🚨 SECURITY: Skipping email ${email.id} - belongs to user ${email.userId}, not ${userId}`);
+          continue;
+        }
         await this.processEmail(email);
       }
     } catch (error) {
@@ -173,13 +187,14 @@ export class EmailQueueService {
     }
   }
 
-  async getQueueStats(): Promise<{
+  async getQueueStats(userId?: string): Promise<{
     pending: number;
     sent: number;
     failed: number;
     sending: number;
   }> {
-    const [stats] = await db
+    // CRITICAL: Filter by userId for multi-tenancy when provided
+    const query = db
       .select({
         pending: sql<number>`count(*) filter (where ${emailQueue.status} = 'pending')`,
         sending: sql<number>`count(*) filter (where ${emailQueue.status} = 'sending')`,
@@ -187,6 +202,10 @@ export class EmailQueueService {
         failed: sql<number>`count(*) filter (where ${emailQueue.status} = 'failed')`,
       })
       .from(emailQueue);
+    
+    const [stats] = userId 
+      ? await query.where(eq(emailQueue.userId, userId))
+      : await query;
 
     return {
       pending: Number(stats.pending),
