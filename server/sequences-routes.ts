@@ -148,6 +148,7 @@ router.post("/sequences", authenticate, async (req, res) => {
     }
     
     const sequence = await storage.createSequence(req.userContext!, {
+      userId: req.userContext!.userId,
       name,
       description: description || null,
       type: type || "outbound",
@@ -163,6 +164,60 @@ router.post("/sequences", authenticate, async (req, res) => {
   } catch (error) {
     console.error("Error creating sequence:", error);
     res.status(500).json({ error: "Failed to create sequence" });
+  }
+});
+
+// Generate sequence with AI
+router.post("/sequences/generate-with-ai", authenticate, async (req, res) => {
+  try {
+    const { prompt, name, method } = req.body;
+    
+    if (!prompt || !name) {
+      return res.status(400).json({ error: "Prompt and name are required" });
+    }
+    
+    // Import AI service dynamically to avoid circular dependencies
+    const { aiService } = await import("./services/ai.service");
+    
+    // Generate email sequence using AI
+    const generatedSequence = await aiService.generateEmailSequence({
+      prompt,
+      method: method || 'ai', // 'ai' for single email, 'auto-ai' for multi-step
+    });
+    
+    // Create the sequence
+    const sequence = await storage.createSequence(req.userContext!, {
+      userId: req.userContext!.userId,
+      name,
+      description: generatedSequence.description || `Generated with AI: ${prompt}`,
+      type: "outbound",
+      status: "draft",
+      aiPersonalizationEnabled: true,
+      totalProspects: 0,
+      activeProspects: 0,
+      completedProspects: 0,
+      settings: null,
+    });
+    
+    // Add generated steps to the sequence
+    for (let i = 0; i < generatedSequence.steps.length; i++) {
+      const step = generatedSequence.steps[i];
+      await storage.createSequenceStep(req.userContext!, {
+        sequenceId: sequence.id,
+        subject: step.subject,
+        body: step.body,
+        stepOrder: i + 1,
+        delayDays: step.delayDays || 0,
+        stepType: "email",
+        aiGenerated: true,
+        variables: null,
+      });
+    }
+    
+    res.json({ sequence, steps: generatedSequence.steps });
+  } catch (error) {
+    console.error("Error generating sequence with AI:", error);
+    res.status(500).json({ error: error instanceof Error ? error.message : "Failed to generate sequence" });
   }
 });
 
