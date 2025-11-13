@@ -30,21 +30,22 @@ class AutomationService {
 
       if (prospectSource === "existing") {
         // =====================================
-        // STEP 1A: Use existing prospects from database
+        // STEP 1A: Use existing prospects from database (USER-SCOPED)
         // =====================================
-        console.log(`[Automation ${automationRunId}] Using existing prospects from database...`);
+        console.log(`[Automation ${automationRunId}] Using existing prospects for user ${userId}...`);
         
         const { prospects: prospectsTable } = await import("@shared/schema");
         const existingProspects = await db.select({ id: prospectsTable.id })
           .from(prospectsTable)
+          .where(eq(prospectsTable.userId, userId)) // CRITICAL: Filter by userId for multi-tenancy
           .limit(prospectCount);
         
         if (existingProspects.length === 0) {
-          throw new Error('No existing prospects found in database');
+          throw new Error('No existing prospects found in database for this user');
         }
 
         savedProspectIds = existingProspects.map(p => p.id);
-        console.log(`[Automation ${automationRunId}] Found ${savedProspectIds.length} existing prospects`);
+        console.log(`[Automation ${automationRunId}] Found ${savedProspectIds.length} existing prospects for user ${userId}`);
 
         // Update automation run with prospects added
         await db.update(automationRuns)
@@ -153,36 +154,42 @@ class AutomationService {
         console.log(`[Automation ${automationRunId}] Found ${contacts.length} prospects from Apollo`);
 
         // =====================================
-        // STEP 2: Save prospects to database
+        // STEP 2: Save prospects to database (USER-SCOPED)
         // =====================================
         for (const contact of contacts) {
         try {
           const prospect = await apolloService.convertApolloContactToProspect(contact);
           
-          // Check if prospect already exists - build condition array to avoid undefined in or()
+          // Check if prospect already exists FOR THIS USER - build condition array to avoid undefined in or()
           const existingProspects = await db.query.prospects.findFirst({
-            where: (prospects, { eq, or }) => {
-              const conditions = [eq(prospects.primaryEmail, prospect.primaryEmail)];
+            where: (prospects, { eq, or, and }) => {
+              const conditions = [
+                eq(prospects.userId, userId), // CRITICAL: Filter by userId for multi-tenancy
+                eq(prospects.primaryEmail, prospect.primaryEmail)
+              ];
               if (prospect.apolloId) {
                 conditions.push(eq(prospects.apolloId, prospect.apolloId));
               }
-              return conditions.length > 1 ? or(...conditions) : conditions[0];
+              return and(...conditions.slice(0, 2), conditions.length > 2 ? or(conditions[1], conditions[2]) : conditions[1]);
             }
           });
 
           let prospectId: string;
           
           if (existingProspects) {
-            console.log(`[Automation ${automationRunId}] Prospect already exists: ${prospect.primaryEmail}`);
+            console.log(`[Automation ${automationRunId}] Prospect already exists for user ${userId}: ${prospect.primaryEmail}`);
             prospectId = existingProspects.id;
           } else {
-            // Save new prospect
+            // Save new prospect with userId
             const { prospects: prospectsTable } = await import("@shared/schema");
             const [newProspect] = await db.insert(prospectsTable)
-              .values(prospect)
+              .values({
+                ...prospect,
+                userId // CRITICAL: Set userId for multi-tenancy
+              })
               .returning();
             prospectId = newProspect.id;
-            console.log(`[Automation ${automationRunId}] Saved new prospect: ${prospect.primaryEmail}`);
+            console.log(`[Automation ${automationRunId}] Saved new prospect for user ${userId}: ${prospect.primaryEmail}`);
           }
 
           savedProspectIds.push(prospectId);
