@@ -11,7 +11,7 @@ import { apiRequest } from '@/lib/queryClient';
 
 export default function AcceptInvitationPage() {
   const [, setLocation] = useLocation();
-  const { setToken: setAuthToken, refreshUser } = useAuth();
+  const { setAuthToken, refreshUser } = useAuth();
   const [token, setToken] = useState('');
   const [email, setEmail] = useState('');
   const [role, setRole] = useState('');
