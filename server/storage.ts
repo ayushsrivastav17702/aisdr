@@ -66,10 +66,18 @@ function scopedWhere<T extends { userId: any }>(
 ): SQL | undefined {
   const conditions: SQL[] = [];
   
+  // CRITICAL: Always filter by userId for multi-tenancy, even for admins
+  // Admins can impersonate using actingAs, but should still see scoped data
   if (!isAdmin(ctx)) {
+    // Regular users always see only their own data
     conditions.push(eq(table.userId, ctx.userId));
   } else if (ctx.actingAs) {
+    // Admins using impersonation see the impersonated user's data
     conditions.push(eq(table.userId, ctx.actingAs));
+  } else {
+    // Admins NOT impersonating still see only their own data (not ALL data)
+    // This prevents accidental cross-tenant data exposure
+    conditions.push(eq(table.userId, ctx.userId));
   }
   
   if (extraConditions) {
