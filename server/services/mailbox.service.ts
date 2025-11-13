@@ -42,15 +42,26 @@ export class MailboxService {
     }
   }
 
-  async getNextMailbox(): Promise<EmailMailbox> {
+  async getNextMailbox(userId?: string): Promise<EmailMailbox> {
+    // Build base conditions
+    const baseConditions = [
+      sql`${emailMailboxes.status} IN ('active', 'warming')`,
+      lt(emailMailboxes.dailySent, sql`${emailMailboxes.dailyLimit}`)
+    ];
+
+    // Add user filtering if userId provided (multi-tenant mode)
+    if (userId) {
+      baseConditions.push(eq(emailMailboxes.userId, userId));
+    }
+
+    // First, try to find user's default mailbox
     const [defaultMailbox] = await db
       .select()
       .from(emailMailboxes)
       .where(
         and(
           eq(emailMailboxes.isDefault, true),
-          sql`${emailMailboxes.status} IN ('active', 'warming')`,
-          lt(emailMailboxes.dailySent, sql`${emailMailboxes.dailyLimit}`)
+          ...baseConditions
         )
       )
       .limit(1);
@@ -63,22 +74,22 @@ export class MailboxService {
         })
         .where(eq(emailMailboxes.id, defaultMailbox.id));
 
+      console.log(`✅ Selected default mailbox for user ${userId || 'system'}: ${defaultMailbox.email}`);
       return defaultMailbox;
     }
 
+    // Fallback: Get available mailboxes for this user, ordered by last used
     const availableMailboxes = await db
       .select()
       .from(emailMailboxes)
-      .where(
-        and(
-          sql`${emailMailboxes.status} IN ('active', 'warming')`,
-          lt(emailMailboxes.dailySent, sql`${emailMailboxes.dailyLimit}`)
-        )
-      )
-      .orderBy(emailMailboxes.roundRobinOrder);
+      .where(and(...baseConditions))
+      .orderBy(emailMailboxes.lastUsedAt);
 
     if (availableMailboxes.length === 0) {
-      throw new Error("No available mailboxes");
+      const errorMsg = userId 
+        ? `No available mailboxes for user ${userId}. Please add a mailbox in Settings.`
+        : "No available mailboxes in the system";
+      throw new Error(errorMsg);
     }
 
     const mailbox = availableMailboxes[0];
@@ -86,11 +97,11 @@ export class MailboxService {
     await db
       .update(emailMailboxes)
       .set({
-        roundRobinOrder: sql`${emailMailboxes.roundRobinOrder} + 1`,
         lastUsedAt: new Date(),
       })
       .where(eq(emailMailboxes.id, mailbox.id));
 
+    console.log(`✅ Selected mailbox for user ${userId || 'system'}: ${mailbox.email}`);
     return mailbox;
   }
 

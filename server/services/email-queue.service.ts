@@ -17,9 +17,16 @@ export class EmailQueueService {
     priority?: number;
     inReplyTo?: string;
     references?: string;
+    userId: string; // REQUIRED: User ID for multi-tenant mailbox selection
   }): Promise<EmailQueueItem> {
     try {
-      const mailbox = await mailboxService.getNextMailbox();
+      // Validate userId is provided (critical for multi-tenant security)
+      if (!queueData.userId) {
+        throw new Error("userId is required for email queue - multi-tenant security violation");
+      }
+
+      // Select mailbox scoped to the user
+      const mailbox = await mailboxService.getNextMailbox(queueData.userId);
 
       const [queueItem] = await db
         .insert(emailQueue)
@@ -31,7 +38,7 @@ export class EmailQueueService {
         })
         .returning();
 
-      console.log(`📬 Added email to queue: ${queueItem.id} (scheduled for ${queueData.scheduledFor})`);
+      console.log(`📬 Added email to queue: ${queueItem.id} for user ${queueData.userId} using mailbox ${mailbox.email} (scheduled for ${queueData.scheduledFor})`);
       return queueItem;
     } catch (error) {
       console.error("Failed to add email to queue:", error);

@@ -19,7 +19,8 @@ class AutomationService {
     prospectSource: "apollo" | "existing",
     prospectCount: number,
     aiPersonalizationEnabled: boolean,
-    apolloFilters?: any
+    apolloFilters: any | undefined,
+    userId: string // Required for multi-tenant mailbox selection
   ): Promise<void> {
     console.log(`[Automation ${automationRunId}] Starting automation...`);
     console.log(`[Automation ${automationRunId}] Source: ${prospectSource}, Sequence: ${sequenceId}, Prospects: ${prospectCount}, AI: ${aiPersonalizationEnabled}`);
