@@ -88,6 +88,7 @@ export async function generateEmail(request: EmailGenerationRequest): Promise<Ge
     const prompt = interpolatePrompt(template, context);
 
     const response = await openaiHelper.callWithFallback(
+      // Primary OpenAI call
       (client) =>
         client.chat.completions.create({
           model: "gpt-4o",
@@ -105,7 +106,7 @@ export async function generateEmail(request: EmailGenerationRequest): Promise<Ge
           temperature: 0.7,
           max_tokens: 1000
         }),
-      // Anthropic fallback - cast to any to avoid type mismatch
+      // Anthropic fallback
       (anthropic) =>
         anthropic.messages.create({
           model: "claude-sonnet-4-20250514",
@@ -117,7 +118,35 @@ export async function generateEmail(request: EmailGenerationRequest): Promise<Ge
               content: `${prompt}\n\nRespond with valid JSON only.`
             }
           ]
-        }) as any
+        }) as any,
+      // OpenRouter fallback - uses OpenAI-compatible API
+      (client) => {
+        const openRouterModel = process.env.OPENROUTER_MODEL || "openai/gpt-4o";
+        const supportsJsonMode = openRouterModel.includes('openai/') || openRouterModel.includes('anthropic/');
+        
+        const requestParams: any = {
+          model: openRouterModel,
+          messages: [
+            {
+              role: "system",
+              content: "You are an expert sales development representative for Increff with years of experience writing high-converting cold emails. Always respond with valid JSON and follow the exact structure and constraints provided."
+            },
+            {
+              role: "user",
+              content: prompt
+            }
+          ],
+          temperature: 0.7,
+          max_tokens: 1000
+        };
+        
+        // Only add response_format for models that support it
+        if (supportsJsonMode) {
+          requestParams.response_format = { type: "json_object" };
+        }
+        
+        return client.chat.completions.create(requestParams);
+      }
     );
 
     // Handle both OpenAI and Anthropic response formats
