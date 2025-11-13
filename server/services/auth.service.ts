@@ -12,6 +12,7 @@ if (!process.env.SESSION_SECRET) {
 const JWT_SECRET: string = process.env.SESSION_SECRET;
 const JWT_EXPIRES_IN = '7d';
 const SESSION_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days in milliseconds
+const SESSION_IDLE_TIMEOUT = 30 * 60 * 1000; // 30 minutes of inactivity
 const INVITATION_TOKEN_LENGTH = 32;
 const INVITATION_EXPIRY_HOURS = 72; // 3 days
 
@@ -107,7 +108,7 @@ export class AuthService {
     }
   }
 
-  async validateSession(token: string): Promise<AuthUser | null> {
+  async validateSession(token: string, checkIdleTimeout: boolean = true): Promise<AuthUser | null> {
     const decoded = this.verifyToken(token);
     if (!decoded) {
       return null;
@@ -129,6 +130,14 @@ export class AuthService {
       return null;
     }
 
+    if (checkIdleTimeout) {
+      const idleTime = Date.now() - new Date(session.lastActivity).getTime();
+      if (idleTime > SESSION_IDLE_TIMEOUT) {
+        await db.delete(userSessions).where(eq(userSessions.id, session.id));
+        return null;
+      }
+    }
+
     const [user] = await db.select().from(users).where(eq(users.id, decoded.userId)).limit(1);
 
     if (!user || user.status !== 'active') {
@@ -147,6 +156,53 @@ export class AuthService {
       lastName: user.lastName,
       role: user.role as 'admin' | 'user',
       status: user.status as 'active' | 'inactive' | 'suspended',
+    };
+  }
+
+  async refreshSession(token: string): Promise<SessionData | null> {
+    const decoded = this.verifyToken(token);
+    if (!decoded) {
+      return null;
+    }
+
+    const [session] = await db
+      .select()
+      .from(userSessions)
+      .where(
+        and(
+          eq(userSessions.id, decoded.sessionId),
+          eq(userSessions.userId, decoded.userId),
+          gt(userSessions.expiresAt, new Date())
+        )
+      )
+      .limit(1);
+
+    if (!session) {
+      return null;
+    }
+
+    const idleTime = Date.now() - new Date(session.lastActivity).getTime();
+    if (idleTime > SESSION_IDLE_TIMEOUT) {
+      await db.delete(userSessions).where(eq(userSessions.id, session.id));
+      return null;
+    }
+
+    const newExpiresAt = new Date(Date.now() + SESSION_MAX_AGE);
+    await db
+      .update(userSessions)
+      .set({ 
+        lastActivity: new Date(),
+        expiresAt: newExpiresAt
+      })
+      .where(eq(userSessions.id, session.id));
+
+    const newToken = this.generateToken(decoded.userId, session.id);
+
+    return {
+      userId: decoded.userId,
+      sessionId: session.id,
+      token: newToken,
+      expiresAt: newExpiresAt,
     };
   }
 
