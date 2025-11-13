@@ -95,8 +95,16 @@ router.post('/api/auth/refresh', async (req, res) => {
     const newSession = await authService.refreshSession(token);
 
     if (!newSession) {
+      auditService.logFromRequest(req, 'SESSION_REFRESH_FAILED', 'auth', { 
+        reason: 'Session expired or invalid'
+      });
       return res.status(401).json({ error: 'Session expired or invalid' });
     }
+
+    auditService.logFromRequest(req, 'SESSION_REFRESHED', 'auth', { 
+      userId: newSession.userId,
+      sessionId: newSession.sessionId
+    });
 
     res.json({
       token: newSession.token,

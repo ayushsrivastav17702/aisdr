@@ -23,11 +23,16 @@ class RateLimiter {
       const entry = this.store.get(identifier);
 
       if (!entry || now > entry.resetTime) {
+        const resetTime = now + windowMs;
         this.store.set(identifier, {
           count: 1,
-          resetTime: now + windowMs,
+          resetTime,
         });
         this.cleanupExpiredEntries();
+        
+        res.setHeader('X-RateLimit-Limit', maxRequests.toString());
+        res.setHeader('X-RateLimit-Remaining', (maxRequests - 1).toString());
+        res.setHeader('X-RateLimit-Reset', new Date(resetTime).toISOString());
         return next();
       }
 

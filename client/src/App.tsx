@@ -26,6 +26,11 @@ function Router() {
           <AdminPanel />
         </ProtectedRoute>
       </Route>
+      <Route path="/users">
+        <ProtectedRoute requireAdmin>
+          <AdminPanel />
+        </ProtectedRoute>
+      </Route>
       <Route path="/profile">
         <ProtectedRoute>
           <ProfilePage />
