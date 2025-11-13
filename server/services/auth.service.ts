@@ -144,10 +144,12 @@ export class AuthService {
       return null;
     }
 
-    await db
-      .update(userSessions)
-      .set({ lastActivity: new Date() })
-      .where(eq(userSessions.id, session.id));
+    if (checkIdleTimeout) {
+      await db
+        .update(userSessions)
+        .set({ lastActivity: new Date() })
+        .where(eq(userSessions.id, session.id));
+    }
 
     return {
       id: user.id,
@@ -184,6 +186,11 @@ export class AuthService {
     const idleTime = Date.now() - new Date(session.lastActivity).getTime();
     if (idleTime > SESSION_IDLE_TIMEOUT) {
       await db.delete(userSessions).where(eq(userSessions.id, session.id));
+      return null;
+    }
+
+    const [user] = await db.select().from(users).where(eq(users.id, decoded.userId)).limit(1);
+    if (!user || user.status !== 'active') {
       return null;
     }
 

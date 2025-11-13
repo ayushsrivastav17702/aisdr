@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/auth-context";
 import AISearch from "@/components/ai-search";
 import ProspectsTable from "@/components/prospects-table";
 import ImportWizard from "@/components/import-wizard";
@@ -23,7 +24,8 @@ import {
   Mail,
   Inbox,
   FileText,
-  Zap
+  Zap,
+  Shield
 } from "lucide-react";
 
 export default function Dashboard() {
@@ -31,6 +33,7 @@ export default function Dashboard() {
   const [isImportWizardOpen, setIsImportWizardOpen] = useState(false);
   const [isJobDrawerOpen, setIsJobDrawerOpen] = useState(false);
   const { toast } = useToast();
+  const { user } = useAuth();
 
   // Get active jobs for the jobs button badge
   const { data: activeJobs = [] } = useQuery<any[]>({
@@ -180,6 +183,19 @@ export default function Dashboard() {
           </Button>
           
           <Separator className="my-4" />
+          
+          {user?.role === 'admin' && (
+            <Link href="/users">
+              <Button
+                variant="ghost"
+                className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
+                data-testid="nav-users"
+              >
+                <Shield className="w-4 h-4" />
+                <span>User Management</span>
+              </Button>
+            </Link>
+          )}
           
           <Button
             variant="ghost"
