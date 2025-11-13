@@ -16,7 +16,7 @@ export const emailSendStatusEnum = pgEnum("email_send_status", ["success", "fail
 // Prospects table
 export const prospects = pgTable("prospects", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id"), // Will be required after migration
+  userId: varchar("user_id").notNull(), // Multi-tenant owner - required
   firstName: text("first_name"),
   lastName: text("last_name"),
   fullName: text("full_name"),
@@ -45,7 +45,7 @@ export const prospects = pgTable("prospects", {
 // Searches table
 export const searches = pgTable("searches", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id"), // Will be required after migration
+  userId: varchar("user_id").notNull(), // Multi-tenant owner - required
   extractionName: text("extraction_name"),
   tag: text("tag"),
   query: text("query").notNull(),
@@ -59,7 +59,7 @@ export const searches = pgTable("searches", {
 // Jobs table
 export const jobs = pgTable("jobs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id"), // Will be required after migration
+  userId: varchar("user_id").notNull(), // Multi-tenant owner - required
   type: jobTypeEnum("type").notNull(),
   status: jobStatusEnum("status").default("queued"),
   title: text("title").notNull(),
@@ -80,7 +80,7 @@ export const jobs = pgTable("jobs", {
 // Import records table
 export const importRecords = pgTable("import_records", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id"), // Will be required after migration
+  userId: varchar("user_id").notNull(), // Multi-tenant owner - required
   jobId: varchar("job_id").references(() => jobs.id),
   fileName: text("file_name").notNull(),
   totalRows: integer("total_rows").default(0),
@@ -95,7 +95,7 @@ export const importRecords = pgTable("import_records", {
 // ICP Templates table
 export const icpTemplates = pgTable("icp_templates", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id"), // Will be required after migration
+  userId: varchar("user_id").notNull(), // Multi-tenant owner - required
   name: text("name").notNull(),
   description: text("description"),
   isDefault: boolean("is_default").default(false),
@@ -207,7 +207,7 @@ export type CSVImportRequest = z.infer<typeof csvImportSchema>;
 // Sequences table
 export const sequences = pgTable("sequences", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id"), // Will be required after migration
+  userId: varchar("user_id").notNull(), // Multi-tenant owner - required
   name: text("name").notNull(),
   description: text("description"),
   type: text("type").notNull().default("outbound"),
@@ -255,7 +255,7 @@ export const sequenceProspects = pgTable("sequence_prospects", {
 // Emails table
 export const emails = pgTable("emails", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id"), // Will be required after migration
+  userId: varchar("user_id").notNull(), // Multi-tenant owner - required
   prospectId: varchar("prospect_id").notNull().references(() => prospects.id, { onDelete: "cascade" }),
   sequenceId: varchar("sequence_id").references(() => sequences.id, { onDelete: "set null" }),
   subject: text("subject").notNull(),
@@ -321,7 +321,7 @@ export const personalizationResults = pgTable("personalization_results", {
 // Content library table
 export const contentLibrary = pgTable("content_library", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id"), // Will be required after migration
+  userId: varchar("user_id").notNull(), // Multi-tenant owner - required
   title: text("title").notNull(),
   type: text("type").notNull(),
   description: text("description"),
@@ -440,7 +440,7 @@ export const automationStatusEnum = pgEnum("automation_status", ["running", "com
 // Automation runs table
 export const automationRuns = pgTable("automation_runs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id"), // Will be required after migration
+  userId: varchar("user_id").notNull(), // Multi-tenant owner - required
   sequenceId: varchar("sequence_id").notNull().references(() => sequences.id, { onDelete: "cascade" }),
   prospectCount: integer("prospect_count").notNull(),
   aiPersonalizationEnabled: boolean("ai_personalization_enabled").default(true),
@@ -459,7 +459,7 @@ export const automationRuns = pgTable("automation_runs", {
 // Unsubscribes table
 export const unsubscribes = pgTable("unsubscribes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id"), // Will be required after migration
+  userId: varchar("user_id").notNull(), // Multi-tenant owner - required
   prospectId: varchar("prospect_id").notNull().references(() => prospects.id, { onDelete: "cascade" }),
   email: text("email").notNull(),
   reason: text("reason"),
@@ -502,7 +502,7 @@ export const insertUnsubscribeSchema = createInsertSchema(unsubscribes).omit({
 // Email Mailboxes table
 export const emailMailboxes = pgTable("email_mailboxes", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id"), // Will be required after migration
+  userId: varchar("user_id").notNull(), // Multi-tenant owner - required
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
   provider: mailboxProviderEnum("provider").notNull(),
@@ -549,6 +549,7 @@ export const emailMailboxes = pgTable("email_mailboxes", {
 // Email Queue table
 export const emailQueue = pgTable("email_queue", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(), // Multi-tenant owner - required
   emailId: varchar("email_id").references(() => emails.id, { onDelete: "cascade" }),
   mailboxId: varchar("mailbox_id").notNull().references(() => emailMailboxes.id),
   sequenceId: varchar("sequence_id").references(() => sequences.id, { onDelete: "cascade" }),
@@ -581,6 +582,7 @@ export const emailQueue = pgTable("email_queue", {
 // Email Send Log table
 export const emailSendLog = pgTable("email_send_log", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(), // Multi-tenant owner - required
   queueId: varchar("queue_id").references(() => emailQueue.id),
   mailboxId: varchar("mailbox_id").notNull().references(() => emailMailboxes.id),
   
