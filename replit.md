@@ -1,7 +1,7 @@
 # AI-Powered SDR Platform
 
 ## Overview
-An AI-powered Sales Development Representative (SDR) platform designed to streamline prospect discovery, enrichment, and outreach. It converts natural language queries into structured Apollo.io searches, enriches prospect data, and automates multi-step email sequences with AI-generated, personalized content. The platform aims to enhance sales efficiency by providing a comprehensive solution for lead generation and engagement, from initial search to automated email follow-ups and reply tracking.
+An AI-powered Sales Development Representative (SDR) platform designed to automate prospect discovery, enrichment, and multi-channel outreach. It translates natural language queries into structured searches, enriches prospect data, and automates personalized email sequences. The platform aims to boost sales efficiency by offering a comprehensive solution for lead generation and engagement, from initial search to automated email follow-ups and reply tracking, including a complete multi-user, multi-tenant system with robust security and audit trails.
 
 ## User Preferences
 - I prefer clear and concise explanations.
@@ -11,59 +11,52 @@ An AI-powered Sales Development Representative (SDR) platform designed to stream
 - I prefer to maintain a high level of code quality, with a focus on maintainability and scalability.
 
 ## System Architecture
-The platform is built with a modern web stack:
-- **Frontend**: React, TypeScript, Vite, Tailwind CSS, shadcn/ui for a responsive and intuitive user interface.
-- **Backend**: Express.js with TypeScript for robust API services.
-- **Database**: PostgreSQL (managed by Neon) with Drizzle ORM for data persistence, storing prospects, searches, jobs, and comprehensive email sequence data including mailboxes, queues, and send logs.
-- **AI Integration**: Leverages OpenAI (GPT-4o, GPT-5) or Anthropic (Claude Sonnet 4) for natural language processing, personalized email generation, LinkedIn analysis, and sentiment analysis.
-- **Job Queue**: Utilizes BullMQ (requires Redis/Upstash) for background processing of tasks like enrichment, CSV imports, and email sending.
-- **UI/UX Decisions**: Employs a clean, modern design with a focus on user-friendly workflows for AI search, prospect management, and campaign creation. Key features include a detailed email sequence builder with real-time reply detection, AI-powered email generation with customizable tones, and multi-mailbox email sending with warmup and round-robin capabilities.
-- **Technical Implementations**:
-    - **Natural Language Processing**: Converts user queries into structured Apollo.io filters with intelligent AI and fallback processing.
-    - **AI Search Fallback**: When AI providers fail, uses keyword-based extraction that intelligently detects job titles, locations (70+ global cities including Singapore, London, Tokyo, etc.), known company names (Puma, Nike, etc.), and industries while filtering common stop-words.
-    - **Apollo Industry Filter Fix**: Industries are included in keyword search (`q_keywords`) instead of `organization_industry_tag_ids` to prevent 422 errors from invalid industry tag IDs.
-    - **Email Revelation in Search**: Apollo searches automatically include `reveal_personal_emails=true` to unlock real email addresses during initial search, consuming Apollo credits but eliminating the need for separate enrichment steps.
-    - **Email Sequence Management**: Supports multi-step sequences, prospect enrollment, tracking, and AI-powered personalization based on prospect data.
-    - **AI Email Generation**: One-click generation of personalized emails, A/B test variants, and sentiment analysis.
-    - **Multi-Mailbox Sending**: Securely manages multiple email accounts with round-robin rotation, encryption, and an email warmup system.
-    - **Bulk Operations**: Efficiently enriches multiple prospects simultaneously using Apollo's bulk match API.
-    - **Data Security**: Secure credential encryption (AES-256-CBC with random IV) for email mailboxes.
-    - **API Key Management**: Automatic fallback from primary to backup OpenAI API key when quota is exhausted.
-    - **CSV Import Resilience**: 50MB file size limit, comprehensive logging for debugging large imports, detailed error tracking with row numbers.
-    - **Reply Detection System**: IMAP-based polling that automatically detects prospect replies, matches them to sent emails, and stores them with proper error handling. Includes intelligent reply content cleanup.
-    - **AI Follow-up Generation**: Uses actual reply content from the database for contextual follow-ups.
-    - **Content Library Auto-Selection**: Automatically selects all content library items for compliance validation in AI-generated emails, ensuring brand guidelines are followed.
-    - **Content Library Validation with Auto-Retry**: Enforces content library compliance by automatically retrying AI email generation up to 3 times if violations are detected, ensuring only approved content is used.
-    - **Auto-Enrollment from AI Personalization**: Prospects are automatically enrolled in a sequence when an AI personalized email is created for them.
-    - **Performance Optimizations**: Prospects table page size reduced to 25 items with animated skeleton loading, and URL parameter synchronization for state management.
-    - **Sequence Management**: Complete sequence deletion feature with CASCADE delete constraints ensures clean removal of sequences and all related data.
-    - **High-Speed Email Sending**: Email queue processor runs every 10 seconds for near-instant email delivery.
-    - **Email Formatting for HTML Clients**: AI-generated emails use HTML `<p>` tags with specific styling for proper paragraph spacing in email clients.
-    - **AI Reply Composer**: Fully functional reply dialog allows users to generate AI follow-ups and send replies directly through the platform.
-    - **Email Analytics Tracking**: Email analytics (sent, delivered, opened, replied counts) properly track all sent emails.
-    - **Email Signatures**: Mailboxes support customizable email signatures automatically appended to all outgoing emails.
-    - **Contextual AI Follow-ups**: AI-generated follow-up emails properly reference and build upon previous email conversations, enforcing contextual continuity and proper conversation flow.
-    - **Sequence Builder Performance**: Lazy loading optimization for sequence details, prospects, and replies to eliminate UI lag.
-    - **Email Threading**: Follow-up emails in the same sequence properly thread with previous emails using RFC 5322 Message-ID headers.
-    - **Apollo.io Enrichment Fix**: Removed `reveal_phone_number=true` parameter to resolve "webhook_url required" errors, enabling reliable enrichment with personal email revelation.
-    - **Automation Layer**: Complete background automation system for autonomous prospect imports and sequence enrollment from Apollo.io or existing database prospects.
-    - **Reply Classification System**: Automated sentiment analysis classifies incoming replies as positive, negative, unsubscribe, or neutral, with automatic unsubscribe processing.
-    - **ICP Templates**: Pre-configured Ideal Customer Profile templates for rapid prospect targeting.
-    - **Lead Scoring**: Automated 0-100 scoring algorithm calculates prospect quality based on seniority, data completeness, email quality, phone availability, and LinkedIn presence.
-    - **Duplicate Detection**: Intelligent duplicate prevention checks prospects by email, Apollo ID, LinkedIn URL, and name+company combinations.
-    - **API Rate Limiting**: Enforced rate limits on Apollo API calls to manage usage and credit consumption.
-    - **Advanced Apollo Filters**: Extended search capabilities include revenue range filtering, technology stack identification, and funding stage targeting.
-    - **Smart Search Fallback**: Multi-strategy Apollo search system automatically tries alternative approaches when initial search returns zero results. Falls back from strict filter matching → keyword search → seniority-only search, maximizing prospect discovery while maintaining relevance. Provides user feedback on which strategy successfully found results.
-    - **Cascade Delete Constraints**: Email queue properly cascades prospect deletions to prevent foreign key violations, enabling clean bulk prospect deletion.
-    - **Email Sequence Threading**: Manual follow-up steps support "Use previous step's subject line" checkbox that automatically prepends "Re: " to create proper email thread continuity. Preserves user's manual subject when toggling on/off.
-    - **Reply Analytics Fix**: Corrected reply detection to properly update the `replied_at` field in the emails table for accurate sequence analytics. Reply detection now queries the emails table by prospect_id and sequence_id to find the matching email record, then updates its replied_at timestamp when a reply is received.
-    - **Step Deletion Feature**: Users can now delete individual sequence steps through the sequence builder. The DELETE route includes security validation to ensure steps can only be deleted from their parent sequence.
-    - **Contextual AI Email Generation**: AI email personalization and generation now automatically fetches and includes previous sequence step data when generating new emails. This provides contextual continuity, allowing the AI to build upon prior communications naturally and create more coherent follow-up sequences.
+The platform is built on a modern web stack, featuring a multi-tenant architecture designed for scalability, security, and user experience.
+
+### UI/UX Decisions
+- **Design System**: Clean, modern design utilizing Tailwind CSS and shadcn/ui for a responsive and intuitive interface.
+- **Workflow Focus**: User-friendly workflows for AI search, prospect management, and campaign creation.
+- **Key Features**: Detailed email sequence builder with real-time reply detection, AI-powered email generation with customizable tones, multi-mailbox email sending with warmup and round-robin capabilities.
+- **Performance**: Animated skeleton loading, URL parameter synchronization for state management, and lazy loading for large datasets.
+
+### Technical Implementations
+- **Frontend**: React, TypeScript, Vite.
+- **Backend**: Express.js with TypeScript.
+- **Database**: PostgreSQL with Drizzle ORM.
+- **AI Integration**: Leverages OpenAI (GPT-4o, GPT-5) or Anthropic (Claude Sonnet 4) for NLP, email generation, LinkedIn analysis, and sentiment analysis.
+- **Job Queue**: BullMQ (requires Redis/Upstash) for background tasks like enrichment, CSV imports, and email sending.
+- **Authentication & Security**: Email/password authentication (bcrypt 12 rounds), JWT tokens (7-day expiry), 30-minute idle timeout, role-based access control (Admin/User), comprehensive audit logging, and rate limiting.
+- **Multi-Tenancy**: Full multi-user support with RequestContext-based data isolation, user invitation system via Resend, and admin impersonation.
+- **Natural Language Processing**: Converts user queries into structured Apollo.io filters with AI and intelligent fallback mechanisms, including keyword-based extraction for job titles, locations, companies, and industries.
+- **Email Revelation**: Apollo searches automatically include `reveal_personal_emails=true` to acquire personal emails directly.
+- **Email Sequence Management**: Multi-step sequences, prospect enrollment, tracking, AI personalization, and multi-mailbox sending with round-robin rotation and encryption. Includes AI follow-up generation based on actual replies and content library validation with auto-retry.
+- **Bulk Operations**: Efficient enrichment using Apollo's bulk match API.
+- **Data Security**: Secure credential encryption (AES-256-CBC) for mailboxes.
+- **API Key Management**: Automatic fallback for AI provider API keys.
+- **CSV Import Resilience**: 50MB file limit, detailed logging, and error tracking.
+- **Reply Detection**: IMAP-based polling for automatic reply detection, matching, and storage with intelligent content cleanup.
+- **Email Formatting**: AI-generated emails use HTML `<p>` tags for proper spacing.
+- **Email Threading**: Follow-up emails properly thread using RFC 5322 Message-ID headers and "Re:" subject line prefixing for manual steps.
+- **Automation Layer**: Background automation for autonomous prospect imports and sequence enrollment.
+- **Reply Classification**: Automated sentiment analysis (positive, negative, unsubscribe, neutral) with automatic unsubscribe processing.
+- **ICP Templates**: Pre-configured Ideal Customer Profile templates.
+- **Lead Scoring**: Automated 0-100 scoring based on seniority, data completeness, etc.
+- **Duplicate Detection**: Intelligent checks by email, Apollo ID, LinkedIn URL, and name+company.
+- **API Rate Limiting**: Enforced on Apollo API calls.
+- **Advanced Search**: Revenue range, technology stack, and funding stage filtering.
+- **Smart Search Fallback**: Multi-strategy Apollo search (strict filter -> keyword -> seniority-only) to maximize results.
+- **Cascade Deletes**: Ensures clean removal of sequences and related data.
+- **Session Security**: 30-minute idle timeout, session refresh, and automatic invalidation on password changes.
+- **Audit Logging**: Comprehensive JSONB-based audit trail for authentication, user management, and impersonation events.
+- **Rate Limiting**: Applied to sensitive endpoints like login and invitations.
+- **User Invitation System**: Admin-only invitation creation with email delivery, secure token-based registration, and expiration handling.
+- **Admin Impersonation**: Secure user impersonation for troubleshooting with full audit trails.
 
 ## External Dependencies
-- **Apollo.io**: Primary API for prospect search, data enrichment, and bulk matching.
-- **OpenAI**: Provides AI capabilities for natural language processing, email generation, and LinkedIn personalization.
-- **Anthropic**: Alternative AI provider for natural language processing.
-- **Lusha.io**: Used for email enrichment, serving as a fallback.
-- **PostgreSQL (Neon)**: Cloud-hosted relational database for all application data.
-- **Redis/Upstash**: Required for BullMQ to enable background job processing.
+- **Apollo.io**: Prospect search, data enrichment, and bulk matching API.
+- **OpenAI**: AI capabilities for NLP, email generation, and LinkedIn personalization.
+- **Anthropic**: Alternative AI provider for NLP.
+- **Lusha.io**: Email enrichment service.
+- **PostgreSQL (Neon)**: Cloud-hosted relational database.
+- **Redis/Upstash**: Required for BullMQ job queue.
+- **Resend**: Email service for sending HTML invitation emails.
