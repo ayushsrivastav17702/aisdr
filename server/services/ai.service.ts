@@ -10,6 +10,10 @@ If the user doesn't specify a model, always prefer using "claude-sonnet-4-202505
 */
 const DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-20250514";
 
+// OpenRouter model - can use any OpenRouter-compatible model
+// Popular options: openai/gpt-4o, anthropic/claude-sonnet-4, google/gemini-pro, meta-llama/llama-3.1-405b
+const DEFAULT_OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || "openai/gpt-4o";
+
 interface AIFilters {
   jobTitles?: string[];
   seniority?: string[];
@@ -38,6 +42,7 @@ interface ApolloFilters {
 class AIService {
   private openai: OpenAI | null = null;
   private openaiBackup: OpenAI | null = null;
+  private openRouter: OpenAI | null = null;
   private anthropic: Anthropic | null = null;
   private useBackupKey: boolean = false;
   
@@ -49,6 +54,14 @@ class AIService {
     if (process.env.OPENAI_API_KEY_BACKUP) {
       this.openaiBackup = new OpenAI({ apiKey: process.env.OPENAI_API_KEY_BACKUP });
       console.log('✅ Backup OpenAI API key configured');
+    }
+    
+    if (process.env.OPEN_ROUTER) {
+      this.openRouter = new OpenAI({ 
+        apiKey: process.env.OPEN_ROUTER,
+        baseURL: 'https://openrouter.ai/api/v1'
+      });
+      console.log('✅ OpenRouter configured for AI processing');
     }
     
     if (process.env.ANTHROPIC_API_KEY) {
@@ -93,7 +106,40 @@ class AIService {
   }> {
     const preferredProvider = process.env.AI_PROVIDER || 'openai';
     
-    // If AI_PROVIDER is explicitly set, try that first
+    // If AI_PROVIDER is explicitly set to openrouter, try that first
+    if (preferredProvider === 'openrouter' && this.openRouter) {
+      try {
+        console.log('🤖 Using OpenRouter for AI search parsing (AI_PROVIDER=openrouter)...');
+        return await this.parseWithOpenRouter(query);
+      } catch (openRouterError: any) {
+        console.error('OpenRouter parsing failed:', openRouterError?.message || openRouterError);
+        
+        // Try OpenAI as fallback
+        if (this.openai) {
+          try {
+            console.log('🤖 OpenRouter failed, falling back to OpenAI...');
+            return await this.parseWithOpenAI(query);
+          } catch (openaiError) {
+            console.error('OpenAI parsing also failed:', openaiError);
+          }
+        }
+        
+        // Try Anthropic as next fallback
+        if (this.anthropic) {
+          try {
+            console.log('🤖 Falling back to Anthropic...');
+            return await this.parseWithAnthropic(query);
+          } catch (anthropicError) {
+            console.error('Anthropic parsing also failed:', anthropicError);
+          }
+        }
+        
+        console.log('📝 Using keyword extraction fallback...');
+        return this.fallbackKeywordExtraction(query);
+      }
+    }
+    
+    // If AI_PROVIDER is explicitly set to anthropic, try that first
     if (preferredProvider === 'anthropic' && this.anthropic) {
       try {
         console.log('🤖 Using Anthropic for AI search parsing (AI_PROVIDER=anthropic)...');
@@ -124,10 +170,20 @@ class AIService {
       } catch (openaiError: any) {
         console.error('OpenAI parsing failed:', openaiError?.message || openaiError);
         
-        // If OpenAI fails, try Anthropic as fallback
+        // If OpenAI fails, try OpenRouter next if available
+        if (this.openRouter) {
+          try {
+            console.log('🤖 OpenAI failed, falling back to OpenRouter...');
+            return await this.parseWithOpenRouter(query);
+          } catch (openRouterError) {
+            console.error('OpenRouter parsing also failed:', openRouterError);
+          }
+        }
+        
+        // Then try Anthropic as final AI fallback
         if (this.anthropic) {
           try {
-            console.log('🤖 OpenAI failed, falling back to Anthropic...');
+            console.log('🤖 Falling back to Anthropic...');
             return await this.parseWithAnthropic(query);
           } catch (anthropicError) {
             console.error('Anthropic parsing also failed:', anthropicError);
@@ -136,13 +192,36 @@ class AIService {
           console.warn('⚠️ Anthropic not configured - cannot fallback. Set ANTHROPIC_API_KEY to enable fallback.');
         }
         
-        // If both AI providers fail, use keyword extraction
+        // If all AI providers fail, use keyword extraction
         console.log('📝 Using keyword extraction fallback...');
         return this.fallbackKeywordExtraction(query);
       }
     }
     
-    // If OpenAI not available, try Anthropic
+    // If OpenAI not available, try OpenRouter
+    if (this.openRouter) {
+      try {
+        console.log('🤖 Using OpenRouter for AI search parsing...');
+        return await this.parseWithOpenRouter(query);
+      } catch (openRouterError) {
+        console.error('OpenRouter parsing failed:', openRouterError);
+        
+        // Try Anthropic as fallback
+        if (this.anthropic) {
+          try {
+            console.log('🤖 OpenRouter failed, falling back to Anthropic...');
+            return await this.parseWithAnthropic(query);
+          } catch (anthropicError) {
+            console.error('Anthropic parsing also failed:', anthropicError);
+          }
+        }
+        
+        console.log('📝 Using keyword extraction fallback...');
+        return this.fallbackKeywordExtraction(query);
+      }
+    }
+    
+    // If OpenRouter not available, try Anthropic
     if (this.anthropic) {
       try {
         console.log('🤖 Using Anthropic for AI search parsing...');
@@ -155,7 +234,7 @@ class AIService {
     }
     
     // No AI providers available - use keyword extraction
-    console.warn('⚠️ No AI providers configured. Using keyword extraction. Set OPENAI_API_KEY or ANTHROPIC_API_KEY for better results.');
+    console.warn('⚠️ No AI providers configured. Using keyword extraction. Set OPENAI_API_KEY, OPEN_ROUTER, or ANTHROPIC_API_KEY for better results.');
     return this.fallbackKeywordExtraction(query);
   }
 
@@ -220,6 +299,82 @@ class AIService {
     );
 
     const result = JSON.parse(response.choices[0].message.content || '{}');
+    return {
+      aiFilters: result.aiFilters || {},
+      apolloFilters: this.convertToApolloFilters(result.aiFilters || {})
+    };
+  }
+
+  private async parseWithOpenRouter(query: string): Promise<{
+    aiFilters: AIFilters;
+    apolloFilters: ApolloFilters;
+  }> {
+    if (!this.openRouter) throw new Error('OpenRouter not initialized');
+
+    const systemPrompt = `You are an expert at parsing natural language queries for prospect search. 
+    Convert the user's query into structured filters for finding business prospects.
+    
+    Extract and structure the following information:
+    - Job titles and roles (CEO, CTO, VP Engineering, merchandiser, Merchandising Manager, Visual Merchandiser, etc.)
+    - Seniority levels (C-Level, VP, Director, Manager, Senior, Entry, etc.)
+    - Departments (Engineering, Marketing, Sales, Merchandising, Operations, etc.)
+    - Industries (Fintech, Healthcare, SaaS, Retail, Fashion, Sportswear, etc.)
+    - Company names (Nike, Google, Apple, etc.) - CRITICAL: Extract company names separately AND include in keywords
+    - Company size (employee ranges)
+    - Locations (cities, states, countries)
+    - Keywords for additional search terms
+    
+    IMPORTANT RULES:
+    1. For job titles, include ALL variations (e.g., "merchandiser" -> ["merchandiser", "merchandising manager", "visual merchandiser", "product merchandiser"])
+    2. For company names, ALWAYS put them in BOTH companyNames array AND keywords
+    3. Be flexible with job title matching - include related roles
+    
+    Respond with JSON in this exact format:
+    {
+      "aiFilters": {
+        "jobTitles": ["array of job titles with variations"],
+        "seniority": ["array of seniority levels"],
+        "departments": ["array of departments"],
+        "industries": ["array of industries"],
+        "companySize": {"min": number, "max": number},
+        "locations": ["array of locations"],
+        "companyNames": ["array of company names"],
+        "keywords": ["array of keywords including company names"]
+      }
+    }`;
+
+    // Check if model supports JSON mode (OpenAI and Anthropic models do, but not all models on OpenRouter)
+    const supportsJsonMode = DEFAULT_OPENROUTER_MODEL.includes('openai/') || 
+                             DEFAULT_OPENROUTER_MODEL.includes('anthropic/');
+    
+    const requestParams: any = {
+      model: DEFAULT_OPENROUTER_MODEL,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: query }
+      ],
+      max_tokens: 2048,
+    };
+    
+    // Only add response_format for models that support it
+    if (supportsJsonMode) {
+      requestParams.response_format = { type: "json_object" };
+    }
+
+    const response = await this.openRouter.chat.completions.create(requestParams);
+
+    const rawContent = response.choices[0].message.content || '{}';
+    
+    // Handle potential markdown code blocks for models that don't support JSON mode
+    let jsonText = rawContent;
+    if (!supportsJsonMode) {
+      const jsonMatch = rawContent.match(/```json\s*([\s\S]*?)\s*```/) || rawContent.match(/```\s*([\s\S]*?)\s*```/);
+      if (jsonMatch) {
+        jsonText = jsonMatch[1];
+      }
+    }
+    
+    const result = JSON.parse(jsonText.trim());
     return {
       aiFilters: result.aiFilters || {},
       apolloFilters: this.convertToApolloFilters(result.aiFilters || {})
