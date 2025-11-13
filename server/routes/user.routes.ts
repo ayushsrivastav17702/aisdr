@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authenticate, requireAdmin } from '../middleware/auth.middleware';
+import { auditService } from '../services/audit.service';
 import { db } from '../db';
 import { users, auditLogs } from '@shared/schema';
 import { eq, desc, or, ilike, and, isNull, sql } from 'drizzle-orm';
@@ -177,11 +178,12 @@ router.patch('/api/users/:id', authenticate, requireAdmin, async (req, res) => {
         updatedAt: users.updatedAt,
       });
 
-    await db.insert(auditLogs).values({
-      userId: req.user.id,
-      action: 'user_updated',
-      module: 'user_management',
-      details: { targetUserId: id, changes: updates },
+    auditService.logUserAction(req, 'USER_UPDATED', { 
+      targetUserId: id, 
+      targetEmail: user.email,
+      changes: updates,
+      before: { role: user.role, status: user.status },
+      after: updates
     });
 
     res.json(updatedUser);
@@ -225,11 +227,8 @@ router.patch('/api/users/profile/me', authenticate, async (req, res) => {
         updatedAt: users.updatedAt,
       });
 
-    await db.insert(auditLogs).values({
-      userId: req.user.id,
-      action: 'profile_updated',
-      module: 'user_management',
-      details: { changes: updates },
+    auditService.logUserAction(req, 'PROFILE_UPDATED', { 
+      changes: updates 
     });
 
     res.json(updatedUser);
@@ -269,11 +268,10 @@ router.delete('/api/users/:id', authenticate, requireAdmin, async (req, res) => 
       })
       .where(eq(users.id, id));
 
-    await db.insert(auditLogs).values({
-      userId: req.user.id,
-      action: 'user_deleted',
-      module: 'user_management',
-      details: { targetUserId: id, email: user.email },
+    auditService.logUserAction(req, 'USER_DELETED', { 
+      targetUserId: id, 
+      targetEmail: user.email,
+      role: user.role
     });
 
     res.json({ message: 'User deleted successfully' });
@@ -323,11 +321,10 @@ router.post('/api/users/:id/reactivate', authenticate, requireAdmin, async (req,
         updatedAt: users.updatedAt,
       });
 
-    await db.insert(auditLogs).values({
-      userId: req.user.id,
-      action: 'user_reactivated',
-      module: 'user_management',
-      details: { targetUserId: id, email: user.email },
+    auditService.logUserAction(req, 'USER_REACTIVATED', { 
+      targetUserId: id, 
+      targetEmail: user.email,
+      role: user.role
     });
 
     res.json(reactivatedUser);
