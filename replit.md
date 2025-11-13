@@ -36,6 +36,10 @@ The platform is built on a modern web stack, featuring a multi-tenant architectu
 - **Natural Language Processing**: Converts user queries into structured Apollo.io filters with AI and intelligent fallback mechanisms, including keyword-based extraction for job titles, locations, companies, and industries.
 - **Email Revelation**: Apollo searches automatically include `reveal_personal_emails=true` to acquire personal emails directly.
 - **Email Sequence Management**: Multi-step sequences, prospect enrollment, tracking, AI personalization, and multi-mailbox sending with round-robin rotation and encryption. Includes AI follow-up generation based on actual replies and content library validation with auto-retry.
+- **Sequence Creation Methods**: 3 AI-powered ways to create sequences:
+  - **Template Library**: 4 pre-built templates (Cold Outreach, Product Launch, Follow-up, Re-engagement) with complete email flows
+  - **Generate with AI**: Single-email generation from natural language prompts using GPT-4o/Claude Sonnet 4
+  - **Auto Create with AI**: Full 4-step sequence generation (initial, follow-up, value-add, break-up) from campaign descriptions with automatic AI fallback support
 - **Bulk Operations**: Efficient enrichment using Apollo's bulk match API.
 - **Data Security**: Secure credential encryption (AES-256-CBC) for mailboxes.
 - **API Key Management**: Automatic fallback for AI provider API keys.
