@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authService } from '../services/auth.service';
+import { auditService } from '../services/audit.service';
 import { invitationService } from '../services/invitation.service';
 import { authenticate, requireAdmin } from '../middleware/auth.middleware';
 import { db } from '../db';
@@ -46,8 +47,21 @@ router.post('/api/auth/login', async (req, res) => {
     const session = await authService.login(email, password, ipAddress, userAgent);
 
     if (!session) {
+      auditService.logFromRequest(req, 'LOGIN_FAILED', 'auth', { 
+        email,
+        reason: 'Invalid credentials',
+        ipAddress,
+        userAgent
+      });
       return res.status(401).json({ error: 'Invalid email or password' });
     }
+
+    auditService.logFromRequest(req, 'LOGIN_SUCCESS', 'auth', { 
+      userId: session.userId, 
+      email,
+      ipAddress,
+      userAgent
+    });
 
     res.json({
       token: session.token,
@@ -56,6 +70,12 @@ router.post('/api/auth/login', async (req, res) => {
     });
   } catch (error) {
     if (error instanceof Error && error.message === 'Account is not active') {
+      auditService.logFromRequest(req, 'LOGIN_FAILED', 'auth', { 
+        email: req.body.email || 'unknown',
+        reason: 'Account is not active',
+        ipAddress: req.ip || req.socket.remoteAddress,
+        userAgent: req.headers['user-agent']
+      });
       return res.status(403).json({ error: 'Account is not active' });
     }
     console.error('Login error:', error);
@@ -70,6 +90,7 @@ router.post('/api/auth/logout', authenticate, async (req, res) => {
     }
 
     await authService.logout(req.sessionId, req.user?.id);
+    auditService.logAuth(req, 'LOGOUT');
     res.json({ message: 'Logged out successfully' });
   } catch (error) {
     console.error('Logout error:', error);
@@ -167,6 +188,12 @@ router.post('/api/auth/invitations/accept', async (req, res) => {
       return res.status(500).json({ error: 'Account created but login failed' });
     }
 
+    auditService.logFromRequest(req, 'INVITATION_ACCEPTED', 'auth', { 
+      userId: user.id, 
+      email: user.email,
+      role: user.role 
+    });
+
     res.json({
       message: 'Invitation accepted successfully',
       token: session.token,
@@ -206,6 +233,16 @@ router.post('/api/auth/change-password', authenticate, async (req, res) => {
     const { currentPassword, newPassword } = validationResult.data;
 
     await authService.changePassword(req.user.id, currentPassword, newPassword);
+
+    auditService.logAuth(req, 'PASSWORD_RESET', { 
+      userId: req.user.id,
+      email: req.user.email,
+      requireReauth: true
+    });
+
+    if (req.sessionId) {
+      await authService.logout(req.sessionId, req.user.id);
+    }
 
     res.json({ message: 'Password changed successfully. Please log in again.' });
   } catch (error) {

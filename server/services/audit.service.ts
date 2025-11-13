@@ -18,7 +18,7 @@ class AuditService {
         userId: data.userId || null,
         action: data.action,
         module: data.module || null,
-        details: data.details ? JSON.stringify(data.details) : null,
+        details: data.details || null,
         ipAddress: data.ipAddress || null,
         userAgent: data.userAgent || null,
       });
