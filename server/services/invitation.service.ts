@@ -1,4 +1,5 @@
 import { authService } from './auth.service';
+import { emailService } from './email.service';
 
 export interface InvitationEmailData {
   email: string;
@@ -9,17 +10,24 @@ export interface InvitationEmailData {
 
 export class InvitationService {
   async sendInvitationEmail(data: InvitationEmailData): Promise<void> {
-    const inviteUrl = `${process.env.REPLIT_DEV_DOMAIN || 'http://localhost:5000'}/accept-invitation?token=${data.token}`;
+    const baseUrl = process.env.REPLIT_DEV_DOMAIN 
+      ? `https://${process.env.REPLIT_DEV_DOMAIN}` 
+      : 'http://localhost:5000';
     
-    const expiryHours = Math.round((data.expiresAt.getTime() - Date.now()) / (1000 * 60 * 60));
+    const inviteUrl = `${baseUrl}/accept-invitation?token=${data.token}`;
     
-    console.log('📧 Invitation email (Resend not configured):');
-    console.log('To:', data.email);
-    console.log('Subject: You\'re invited to join the SDR Platform');
-    console.log('Invite URL:', inviteUrl);
-    console.log('Expires in:', expiryHours, 'hours');
-    console.log('---');
-    console.log('Note: To enable actual email sending, set up Resend integration with RESEND_API_KEY');
+    try {
+      await emailService.sendInvitationEmail({
+        to: data.email,
+        inviterName: data.inviterName,
+        inviteUrl,
+        role: 'user',
+      });
+      console.log(`✅ Invitation email sent to ${data.email}`);
+    } catch (error) {
+      console.error(`❌ Failed to send invitation email to ${data.email}:`, error);
+      throw error;
+    }
   }
 
   async createAndSendInvitation(
@@ -30,14 +38,23 @@ export class InvitationService {
   ): Promise<{ id: string; inviteUrl: string }> {
     const invitation = await authService.createInvitation(email, role, invitedBy);
     
-    await this.sendInvitationEmail({
-      email,
-      token: invitation.token,
-      inviterName,
-      expiresAt: invitation.expiresAt,
-    });
-
-    const inviteUrl = `${process.env.REPLIT_DEV_DOMAIN || 'http://localhost:5000'}/accept-invitation?token=${invitation.token}`;
+    const baseUrl = process.env.REPLIT_DEV_DOMAIN 
+      ? `https://${process.env.REPLIT_DEV_DOMAIN}` 
+      : 'http://localhost:5000';
+    
+    const inviteUrl = `${baseUrl}/accept-invitation?token=${invitation.token}`;
+    
+    try {
+      await emailService.sendInvitationEmail({
+        to: email,
+        inviterName,
+        inviteUrl,
+        role,
+      });
+      console.log(`✅ Invitation email sent to ${email}`);
+    } catch (error) {
+      console.error(`❌ Failed to send invitation email to ${email}:`, error);
+    }
 
     return {
       id: invitation.id,
