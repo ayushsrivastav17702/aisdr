@@ -23,7 +23,13 @@ The platform is built on a modern web stack, featuring a multi-tenant architectu
 - **Frontend**: React, TypeScript, Vite.
 - **Backend**: Express.js with TypeScript.
 - **Database**: PostgreSQL with Drizzle ORM.
-- **AI Integration**: Leverages OpenAI (GPT-4o, GPT-5) or Anthropic (Claude Sonnet 4) for NLP, email generation, LinkedIn analysis, and sentiment analysis.
+- **AI Integration**: Multi-provider AI system with automatic fallback support:
+  - **Providers**: OpenAI (primary), OpenRouter (flexible multi-model gateway), Anthropic (fallback)
+  - **Configuration**: Via `AI_PROVIDER` environment variable (openai/openrouter/anthropic)
+  - **Models**: GPT-4o (default), Claude Sonnet 4, or any OpenRouter-compatible model
+  - **Fallback Chain**: Automatic failover on quota exhaustion or errors
+  - **Use Cases**: NLP query parsing, email generation, LinkedIn analysis, sentiment analysis
+  - **See**: [AI_PROVIDER.md](./AI_PROVIDER.md) for comprehensive configuration guide
 - **Job Queue**: BullMQ (requires Redis/Upstash) for background tasks like enrichment, CSV imports, and email sending.
 - **Authentication & Security**: Email/password authentication (bcrypt 12 rounds), JWT tokens (7-day expiry), 30-minute idle timeout, role-based access control (Admin/User), comprehensive audit logging, and rate limiting.
 - **Multi-Tenancy**: Full multi-user support with RequestContext-based data isolation, user invitation system via Resend, and admin impersonation.
@@ -54,9 +60,23 @@ The platform is built on a modern web stack, featuring a multi-tenant architectu
 
 ## External Dependencies
 - **Apollo.io**: Prospect search, data enrichment, and bulk matching API.
-- **OpenAI**: AI capabilities for NLP, email generation, and LinkedIn personalization.
-- **Anthropic**: Alternative AI provider for NLP.
+- **OpenAI**: Primary AI provider for NLP, email generation, and LinkedIn personalization.
+- **OpenRouter**: Multi-model AI gateway providing access to OpenAI, Anthropic, Google, Meta, and other models through a unified API. Supports automatic failover and cost optimization.
+- **Anthropic**: Alternative AI provider for NLP and email generation (Claude Sonnet 4).
 - **Lusha.io**: Email enrichment service.
 - **PostgreSQL (Neon)**: Cloud-hosted relational database.
 - **Redis/Upstash**: Required for BullMQ job queue.
 - **Resend**: Email service for sending HTML invitation emails.
+
+## AI Provider Configuration
+The platform supports multiple AI providers with automatic failover. Configure via environment variables:
+- `AI_PROVIDER`: Primary provider selection (openai/openrouter/anthropic)
+- `OPENAI_API_KEY`: OpenAI API key
+- `OPENAI_API_KEY_BACKUP`: Backup OpenAI key for quota failover
+- `OPEN_ROUTER`: OpenRouter API key (stored in Replit Secrets)
+- `OPENROUTER_MODEL`: Model selection for OpenRouter (defaults to openai/gpt-4o)
+- `ANTHROPIC_API_KEY`: Anthropic API key
+
+**Fallback Chain**: Primary → Backup → OpenRouter → Anthropic → Keyword extraction
+
+For detailed configuration, cost management, and troubleshooting, see [AI_PROVIDER.md](./AI_PROVIDER.md).
