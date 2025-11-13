@@ -16,6 +16,7 @@ export class MailboxService {
     smtpPassword?: string;
     smtpSecure?: boolean;
     apiKey?: string;
+    userId?: string; // User ID for multi-tenant ownership
   }): Promise<EmailMailbox> {
     try {
       const encrypted = {
@@ -34,7 +35,7 @@ export class MailboxService {
         })
         .returning();
 
-      console.log(`✅ Added mailbox: ${mailbox.email}`);
+      console.log(`✅ Added mailbox: ${mailbox.email} for user ${mailboxData.userId || 'system'}`);
       return mailbox;
     } catch (error) {
       console.error("Failed to add mailbox:", error);
@@ -191,6 +192,14 @@ export class MailboxService {
 
   async getAllMailboxes(): Promise<EmailMailbox[]> {
     return await db.select().from(emailMailboxes);
+  }
+
+  async getMailboxesByUserId(userId: string): Promise<EmailMailbox[]> {
+    // SECURITY: Only return mailboxes owned by this user
+    return await db
+      .select()
+      .from(emailMailboxes)
+      .where(eq(emailMailboxes.userId, userId));
   }
 
   async getMailboxById(id: string): Promise<EmailMailbox | undefined> {

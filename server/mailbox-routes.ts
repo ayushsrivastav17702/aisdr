@@ -4,12 +4,18 @@ import { emailSendingService } from "./services/email-sending.service";
 import { emailQueueService } from "./services/email-queue.service";
 import { insertEmailMailboxSchema } from "@shared/schema";
 import { z } from "zod";
+import { authenticate } from "./middleware/auth.middleware";
 
 const router = Router();
 
-router.get("/mailboxes", async (req, res) => {
+router.get("/mailboxes", authenticate, async (req, res) => {
   try {
-    const mailboxes = await mailboxService.getAllMailboxes();
+    // SECURITY: Only show mailboxes owned by the authenticated user
+    if (!req.userContext?.userId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    const mailboxes = await mailboxService.getMailboxesByUserId(req.userContext.userId);
     
     const sanitized = mailboxes.map(m => ({
       ...m,
@@ -26,12 +32,21 @@ router.get("/mailboxes", async (req, res) => {
   }
 });
 
-router.get("/mailboxes/:id", async (req, res) => {
+router.get("/mailboxes/:id", authenticate, async (req, res) => {
   try {
+    if (!req.userContext?.userId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
     const mailbox = await mailboxService.getMailboxById(req.params.id);
     
     if (!mailbox) {
       return res.status(404).json({ error: "Mailbox not found" });
+    }
+
+    // SECURITY: Verify ownership
+    if (mailbox.userId !== req.userContext.userId) {
+      return res.status(403).json({ error: "Access denied" });
     }
     
     const sanitized = {
@@ -49,8 +64,13 @@ router.get("/mailboxes/:id", async (req, res) => {
   }
 });
 
-router.post("/mailboxes", async (req, res) => {
+router.post("/mailboxes", authenticate, async (req, res) => {
   try {
+    // SECURITY: Only allow authenticated users to create mailboxes
+    if (!req.userContext?.userId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
     const mailboxData = insertEmailMailboxSchema.parse(req.body);
     const { name, email, provider, smtpHost, smtpPort, smtpUser, smtpPassword, smtpSecure, apiKey } = mailboxData;
     const mailbox = await mailboxService.addMailbox({
@@ -63,6 +83,7 @@ router.post("/mailboxes", async (req, res) => {
       smtpPassword: smtpPassword || undefined,
       smtpSecure: smtpSecure || undefined,
       apiKey: apiKey || undefined,
+      userId: req.userContext.userId, // Link mailbox to user
     });
     
     const sanitized = {
@@ -85,11 +106,20 @@ router.post("/mailboxes", async (req, res) => {
   }
 });
 
-router.patch("/mailboxes/:id", async (req, res) => {
+router.patch("/mailboxes/:id", authenticate, async (req, res) => {
   try {
+    if (!req.userContext?.userId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
     const mailbox = await mailboxService.getMailboxById(req.params.id);
     if (!mailbox) {
       return res.status(404).json({ error: "Mailbox not found" });
+    }
+
+    // SECURITY: Verify ownership
+    if (mailbox.userId !== req.userContext.userId) {
+      return res.status(403).json({ error: "Access denied" });
     }
 
     const updateData: any = { ...req.body };
@@ -118,12 +148,25 @@ router.patch("/mailboxes/:id", async (req, res) => {
   }
 });
 
-router.put("/mailboxes/:id/status", async (req, res) => {
+router.put("/mailboxes/:id/status", authenticate, async (req, res) => {
   try {
+    if (!req.userContext?.userId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
     const { status } = req.body;
     
     if (!["active", "paused", "error", "warming"].includes(status)) {
       return res.status(400).json({ error: "Invalid status" });
+    }
+
+    // SECURITY: Verify ownership
+    const mailbox = await mailboxService.getMailboxById(req.params.id);
+    if (!mailbox) {
+      return res.status(404).json({ error: "Mailbox not found" });
+    }
+    if (mailbox.userId !== req.userContext.userId) {
+      return res.status(403).json({ error: "Access denied" });
     }
     
     await mailboxService.updateStatus(req.params.id, status);
@@ -134,8 +177,21 @@ router.put("/mailboxes/:id/status", async (req, res) => {
   }
 });
 
-router.delete("/mailboxes/:id", async (req, res) => {
+router.delete("/mailboxes/:id", authenticate, async (req, res) => {
   try {
+    if (!req.userContext?.userId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    // SECURITY: Verify ownership
+    const mailbox = await mailboxService.getMailboxById(req.params.id);
+    if (!mailbox) {
+      return res.status(404).json({ error: "Mailbox not found" });
+    }
+    if (mailbox.userId !== req.userContext.userId) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
     await mailboxService.deleteMailbox(req.params.id);
     res.json({ success: true });
   } catch (error) {
@@ -144,8 +200,21 @@ router.delete("/mailboxes/:id", async (req, res) => {
   }
 });
 
-router.post("/mailboxes/:id/test", async (req, res) => {
+router.post("/mailboxes/:id/test", authenticate, async (req, res) => {
   try {
+    if (!req.userContext?.userId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    // SECURITY: Verify ownership
+    const mailbox = await mailboxService.getMailboxById(req.params.id);
+    if (!mailbox) {
+      return res.status(404).json({ error: "Mailbox not found" });
+    }
+    if (mailbox.userId !== req.userContext.userId) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
     const success = await emailSendingService.testMailbox(req.params.id);
     res.json({ success });
   } catch (error) {
@@ -157,8 +226,21 @@ router.post("/mailboxes/:id/test", async (req, res) => {
   }
 });
 
-router.post("/mailboxes/:id/set-default", async (req, res) => {
+router.post("/mailboxes/:id/set-default", authenticate, async (req, res) => {
   try {
+    if (!req.userContext?.userId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    // SECURITY: Verify ownership
+    const mailbox = await mailboxService.getMailboxById(req.params.id);
+    if (!mailbox) {
+      return res.status(404).json({ error: "Mailbox not found" });
+    }
+    if (mailbox.userId !== req.userContext.userId) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
     await mailboxService.setDefaultMailbox(req.params.id);
     res.json({ success: true });
   } catch (error) {
