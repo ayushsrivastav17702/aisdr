@@ -4,6 +4,7 @@ import Anthropic from '@anthropic-ai/sdk';
 class OpenAIHelper {
   private primaryClient: OpenAI | null = null;
   private backupClient: OpenAI | null = null;
+  private openRouterClient: OpenAI | null = null;
   private anthropic: Anthropic | null = null;
   private useBackupKey: boolean = false;
 
@@ -17,10 +18,22 @@ class OpenAIHelper {
       console.log('✅ Backup OpenAI API key configured');
     }
 
+    if (process.env.OPEN_ROUTER) {
+      this.openRouterClient = new OpenAI({ 
+        apiKey: process.env.OPEN_ROUTER,
+        baseURL: 'https://openrouter.ai/api/v1'
+      });
+      console.log('✅ OpenRouter API key configured');
+    }
+
     if (process.env.ANTHROPIC_API_KEY) {
       this.anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
       console.log('✅ Anthropic API key configured as fallback');
     }
+  }
+
+  getOpenRouterClient(): OpenAI | null {
+    return this.openRouterClient;
   }
 
   getClient(): OpenAI {
@@ -35,25 +48,41 @@ class OpenAIHelper {
 
   async callWithFallback<T>(
     apiCall: (client: OpenAI) => Promise<T>,
-    anthropicFallback?: (anthropic: Anthropic) => Promise<T>
+    anthropicFallback?: (anthropic: Anthropic) => Promise<T>,
+    openRouterFallback?: (client: OpenAI) => Promise<T>
   ): Promise<T> {
     const client = this.getClient();
 
     try {
       return await apiCall(client);
     } catch (error: any) {
-      // If backup key is already active and fails with 429, try Anthropic
-      if (error?.status === 429 && this.useBackupKey && this.anthropic && anthropicFallback) {
+      // If backup key is already active and fails with 429, try OpenRouter then Anthropic
+      if (error?.status === 429 && this.useBackupKey) {
         console.error('⚠️ Backup OpenAI key quota exceeded:', error?.message || error);
-        console.log('⚠️ Falling back to Anthropic...');
         this.useBackupKey = false; // Reset for future requests
         
-        try {
-          return await anthropicFallback(this.anthropic);
-        } catch (anthropicError: any) {
-          console.error('⚠️ Anthropic fallback also failed:', anthropicError?.message || anthropicError);
-          throw new Error(`All AI providers failed. Last error: ${anthropicError?.message || anthropicError}`);
+        // Try OpenRouter first if available
+        if (this.openRouterClient && openRouterFallback) {
+          console.log('⚠️ Falling back to OpenRouter...');
+          try {
+            return await openRouterFallback(this.openRouterClient);
+          } catch (openRouterError: any) {
+            console.error('⚠️ OpenRouter fallback failed:', openRouterError?.message || openRouterError);
+          }
         }
+        
+        // Then try Anthropic if available
+        if (this.anthropic && anthropicFallback) {
+          console.log('⚠️ Falling back to Anthropic...');
+          try {
+            return await anthropicFallback(this.anthropic);
+          } catch (anthropicError: any) {
+            console.error('⚠️ Anthropic fallback also failed:', anthropicError?.message || anthropicError);
+            throw new Error(`All AI providers failed. Last error: ${anthropicError?.message || anthropicError}`);
+          }
+        }
+        
+        throw error;
       }
       
       // Check if it's a quota error (429) and we have a backup
@@ -68,7 +97,17 @@ class OpenAIHelper {
           console.error('⚠️ Backup OpenAI key also failed:', backupError?.message || backupError);
           this.useBackupKey = false; // Reset for future requests
           
-          // If backup also fails and we have Anthropic fallback, try that
+          // Try OpenRouter next if available
+          if (this.openRouterClient && openRouterFallback) {
+            console.log('⚠️ Falling back to OpenRouter...');
+            try {
+              return await openRouterFallback(this.openRouterClient);
+            } catch (openRouterError: any) {
+              console.error('⚠️ OpenRouter fallback failed:', openRouterError?.message || openRouterError);
+            }
+          }
+          
+          // If OpenRouter also fails and we have Anthropic fallback, try that
           if (this.anthropic && anthropicFallback) {
             console.log('⚠️ Falling back to Anthropic...');
             try {
@@ -82,14 +121,27 @@ class OpenAIHelper {
         }
       }
       
-      // If primary fails with 429 and no backup, try Anthropic if available
-      if (error?.status === 429 && !this.backupClient && this.anthropic && anthropicFallback) {
-        console.log('⚠️ OpenAI quota exceeded, falling back to Anthropic...');
-        try {
-          return await anthropicFallback(this.anthropic);
-        } catch (anthropicError: any) {
-          console.error('⚠️ Anthropic fallback failed:', anthropicError?.message || anthropicError);
-          throw new Error(`AI generation failed. OpenAI: ${error?.message}. Anthropic: ${anthropicError?.message}`);
+      // If primary fails with 429 and no backup, try OpenRouter then Anthropic
+      if (error?.status === 429 && !this.backupClient) {
+        // Try OpenRouter first if available
+        if (this.openRouterClient && openRouterFallback) {
+          console.log('⚠️ OpenAI quota exceeded, falling back to OpenRouter...');
+          try {
+            return await openRouterFallback(this.openRouterClient);
+          } catch (openRouterError: any) {
+            console.error('⚠️ OpenRouter fallback failed:', openRouterError?.message || openRouterError);
+          }
+        }
+        
+        // Then try Anthropic if available
+        if (this.anthropic && anthropicFallback) {
+          console.log('⚠️ Falling back to Anthropic...');
+          try {
+            return await anthropicFallback(this.anthropic);
+          } catch (anthropicError: any) {
+            console.error('⚠️ Anthropic fallback failed:', anthropicError?.message || anthropicError);
+            throw new Error(`AI generation failed. OpenAI: ${error?.message}. Anthropic: ${anthropicError?.message}`);
+          }
         }
       }
       
