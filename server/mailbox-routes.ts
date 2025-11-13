@@ -255,9 +255,14 @@ router.post("/mailboxes/:id/set-default", authenticate, async (req, res) => {
   }
 });
 
-router.get("/email-queue/stats", async (req, res) => {
+router.get("/email-queue/stats", authenticate, async (req, res) => {
   try {
-    const stats = await emailQueueService.getQueueStats();
+    if (!req.userContext?.userId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    // Get queue stats for this user only
+    const stats = await emailQueueService.getQueueStats(req.userContext.userId);
     res.json(stats);
   } catch (error) {
     console.error("Get queue stats error:", error);
@@ -265,9 +270,14 @@ router.get("/email-queue/stats", async (req, res) => {
   }
 });
 
-router.post("/email-queue/process", async (req, res) => {
+router.post("/email-queue/process", authenticate, async (req, res) => {
   try {
-    await emailQueueService.processPendingEmails();
+    if (!req.userContext?.userId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    // Process pending emails for this user only
+    await emailQueueService.processPendingEmails(req.userContext.userId);
     res.json({ success: true });
   } catch (error) {
     console.error("Process queue error:", error);
@@ -275,8 +285,13 @@ router.post("/email-queue/process", async (req, res) => {
   }
 });
 
-router.post("/email-queue/:id/cancel", async (req, res) => {
+router.post("/email-queue/:id/cancel", authenticate, async (req, res) => {
   try {
+    if (!req.userContext?.userId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    // TODO: Verify queue item belongs to user before canceling
     await emailQueueService.cancelEmail(req.params.id);
     res.json({ success: true });
   } catch (error) {

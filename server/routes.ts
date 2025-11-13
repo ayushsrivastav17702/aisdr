@@ -51,6 +51,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Save search record
       const search = await storage.createSearch(req.userContext!, {
+        userId: req.userContext!.userId,
         query,
         aiFilters,
         apolloFilters,
@@ -299,6 +300,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           } else {
             // Create new prospect with tag
             const created = await storage.createProspect(req.userContext!, {
+              userId: req.userContext!.userId,
               ...prospectData,
               tags: tag ? [tag] : undefined
             });
@@ -317,6 +319,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let searchRecord = null;
       if (extractionName) {
         searchRecord = await storage.createSearch(req.userContext!, {
+          userId: req.userContext!.userId,
           extractionName,
           tag,
           query: extractionName, // Use extraction name as query for now
