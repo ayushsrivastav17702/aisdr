@@ -49,7 +49,7 @@ export type RequestContext = {
 };
 
 function isAdmin(ctx: RequestContext): boolean {
-  return ctx.roles.includes('admin');
+  return ctx?.roles?.includes('admin') ?? false;
 }
 
 function getEffectiveUserId(ctx: RequestContext): string {

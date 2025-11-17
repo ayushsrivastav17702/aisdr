@@ -1240,7 +1240,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Get AI analysis from intelligent personalization service
-      const insights = await intelligentPersonalizationService.analyzeProspect(prospectId);
+      const insights = await intelligentPersonalizationService.analyzeProspect(req.userContext!, prospectId);
 
       // Transform to match frontend expectations
       const personalizationFactorValues = insights.personalizationFactors.map(f => f.relevance);
@@ -1293,7 +1293,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Get comprehensive AI analysis
-      const insights = await intelligentPersonalizationService.analyzeProspect(prospectId);
+      const insights = await intelligentPersonalizationService.analyzeProspect(req.userContext!, prospectId);
 
       // Calculate personalization score
       const personalizationFactorValues = insights.personalizationFactors.map(f => f.relevance);
