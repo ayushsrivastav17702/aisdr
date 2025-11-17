@@ -1,5 +1,5 @@
 import { openaiHelper } from './openai-helper';
-import { storage } from "../storage";
+import { storage, type RequestContext } from "../storage";
 
 interface ProspectData {
   id: string;
@@ -49,10 +49,10 @@ interface PersonalizationInsights {
 }
 
 class IntelligentPersonalizationService {
-  async analyzeProspect(prospectId: string): Promise<PersonalizationInsights> {
+  async analyzeProspect(ctx: RequestContext, prospectId: string): Promise<PersonalizationInsights> {
     console.log(`🧠 Starting intelligent analysis for prospect ${prospectId}`);
 
-    const prospect = await storage.getProspect(prospectId);
+    const prospect = await storage.getProspect(ctx, prospectId);
     if (!prospect) {
       throw new Error('Prospect not found');
     }
@@ -170,7 +170,7 @@ Respond in JSON format with this exact structure:
       const insights: PersonalizationInsights = JSON.parse(jsonContent);
 
       // Store personalization results
-      await storage.createPersonalizationResult({
+      await storage.createPersonalizationResult(ctx, {
         prospectId,
         personalizationScore: this.calculatePersonalizationScore(insights),
         variables: insights.personalizationFactors,
