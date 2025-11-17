@@ -13,6 +13,7 @@ import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/contexts/auth-context';
 import { queryClient } from '@/lib/queryClient';
 import { api } from '@/lib/api';
 import { 
@@ -113,6 +114,7 @@ export function PersonalizationWizard({
   const [prospectSearchTerm, setProspectSearchTerm] = useState('');
 
   const { toast } = useToast();
+  const { token } = useAuth();
 
   // Reset state when wizard opens with new initial selections
   useEffect(() => {
@@ -161,11 +163,12 @@ export function PersonalizationWizard({
   // Advanced AI analysis mutation
   const advancedAnalyzeMutation = useMutation({
     mutationFn: async (prospectId: string) => {
+      if (!token) throw new Error('Not authenticated');
       const response = await fetch('/api/personalization/advanced-analyze', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({ prospectId })
       });
@@ -192,11 +195,12 @@ export function PersonalizationWizard({
   // Start AI analysis mutation
   const analyzeProspectMutation = useMutation({
     mutationFn: async (prospectId: string) => {
+      if (!token) throw new Error('Not authenticated');
       const response = await fetch('/api/personalization/analyze', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+          'Authorization': `Bearer ${token}`
         },
         body: JSON.stringify({ prospectId })
       });
@@ -231,11 +235,12 @@ export function PersonalizationWizard({
       for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
         console.log(`📧 Email generation attempt ${attempt}/${MAX_RETRIES}`);
         
+        if (!token) throw new Error('Not authenticated');
         const response = await fetch('/api/personalization/generate-email', {
           method: 'POST',
           headers: { 
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+            'Authorization': `Bearer ${token}`
           },
           body: JSON.stringify(data)
         });
@@ -381,12 +386,14 @@ export function PersonalizationWizard({
         });
         
         try {
+          if (!token) throw new Error('Not authenticated');
+          
           // First, analyze this specific prospect
           const analysisResponse = await fetch('/api/personalization/advanced-analyze', {
             method: 'POST',
             headers: { 
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+              'Authorization': `Bearer ${token}`
             },
             body: JSON.stringify({ prospectId })
           });
@@ -402,7 +409,7 @@ export function PersonalizationWizard({
             method: 'POST',
             headers: { 
               'Content-Type': 'application/json',
-              'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+              'Authorization': `Bearer ${token}`
             },
             body: JSON.stringify({
               prospectId,
