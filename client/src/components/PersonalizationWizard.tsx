@@ -96,6 +96,7 @@ export function PersonalizationWizard({
   const [batchMode, setBatchMode] = useState(initialSelectedIds.length > 1);
   const [personalizationData, setPersonalizationData] = useState<PersonalizationData | null>(null);
   const [analysisProgress, setAnalysisProgress] = useState(0);
+  const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0, currentProspect: '' });
   const [generatedEmail, setGeneratedEmail] = useState<any>(null);
   const [batchGeneratedEmails, setBatchGeneratedEmails] = useState<Map<string, any>>(new Map());
   const [activeProspectTab, setActiveProspectTab] = useState<string>('');
@@ -162,7 +163,10 @@ export function PersonalizationWizard({
     mutationFn: async (prospectId: string) => {
       const response = await fetch('/api/personalization/advanced-analyze', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+        },
         body: JSON.stringify({ prospectId })
       });
       if (!response.ok) throw new Error('Failed to perform advanced analysis');
@@ -190,7 +194,10 @@ export function PersonalizationWizard({
     mutationFn: async (prospectId: string) => {
       const response = await fetch('/api/personalization/analyze', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+        },
         body: JSON.stringify({ prospectId })
       });
       if (!response.ok) throw new Error('Failed to analyze prospect');
@@ -226,7 +233,10 @@ export function PersonalizationWizard({
         
         const response = await fetch('/api/personalization/generate-email', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+          },
           body: JSON.stringify(data)
         });
         
@@ -321,10 +331,10 @@ export function PersonalizationWizard({
       return;
     }
     
-    if (batchMode && prospectsToAnalyze.length > 10) {
+    if (batchMode && prospectsToAnalyze.length > 25) {
       toast({
         title: "Too Many Prospects",
-        description: "Please select maximum 10 prospects for batch processing.",
+        description: "Please select maximum 25 prospects for batch processing.",
         variant: "destructive"
       });
       return;
@@ -349,22 +359,40 @@ export function PersonalizationWizard({
     setCurrentStep(3);
     
     if (batchMode && selectedProspectIds.length > 1) {
+      // Initialize batch progress
+      setBatchProgress({ current: 0, total: selectedProspectIds.length, currentProspect: '' });
+      
       // Generate emails for all selected prospects - each with their own analysis
       const emailsMap = new Map();
       let successCount = 0;
       let failCount = 0;
+      const failedProspects: string[] = [];
       
-      for (const prospectId of selectedProspectIds) {
+      for (let i = 0; i < selectedProspectIds.length; i++) {
+        const prospectId = selectedProspectIds[i];
+        const prospect = prospects.find((p: any) => p.id.toString() === prospectId);
+        const prospectName = prospect ? `${prospect.firstName} ${prospect.lastName}` : 'Unknown';
+        
+        // Update progress
+        setBatchProgress({ 
+          current: i + 1, 
+          total: selectedProspectIds.length, 
+          currentProspect: prospectName 
+        });
+        
         try {
           // First, analyze this specific prospect
           const analysisResponse = await fetch('/api/personalization/advanced-analyze', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+            },
             body: JSON.stringify({ prospectId })
           });
           
           if (!analysisResponse.ok) {
-            throw new Error(`Analysis failed for prospect ${prospectId}`);
+            throw new Error(`Analysis failed`);
           }
           
           const analysisData = await analysisResponse.json();
@@ -372,7 +400,10 @@ export function PersonalizationWizard({
           // Then generate email using this prospect's specific analysis
           const emailResponse = await fetch('/api/personalization/generate-email', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${localStorage.getItem('auth_token')}`
+            },
             body: JSON.stringify({
               prospectId,
               personalizationData: analysisData,
@@ -389,37 +420,36 @@ export function PersonalizationWizard({
             successCount++;
           } else {
             failCount++;
-            const prospect = prospects.find((p: any) => p.id.toString() === prospectId);
-            toast({
-              variant: "destructive",
-              title: "Email Generation Failed",
-              description: `Failed to generate email for ${prospect?.firstName} ${prospect?.lastName}`
-            });
+            failedProspects.push(prospectName);
           }
         } catch (error: any) {
           failCount++;
-          const prospect = prospects.find((p: any) => p.id.toString() === prospectId);
-          toast({
-            variant: "destructive",
-            title: "Processing Failed",
-            description: `Error processing ${prospect?.firstName} ${prospect?.lastName}: ${error.message}`
-          });
+          failedProspects.push(prospectName);
+          console.error(`Error processing ${prospectName}:`, error);
         }
       }
+      
+      // Reset progress
+      setBatchProgress({ current: 0, total: 0, currentProspect: '' });
       
       if (successCount > 0) {
         setBatchGeneratedEmails(emailsMap);
         setActiveProspectTab(selectedProspectIds[0]);
         setCurrentStep(4);
+        
+        const successMsg = `Generated ${successCount} personalized email${successCount > 1 ? 's' : ''}`;
+        const failMsg = failCount > 0 ? `\n${failCount} failed: ${failedProspects.slice(0, 3).join(', ')}${failedProspects.length > 3 ? '...' : ''}` : '';
+        
         toast({
           title: "Batch Generation Complete",
-          description: `Generated ${successCount} personalized email${successCount > 1 ? 's' : ''}${failCount > 0 ? `, ${failCount} failed` : ''}`
+          description: successMsg + failMsg,
+          variant: failCount > 0 ? "default" : "default"
         });
       } else {
         toast({
           variant: "destructive",
           title: "Batch Generation Failed",
-          description: "Failed to generate any emails. Please try again."
+          description: `Failed to generate any emails. Failed prospects: ${failedProspects.slice(0, 5).join(', ')}`
         });
       }
     } else {
@@ -624,18 +654,18 @@ export function PersonalizationWizard({
                       // Multiple prospect selection
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium">Select prospects (up to 10):</span>
+                          <span className="text-sm font-medium">Select prospects (up to 25):</span>
                           <div className="flex gap-2">
                             <Button 
                               variant="outline" 
                               size="sm"
                               onClick={() => {
-                                const allIds = (prospects as any[]).slice(0, 10).map(p => p.id.toString());
+                                const allIds = (prospects as any[]).slice(0, 25).map(p => p.id.toString());
                                 setSelectedProspectIds(allIds);
                               }}
                               data-testid="button-select-all"
                             >
-                              Select All
+                              Select All (Max 25)
                             </Button>
                             <Button 
                               variant="outline" 
@@ -1051,22 +1081,44 @@ export function PersonalizationWizard({
                     </div>
                   )}
 
+                  {/* Batch Progress Indicator */}
+                  {batchMode && batchProgress.total > 0 && (
+                    <div className="mt-6 p-4 bg-purple-50 dark:bg-purple-950/30 rounded-lg border border-purple-200 dark:border-purple-800">
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="font-medium">Processing prospects...</span>
+                          <span className="text-purple-600 dark:text-purple-400">
+                            {batchProgress.current} / {batchProgress.total}
+                          </span>
+                        </div>
+                        <Progress value={(batchProgress.current / batchProgress.total) * 100} className="h-2" />
+                        {batchProgress.currentProspect && (
+                          <p className="text-xs text-muted-foreground">
+                            Currently processing: {batchProgress.currentProspect}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   <div className="flex justify-end mt-6">
                     <Button 
                       onClick={handleGenerateEmail}
-                      disabled={generateEmailMutation.isPending}
+                      disabled={generateEmailMutation.isPending || batchProgress.total > 0}
                       className="bg-purple-600 hover:bg-purple-700"
                       data-testid="button-generate-email"
                     >
-                      {generateEmailMutation.isPending ? (
+                      {generateEmailMutation.isPending || batchProgress.total > 0 ? (
                         <>
                           <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                          Generating...
+                          {batchMode && batchProgress.total > 0 
+                            ? `Processing ${batchProgress.current}/${batchProgress.total}...` 
+                            : 'Generating...'}
                         </>
                       ) : (
                         <>
                           <Sparkles className="h-4 w-4 mr-2" />
-                          Generate Personalized Email
+                          Generate Personalized Email{batchMode && selectedProspectIds.length > 1 ? 's' : ''}
                         </>
                       )}
                     </Button>

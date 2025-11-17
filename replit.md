@@ -40,6 +40,7 @@ The platform is built on a modern web stack, featuring a multi-tenant architectu
   - **Template Library**: 4 pre-built templates (Cold Outreach, Product Launch, Follow-up, Re-engagement) with complete email flows
   - **Generate with AI**: Single-email generation from natural language prompts using GPT-4o/Claude Sonnet 4
   - **Auto Create with AI**: Full 4-step sequence generation (initial, follow-up, value-add, break-up) from campaign descriptions with automatic AI fallback support
+- **AI Personalization Wizard**: Batch email personalization supporting up to 25 prospects at once with intelligent analysis, insights, and personalized email generation for each prospect.
 - **Bulk Operations**: Efficient enrichment using Apollo's bulk match API.
 - **Data Security**: Secure credential encryption (AES-256-CBC) for mailboxes.
 - **API Key Management**: Automatic fallback for AI provider API keys.
