@@ -36,6 +36,13 @@ const automationSchema = z.object({
   jobTitle: z.string().optional(),
   company: z.string().optional(),
   location: z.string().optional(),
+  scheduledFor: z.string().optional(),
+  timezone: z.string().default("UTC"),
+  skipContacted: z.boolean().default(true),
+  skipUnsubscribed: z.boolean().default(true),
+  skipDuplicates: z.boolean().default(true),
+  dailyLimit: z.coerce.number().int().min(1).max(1000).default(500),
+  delayBetweenEmails: z.coerce.number().int().min(5).max(300).default(30),
 });
 
 type AutomationFormData = z.infer<typeof automationSchema>;
@@ -65,6 +72,12 @@ export function AutomationModal({
       jobTitle: "",
       company: "",
       location: "",
+      timezone: "UTC",
+      skipContacted: true,
+      skipUnsubscribed: true,
+      skipDuplicates: true,
+      dailyLimit: 500,
+      delayBetweenEmails: 30,
     },
   });
 
@@ -80,6 +93,18 @@ export function AutomationModal({
           prospectSource: data.prospectSource,
           prospectCount: data.prospectCount,
           aiPersonalizationEnabled: data.aiPersonalizationEnabled,
+          scheduledFor: data.scheduledFor,
+          timezone: data.timezone,
+          exclusionRules: {
+            skipContacted: data.skipContacted,
+            skipUnsubscribed: data.skipUnsubscribed,
+            skipDuplicates: data.skipDuplicates,
+          },
+          rateLimitConfig: {
+            dailyLimit: data.dailyLimit,
+            delayBetweenEmails: data.delayBetweenEmails * 1000, // Convert to ms
+            currentDailyCount: 0,
+          },
           apolloFilters: data.prospectSource === "apollo" ? {
             person_titles: data.jobTitle ? [data.jobTitle] : [],
             q_organization_name: data.company || undefined,
