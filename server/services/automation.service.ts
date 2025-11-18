@@ -627,20 +627,53 @@ class AutomationService {
         lastEmailSentAt: null
       };
 
+      // TELEMETRY: Capture rate limit rejection details
+      const telemetry = {
+        automationRunId,
+        userId: run.userId,
+        timestamp: nowISO,
+        currentCount: config.currentDailyCount,
+        dailyLimit: config.dailyLimit,
+        delayBetweenEmails: config.delayBetweenEmails,
+        lastEmailSentAt: config.lastEmailSentAt,
+        lastResetDate: config.lastResetDate
+      };
+
       // Check if delay not satisfied
       if (config.lastEmailSentAt && config.delayBetweenEmails) {
         const lastSentAt = new Date(config.lastEmailSentAt);
         const nextSendAfter = new Date(lastSentAt.getTime() + config.delayBetweenEmails);
         if (now < nextSendAfter) {
+          const delayMs = nextSendAfter.getTime() - now.getTime();
+          const actualDelayMs = Math.max(0, now.getTime() - lastSentAt.getTime()); // Clamp to ≥0
+          
+          // TELEMETRY: Log delay rejection
+          console.warn(`[Rate Limit - Delay] Automation ${automationRunId} rejected`, {
+            ...telemetry,
+            reason: 'DELAY_NOT_SATISFIED',
+            requiredDelayMs: config.delayBetweenEmails,
+            actualDelayMs,
+            nextSendAfter: nextSendAfter.toISOString(),
+            waitTimeMs: delayMs
+          });
+
           return {
             success: false,
-            delayMs: nextSendAfter.getTime() - now.getTime(),
+            delayMs,
             nextSendAfter
           };
         }
       }
 
       // Otherwise, limit reached
+      // TELEMETRY: Log daily limit rejection
+      console.warn(`[Rate Limit - Daily Limit] Automation ${automationRunId} rejected`, {
+        ...telemetry,
+        reason: 'DAILY_LIMIT_REACHED',
+        limitUtilization: `${config.currentDailyCount}/${config.dailyLimit}`,
+        percentageUsed: Math.round((config.currentDailyCount / config.dailyLimit) * 100)
+      });
+
       return { success: false, delayMs: 0, nextSendAfter: null };
     }
 
