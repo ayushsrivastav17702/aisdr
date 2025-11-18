@@ -20,6 +20,7 @@ async function processAutomationJob(job: Job<AutomationJobData>): Promise<void> 
     sequenceId, 
     prospectSource, 
     prospectCount, 
+    selectedProspectIds,
     aiPersonalizationEnabled, 
     apolloFilters, 
     userId 
@@ -78,6 +79,7 @@ async function processAutomationJob(job: Job<AutomationJobData>): Promise<void> 
       sequenceId,
       prospectSource,
       prospectCount,
+      selectedProspectIds,
       aiPersonalizationEnabled,
       apolloFilters,
       userId

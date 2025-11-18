@@ -6,6 +6,7 @@ export interface AutomationJobData {
   sequenceId: string;
   prospectSource: 'apollo' | 'existing';
   prospectCount: number;
+  selectedProspectIds?: string[];
   aiPersonalizationEnabled: boolean;
   apolloFilters?: any;
   userId: string;

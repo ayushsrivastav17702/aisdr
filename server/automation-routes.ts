@@ -12,6 +12,7 @@ const startAutomationSchema = z.object({
   sequenceId: z.string().uuid(),
   prospectSource: z.enum(["apollo", "existing"]).default("apollo"),
   prospectCount: z.number().int().min(1).max(500),
+  selectedProspectIds: z.array(z.string().uuid()).optional(),
   aiPersonalizationEnabled: z.boolean().default(true),
   scheduledFor: z.string().optional(),
   timezone: z.string().default("UTC"),
@@ -53,6 +54,7 @@ export function registerAutomationRoutes(app: Express) {
         sequenceId, 
         prospectSource, 
         prospectCount, 
+        selectedProspectIds,
         aiPersonalizationEnabled, 
         scheduledFor,
         timezone,
@@ -78,6 +80,11 @@ export function registerAutomationRoutes(app: Express) {
         });
       }
 
+      // Store selectedProspectIds in apolloFilters for retrieval later
+      const enhancedApolloFilters = selectedProspectIds && selectedProspectIds.length > 0
+        ? { ...apolloFilters, selectedProspectIds }
+        : apolloFilters;
+
       // Use scheduler service to create and queue automation
       const automationRun = scheduledFor 
         ? await automationSchedulerService.scheduleAutomation({
@@ -86,7 +93,7 @@ export function registerAutomationRoutes(app: Express) {
             prospectCount,
             prospectSource,
             aiPersonalizationEnabled,
-            apolloFilters,
+            apolloFilters: enhancedApolloFilters,
             scheduledFor: new Date(scheduledFor),
             timezone,
             exclusionRules,
@@ -102,7 +109,7 @@ export function registerAutomationRoutes(app: Express) {
             prospectCount,
             prospectSource,
             aiPersonalizationEnabled,
-            apolloFilters,
+            apolloFilters: enhancedApolloFilters,
             timezone,
             exclusionRules,
             rateLimitConfig,
