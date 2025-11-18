@@ -53,6 +53,9 @@ The platform is built on a modern web stack, featuring a multi-tenant architectu
   - **ProspectSelector UI**: Interactive component with checkbox selection, search, select all/clear functionality
   - **Secure Implementation**: Uses Drizzle `and()` to combine userId and prospect ID filters, preventing cross-tenant data access
   - **Data Flow**: Selected IDs stored in apolloFilters JSONB field, passed through scheduler/queue/worker to automation service
+  - **Email Integration**: SequenceStepService schedules first email for each enrolled prospect, integrates with EmailQueueService
+  - **Error Handling**: Individual enrollment failures logged to `errorLog` JSONB field, graceful degradation ensures partial success
+  - **Multi-Tenant Security**: Storage layer enforces userId from RequestContext across personalizationResults and email_send_log tables, preventing cross-tenant data injection
 - **Automation Scheduler**: Production-ready BullMQ-based scheduler with complete Redis resilience:
   - **Queue-Based Scheduling**: BullMQ queue when Redis/Upstash available for persistent, reliable automation scheduling
   - **Graceful Fallback**: Automatic fallback to in-memory timers when Redis unavailable (scheduled runs lost on restart)
