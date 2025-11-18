@@ -71,6 +71,11 @@ function Router() {
           <AutomationDashboard />
         </ProtectedRoute>
       </Route>
+      <Route path="/automation">
+        <ProtectedRoute>
+          <AutomationDashboard />
+        </ProtectedRoute>
+      </Route>
       <Route component={NotFound} />
     </Switch>
   );
