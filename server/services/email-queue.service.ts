@@ -1,8 +1,9 @@
 import { db } from "../db";
-import { emailQueue, InsertEmailQueueItem, EmailQueueItem, prospects, emails } from "@shared/schema";
+import { emailQueue, InsertEmailQueueItem, EmailQueueItem, prospects, emails, sequenceProspects } from "@shared/schema";
 import { eq, and, lte, sql } from "drizzle-orm";
 import { emailSendingService } from "./email-sending.service";
 import { mailboxService } from "./mailbox.service";
+import automationService from "./automation.service";
 
 export class EmailQueueService {
   async addToQueue(queueData: {
@@ -78,6 +79,64 @@ export class EmailQueueService {
           console.error(`🚨 SECURITY: Skipping email ${email.id} - belongs to user ${email.userId}, not ${userId}`);
           continue;
         }
+
+        // =====================================
+        // RATE LIMITING: Atomically reserve send slot
+        // =====================================
+        let automationRunId: string | null = null;
+
+        // Try to find the automation run for this email (if part of automation)
+        if (email.sequenceId && email.prospectId) {
+          const sequenceProspect = await db.query.sequenceProspects.findFirst({
+            where: (sp, { eq, and }) => 
+              and(
+                eq(sp.sequenceId, email.sequenceId),
+                eq(sp.prospectId, email.prospectId)
+              )
+          });
+
+          if (sequenceProspect?.automationRunId) {
+            automationRunId = sequenceProspect.automationRunId;
+
+            // ATOMICALLY reserve send slot (checks limit, delay, and increments counter)
+            const reservation = await automationService.reserveSendSlot(automationRunId);
+            
+            if (!reservation.success) {
+              // Rate limit reached or delay not satisfied
+              if (reservation.delayMs > 0 && reservation.nextSendAfter) {
+                // Delay not satisfied - reschedule for when delay expires
+                await db.update(emailQueue)
+                  .set({ 
+                    scheduledFor: reservation.nextSendAfter,
+                    status: "pending" 
+                  })
+                  .where(eq(emailQueue.id, email.id));
+
+                console.log(`⏱️ Delay not satisfied, rescheduled email ${email.id} for ${reservation.nextSendAfter.toISOString()} (${reservation.delayMs}ms from now)`);
+              } else {
+                // Daily limit reached - reschedule for tomorrow
+                const tomorrow = new Date();
+                tomorrow.setDate(tomorrow.getDate() + 1);
+                tomorrow.setHours(9, 0, 0, 0); // Reschedule for 9 AM tomorrow
+
+                await db.update(emailQueue)
+                  .set({ 
+                    scheduledFor: tomorrow,
+                    status: "pending" 
+                  })
+                  .where(eq(emailQueue.id, email.id));
+
+                console.log(`⏱️ Daily limit reached, rescheduled email ${email.id} for ${tomorrow.toISOString()}`);
+              }
+              continue;
+            }
+            
+            // Slot reserved successfully, proceed to send
+            console.log(`✅ Send slot reserved for automation ${automationRunId}, sending email ${email.id}`);
+          }
+        }
+
+        // Process email - reservation already atomic, no need to track success for counter
         await this.processEmail(email);
       }
     } catch (error) {
@@ -85,7 +144,7 @@ export class EmailQueueService {
     }
   }
 
-  private async processEmail(email: EmailQueueItem): Promise<void> {
+  private async processEmail(email: EmailQueueItem): Promise<boolean> {
     try {
       // Fetch prospect to get actual email address
       const [prospect] = await db
@@ -153,6 +212,7 @@ export class EmailQueueService {
         }
 
         console.log(`✅ Email sent successfully: ${email.id} to ${prospect.primaryEmail}`);
+        return true; // Success
       } else {
         throw new Error(result.error || "Unknown error");
       }
@@ -184,6 +244,8 @@ export class EmailQueueService {
 
         console.log(`🔄 Email retry ${attempts}/${maxAttempts}: ${email.id}`);
       }
+      
+      return false; // Failed to send
     }
   }
 

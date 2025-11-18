@@ -5,7 +5,8 @@ import {
   type AutomationRun,
   type InsertAutomationRun 
 } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { eq, sql as drizzleSql } from "drizzle-orm";
+import { sql } from "drizzle-orm/sql";
 import { apolloService } from "./apollo.service";
 import exclusionFilterService, { type ExclusionRules } from "./exclusion-filter.service";
 
@@ -499,17 +500,19 @@ class AutomationService {
   }
 
   /**
-   * Update rate limit counter
+   * Check if rate limit allows sending (WITHOUT incrementing counter)
+   * Use incrementRateLimitCounter() after successful send
    */
-  async updateRateLimitCounter(automationRunId: string): Promise<boolean> {
+  async checkRateLimit(automationRunId: string): Promise<boolean> {
     const run = await this.getAutomationRun(automationRunId);
     if (!run) return false;
 
     const rateLimitConfig = (run.rateLimitConfig as any) || {
       dailyLimit: 500,
       currentDailyCount: 0,
-      delayBetweenEmails: 30000, // 30 seconds
-      lastResetDate: new Date().toISOString().split('T')[0]
+      delayBetweenEmails: 30000,
+      lastResetDate: new Date().toISOString().split('T')[0],
+      lastEmailSentAt: null
     };
 
     // Reset counter if new day
@@ -517,21 +520,133 @@ class AutomationService {
     if (rateLimitConfig.lastResetDate !== today) {
       rateLimitConfig.currentDailyCount = 0;
       rateLimitConfig.lastResetDate = today;
+      
+      // Save the reset
+      await db.update(automationRuns)
+        .set({ rateLimitConfig: rateLimitConfig as any })
+        .where(eq(automationRuns.id, automationRunId));
     }
 
-    // Check if limit reached
-    if (rateLimitConfig.currentDailyCount >= rateLimitConfig.dailyLimit) {
-      return false; // Rate limit reached
+    // Check if limit reached (but don't increment yet)
+    return rateLimitConfig.currentDailyCount < rateLimitConfig.dailyLimit;
+  }
+
+  /**
+   * Atomically reserve a send slot (check + increment in single transaction)
+   * Uses raw SQL with WHERE clause to prevent race conditions
+   * Returns true if slot reserved, false if rate limit reached or delay not satisfied
+   */
+  async reserveSendSlot(automationRunId: string): Promise<{
+    success: boolean;
+    delayMs: number;
+    nextSendAfter: Date | null;
+  }> {
+    const now = new Date();
+    const nowISO = now.toISOString();
+    const today = now.toISOString().split('T')[0];
+
+    // ATOMIC UPDATE with WHERE clause that checks:
+    // 1. Daily limit not reached  
+    // 2. Delay from last send has elapsed (or no last send)
+    // 3. Reset counter if new day
+    // 4. Handle NULL config for fresh automation runs
+    // Only ONE worker will succeed if limit is at boundary
+    const result = await db.execute(sql`
+      UPDATE automation_runs
+      SET rate_limit_config = CASE
+        -- Handle NULL config (fresh automation) or new day - reset to 1
+        WHEN rate_limit_config IS NULL OR COALESCE(rate_limit_config->>'lastResetDate', ${today}) != ${today} THEN
+          jsonb_build_object(
+            'dailyLimit', COALESCE((rate_limit_config->>'dailyLimit')::int, 500),
+            'currentDailyCount', 1,
+            'delayBetweenEmails', COALESCE((rate_limit_config->>'delayBetweenEmails')::int, 30000),
+            'lastResetDate', ${today}::text,
+            'lastEmailSentAt', ${nowISO}::text
+          )
+        -- Increment counter on same day using || operator (safer than jsonb_set)
+        ELSE
+          rate_limit_config 
+          || jsonb_build_object(
+            'currentDailyCount', COALESCE((rate_limit_config->>'currentDailyCount')::int, 0) + 1,
+            'lastEmailSentAt', ${nowISO}::text
+          )
+        END
+      WHERE id = ${automationRunId}
+      AND (
+        -- Check if config is NULL (fresh) OR resetting (new day) OR within limit on same day
+        rate_limit_config IS NULL
+        OR COALESCE(rate_limit_config->>'lastResetDate', ${today}) != ${today}
+        OR COALESCE((rate_limit_config->>'currentDailyCount')::int, 0) < COALESCE((rate_limit_config->>'dailyLimit')::int, 500)
+      )
+      AND (
+        -- Check delay: config NULL OR no last send OR enough time has elapsed
+        rate_limit_config IS NULL
+        OR rate_limit_config->>'lastEmailSentAt' IS NULL
+        OR (
+          EXTRACT(EPOCH FROM (CURRENT_TIMESTAMP - (rate_limit_config->>'lastEmailSentAt')::timestamp)) * 1000
+          >= COALESCE((rate_limit_config->>'delayBetweenEmails')::int, 0)
+        )
+      )
+      RETURNING id, rate_limit_config, 'success' AS status
+    `);
+
+    if (result.rows.length === 0) {
+      // No row updated means either limit reached or delay not satisfied
+      // Fetch current config to determine why
+      const run = await this.getAutomationRun(automationRunId);
+      if (!run) return { success: false, delayMs: 0, nextSendAfter: null };
+
+      const config = (run.rateLimitConfig as any) || {
+        dailyLimit: 500,
+        currentDailyCount: 0,
+        delayBetweenEmails: 30000,
+        lastEmailSentAt: null
+      };
+
+      // Check if delay not satisfied
+      if (config.lastEmailSentAt && config.delayBetweenEmails) {
+        const lastSentAt = new Date(config.lastEmailSentAt);
+        const nextSendAfter = new Date(lastSentAt.getTime() + config.delayBetweenEmails);
+        if (now < nextSendAfter) {
+          return {
+            success: false,
+            delayMs: nextSendAfter.getTime() - now.getTime(),
+            nextSendAfter
+          };
+        }
+      }
+
+      // Otherwise, limit reached
+      return { success: false, delayMs: 0, nextSendAfter: null };
     }
 
-    // Increment counter
+    return { success: true, delayMs: 0, nextSendAfter: null };
+  }
+
+  /**
+   * DEPRECATED - Use reserveSendSlot() instead
+   * Increment rate limit counter AFTER successful send
+   * Call this only after email is sent successfully
+   */
+  async incrementRateLimitCounter(automationRunId: string): Promise<void> {
+    const run = await this.getAutomationRun(automationRunId);
+    if (!run) return;
+
+    const rateLimitConfig = (run.rateLimitConfig as any) || {
+      dailyLimit: 500,
+      currentDailyCount: 0,
+      delayBetweenEmails: 30000,
+      lastResetDate: new Date().toISOString().split('T')[0],
+      lastEmailSentAt: null
+    };
+
+    // Increment counter and update last send time
     rateLimitConfig.currentDailyCount++;
+    rateLimitConfig.lastEmailSentAt = new Date().toISOString();
 
     await db.update(automationRuns)
       .set({ rateLimitConfig: rateLimitConfig as any })
       .where(eq(automationRuns.id, automationRunId));
-
-    return true; // Can continue
   }
 
   /**
@@ -544,14 +659,16 @@ class AutomationService {
     const rateLimitConfig = (run.rateLimitConfig as any) || {
       dailyLimit: 500,
       currentDailyCount: 0,
-      delayBetweenEmails: 30000
+      delayBetweenEmails: 30000,
+      lastEmailSentAt: null
     };
 
     return {
       dailyLimit: rateLimitConfig.dailyLimit,
       currentDailyCount: rateLimitConfig.currentDailyCount,
       remaining: rateLimitConfig.dailyLimit - rateLimitConfig.currentDailyCount,
-      delayBetweenEmails: rateLimitConfig.delayBetweenEmails
+      delayBetweenEmails: rateLimitConfig.delayBetweenEmails,
+      lastEmailSentAt: rateLimitConfig.lastEmailSentAt
     };
   }
 
