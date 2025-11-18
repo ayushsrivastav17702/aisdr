@@ -7,6 +7,7 @@ import {
 } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { apolloService } from "./apollo.service";
+import exclusionFilterService, { type ExclusionRules } from "./exclusion-filter.service";
 
 class AutomationService {
   /**
@@ -26,6 +27,20 @@ class AutomationService {
     console.log(`[Automation ${automationRunId}] Source: ${prospectSource}, Sequence: ${sequenceId}, Prospects: ${prospectCount}, AI: ${aiPersonalizationEnabled}`);
 
     try {
+      // Get exclusion rules from automation run config
+      const automationRun = await db.query.automationRuns.findFirst({
+        where: (runs, { eq }) => eq(runs.id, automationRunId)
+      });
+
+      const exclusionRules: ExclusionRules = (automationRun?.exclusionRules as ExclusionRules) || {
+        skipUnsubscribed: true,
+        skipDuplicates: true,
+        skipContacted: true,
+        contactedWithinDays: 30
+      };
+
+      console.log(`[Automation ${automationRunId}] Exclusion rules:`, exclusionRules);
+
       let savedProspectIds: string[] = [];
 
       if (prospectSource === "existing") {
@@ -149,56 +164,75 @@ class AutomationService {
       console.log(`[Automation ${automationRunId}] Used strategy: ${strategyUsed}`);
 
 
-        // Trim to exact count requested
-        const contacts = allContacts.slice(0, prospectCount);
-        console.log(`[Automation ${automationRunId}] Found ${contacts.length} prospects from Apollo`);
+        // Trim to requested count (we'll filter more after exclusion)
+        const candidateContacts = allContacts.slice(0, prospectCount * 2); // Get extra to account for filtering
+        console.log(`[Automation ${automationRunId}] Found ${candidateContacts.length} candidate prospects from Apollo`);
 
         // =====================================
-        // STEP 2: Save prospects to database (USER-SCOPED)
+        // STEP 1.5: Apply exclusion filtering BEFORE saving
         // =====================================
-        for (const contact of contacts) {
+        // Convert Apollo contacts to prospect format for filtering (parallel)
+        const candidateProspects = await Promise.all(
+          candidateContacts.map(contact => 
+            apolloService.convertApolloContactToProspect(contact)
+          )
+        );
+
+        const { filtered: filteredProspects, stats: exclusionStats } = 
+          await exclusionFilterService.filterProspects(
+            candidateProspects,
+            userId,
+            exclusionRules
+          );
+
+        console.log(`[Automation ${automationRunId}] Exclusion filter results:`, {
+          totalCandidates: exclusionStats.totalCandidates,
+          removedByUnsubscribe: exclusionStats.removedByUnsubscribe,
+          removedByDuplicate: exclusionStats.removedByDuplicate,
+          removedByContacted: exclusionStats.removedByContacted,
+          remaining: exclusionStats.remaining
+        });
+
+        // Trim to exact count after filtering
+        const prospectsToSave = filteredProspects.slice(0, prospectCount);
+        console.log(`[Automation ${automationRunId}] Saving ${prospectsToSave.length} filtered prospects`);
+
+        // =====================================
+        // STEP 2: Save filtered prospects to database (USER-SCOPED)
+        // =====================================
+        // Note: Prospects are already filtered, so duplicates should be minimal
+        // But we still check to avoid unique constraint errors
+        for (const prospectData of prospectsToSave) {
         try {
-          const prospect = await apolloService.convertApolloContactToProspect(contact);
-          
-          // Check if prospect already exists FOR THIS USER - build condition array to avoid undefined in or()
-          const existingProspects = await db.query.prospects.findFirst({
-            where: (prospects, { eq, or, and }) => {
-              const conditions = [
+          // Check if prospect exists (extra safety check, filter should have caught most)
+          const { prospects: prospectsTable } = await import("@shared/schema");
+          const existingProspect = await db.query.prospects.findFirst({
+            where: (prospects, { eq, and }) => 
+              and(
                 eq(prospects.userId, userId), // CRITICAL: Filter by userId for multi-tenancy
-                eq(prospects.primaryEmail, prospect.primaryEmail)
-              ];
-              if (prospect.apolloId) {
-                conditions.push(eq(prospects.apolloId, prospect.apolloId));
-              }
-              return and(...conditions.slice(0, 2), conditions.length > 2 ? or(conditions[1], conditions[2]) : conditions[1]);
-            }
+                eq(prospects.primaryEmail, prospectData.primaryEmail)
+              )
           });
 
           let prospectId: string;
           
-          if (existingProspects) {
-            console.log(`[Automation ${automationRunId}] Prospect already exists for user ${userId}: ${prospect.primaryEmail}`);
-            prospectId = existingProspects.id;
+          if (existingProspect) {
+            // Should be rare since we filtered, but use existing ID
+            prospectId = existingProspect.id;
+            console.log(`[Automation ${automationRunId}] Using existing prospect: ${prospectData.primaryEmail}`);
           } else {
             // Save new prospect with userId
-            const { prospects: prospectsTable } = await import("@shared/schema");
             const [newProspect] = await db.insert(prospectsTable)
               .values({
-                ...prospect,
+                ...prospectData,
                 userId // CRITICAL: Set userId for multi-tenancy
               })
               .returning();
             prospectId = newProspect.id;
-            console.log(`[Automation ${automationRunId}] Saved new prospect for user ${userId}: ${prospect.primaryEmail}`);
+            console.log(`[Automation ${automationRunId}] Saved new prospect: ${prospectData.primaryEmail}`);
           }
 
           savedProspectIds.push(prospectId);
-
-          // Stop if we've reached the requested count
-          if (savedProspectIds.length >= prospectCount) {
-            console.log(`[Automation ${automationRunId}] Reached target prospect count: ${prospectCount}`);
-            break;
-          }
 
         } catch (error) {
           console.error(`[Automation ${automationRunId}] Error saving prospect:`, error);
