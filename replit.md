@@ -49,6 +49,17 @@ The platform is built on a modern web stack, featuring a multi-tenant architectu
 - **Email Formatting**: AI-generated emails use HTML `<p>` tags for proper spacing.
 - **Email Threading**: Follow-up emails properly thread using RFC 5322 Message-ID headers and "Re:" subject line prefixing for manual steps.
 - **Automation Layer**: Background automation for autonomous prospect imports and sequence enrollment.
+- **Automation Scheduler**: Production-ready BullMQ-based scheduler with complete Redis resilience:
+  - **Queue-Based Scheduling**: BullMQ queue when Redis/Upstash available for persistent, reliable automation scheduling
+  - **Graceful Fallback**: Automatic fallback to in-memory timers when Redis unavailable (scheduled runs lost on restart)
+  - **Retry Logic**: 3 attempts with exponential backoff (5s, 10s, 15s) across all execution paths
+  - **Cancellation Safety**: All paths (queue, direct, scheduled, retry) respect user cancellations and preserve cancelled status
+  - **Multi-Tenant Isolation**: All queries/updates scoped by userId to prevent cross-tenant access
+  - **Error Management**: Errors cleared on success, no stale error states, comprehensive failure tracking
+  - **Non-Blocking API**: Async fallback execution ensures responsive API even during Redis outages
+  - **Idempotency**: Job IDs prevent duplicate processing
+  - **Status Transitions**: Validates state changes to prevent race conditions
+  - **See**: [SCHEDULER_IMPLEMENTATION.md](./SCHEDULER_IMPLEMENTATION.md) for complete documentation
 - **Reply Classification**: Automated sentiment analysis (positive, negative, unsubscribe, neutral) with automatic unsubscribe processing.
 - **ICP Templates**: Pre-configured Ideal Customer Profile templates.
 - **Lead Scoring**: Automated 0-100 scoring based on seniority, data completeness, etc.
