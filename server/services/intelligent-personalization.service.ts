@@ -169,9 +169,10 @@ Respond in JSON format with this exact structure:
       const jsonContent = content.replace(/```json\s*|\s*```/g, '').trim();
       const insights: PersonalizationInsights = JSON.parse(jsonContent);
 
-      // Store personalization results
+      // Store personalization results (with userId for multi-tenant security)
       await storage.createPersonalizationResult(ctx, {
         prospectId,
+        userId: ctx.userId, // CRITICAL: Multi-tenant security - required field
         personalizationScore: this.calculatePersonalizationScore(insights),
         variables: insights.personalizationFactors,
         insights: insights,
