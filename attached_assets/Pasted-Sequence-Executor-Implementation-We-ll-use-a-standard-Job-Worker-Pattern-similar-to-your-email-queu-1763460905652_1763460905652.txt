@@ -1,0 +1,130 @@
+Sequence Executor Implementation
+We'll use a standard Job/Worker Pattern (similar to your email queue processor) to run this logic periodically.
+
+1. New Background Process: SequenceExecutor
+This process will run periodically (e.g., every 5 minutes) to check all active enrollments.
+
+JavaScript
+
+// NEW: SequenceExecutorService.js
+
+class SequenceExecutorService {
+  /**
+   * Initializes the background worker for executing sequence steps.
+   */
+  static startExecutor() {
+    console.log('⏳ Starting Sequence Executor (checks every 5 minutes)');
+    setInterval(async () => {
+      await this.processNextSteps();
+    }, 5 * 60 * 1000); // Run every 5 minutes
+  }
+
+  /**
+   * Main function to find and schedule the next step for active prospects.
+   */
+  static async processNextSteps() {
+    // 1. Find all prospects actively enrolled in any sequence
+    const activeEnrollments = await db.query.sequenceProspects.findMany({
+      where: and(
+        eq(sequenceProspects.status, "active"), // Only prospects that are running
+        isNotNull(sequenceProspects.sequenceId)
+      ),
+      limit: 1000 // Process in batches
+    });
+
+    for (const enrollment of activeEnrollments) {
+      // 2. Determine the prospect's last completed step
+      const lastSentEmail = await db.query.emails.findFirst({
+        where: and(
+          eq(emails.prospectId, enrollment.prospectId),
+          eq(emails.sequenceId, enrollment.sequenceId),
+          eq(emails.status, 'sent')
+        ),
+        orderBy: desc(emails.sentAt)
+      });
+      
+      // Determine the next step order (e.g., if last sent was step 1, the next is step 2)
+      const lastStepOrder = lastSentEmail ? lastSentEmail.stepOrder : 0;
+      const nextStepOrder = lastStepOrder + 1;
+
+      // 3. Look up the configuration for the next step
+      const nextStepConfig = await db.query.sequenceSteps.findFirst({
+        where: and(
+          eq(sequenceSteps.sequenceId, enrollment.sequenceId),
+          eq(sequenceSteps.stepOrder, nextStepOrder)
+        )
+      });
+
+      if (!nextStepConfig) {
+        // Sequence completed. Update status and skip.
+        await db.update(sequenceProspects)
+          .set({ status: "completed" })
+          .where(eq(sequenceProspects.id, enrollment.id));
+        continue;
+      }
+
+      // 4. Check if the delay has passed
+      // Delay starts from the last sent time (or enrollment time for Step 1)
+      const lastEventTime = lastSentEmail ? lastSentEmail.sentAt : enrollment.createdAt;
+      
+      const requiredDelayMs = nextStepConfig.delayHours * 60 * 60 * 1000;
+      const readyToSendAt = new Date(lastEventTime.getTime() + requiredDelayMs);
+
+      if (readyToSendAt <= new Date()) {
+        // 🔥 The delay has passed. Schedule the email.
+        await this.scheduleStep({
+          prospectId: enrollment.prospectId,
+          sequenceId: enrollment.sequenceId,
+          automationRunId: enrollment.automationRunId,
+          sequenceProspectId: enrollment.id,
+          stepConfig: nextStepConfig
+        });
+        
+        // Update enrollment status to "scheduled" (optional but helpful)
+        await db.update(sequenceProspects)
+          .set({ status: "scheduled" })
+          .where(eq(sequenceProspects.id, enrollment.id));
+      }
+      // If delay hasn't passed, do nothing and check again in the next interval
+    }
+  }
+
+  /**
+   * Schedules a follow-up step into the email queue.
+   */
+  static async scheduleStep({ prospectId, sequenceId, automationRunId, sequenceProspectId, stepConfig }) {
+      // NOTE: For follow-ups, we generally skip the AI personalization check
+      // as it's typically done only for the first cold email. 
+      // We use the content directly from the step configuration.
+      
+      await EmailQueueService.addToQueue({
+        prospectId,
+        sequenceId,
+        automationRunId,
+        sequenceProspectId,
+        subject: stepConfig.defaultSubject, // Use step content
+        body: stepConfig.defaultBody,       // Use step content
+        stepOrder: stepConfig.stepOrder,    // CRITICAL for the next execution loop
+        scheduledFor: new Date(),           // Schedule immediately as delay has passed
+        userId: prospect.userId,            // Need to fetch prospect to get userId (or store on enrollment)
+        priority: 5
+      });
+  }
+}
+2. Startup Integration
+You would call this service once when your application starts up:
+
+JavaScript
+
+// In your main application bootstrap file (e.g., server.js)
+
+// Start the core services
+EmailQueueService.startProcessor();
+SequenceExecutorService.startExecutor(); // 🔥 NEW
+ReplyDetectionService.startPolling();
+Key Takeaways
+State Management: The executor relies on the sequenceProspects.status being 'active' and checks the last sent email in the emails table to determine the current position in the sequence.
+
+Delay Logic: It dynamically calculates the next send time based on the delayHours set in the sequenceSteps configuration and the sentAt time of the previous email.
+
+Halt Condition: If a reply occurred, your previously implemented Auto-Pause on Reply would have set sequenceProspects.status to 'replied', meaning the processNextSteps loop will automatically skip that prospect—achieving the desired schedule follow-ups on no reply logic.

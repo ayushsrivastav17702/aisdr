@@ -18,6 +18,7 @@ export class EmailQueueService {
     priority?: number;
     inReplyTo?: string;
     references?: string;
+    stepOrder?: number; // NEW: Track which step in the sequence
     userId: string; // REQUIRED: User ID for multi-tenant mailbox selection
   }): Promise<EmailQueueItem> {
     try {
@@ -36,6 +37,7 @@ export class EmailQueueService {
           mailboxId: mailbox.id,
           status: "pending",
           priority: queueData.priority || 5,
+          stepOrder: queueData.stepOrder || null, // Default to null if not provided
         })
         .returning();
 
