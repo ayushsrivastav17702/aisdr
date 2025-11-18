@@ -446,12 +446,19 @@ export const automationRuns = pgTable("automation_runs", {
   aiPersonalizationEnabled: boolean("ai_personalization_enabled").default(true),
   apolloFilters: jsonb("apollo_filters"),
   status: automationStatusEnum("status").default("running"),
+  isStopped: boolean("is_stopped").default(false), // User-initiated stop vs pause
   startedAt: timestamp("started_at").defaultNow(),
   completedAt: timestamp("completed_at"),
+  scheduledFor: timestamp("scheduled_for"), // Scheduling support
+  timezone: text("timezone").default("UTC"), // Timezone for scheduling
   prospectsAdded: integer("prospects_added").default(0),
   emailsSent: integer("emails_sent").default(0),
   repliesReceived: integer("replies_received").default(0),
   errors: text("errors"),
+  errorLog: jsonb("error_log"), // Detailed error tracking [{prospectId, error, timestamp}]
+  exclusionRules: jsonb("exclusion_rules"), // Filter rules {skipContacted, skipUnsubscribed, skipDuplicates}
+  rateLimitConfig: jsonb("rate_limit_config"), // {dailyLimit, delayBetweenEmails, currentDailyCount}
+  prospectsEnrolled: jsonb("prospects_enrolled").default(sql`'[]'::jsonb`), // Array of prospect IDs enrolled
   createdBy: integer("created_by"),
   createdAt: timestamp("created_at").defaultNow(),
 });

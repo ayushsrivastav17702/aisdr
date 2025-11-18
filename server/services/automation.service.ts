@@ -292,8 +292,9 @@ class AutomationService {
   /**
    * Get all automation runs
    */
-  async getAutomationRuns(limit = 50): Promise<Array<AutomationRun & { sequenceName?: string }>> {
+  async getAutomationRuns(userId?: string, limit = 50): Promise<Array<AutomationRun & { sequenceName?: string }>> {
     const runs = await db.query.automationRuns.findMany({
+      where: userId ? (runs, { eq }) => eq(runs.userId, userId) : undefined,
       limit,
       orderBy: (runs, { desc }) => [desc(runs.startedAt)],
       with: {
@@ -341,6 +342,183 @@ class AutomationService {
     await db.update(automationRuns)
       .set({ status: "paused" })
       .where(eq(automationRuns.id, id));
+  }
+
+  /**
+   * Resume a paused automation
+   */
+  async resumeAutomation(id: string): Promise<void> {
+    await db.update(automationRuns)
+      .set({ status: "running", isStopped: false })
+      .where(eq(automationRuns.id, id));
+  }
+
+  /**
+   * Stop an automation (cannot be resumed)
+   */
+  async stopAutomation(id: string): Promise<void> {
+    await db.update(automationRuns)
+      .set({ 
+        status: "paused", 
+        isStopped: true,
+        completedAt: new Date()
+      })
+      .where(eq(automationRuns.id, id));
+  }
+
+  /**
+   * Log error for automation run
+   */
+  async logAutomationError(
+    automationRunId: string,
+    prospectId: string | null,
+    error: string
+  ): Promise<void> {
+    const run = await this.getAutomationRun(automationRunId);
+    if (!run) return;
+
+    const errorLog = (run.errorLog as any[]) || [];
+    errorLog.push({
+      prospectId,
+      error,
+      timestamp: new Date().toISOString()
+    });
+
+    await db.update(automationRuns)
+      .set({ errorLog: errorLog as any })
+      .where(eq(automationRuns.id, automationRunId));
+  }
+
+  /**
+   * Get error logs for automation
+   */
+  async getAutomationErrors(id: string): Promise<any[]> {
+    const run = await this.getAutomationRun(id);
+    return (run?.errorLog as any[]) || [];
+  }
+
+  /**
+   * Retry failed prospects in automation
+   */
+  async retryFailedProspects(automationRunId: string): Promise<void> {
+    const run = await this.getAutomationRun(automationRunId);
+    if (!run) throw new Error("Automation run not found");
+
+    const errorLog = (run.errorLog as any[]) || [];
+    const failedProspectIds = errorLog
+      .filter(e => e.prospectId)
+      .map(e => e.prospectId);
+
+    // Re-enroll failed prospects
+    for (const prospectId of failedProspectIds) {
+      try {
+        const { sequenceProspects } = await import("@shared/schema");
+        await db.insert(sequenceProspects).values({
+          sequenceId: run.sequenceId,
+          prospectId,
+          status: "active",
+          automationRunId: automationRunId,
+        }).onConflictDoNothing();
+      } catch (error) {
+        console.error(`Failed to retry prospect ${prospectId}:`, error);
+      }
+    }
+
+    // Clear error log
+    await db.update(automationRuns)
+      .set({ errorLog: [] as any })
+      .where(eq(automationRuns.id, automationRunId));
+  }
+
+  /**
+   * Get enrolled prospects for automation
+   */
+  async getEnrolledProspects(automationRunId: string): Promise<string[]> {
+    const run = await this.getAutomationRun(automationRunId);
+    return (run?.prospectsEnrolled as string[]) || [];
+  }
+
+  /**
+   * Add prospect to enrolled list
+   */
+  async addEnrolledProspect(automationRunId: string, prospectId: string): Promise<void> {
+    const run = await this.getAutomationRun(automationRunId);
+    if (!run) return;
+
+    const enrolled = (run.prospectsEnrolled as string[]) || [];
+    if (!enrolled.includes(prospectId)) {
+      enrolled.push(prospectId);
+      await db.update(automationRuns)
+        .set({ prospectsEnrolled: enrolled as any })
+        .where(eq(automationRuns.id, automationRunId));
+    }
+  }
+
+  /**
+   * Check if automation should continue (not paused/stopped)
+   */
+  async shouldContinue(automationRunId: string): Promise<boolean> {
+    const run = await this.getAutomationRun(automationRunId);
+    if (!run) return false;
+    
+    return run.status === "running" && !run.isStopped;
+  }
+
+  /**
+   * Update rate limit counter
+   */
+  async updateRateLimitCounter(automationRunId: string): Promise<boolean> {
+    const run = await this.getAutomationRun(automationRunId);
+    if (!run) return false;
+
+    const rateLimitConfig = (run.rateLimitConfig as any) || {
+      dailyLimit: 500,
+      currentDailyCount: 0,
+      delayBetweenEmails: 30000, // 30 seconds
+      lastResetDate: new Date().toISOString().split('T')[0]
+    };
+
+    // Reset counter if new day
+    const today = new Date().toISOString().split('T')[0];
+    if (rateLimitConfig.lastResetDate !== today) {
+      rateLimitConfig.currentDailyCount = 0;
+      rateLimitConfig.lastResetDate = today;
+    }
+
+    // Check if limit reached
+    if (rateLimitConfig.currentDailyCount >= rateLimitConfig.dailyLimit) {
+      return false; // Rate limit reached
+    }
+
+    // Increment counter
+    rateLimitConfig.currentDailyCount++;
+
+    await db.update(automationRuns)
+      .set({ rateLimitConfig: rateLimitConfig as any })
+      .where(eq(automationRuns.id, automationRunId));
+
+    return true; // Can continue
+  }
+
+  /**
+   * Get rate limit status
+   */
+  async getRateLimitStatus(automationRunId: string): Promise<any> {
+    const run = await this.getAutomationRun(automationRunId);
+    if (!run) return null;
+
+    const rateLimitConfig = (run.rateLimitConfig as any) || {
+      dailyLimit: 500,
+      currentDailyCount: 0,
+      delayBetweenEmails: 30000
+    };
+
+    return {
+      dailyLimit: rateLimitConfig.dailyLimit,
+      currentDailyCount: rateLimitConfig.currentDailyCount,
+      remaining: rateLimitConfig.dailyLimit - rateLimitConfig.currentDailyCount,
+      delayBetweenEmails: rateLimitConfig.delayBetweenEmails
+    };
   }
 
   /**
