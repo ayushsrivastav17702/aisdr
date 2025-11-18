@@ -1,0 +1,158 @@
+This is a great step forward. We've successfully integrated the prospect enrollment, AI personalization, and email scheduling, and we've implemented the crucial rate limit enforcement.
+
+Here are the detailed implementation changes across the necessary flows:
+
+1. Connecting Prospect Enrollment to Email Scheduling
+The core connection happens in Flow 1, Step 4, where we introduce a call to a new service, SequenceStepService, immediately after a prospect is enrolled.
+
+Flow 1, Step 4: Enroll Prospects in Sequence (Modified)
+JavaScript
+
+// Flow 1, Step 4: Enroll Prospects in Sequence (MODIFIED)
+for (const prospectId of savedProspectIds) {
+  // ... existing check for already enrolled ...
+  
+  if (!existing) {
+    // Enroll prospect in sequence
+    const [sequenceProspect] = await db.insert(sequenceProspects).values({
+      sequenceId,
+      prospectId,
+      automationRunId, 
+      status: "active"
+    }).returning(); // CRITICAL: return the new record ID
+
+    // 🔥 NEW: Schedule the first step/email
+    await SequenceStepService.scheduleFirstEmail({
+      sequenceProspectId: sequenceProspect.id,
+      sequenceId,
+      prospectId,
+      automationRunId,
+      // Pass personalization flag from the automation run config
+      aiPersonalizationEnabled: automationRun.aiPersonalizationEnabled 
+    });
+  }
+}
+2. Integrating AI Personalization and Scheduling
+The new service SequenceStepService.scheduleFirstEmail acts as the orchestrator, conditionally running AI personalization (Flow 2) and then adding the job to the queue (Flow 3).
+
+New Service: SequenceStepService.scheduleFirstEmail
+JavaScript
+
+// NEW Service: SequenceStepService.js
+class SequenceStepService {
+  /**
+   * Schedules the first email step for a newly enrolled prospect.
+   * Includes optional AI personalization and initial delay calculation.
+   */
+  static async scheduleFirstEmail({ 
+    sequenceProspectId, 
+    sequenceId, 
+    prospectId, 
+    automationRunId,
+    aiPersonalizationEnabled
+  }) {
+    // 1. Get Prospect Data and Sequence Step 1 Config
+    const prospect = await db.query.prospects.findFirst({ where: eq(prospects.id, prospectId) });
+    const firstStep = await db.query.sequenceSteps.findFirst({ 
+      where: and(eq(sequenceSteps.sequenceId, sequenceId), eq(sequenceSteps.stepOrder, 1))
+    });
+    
+    let subject = firstStep.defaultSubject;
+    let body = firstStep.defaultBody;
+    
+    // 2. Conditional AI Personalization (Flow 2 Integrated here)
+    if (aiPersonalizationEnabled) {
+      // Step 1: Analyze Prospect (Flow 2, Step 1)
+      const insights = await IntelligentPersonalizationService.analyzeProspect(prospect);
+      
+      // Step 2: Generate Personalized Email (Flow 2, Step 2)
+      const generatedEmail = await AIEmailGeneratorService.generateEmail({
+        prospectId,
+        emailType: 'cold_email',
+        tone: insights.recommendations.tone,
+        insights: insights
+      });
+
+      subject = generatedEmail.subject;
+      body = generatedEmail.body;
+      
+      // Step 3: Save Personalized Email (Flow 2, Step 3)
+      await db.insert(personalizationResults).values({
+        prospectId,
+        sequenceId,
+        insights: insights, 
+        generatedEmail: body,
+        generatedSubject: subject,
+        // ... other data
+      });
+    }
+
+    // 3. Calculate Scheduled Time
+    // Uses the delay configured in the first step (e.g., 24 hours)
+    const delayMs = firstStep.delayHours * 60 * 60 * 1000; 
+    const scheduledFor = new Date(Date.now() + delayMs);
+
+    // 4. Add Email to Queue (Flow 3 Integrated)
+    await EmailQueueService.addToQueue({
+      prospectId,
+      sequenceId,
+      automationRunId,
+      sequenceProspectId,
+      subject, // Uses personalized or default content
+      body,    // Uses personalized or default content
+      scheduledFor,
+      userId: prospect.userId,
+      priority: 5
+    });
+  }
+}
+3. Implementing Rate Limit Enforcement
+We must update Flow 3, Step 3 to perform a check on the currently selected mailbox's daily sending limit before attempting to send an email.
+
+Flow 3, Step 3: Process Pending Emails (Modified for Rate Limits)
+JavaScript
+
+// Flow 3, Step 3: Process Pending Emails (MODIFIED)
+
+// Runs every 30 seconds in background
+setInterval(async () => {
+  await emailQueueService.processPendingEmails();
+}, 30000);
+
+// MODIFIED logic within EmailQueueService.processPendingEmails()
+// ... fetching pendingEmails ...
+
+for (const queueItem of pendingEmails) {
+  const { userId } = queueItem;
+  
+  // 1. SELECT MAILBOX (Flow 3, Step 2 - required for rate limits)
+  const mailbox = await MailboxService.getNextMailbox(userId);
+
+  // 2. 🔥 NEW: RATE LIMIT ENFORCEMENT
+  if (mailbox.dailySent >= mailbox.dailyLimit) {
+    // Mailbox is over limit, reschedule to the start of the next day
+    const nextDay = new Date();
+    nextDay.setDate(nextDay.getDate() + 1);
+    nextDay.setHours(9, 0, 0, 0); // Reschedule for 9am tomorrow
+    
+    await db.update(emailQueue)
+      .set({
+        scheduledFor: nextDay,
+        status: "rate_limited" // New status for better tracking
+      })
+      .where(eq(emailQueue.id, queueItem.id));
+      
+    // Skip this item and move to the next
+    continue; 
+  }
+  
+  // If not rate limited, proceed with sending (Flow 3, Steps 4, 5, 6)
+  await sendEmail(queueItem, mailbox); 
+}
+These changes complete the highest priority items: the full data flow from enrollment to the scheduled, personalized, and rate-limited email send.
+
+The next logical step, based on your prioritized list, is to address the remaining core gaps:
+
+Exclusion Enforcement: Filtering out contacted/unsubscribed/duplicate prospects during the initial import.
+
+Reply Detection Automation: Auto-pausing the sequence on reply and updating stats.
