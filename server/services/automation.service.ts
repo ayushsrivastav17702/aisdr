@@ -20,6 +20,7 @@ class AutomationService {
     sequenceId: string,
     prospectSource: "apollo" | "existing",
     prospectCount: number,
+    selectedProspectIds: string[] | undefined,
     aiPersonalizationEnabled: boolean,
     apolloFilters: any | undefined,
     userId: string // Required for multi-tenant mailbox selection
@@ -51,10 +52,25 @@ class AutomationService {
         console.log(`[Automation ${automationRunId}] Using existing prospects for user ${userId}...`);
         
         const { prospects: prospectsTable } = await import("@shared/schema");
-        const existingProspects = await db.select({ id: prospectsTable.id })
-          .from(prospectsTable)
-          .where(eq(prospectsTable.userId, userId)) // CRITICAL: Filter by userId for multi-tenancy
-          .limit(prospectCount);
+        
+        // If specific prospects were selected, use those. Otherwise, take first N
+        let existingProspects;
+        if (selectedProspectIds && selectedProspectIds.length > 0) {
+          console.log(`[Automation ${automationRunId}] Using ${selectedProspectIds.length} selected prospects`);
+          const { inArray, and } = await import("drizzle-orm");
+          existingProspects = await db.select({ id: prospectsTable.id })
+            .from(prospectsTable)
+            .where(and(
+              eq(prospectsTable.userId, userId), // CRITICAL: Filter by userId for multi-tenancy
+              inArray(prospectsTable.id, selectedProspectIds)
+            ));
+        } else {
+          console.log(`[Automation ${automationRunId}] Selecting first ${prospectCount} prospects`);
+          existingProspects = await db.select({ id: prospectsTable.id })
+            .from(prospectsTable)
+            .where(eq(prospectsTable.userId, userId)) // CRITICAL: Filter by userId for multi-tenancy
+            .limit(prospectCount);
+        }
         
         if (existingProspects.length === 0) {
           throw new Error('No existing prospects found in database for this user');

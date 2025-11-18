@@ -48,7 +48,11 @@ The platform is built on a modern web stack, featuring a multi-tenant architectu
 - **Reply Detection**: IMAP-based polling for automatic reply detection, matching, and storage with intelligent content cleanup.
 - **Email Formatting**: AI-generated emails use HTML `<p>` tags for proper spacing.
 - **Email Threading**: Follow-up emails properly thread using RFC 5322 Message-ID headers and "Re:" subject line prefixing for manual steps.
-- **Automation Layer**: Background automation for autonomous prospect imports and sequence enrollment.
+- **Automation Layer**: Background automation for autonomous prospect imports and sequence enrollment with manual prospect selection capability.
+  - **Manual Prospect Selection**: Users can select specific existing prospects to enroll in automation sequences instead of just specifying a count
+  - **ProspectSelector UI**: Interactive component with checkbox selection, search, select all/clear functionality
+  - **Secure Implementation**: Uses Drizzle `and()` to combine userId and prospect ID filters, preventing cross-tenant data access
+  - **Data Flow**: Selected IDs stored in apolloFilters JSONB field, passed through scheduler/queue/worker to automation service
 - **Automation Scheduler**: Production-ready BullMQ-based scheduler with complete Redis resilience:
   - **Queue-Based Scheduling**: BullMQ queue when Redis/Upstash available for persistent, reliable automation scheduling
   - **Graceful Fallback**: Automatic fallback to in-memory timers when Redis unavailable (scheduled runs lost on restart)

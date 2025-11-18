@@ -28,10 +28,12 @@ import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Loader2, Sparkles, Users, Database } from "lucide-react";
+import { ProspectSelector } from "./ProspectSelector";
 
 const automationSchema = z.object({
   prospectSource: z.enum(["apollo", "existing"]),
   prospectCount: z.coerce.number().int().min(1).max(500),
+  selectedProspectIds: z.array(z.string()).optional(),
   aiPersonalizationEnabled: z.boolean(),
   jobTitle: z.string().optional(),
   company: z.string().optional(),
@@ -68,6 +70,7 @@ export function AutomationModal({
     defaultValues: {
       prospectSource: "apollo",
       prospectCount: 50,
+      selectedProspectIds: [],
       aiPersonalizationEnabled: true,
       jobTitle: "",
       company: "",
@@ -85,6 +88,11 @@ export function AutomationModal({
 
   const startAutomationMutation = useMutation({
     mutationFn: async (data: AutomationFormData) => {
+      // Validate that user has selected prospects when using existing source
+      if (data.prospectSource === "existing" && (!data.selectedProspectIds || data.selectedProspectIds.length === 0)) {
+        throw new Error("Please select at least one prospect to enroll");
+      }
+
       const response = await apiRequest(
         "POST",
         "/api/automation/start",
@@ -92,6 +100,7 @@ export function AutomationModal({
           sequenceId,
           prospectSource: data.prospectSource,
           prospectCount: data.prospectCount,
+          selectedProspectIds: data.selectedProspectIds,
           aiPersonalizationEnabled: data.aiPersonalizationEnabled,
           scheduledFor: data.scheduledFor,
           timezone: data.timezone,
@@ -195,35 +204,52 @@ export function AutomationModal({
               )}
             />
 
-            {/* Prospect Count */}
-            <FormField
-              control={form.control}
-              name="prospectCount"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Number of Prospects (Max 500)</FormLabel>
-                  <FormControl>
-                    <Input
-                      type="number"
-                      min={1}
-                      max={500}
-                      {...field}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        field.onChange(value === '' ? 50 : parseInt(value, 10));
-                      }}
-                      data-testid="input-prospect-count"
-                    />
-                  </FormControl>
-                  <FormDescription>
-                    {prospectSource === "existing" 
-                      ? "How many existing prospects to enroll"
-                      : "How many prospects to import and enroll"}
-                  </FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            {/* Prospect Selection - Show selector for existing, count for Apollo */}
+            {prospectSource === "existing" ? (
+              <FormField
+                control={form.control}
+                name="selectedProspectIds"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Select Prospects</FormLabel>
+                    <FormControl>
+                      <ProspectSelector
+                        selectedIds={field.value || []}
+                        onSelectionChange={field.onChange}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            ) : (
+              <FormField
+                control={form.control}
+                name="prospectCount"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Number of Prospects (Max 500)</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min={1}
+                        max={500}
+                        {...field}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          field.onChange(value === '' ? 50 : parseInt(value, 10));
+                        }}
+                        data-testid="input-prospect-count"
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      How many prospects to import and enroll
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
 
             {/* AI Personalization */}
             <FormField
