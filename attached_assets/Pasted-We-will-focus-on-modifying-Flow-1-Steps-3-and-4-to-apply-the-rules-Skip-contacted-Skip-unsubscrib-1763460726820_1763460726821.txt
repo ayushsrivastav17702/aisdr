@@ -1,0 +1,173 @@
+We will focus on modifying Flow 1, Steps 3 and 4 to apply the rules (Skip contacted, Skip unsubscribed, Skip duplicates) before a prospect is saved or enrolled.
+
+1. New Service: ExclusionService (The Central Guardrail)
+We'll define a service to centralize the checks, ensuring they are always user-scoped (multi-tenant safe).
+
+JavaScript
+
+// NEW Service: ExclusionService.js
+
+class ExclusionService {
+  /**
+   * Checks if a prospect should be excluded based on global rules.
+   * Assumes automation config (e.g., skipContacted, skipUnsubscribed) is passed.
+   * @param {string} userId - The prospect owner.
+   * @param {string} email - The prospect's email.
+   */
+  static async checkGlobalExclusions({ userId, email }) {
+    // Check 1: GLOBAL UNSUBSCRIBED
+    const isUnsubscribed = await db.query.unsubscribes.findFirst({
+      where: and(
+        eq(unsubscribes.userId, userId),
+        eq(unsubscribes.email, email)
+      )
+    });
+    if (isUnsubscribed) return { excluded: true, reason: 'unsubscribed' };
+
+    // Check 2: PREVIOUSLY CONTACTED/SENT
+    const hasBeenContacted = await db.query.emails.findFirst({
+      where: and(
+        eq(emails.userId, userId),
+        eq(emails.prospectEmail, email),
+        eq(emails.status, 'sent')
+      )
+    });
+    if (hasBeenContacted) return { excluded: true, reason: 'previously_contacted' };
+
+    return { excluded: false };
+  }
+}
+2. Modified Flow 1: Prospect Addition
+We apply the exclusion checks at the earliest possible stage to prevent unnecessary database writes.
+
+Flow 1, Step 3A: If "Existing Prospects" Selected (Modified)
+We use SQL to filter out globally excluded records efficiently.
+
+JavaScript
+
+// Flow 1, Step 3A: If "Existing Prospects" Selected (MODIFIED)
+const { exclusionRules } = automationRun.config; // Read rules from config
+
+// Query existing prospects for this user
+let query = db.select({ id: prospectsTable.id, primaryEmail: prospectsTable.primaryEmail })
+  .from(prospectsTable)
+  .where(eq(prospectsTable.userId, userId));
+
+// 🔥 ENFORCEMENT 1: Skip Unsubscribed (SQL check)
+if (exclusionRules.includes('unsubscribed')) {
+  const excludedEmails = db.select({ email: unsubscribes.email })
+    .from(unsubscribes)
+    .where(eq(unsubscribes.userId, userId));
+    
+  query = query.where(not(inArray(prospectsTable.primaryEmail, excludedEmails)));
+}
+
+// Execute the query to get prospect IDs that are not unsubscribed
+const existingProspects = await query.limit(prospectCount);
+
+// We rely on the final check in Step 4 for 'previously contacted'
+savedProspectIds = existingProspects.map(p => p.id);
+Flow 1, Step 3B: If "Apollo.io" Selected (Modified)
+We check for global exclusions before inserting a new record.
+
+JavaScript
+
+// Flow 1, Step 3B: If "Apollo.io" Selected (MODIFIED)
+// ... search strategies loop ...
+const { exclusionRules } = automationRun.config; 
+
+for (const strategy of searchStrategies) {
+  // ... search and contact conversion ...
+  
+  if (contacts.length > 0) {
+    for (const contact of contacts) {
+      const prospect = await apolloService.convertApolloContactToProspect(contact);
+      const prospectEmail = prospect.primaryEmail;
+
+      // Check 1: Internal Duplicate (Existing implementation)
+      const existing = await db.query.prospects.findFirst({
+        where: and(eq(prospects.userId, userId), eq(prospects.primaryEmail, prospectEmail))
+      });
+      
+      if (existing) {
+        savedProspectIds.push(existing.id);
+        continue;
+      }
+      
+      // 🔥 ENFORCEMENT 2: Check Global Exclusions BEFORE insertion
+      const exclusionCheck = await ExclusionService.checkGlobalExclusions({ 
+        userId, 
+        email: prospectEmail 
+      });
+
+      // Only skip if the exclusion reason matches a rule selected by the user
+      if (exclusionCheck.excluded && exclusionRules.includes(exclusionCheck.reason)) {
+        console.log(`Skipping prospect ${prospectEmail}. Reason: ${exclusionCheck.reason}`);
+        // Log the exclusion for dashboard visibility
+        await db.insert(automationExclusionLog).values({
+          automationRunId, prospectEmail, reason: exclusionCheck.reason
+        });
+        continue; // Do not save or enroll
+      }
+      
+      // If we reach here, save the new prospect
+      const [newProspect] = await db.insert(prospects).values({
+        ...prospect,
+        userId
+      }).returning();
+      
+      savedProspectIds.push(newProspect.id);
+    }
+    break;
+  }
+}
+Flow 1, Step 4: Enroll Prospects in Sequence (Modified - Final Guardrail)
+This serves as the final, most robust check before enrollment, catching any missed exclusions or prospects already enrolled in this specific sequence.
+
+JavaScript
+
+// Flow 1, Step 4: Enroll Prospects in Sequence (MODIFIED - FINAL GUARDRAIL)
+const { exclusionRules } = automationRun.config; 
+
+for (const prospectId of savedProspectIds) {
+  // Check 1: DUPLICATE ENROLLMENT (Already enrolled in THIS sequence)
+  const existing = await db.query.sequenceProspects.findFirst({
+    where: and(
+      eq(sequenceProspects.sequenceId, sequenceId),
+      eq(sequenceProspects.prospectId, prospectId)
+    )
+  });
+  
+  if (existing) {
+    // Skip enrollment duplicate
+    continue;
+  }
+
+  // Check 2: 🔥 FINAL GLOBAL/CONTACTED EXCLUSION CHECK
+  const prospect = await db.query.prospects.findFirst({ where: eq(prospects.id, prospectId) });
+  
+  if (prospect) {
+    const exclusionCheck = await ExclusionService.checkGlobalExclusions({ 
+      userId: prospect.userId, 
+      email: prospect.primaryEmail 
+    });
+    
+    // Apply rules: If the prospect is excluded AND the user selected that rule
+    if (exclusionCheck.excluded && exclusionRules.includes(exclusionCheck.reason)) {
+      console.log(`Final guardrail: Skipping prospect ${prospect.primaryEmail}. Reason: ${exclusionCheck.reason}`);
+      await db.insert(automationExclusionLog).values({
+        automationRunId, prospectEmail: prospect.primaryEmail, reason: exclusionCheck.reason
+      });
+      continue; // Do not enroll
+    }
+  }
+
+  // Enroll prospect in sequence... (Original logic)
+}
+We have now implemented Exclusion Enforcement. The next missing piece from your "Make Automation Actually Work" list is:
+
+Reply Detection Automation:
+
+Auto-pause sequence on positive reply
+
+Schedule follow-ups on no reply (This is part of the overall scheduler, which we haven't fully implemented yet, but we can implement the pause logic now).

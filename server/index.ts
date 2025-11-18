@@ -102,6 +102,12 @@ app.use((req, res, next) => {
     const { replyDetectionService } = await import("./services/reply-detection.service");
     replyDetectionService.startPolling(20); // Check every 20 seconds
     
+    // Start sequence executor for follow-up emails
+    log(`⏰ Starting sequence executor...`);
+    const { sequenceExecutorService } = await import("./services/sequence-executor.service");
+    sequenceExecutorService.startExecutor(5); // Check every 5 minutes
+    log(`✅ Sequence executor started`);
+    
     // Start automation worker (BullMQ)
     log(`🔧 Starting automation worker...`);
     await import("./queue/automation-worker");

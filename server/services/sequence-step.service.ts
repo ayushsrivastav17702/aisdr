@@ -183,6 +183,7 @@ class SequenceStepService {
         subject,
         body,
         scheduledFor,
+        stepOrder: firstStep.stepOrder, // CRITICAL: Track sequence progress
         userId, // CRITICAL: Multi-tenant security
         priority: 5, // Standard priority for first email
         fromName: undefined, // Will use mailbox default
@@ -202,6 +203,60 @@ class SequenceStepService {
 
     } catch (error) {
       console.error(`[SequenceStep] ❌ Failed to schedule first email for prospect ${prospectId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * Cancels all future pending emails for a prospect in a sequence.
+   * Called when a prospect replies or unsubscribes to stop the sequence.
+   * 
+   * @param sequenceId - The sequence ID
+   * @param prospectId - The prospect ID
+   * @param userId - User ID for multi-tenant security
+   * @returns Number of cancelled emails
+   */
+  async cancelFutureSteps(sequenceId: string, prospectId: string, userId?: string): Promise<number> {
+    try {
+      console.log(`[SequenceStep] Cancelling future steps for prospect ${prospectId} in sequence ${sequenceId}`);
+      
+      const { emailQueue: emailQueueTable } = await import("@shared/schema");
+      
+      // Build where conditions with multi-tenant security
+      const whereConditions = [
+        eq(emailQueueTable.sequenceId, sequenceId),
+        eq(emailQueueTable.prospectId, prospectId),
+        eq(emailQueueTable.status, "pending") // Only cancel jobs that haven't been sent
+      ];
+      
+      // CRITICAL: Scope by userId if provided for multi-tenant security
+      if (userId) {
+        whereConditions.push(eq(emailQueueTable.userId, userId));
+      }
+      
+      // Find all pending email queue items for this prospect/sequence
+      const futureSteps = await db.select()
+        .from(emailQueueTable)
+        .where(and(...whereConditions));
+        
+      if (futureSteps.length > 0) {
+        // Update the status of all found jobs to 'cancelled' (terminal state)
+        // CRITICAL: Use the same where conditions to ensure multi-tenant security
+        await db.update(emailQueueTable)
+          .set({ 
+            status: "cancelled", // Use "cancelled" status - processors will skip this
+            lastError: "Sequence cancelled: Prospect replied or unsubscribed"
+          })
+          .where(and(...whereConditions));
+        
+        console.log(`✅ Cancelled ${futureSteps.length} future emails for prospect ${prospectId}`);
+        return futureSteps.length;
+      }
+      
+      console.log(`[SequenceStep] No pending emails found to cancel for prospect ${prospectId}`);
+      return 0;
+    } catch (error) {
+      console.error(`[SequenceStep] ❌ Error cancelling future steps:`, error);
       throw error;
     }
   }

@@ -2,9 +2,10 @@ import Imap from "imap";
 // @ts-ignore - mailparser doesn't have types
 import { simpleParser } from "mailparser";
 import { db } from "../db";
-import { emailReplies, emailQueue, emailMailboxes, sequenceProspects, emails } from "@shared/schema";
+import { emailReplies, emailQueue, emailMailboxes, sequenceProspects, emails, automationRuns } from "@shared/schema";
 import { eq, and, sql, desc } from "drizzle-orm";
 import { mailboxService } from "./mailbox.service";
+import sequenceStepService from "./sequence-step.service";
 
 export class ReplyDetectionService {
   private pollInterval: NodeJS.Timeout | null = null;
@@ -447,8 +448,13 @@ export class ReplyDetectionService {
           newStatus = "unsubscribed";
           
           // Create unsubscribe record
-          const { unsubscribes } = await import("@shared/schema");
+          const { unsubscribes, prospects: prospectsTable } = await import("@shared/schema");
+          const prospect = await db.query.prospects.findFirst({
+            where: eq(prospectsTable.id, matchedEmail.prospectId)
+          });
+          
           await db.insert(unsubscribes).values({
+            userId: prospect?.userId || "", // CRITICAL: Multi-tenant security
             prospectId: matchedEmail.prospectId,
             email: fromEmail,
             reason: body.substring(0, 500), // Store up to 500 chars of reason
@@ -457,6 +463,7 @@ export class ReplyDetectionService {
           console.log(`🚫 Prospect ${matchedEmail.prospectId} unsubscribed - sequence stopped`);
         }
 
+        // Update sequence prospect status and increment reply count
         await db
           .update(sequenceProspects)
           .set({
@@ -469,6 +476,47 @@ export class ReplyDetectionService {
               eq(sequenceProspects.prospectId, matchedEmail.prospectId)
             )
           );
+        
+        // 🔥 NEW: Update Automation Run Statistics
+        // Find the sequence prospect to get the automationRunId
+        const [sequenceProspect] = await db.select()
+          .from(sequenceProspects)
+          .where(
+            and(
+              eq(sequenceProspects.sequenceId, matchedEmail.sequenceId),
+              eq(sequenceProspects.prospectId, matchedEmail.prospectId)
+            )
+          );
+        
+        if (sequenceProspect?.automationRunId) {
+          await db.update(automationRuns)
+            .set({ 
+              repliesReceived: sql`${automationRuns.repliesReceived} + 1` 
+            })
+            .where(eq(automationRuns.id, sequenceProspect.automationRunId));
+          
+          console.log(`📊 Updated automation run ${sequenceProspect.automationRunId} reply count`);
+        }
+        
+        // 🔥 CRITICAL: Auto-pause sequence by cancelling future steps
+        // For positive, neutral, or unsubscribe replies, stop the sequence
+        if (sentiment === "positive" || sentiment === "neutral" || sentiment === "unsubscribe") {
+          // Get prospect userId for multi-tenant security
+          const { prospects: prospectsTable } = await import("@shared/schema");
+          const prospect = await db.query.prospects.findFirst({
+            where: eq(prospectsTable.id, matchedEmail.prospectId)
+          });
+          
+          const cancelledCount = await sequenceStepService.cancelFutureSteps(
+            matchedEmail.sequenceId,
+            matchedEmail.prospectId,
+            prospect?.userId // Pass userId for multi-tenant security
+          );
+          
+          if (cancelledCount > 0) {
+            console.log(`⏸️ Auto-paused sequence: Cancelled ${cancelledCount} future emails for prospect ${matchedEmail.prospectId}`);
+          }
+        }
       }
 
       console.log(`✅ Stored reply from ${fromEmail} for prospect ${matchedEmail.prospectId}`);

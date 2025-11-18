@@ -1,0 +1,119 @@
+1. Flow 4, Step 6: Store Reply & Update Sequence (Modified)
+We will enhance the logic after the reply is classified to trigger two critical actions:
+
+Update Automation Stats (incrementing the reply count).
+
+Update Sequence Status (setting it to replied or unsubscribed).
+
+Auto-Pause Sequence (stopping any future scheduled steps for that prospect).
+
+JavaScript
+
+// Flow 4, Step 6: Store Reply & Update Sequence (MODIFIED)
+
+// Save reply to database (Original logic)
+await db.insert(emailReplies).values({
+  prospectId: matchedEmail.prospectId,
+  emailId: matchedEmail.emailId,
+  sequenceId: matchedEmail.sequenceId,
+  replyContent: cleanBody,
+  sentiment: sentiment,
+  receivedAt: new Date(),
+  source: "imap"
+});
+
+// 🔥 NEW: Update Automation Run Statistics
+await db.update(automationRuns)
+  .set({ 
+    repliesReceived: sql`replies_received + 1` 
+  })
+  .where(eq(automationRuns.id, matchedEmail.automationRunId)); // Need to ensure automationRunId is available
+
+// Update sequence prospect status & Auto-Pause Logic
+if (sentiment === "positive" || sentiment === "neutral") {
+  
+  // Set the enrollment status to replied
+  await db.update(sequenceProspects)
+    .set({ status: "replied" })
+    .where(eq(sequenceProspects.prospectId, matchedEmail.prospectId));
+
+  // 🔥 CRITICAL: Stop any future steps from the sequence executor
+  await SequenceStepService.cancelFutureSteps(
+    matchedEmail.sequenceId, 
+    matchedEmail.prospectId
+  );
+  
+} else if (sentiment === "unsubscribe") {
+  
+  // 1. Mark as globally unsubscribed
+  await db.insert(unsubscribes).values({
+    userId: prospect.userId,
+    prospectId: matchedEmail.prospectId,
+    email: prospect.primaryEmail,
+    reason: "Email opt-out request"
+  });
+  
+  // 2. Mark the enrollment status as unsubscribed
+  await db.update(sequenceProspects)
+    .set({ status: "unsubscribed" })
+    .where(eq(sequenceProspects.prospectId, matchedEmail.prospectId));
+
+  // 3. 🔥 CRITICAL: Stop any future steps
+  await SequenceStepService.cancelFutureSteps(
+    matchedEmail.sequenceId, 
+    matchedEmail.prospectId
+  );
+}
+
+// Mark email as seen in IMAP
+imap.addFlags(seqno, ["\\Seen"]); 
+2. New Service: SequenceStepService.cancelFutureSteps
+This new function is what actually pauses the automated flow by removing or marking future scheduled jobs.
+
+JavaScript
+
+// NEW function within SequenceStepService.js
+
+/**
+ * Removes future email jobs from the queue for a specific prospect in a sequence.
+ */
+static async cancelFutureSteps(sequenceId, prospectId) {
+  // Find all pending email queue items for this prospect/sequence
+  const futureSteps = await db.select()
+    .from(emailQueue)
+    .where(and(
+      eq(emailQueue.sequenceId, sequenceId),
+      eq(emailQueue.prospectId, prospectId),
+      eq(emailQueue.status, "pending") // Only cancel jobs that haven't been sent
+    ));
+    
+  if (futureSteps.length > 0) {
+    // Update the status of all found jobs to 'cancelled'
+    await db.update(emailQueue)
+      .set({ 
+        status: "cancelled", 
+        cancellationReason: "Prospect replied/unsubscribed" 
+      })
+      .where(and(
+        eq(emailQueue.sequenceId, sequenceId),
+        eq(emailQueue.prospectId, prospectId),
+        eq(emailQueue.status, "pending")
+      ));
+    
+    console.log(`✅ Cancelled ${futureSteps.length} future emails for prospect ${prospectId}`);
+  }
+}
+Summary of Completion
+You have now completed the following high-priority features:
+
+✅ Connect Email Sending to Automation (via SequenceStepService.scheduleFirstEmail).
+
+✅ Integrate AI Personalization (runs before scheduling the first email).
+
+✅ Rate Limit Enforcement (before sending in the email processing loop).
+
+✅ Exclusion Enforcement (during prospect import/enrollment).
+
+✅ Auto-Pause on Reply (stops sequence execution upon positive/neutral/unsubscribe reply).
+
+The only remaining major item from the highest priority list is the overall Scheduler Service or Sequence Executor logic that handles scheduling follow-up emails when there is no reply.

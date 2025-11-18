@@ -10,7 +10,7 @@ export const jobStatusEnum = pgEnum("job_status", ["queued", "running", "complet
 export const jobTypeEnum = pgEnum("job_type", ["enrichment", "import", "search"]);
 export const mailboxStatusEnum = pgEnum("mailbox_status", ["active", "paused", "error", "warming"]);
 export const mailboxProviderEnum = pgEnum("mailbox_provider", ["gmail", "outlook", "smtp", "sendgrid"]);
-export const emailQueueStatusEnum = pgEnum("email_queue_status", ["pending", "sending", "sent", "failed", "scheduled"]);
+export const emailQueueStatusEnum = pgEnum("email_queue_status", ["pending", "sending", "sent", "failed", "scheduled", "cancelled"]);
 export const emailSendStatusEnum = pgEnum("email_send_status", ["success", "failed", "bounced"]);
 
 // Prospects table
@@ -486,6 +486,16 @@ export const unsubscribes = pgTable("unsubscribes", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Automation Exclusion Log table
+export const automationExclusionLog = pgTable("automation_exclusion_log", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(), // Multi-tenant owner - required
+  automationRunId: varchar("automation_run_id").notNull().references(() => automationRuns.id, { onDelete: "cascade" }),
+  prospectEmail: text("prospect_email").notNull(),
+  reason: text("reason").notNull(), // "unsubscribed", "previously_contacted", "duplicate"
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
 // Automation relations
 export const automationRunsRelations = relations(automationRuns, ({ one }) => ({
   sequence: one(sequences, {
@@ -499,6 +509,8 @@ export type AutomationRun = typeof automationRuns.$inferSelect;
 export type InsertAutomationRun = typeof automationRuns.$inferInsert;
 export type Unsubscribe = typeof unsubscribes.$inferSelect;
 export type InsertUnsubscribe = typeof unsubscribes.$inferInsert;
+export type AutomationExclusionLog = typeof automationExclusionLog.$inferSelect;
+export type InsertAutomationExclusionLog = typeof automationExclusionLog.$inferInsert;
 
 // Automation schemas
 export const insertAutomationRunSchema = createInsertSchema(automationRuns).omit({
@@ -512,6 +524,11 @@ export const insertUnsubscribeSchema = createInsertSchema(unsubscribes).omit({
   id: true,
   createdAt: true,
   unsubscribedAt: true,
+});
+
+export const insertAutomationExclusionLogSchema = createInsertSchema(automationExclusionLog).omit({
+  id: true,
+  createdAt: true,
 });
 
 // ============================================
@@ -592,6 +609,9 @@ export const emailQueue = pgTable("email_queue", {
   body: text("body").notNull(),
   fromName: text("from_name"),
   replyTo: text("reply_to"),
+  
+  // Sequence tracking
+  stepOrder: integer("step_order"), // Which step in the sequence (1, 2, 3, etc.)
   
   // Email Threading Headers
   inReplyTo: text("in_reply_to"), // Message-ID of the email this is replying to
