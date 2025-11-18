@@ -1,5 +1,5 @@
 import { Worker, Job } from 'bullmq';
-import redisConnection from './redis-connection';
+import { redisConnection, isRedisConfigured } from './redis-connection';
 import { AutomationJobData } from './automation-queue';
 import automationService from '../services/automation.service';
 import { db } from '../db';
@@ -7,6 +7,12 @@ import { automationRuns } from '@shared/schema';
 import { eq, and } from 'drizzle-orm';
 
 const MAX_CONCURRENT_JOBS = 3; // Limit concurrent automations to avoid rate limit conflicts
+
+if (!isRedisConfigured || !redisConnection) {
+  console.warn('⚠️  Automation worker NOT started - Redis unavailable');
+  console.warn('ℹ️  Immediate automations will still work, but scheduled automations require Redis/Upstash');
+}
+
 
 async function processAutomationJob(job: Job<AutomationJobData>): Promise<void> {
   const { 
@@ -19,15 +25,18 @@ async function processAutomationJob(job: Job<AutomationJobData>): Promise<void> 
     userId 
   } = job.data;
 
-  console.log(`[Worker] Processing automation job: ${automationRunId}`);
+  console.log(`[Worker] Processing automation job: ${automationRunId} for user: ${userId}`);
   
-  // Update attempt tracking
+  // SECURITY: Load automation run with user scoping to prevent cross-tenant access
   const run = await db.query.automationRuns.findFirst({
-    where: (runs, { eq }) => eq(runs.id, automationRunId)
+    where: (runs, { eq, and }) => and(
+      eq(runs.id, automationRunId),
+      eq(runs.userId, userId) // CRITICAL: Prevent cross-tenant access
+    )
   });
 
   if (!run) {
-    throw new Error(`Automation run ${automationRunId} not found`);
+    throw new Error(`Automation run ${automationRunId} not found or access denied for user ${userId}`);
   }
 
   // Check if automation was cancelled
@@ -43,7 +52,7 @@ async function processAutomationJob(job: Job<AutomationJobData>): Promise<void> 
     return;
   }
 
-  // Update to running status with attempt tracking (atomic update with WHERE clause)
+  // Update to running status with attempt tracking (atomic update with userId scoping)
   const updateResult = await db.update(automationRuns)
     .set({
       status: 'running',
@@ -51,7 +60,10 @@ async function processAutomationJob(job: Job<AutomationJobData>): Promise<void> 
       lastAttemptAt: new Date(),
       startedAt: run.startedAt || new Date(),
     })
-    .where(eq(automationRuns.id, automationRunId))
+    .where(and(
+      eq(automationRuns.id, automationRunId),
+      eq(automationRuns.userId, userId) // CRITICAL: Scoped update
+    ))
     .returning();
 
   if (updateResult.length === 0) {
@@ -71,6 +83,44 @@ async function processAutomationJob(job: Job<AutomationJobData>): Promise<void> 
       userId
     );
 
+    // CRITICAL: Re-validate automation after execution (check for mid-flight cancellation)
+    const finalRun = await db.query.automationRuns.findFirst({
+      where: (runs, { eq, and }) => and(
+        eq(runs.id, automationRunId),
+        eq(runs.userId, userId)
+      )
+    });
+
+    if (!finalRun) {
+      console.log(`[Worker] Automation ${automationRunId} not found after execution, skipping completion`);
+      return;
+    }
+
+    // Don't overwrite if cancelled during execution
+    if (finalRun.status === 'cancelled' || finalRun.isStopped) {
+      console.log(`[Worker] Automation ${automationRunId} was cancelled during execution, preserving cancelled status`);
+      // Ensure status is cancelled if isStopped is true but status isn't cancelled yet
+      await db.update(automationRuns)
+        .set({ status: 'cancelled' })
+        .where(and(
+          eq(automationRuns.id, automationRunId),
+          eq(automationRuns.userId, userId)
+        ));
+      return;
+    }
+
+    // Success - clear any previous errors (user-scoped update)
+    await db.update(automationRuns)
+      .set({
+        status: 'completed',
+        errors: null, // Clear stale errors
+        completedAt: new Date(),
+      })
+      .where(and(
+        eq(automationRuns.id, automationRunId),
+        eq(automationRuns.userId, userId)
+      ));
+
     console.log(`[Worker] ✅ Automation ${automationRunId} completed successfully`);
   } catch (error) {
     console.error(`[Worker] ❌ Automation ${automationRunId} failed:`, error);
@@ -84,43 +134,54 @@ async function processAutomationJob(job: Job<AutomationJobData>): Promise<void> 
       errorMessage
     );
 
-    // Mark as failed (processAutomation should have already done this, but ensure it)
+    // Mark as failed (user-scoped update)
     await db.update(automationRuns)
       .set({ 
         status: 'failed',
         errors: errorMessage
       })
-      .where(eq(automationRuns.id, automationRunId));
+      .where(and(
+        eq(automationRuns.id, automationRunId),
+        eq(automationRuns.userId, userId)
+      ));
 
     throw error; // Re-throw to trigger BullMQ retry
   }
 }
 
-export const automationWorker = new Worker<AutomationJobData>(
-  'automation',
-  processAutomationJob,
-  {
-    connection: redisConnection,
-    concurrency: MAX_CONCURRENT_JOBS,
-    limiter: {
-      max: 10, // Max 10 jobs
-      duration: 60000, // per 60 seconds
-    },
-  }
-);
+let automationWorker: Worker<AutomationJobData> | null = null;
 
-automationWorker.on('completed', (job) => {
-  console.log(`[Worker] Job ${job.id} completed for automation ${job.data.automationRunId}`);
-});
+if (isRedisConfigured && redisConnection) {
+  automationWorker = new Worker<AutomationJobData>(
+    'automation',
+    processAutomationJob,
+    {
+      connection: redisConnection,
+      concurrency: MAX_CONCURRENT_JOBS,
+      limiter: {
+        max: 10, // Max 10 jobs
+        duration: 60000, // per 60 seconds
+      },
+    }
+  );
 
-automationWorker.on('failed', (job, err) => {
-  console.error(`[Worker] Job ${job?.id} failed for automation ${job?.data.automationRunId}:`, err.message);
-});
+  automationWorker.on('completed', (job) => {
+    console.log(`[Worker] Job ${job.id} completed for automation ${job.data.automationRunId}`);
+  });
 
-automationWorker.on('error', (err) => {
-  console.error('[Worker] Worker error:', err);
-});
+  automationWorker.on('failed', (job, err) => {
+    console.error(`[Worker] Job ${job?.id} failed for automation ${job?.data.automationRunId}:`, err.message);
+  });
 
-console.log(`🔧 Automation worker started (concurrency: ${MAX_CONCURRENT_JOBS})`);
+  automationWorker.on('error', (err) => {
+    // Only log non-connection errors
+    if (err.message && !err.message.includes('ECONNREFUSED')) {
+      console.error('[Worker] Worker error:', err.message);
+    }
+  });
 
+  console.log(`🔧 Automation worker started (concurrency: ${MAX_CONCURRENT_JOBS})`);
+}
+
+export { automationWorker };
 export default automationWorker;
