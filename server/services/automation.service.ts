@@ -308,7 +308,31 @@ class AutomationService {
           });
 
         } catch (error) {
-          console.error(`[Automation ${automationRunId}] Error enrolling prospect ${prospectId}:`, error);
+          console.error(`[Automation ${automationRunId}] Error enrolling/scheduling prospect ${prospectId}:`, error);
+          
+          // Mark prospect as failed if enrollment exists (so it doesn't retry silently)
+          try {
+            const existingEnrollment = await db.query.sequenceProspects.findFirst({
+              where: (sp, { eq, and }) => 
+                and(
+                  eq(sp.sequenceId, sequenceId),
+                  eq(sp.prospectId, prospectId)
+                )
+            });
+            
+            if (existingEnrollment) {
+              await db.update(sequenceProspects)
+                .set({ 
+                  status: "failed",
+                  completedAt: new Date()
+                })
+                .where(eq(sequenceProspects.id, existingEnrollment.id));
+              
+              console.log(`[Automation ${automationRunId}] Marked prospect ${prospectId} as failed`);
+            }
+          } catch (updateError) {
+            console.error(`[Automation ${automationRunId}] Failed to mark prospect as failed:`, updateError);
+          }
         }
       }
 
