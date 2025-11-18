@@ -9,6 +9,7 @@ import { eq, sql as drizzleSql } from "drizzle-orm";
 import { sql } from "drizzle-orm/sql";
 import { apolloService } from "./apollo.service";
 import exclusionFilterService, { type ExclusionRules } from "./exclusion-filter.service";
+import sequenceStepService from "./sequence-step.service";
 
 class AutomationService {
   /**
@@ -287,17 +288,24 @@ class AutomationService {
           }
 
           // Enroll prospect
-          await db.insert(sequenceProspects).values({
+          const [sequenceProspect] = await db.insert(sequenceProspects).values({
             sequenceId,
             prospectId,
             automationRunId,
             status: "active",
-          });
+          }).returning();
 
           console.log(`[Automation ${automationRunId}] Enrolled prospect ${prospectId}`);
 
-          // TODO: Schedule first email if AI personalization is enabled
-          // This will be handled by the email queue service
+          // 🔥 NEW: Schedule the first email step
+          await sequenceStepService.scheduleFirstEmail({
+            sequenceProspectId: sequenceProspect.id,
+            sequenceId,
+            prospectId,
+            automationRunId,
+            aiPersonalizationEnabled,
+            userId
+          });
 
         } catch (error) {
           console.error(`[Automation ${automationRunId}] Error enrolling prospect ${prospectId}:`, error);
