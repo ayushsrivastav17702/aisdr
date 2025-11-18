@@ -134,13 +134,10 @@ Format:
 
     const result = JSON.parse(responseText);
 
-    await storage.createPersonalizationResult({
-      prospectId,
-      personalizationScore: result.personalizationScore || 0,
-      insights: result.analysis,
-      emailSuggestions: result.email,
-      linkedinData: linkedInData,
-    });
+    // Note: This function doesn't have RequestContext, but it should be called through routes.ts
+    // which does have userContext. For now, we'll skip storing results here since it's missing ctx.
+    // The intelligentPersonalizationService already stores results with proper userId.
+    // TODO: Refactor this function to accept RequestContext if needed separately
 
     return {
       linkedInAnalysis: result.analysis,

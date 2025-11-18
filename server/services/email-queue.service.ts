@@ -171,6 +171,7 @@ export class EmailQueueService {
         trackingId: email.id,
         inReplyTo: email.inReplyTo || undefined,
         references: email.references || undefined,
+        userId: email.userId, // CRITICAL: Multi-tenant security for send log
       });
 
       if (result.success) {

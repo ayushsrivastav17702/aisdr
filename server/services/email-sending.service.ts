@@ -14,6 +14,7 @@ export class EmailSendingService {
     trackingId?: string;
     inReplyTo?: string;
     references?: string;
+    userId: string; // REQUIRED: User ID for multi-tenant send log tracking
   }): Promise<{ success: boolean; messageId?: string; error?: string; finalBody?: string }> {
     try {
       const [mailbox] = await db
@@ -93,6 +94,7 @@ export class EmailSendingService {
 
       await db.insert(emailSendLog).values({
         mailboxId: params.mailboxId,
+        userId: params.userId, // CRITICAL: Multi-tenant security - required field
         status: "success",
         messageId: info.messageId,
         sentAt: new Date(),
@@ -110,6 +112,7 @@ export class EmailSendingService {
 
       await db.insert(emailSendLog).values({
         mailboxId: params.mailboxId,
+        userId: params.userId, // CRITICAL: Multi-tenant security - required field
         status: "failed",
         error: error.message,
         sentAt: new Date(),

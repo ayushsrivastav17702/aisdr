@@ -1260,9 +1260,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         roleInsights: insights.roleInsights,
       };
 
-      // Save personalization result
+      // Save personalization result (with userId for multi-tenant security)
       await storage.createPersonalizationResult(req.userContext!, {
         prospectId,
+        userId: req.userContext!.userId, // CRITICAL: Multi-tenant security - required field
         personalizationScore: analysis.personalizationScore,
         insights: {
           keyInsights: analysis.keyInsights,

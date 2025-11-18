@@ -856,7 +856,22 @@ export class DatabaseStorage implements IStorage {
       throw new Error('Prospect not found');
     }
     
-    const [created] = await db.insert(personalizationResults).values(result).returning();
+    // CRITICAL: Enforce userId from context for multi-tenant security
+    // This prevents cross-tenant data injection via userId spoofing
+    const effectiveUserId = getEffectiveUserId(ctx);
+    
+    // Security check: if caller provided userId, verify it matches context
+    if (result.userId && result.userId !== effectiveUserId) {
+      throw new Error(`Security violation: Attempted to create personalization result with mismatched userId. Context: ${effectiveUserId}, Provided: ${result.userId}`);
+    }
+    
+    // Always use effectiveUserId from context (never trust caller-provided userId)
+    const resultWithUserId = {
+      ...result,
+      userId: effectiveUserId
+    };
+    
+    const [created] = await db.insert(personalizationResults).values(resultWithUserId).returning();
     return created;
   }
 
