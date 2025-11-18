@@ -554,16 +554,24 @@ class AutomationService {
     const result = await db.execute(sql`
       UPDATE automation_runs
       SET rate_limit_config = CASE
-        -- Handle NULL config (fresh automation) or new day - reset to 1
-        WHEN rate_limit_config IS NULL OR COALESCE(rate_limit_config->>'lastResetDate', ${today}) != ${today} THEN
+        -- Handle NULL config (fresh automation) - initialize with defaults
+        WHEN rate_limit_config IS NULL THEN
           jsonb_build_object(
-            'dailyLimit', COALESCE((rate_limit_config->>'dailyLimit')::int, 500),
+            'dailyLimit', 500,
             'currentDailyCount', 1,
-            'delayBetweenEmails', COALESCE((rate_limit_config->>'delayBetweenEmails')::int, 30000),
+            'delayBetweenEmails', 30000,
             'lastResetDate', ${today}::text,
             'lastEmailSentAt', ${nowISO}::text
           )
-        -- Increment counter on same day using || operator (safer than jsonb_set)
+        -- New day - reset counters but PRESERVE all existing fields
+        WHEN COALESCE(rate_limit_config->>'lastResetDate', ${today}) != ${today} THEN
+          rate_limit_config 
+          || jsonb_build_object(
+            'currentDailyCount', 1,
+            'lastResetDate', ${today}::text,
+            'lastEmailSentAt', ${nowISO}::text
+          )
+        -- Same day - increment counter and update timestamp
         ELSE
           rate_limit_config 
           || jsonb_build_object(
