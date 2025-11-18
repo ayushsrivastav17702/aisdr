@@ -310,7 +310,29 @@ class AutomationService {
         } catch (error) {
           console.error(`[Automation ${automationRunId}] Error enrolling/scheduling prospect ${prospectId}:`, error);
           
-          // Mark prospect as failed if enrollment exists (so it doesn't retry silently)
+          // Log error to automation run's errorLog
+          try {
+            const currentRun = await db.query.automationRuns.findFirst({
+              where: eq(automationRuns.id, automationRunId)
+            });
+            
+            const currentErrorLog = (currentRun?.errorLog as any[]) || [];
+            currentErrorLog.push({
+              prospectId,
+              error: error instanceof Error ? error.message : String(error),
+              timestamp: new Date().toISOString(),
+              stage: 'enrollment'
+            });
+            
+            await db.update(automationRuns)
+              .set({ errorLog: currentErrorLog as any })
+              .where(eq(automationRuns.id, automationRunId));
+            
+          } catch (logError) {
+            console.error(`[Automation ${automationRunId}] Failed to log error:`, logError);
+          }
+          
+          // Mark prospect as failed if enrollment was created
           try {
             const existingEnrollment = await db.query.sequenceProspects.findFirst({
               where: (sp, { eq, and }) => 
@@ -329,6 +351,8 @@ class AutomationService {
                 .where(eq(sequenceProspects.id, existingEnrollment.id));
               
               console.log(`[Automation ${automationRunId}] Marked prospect ${prospectId} as failed`);
+            } else {
+              console.log(`[Automation ${automationRunId}] Prospect ${prospectId} enrollment failed before insert - logged to errorLog`);
             }
           } catch (updateError) {
             console.error(`[Automation ${automationRunId}] Failed to mark prospect as failed:`, updateError);
