@@ -308,6 +308,7 @@ export const aiFollowupJobs = pgTable("ai_followup_jobs", {
 // Personalization results table
 export const personalizationResults = pgTable("personalization_results", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(), // Multi-tenant owner - required for security
   prospectId: varchar("prospect_id").notNull().references(() => prospects.id, { onDelete: "cascade" }),
   personalizationScore: integer("personalization_score").notNull(),
   variables: jsonb("variables"),
