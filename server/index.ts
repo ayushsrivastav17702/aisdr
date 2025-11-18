@@ -101,5 +101,10 @@ app.use((req, res, next) => {
     // Start reply detection polling
     const { replyDetectionService } = await import("./services/reply-detection.service");
     replyDetectionService.startPolling(20); // Check every 20 seconds
+    
+    // Start automation worker (BullMQ)
+    log(`🔧 Starting automation worker...`);
+    await import("./queue/automation-worker");
+    log(`✅ Automation worker started`);
   });
 })();
