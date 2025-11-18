@@ -1,0 +1,259 @@
+Proceed to implement the three missing core pieces in this order (each section includes code sketches and required DB/API changes):
+
+Scheduler Service (executor for scheduled automations)
+
+Exclusion Enforcement (apply exclusion rules during prospect import)
+
+Rate Limit Enforcement (enforce daily limit + inter-email delay during sending)
+
+I include runnable-style pseudo/real code snippets (Node.js) and DB migration examples you can drop into your repo.
+
+1) Scheduler Service — execute scheduled automations
+
+Goal: make the scheduled automation actually run (not just stored).
+
+Typical approach: use a robust job queue like BullMQ (Redis-based) or a lightweight scheduler like node-cron if you prefer no Redis. BullMQ gives reliability, retries, visibility.
+
+Files / services
+
+schedulerService.ts — enqueues automation runs when scheduled
+
+automationWorker.ts — worker that executes automationRun jobs (fetches prospects and enrolls)
+
+jobs/automationProcessor.ts — main processor logic
+
+BullMQ example (recommended)
+// schedulerService.ts
+import { Queue } from 'bullmq';
+const automationQueue = new Queue('automation', { connection: redisConnection });
+
+export async function scheduleAutomation(automationRunId, runAt) {
+  // schedule delayed job
+  await automationQueue.add('runAutomation', { automationRunId }, { delay: new Date(runAt) - Date.now() });
+}
+
+// worker.ts
+import { Worker } from 'bullmq';
+const worker = new Worker('automation', async job => {
+  const { automationRunId } = job.data;
+  await automationExecutor.execute(automationRunId);
+}, { connection: redisConnection });
+
+automationExecutor.execute(automationRunId)
+
+Load automationRun (ensure status: scheduled → running atomically)
+
+Call existing automation logic (apollo fetch / existing prospects)
+
+Ensure idempotency: use DB transactional locking or optimistic check WHERE status='scheduled' then update to running.
+
+DB change (simple)
+
+ensure automation_runs has scheduledFor, status enum (draft,scheduled,running,completed,failed), lastAttemptAt, attemptCount.
+
+Important behaviors
+
+Retries: use job retries with exponential backoff.
+
+Concurrency: limit concurrency to N for tenant or global to avoid rate-limit conflicts.
+
+Visibility: expose job status in UI (Queued, Running, Failed).
+
+Abort: support cancel/stop by removing job and updating run status.
+
+2) Exclusion Enforcement — apply rules when importing/saving prospects
+
+Goal: apply exclusion rules (skip contacted, unsubscribed, duplicates) during ingestion (Apollo or existing).
+
+High-level approach
+
+Evaluate exclusions before saving/enrolling.
+
+Exclusion checks: alreadyContacted (emails present in emails/emailQueue), unsubscribed (in unsubscribes), duplicate (same primaryEmail for user), do_not_contact list.
+
+Apply in both Apollo import and existing-prospects flow.
+
+Pseudocode (import pipeline)
+async function filterAndSaveProspects(candidateContacts, userId, exclusionConfig) {
+  const filtered = [];
+  // batch query to reduce DB calls
+  const emails = candidateContacts.map(c => c.primaryEmail);
+  const existingProspects = await db.prospects.findMany({ where: { userId, primaryEmail: { in: emails } } });
+  const unsubscribes = await db.unsubscribes.findMany({ where: { email: { in: emails } } });
+  const recentContactEmails = await db.emails.findMany({ where: { to: { in: emails }, userId, createdAt: { gte: someWindow } } });
+
+  for (const c of candidateContacts) {
+    if (exclusionConfig.skipUnsubscribed && unsubscribes.map(u => u.email).includes(c.primaryEmail)) continue;
+    if (exclusionConfig.skipDuplicates && existingProspects.map(p => p.primaryEmail).includes(c.primaryEmail)) continue;
+    if (exclusionConfig.skipContacted && recentContactEmails.map(e => e.to).includes(c.primaryEmail)) continue;
+    filtered.push(c);
+  }
+  // Save filtered as prospects (ensure userId set)
+  return saveProspectsBatch(filtered, userId);
+}
+
+DB indexes
+
+Add index on propects(userId, primaryEmail) and unsubscribes(email), emails(userId, to, createdAt) to keep queries fast.
+
+UI / Config
+
+In Automation Modal show the exclusion toggles and summary (X excluded by unsubscribes, Y deduped).
+
+On modal start, show an estimate of how many prospects will be imported after exclusions (run the filter in preview — lightweight).
+
+3) Rate Limit Enforcement (daily limit + delay)
+
+Goal: ensure UI limits reflect and are actually enforced during sending to avoid mailbox blacklisting.
+
+Two parts:
+
+Enforce per-mailbox or per-user daily limit (e.g., 200/day)
+
+Enforce delay between emails (e.g., 5s between sends or jittered)
+
+Approaches
+
+A. Centralized sender worker (recommended): queue items in Redis/BullMQ and the worker pulls respecting rate limits per mailbox/user using token-bucket or leaky bucket algorithm.
+
+B. DB row-locking: increment counters atomically in DB, but harder to scale.
+
+Token bucket example (per mailbox)
+// rateLimiter.ts
+const buckets = new Map(); // mailboxId -> { tokens, lastRefill }
+function allowSend(mailboxId, config) {
+  refillTokens(mailboxId, config.ratePerSecond);
+  if (buckets.get(mailboxId).tokens > 0) {
+    buckets.get(mailboxId).tokens -= 1;
+    return true;
+  }
+  return false;
+}
+
+Integration into emailQueueService.processPendingEmails
+
+Modify worker to check allowSend(mailboxId) before sending; if not allowed, re-queue with small delay (or leave as pending).
+
+for (const queueItem of pendingEmails) {
+  const mailbox = selectMailbox(queueItem.userId);
+  if (!rateLimiter.allowSend(mailbox.id, mailbox.rateConfig)) {
+    // push job back or wait
+    await requeueWithDelay(queueItem.id, mailbox.rateConfig.delayMs);
+    continue;
+  }
+  // proceed with send
+}
+
+Daily counters
+
+Maintain mailbox_daily_counts or stored fields email_mailboxes.daily_sent updated atomically (use DB UPDATE ... SET daily_sent = daily_sent + 1 WHERE id = ...).
+
+Reset daily counts at midnight via a scheduled job (Cron) or store last_reset_at to compute derived counts instead of resetting.
+
+Delay enforcement
+
+Use per-mailbox minDelayBetweenEmailsMs. When mailbox used, set nextAvailableAt = Date.now() + delay in Redis; worker will only pick mailbox when Date.now() >= nextAvailableAt.
+
+Additional required changes (DB & API)
+DB migrations (examples)
+ALTER TABLE automation_runs ADD COLUMN scheduled_for timestamptz;
+ALTER TABLE automation_runs ADD COLUMN attempt_count integer DEFAULT 0;
+ALTER TABLE automation_runs ADD COLUMN status varchar(20) DEFAULT 'draft';
+
+CREATE INDEX idx_prospects_user_email ON prospects(user_id, primary_email);
+CREATE INDEX idx_unsubscribes_email ON unsubscribes(email);
+CREATE INDEX idx_emails_user_to_createdat ON emails(user_id, to, created_at);
+ALTER TABLE email_mailboxes ADD COLUMN daily_limit integer DEFAULT 200;
+ALTER TABLE email_mailboxes ADD COLUMN min_delay_ms integer DEFAULT 1000;
+
+API changes
+
+POST /api/automation/start supports scheduledFor and dryRun flag.
+
+New endpoints:
+
+POST /api/automation/schedule — schedule automation run
+
+POST /api/automation/dry-run — returns count of prospects after exclusions and sample personalized emails (no send)
+
+GET /api/automation/rate-status — returns current daily usage and nextAvailableAt per mailbox
+
+Idempotency & multi-tenant safety
+
+Always userId-scope DB queries.
+
+Use automation_runs.id + status transitions with transactions to avoid double runs.
+
+Tests & QA checklist
+
+Unit tests
+
+Exclusion filter unit tests for: unsubscribed, duplicates, previously contacted, combined rules.
+
+Rate limiter tests: tokens refill, minDelay honored, daily limit stop.
+
+Integration tests
+
+End-to-end scenario: schedule automation → worker executes → prospects saved → enrollments created → emails queued respecting rate limits.
+
+Dry-run returns exact counts and sample personalized email without sending.
+
+Manual QA
+
+Test with a seed mailbox (test account) and prospectCount = 1 (your current workaround).
+
+Test unsubscribe flow: a reply with “unsubscribe” must mark unsubscribed and stop sequence.
+
+Test concurrent scheduled runs across tenants for isolation.
+
+Monitoring
+
+Add metrics: automations started/completed/failed, emails sent per mailbox per day, rate-limit hits, worker queue length.
+
+Expose dashboard graphs and alerts for frequent rate-limit-denied events or failures.
+
+UI/UX updates (small)
+
+Add Dry-run button to Automation modal (shows number imported and top 5 sample personalized emails).
+
+Show Exclusions summary before confirmation (X removed due to unsubscribes, Y duplicates).
+
+Show mailbox rate status in automation run details (Remaining / Daily Limit / NextAvailableAt).
+
+Allow Cancel scheduled run (remove job from BullMQ and set run status to canceled).
+
+Edge cases & pitfalls
+
+Timezones: scheduled times should be stored in UTC and displayed in user's timezone. Use explicit timezone conversions.
+
+Large imports: batch saves and use background jobs to avoid long transactions.
+
+Mail provider limits: Gmail/GSuite often enforce per-account/day limits; prefer user-level limits and warn users when approaching provider limits.
+
+Exclusion stale data: maintain up-to-date unsubscribe lists (sync from mailbox webhooks if available).
+
+Threading: message-id generation must be stable to match replies; store messageId back on queue item.
+
+Rollout strategy (safe)
+
+Implement scheduler + basic rate limiter in a staging Redis worker.
+
+Add dry-run endpoint and enable exclusion enforcement for Apollo imports in staging.
+
+Run end-to-end tests and manual seed tests.
+
+Deploy to production with feature flag gating (enable by tenant).
+
+Monitor errors and rate-limit events for 24–48 hours; roll back if necessary.
+
+Deliverable summary (what I’ve provided here)
+
+Concrete implementation plan for Scheduler, Exclusions, Rate Enforcement.
+
+BullMQ worker sketch + token-bucket pattern for rate-limits.
+
+SQL migration examples and suggested indexes.
+
+API endpoints to add and UI suggestions.
+
+Tests, QA checklist, and rollout guidance.

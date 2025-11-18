@@ -435,7 +435,15 @@ export const insertPersonalizationResultSchema = createInsertSchema(personalizat
 // ============================================
 
 // Automation status enum
-export const automationStatusEnum = pgEnum("automation_status", ["running", "completed", "paused", "failed"]);
+export const automationStatusEnum = pgEnum("automation_status", [
+  "draft",
+  "scheduled", 
+  "running", 
+  "completed", 
+  "paused", 
+  "failed",
+  "cancelled"
+]);
 
 // Automation runs table
 export const automationRuns = pgTable("automation_runs", {
@@ -443,6 +451,7 @@ export const automationRuns = pgTable("automation_runs", {
   userId: varchar("user_id").notNull(), // Multi-tenant owner - required
   sequenceId: varchar("sequence_id").notNull().references(() => sequences.id, { onDelete: "cascade" }),
   prospectCount: integer("prospect_count").notNull(),
+  prospectSource: text("prospect_source").default("apollo"), // "apollo" or "existing"
   aiPersonalizationEnabled: boolean("ai_personalization_enabled").default(true),
   apolloFilters: jsonb("apollo_filters"),
   status: automationStatusEnum("status").default("running"),
@@ -451,6 +460,8 @@ export const automationRuns = pgTable("automation_runs", {
   completedAt: timestamp("completed_at"),
   scheduledFor: timestamp("scheduled_for"), // Scheduling support
   timezone: text("timezone").default("UTC"), // Timezone for scheduling
+  attemptCount: integer("attempt_count").default(0), // Retry tracking
+  lastAttemptAt: timestamp("last_attempt_at"), // Last execution attempt
   prospectsAdded: integer("prospects_added").default(0),
   emailsSent: integer("emails_sent").default(0),
   repliesReceived: integer("replies_received").default(0),
@@ -534,6 +545,8 @@ export const emailMailboxes = pgTable("email_mailboxes", {
   dailyLimit: integer("daily_limit").default(200),
   dailySent: integer("daily_sent").default(0),
   lastResetAt: timestamp("last_reset_at").defaultNow(),
+  minDelayMs: integer("min_delay_ms").default(30000), // Minimum delay between emails (30s default)
+  nextAvailableAt: timestamp("next_available_at"), // When mailbox can next be used
   
   // Reputation
   bounceRate: integer("bounce_rate").default(0),

@@ -1,6 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { z } from "zod";
 import automationService from "./services/automation.service";
+import automationSchedulerService from "./services/automation-scheduler.service";
 import { db } from "./db";
 import { sequences } from "@shared/schema";
 import { eq } from "drizzle-orm";
@@ -77,45 +78,47 @@ export function registerAutomationRoutes(app: Express) {
         });
       }
 
-      // Create automation run record with userId for multi-tenant isolation
-      const automationRun = await automationService.createAutomationRun({
-        sequenceId,
-        userId: req.userContext.userId, // Store user ID for tenant isolation
-        prospectCount,
-        aiPersonalizationEnabled,
-        apolloFilters,
-        scheduledFor: scheduledFor ? new Date(scheduledFor) : undefined,
-        timezone,
-        exclusionRules,
-        rateLimitConfig,
-        status: scheduledFor ? "paused" : "running", // Paused if scheduled for later
-        prospectsAdded: 0,
-        emailsSent: 0,
-        repliesReceived: 0,
-        createdBy: 1, // Legacy field, keeping for compatibility
-      });
-
-      // Start processing in background (don't await) with userId for mailbox selection
-      // Only start immediately if not scheduled
-      if (!scheduledFor) {
-        automationService.processAutomation(
-          automationRun.id,
-          sequenceId,
-          prospectSource,
-          prospectCount,
-          aiPersonalizationEnabled,
-          apolloFilters,
-          req.userContext.userId // Pass userId for user-scoped mailbox selection
-        ).catch(err => {
-          console.error(`Automation ${automationRun.id} background processing failed:`, err);
-        });
-      }
+      // Use scheduler service to create and queue automation
+      const automationRun = scheduledFor 
+        ? await automationSchedulerService.scheduleAutomation({
+            sequenceId,
+            userId: req.userContext.userId,
+            prospectCount,
+            prospectSource,
+            aiPersonalizationEnabled,
+            apolloFilters,
+            scheduledFor: new Date(scheduledFor),
+            timezone,
+            exclusionRules,
+            rateLimitConfig,
+            prospectsAdded: 0,
+            emailsSent: 0,
+            repliesReceived: 0,
+            createdBy: 1,
+          })
+        : await automationSchedulerService.startAutomation({
+            sequenceId,
+            userId: req.userContext.userId,
+            prospectCount,
+            prospectSource,
+            aiPersonalizationEnabled,
+            apolloFilters,
+            timezone,
+            exclusionRules,
+            rateLimitConfig,
+            prospectsAdded: 0,
+            emailsSent: 0,
+            repliesReceived: 0,
+            createdBy: 1,
+          });
 
       // Return immediately
       res.json({
         success: true,
         automationRunId: automationRun.id,
-        message: `Automation started. Processing ${prospectCount} prospects in background...`,
+        message: scheduledFor 
+          ? `Automation scheduled for ${new Date(scheduledFor).toISOString()}`
+          : `Automation started. Processing ${prospectCount} prospects in background...`,
         automationRun,
       });
 
@@ -329,6 +332,72 @@ export function registerAutomationRoutes(app: Express) {
       console.error("Error fetching rate limit status:", error);
       res.status(500).json({ 
         error: "Failed to fetch rate limit status" 
+      });
+    }
+  });
+
+  /**
+   * POST /api/automation/:id/cancel
+   * Cancel a scheduled automation
+   */
+  app.post("/api/automation/:id/cancel", authenticate, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      await automationSchedulerService.cancelScheduledAutomation(id);
+
+      res.json({ 
+        success: true,
+        message: "Automation cancelled successfully" 
+      });
+    } catch (error) {
+      console.error("Error cancelling automation:", error);
+      res.status(500).json({ 
+        error: "Failed to cancel automation" 
+      });
+    }
+  });
+
+  /**
+   * POST /api/automation/:id/reschedule
+   * Reschedule a failed or cancelled automation
+   */
+  app.post("/api/automation/:id/reschedule", authenticate, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { scheduledFor } = req.body;
+
+      if (!scheduledFor) {
+        return res.status(400).json({ error: "scheduledFor is required" });
+      }
+
+      await automationSchedulerService.rescheduleAutomation(id, new Date(scheduledFor));
+
+      res.json({ 
+        success: true,
+        message: `Automation rescheduled for ${new Date(scheduledFor).toISOString()}` 
+      });
+    } catch (error) {
+      console.error("Error rescheduling automation:", error);
+      res.status(500).json({ 
+        error: "Failed to reschedule automation" 
+      });
+    }
+  });
+
+  /**
+   * GET /api/automation/:id/job-status
+   * Get BullMQ job status for automation
+   */
+  app.get("/api/automation/:id/job-status", authenticate, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const jobStatus = await automationSchedulerService.getJobStatus(id);
+
+      res.json({ jobStatus });
+    } catch (error) {
+      console.error("Error fetching job status:", error);
+      res.status(500).json({ 
+        error: "Failed to fetch job status" 
       });
     }
   });
