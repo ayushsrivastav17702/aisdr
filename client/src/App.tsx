@@ -20,6 +20,7 @@ import ResetPasswordPage from "@/pages/reset-password";
 import VerifyEmailPage from "@/pages/verify-email";
 import AdminPanel from "@/pages/admin-panel";
 import ProfilePage from "@/pages/profile";
+import APIDocumentationPage from "@/pages/api-docs";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -88,6 +89,11 @@ function Router() {
       <Route path="/analytics">
         <ProtectedRoute>
           <AnalyticsPage />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/api-docs">
+        <ProtectedRoute>
+          <APIDocumentationPage />
         </ProtectedRoute>
       </Route>
       <Route component={NotFound} />

@@ -26,7 +26,8 @@ import {
   Inbox,
   FileText,
   Zap,
-  Shield
+  Shield,
+  Code
 } from "lucide-react";
 
 export default function Dashboard() {
@@ -175,6 +176,17 @@ export default function Dashboard() {
             >
               <BarChart3Icon className="w-4 h-4" />
               <span>Analytics</span>
+            </Button>
+          </Link>
+          
+          <Link href="/api-docs">
+            <Button
+              variant="ghost"
+              className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
+              data-testid="nav-api-docs"
+            >
+              <Code className="w-4 h-4" />
+              <span>API Docs</span>
             </Button>
           </Link>
           
