@@ -1,15 +1,24 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { BarChart3, TrendingUp, Users, Mail, Sparkles, Target, Activity, ArrowLeft } from "lucide-react";
+import { BarChart3, TrendingUp, Users, Mail, Sparkles, Target, Activity, ArrowLeft, Download, Calendar } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow, format, subDays } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import { Breadcrumbs } from "@/components/breadcrumbs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { useToast } from "@/hooks/use-toast";
 
 interface AnalyticsOverview {
   totalProspects: number;
@@ -54,6 +63,9 @@ interface UsageMetrics {
 }
 
 export default function AnalyticsPage() {
+  const { toast } = useToast();
+  const [dateRange, setDateRange] = useState("30");
+
   const { data: overview, isLoading: overviewLoading } = useQuery<AnalyticsOverview>({
     queryKey: ["/api/analytics/overview"],
   });
@@ -73,6 +85,38 @@ export default function AnalyticsPage() {
   const { data: usageMetrics, isLoading: usageLoading } = useQuery<UsageMetrics>({
     queryKey: ["/api/analytics/usage-metrics"],
   });
+
+  const handleExportCSV = () => {
+    if (!overview) return;
+
+    const csvData = [
+      ['Metric', 'Value'],
+      ['Total Prospects', overview.totalProspects],
+      ['Total Sequences', overview.totalSequences],
+      ['Total Emails Sent', overview.totalEmailsSent],
+      ['Total Replies', overview.totalReplies],
+      ['Active Sequences', overview.activeSequences],
+      ['Average Reply Rate', `${overview.averageReplyRate.toFixed(2)}%`],
+      ['AI Credits Used', overview.totalAICreditsUsed],
+    ];
+
+    const csvContent = csvData.map(row => row.join(',')).join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    
+    link.setAttribute('href', url);
+    link.setAttribute('download', `analytics_export_${format(new Date(), 'yyyy-MM-dd')}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    toast({
+      title: "Export successful",
+      description: "Analytics data has been exported to CSV",
+    });
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 p-6">
@@ -94,6 +138,27 @@ export default function AnalyticsPage() {
                 Track your outreach performance and activity
               </p>
             </div>
+          </div>
+          
+          <div className="flex items-center gap-3">
+            <Select value={dateRange} onValueChange={setDateRange}>
+              <SelectTrigger className="w-[180px]" data-testid="select-date-range">
+                <Calendar className="mr-2 h-4 w-4" />
+                <SelectValue placeholder="Select range" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="7">Last 7 days</SelectItem>
+                <SelectItem value="30">Last 30 days</SelectItem>
+                <SelectItem value="90">Last 90 days</SelectItem>
+                <SelectItem value="365">Last year</SelectItem>
+                <SelectItem value="all">All time</SelectItem>
+              </SelectContent>
+            </Select>
+            
+            <Button onClick={handleExportCSV} variant="outline" data-testid="button-export-csv">
+              <Download className="mr-2 h-4 w-4" />
+              Export CSV
+            </Button>
           </div>
         </div>
 
