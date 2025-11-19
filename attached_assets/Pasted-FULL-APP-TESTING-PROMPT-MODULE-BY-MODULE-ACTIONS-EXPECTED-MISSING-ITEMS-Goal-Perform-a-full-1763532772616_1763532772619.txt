@@ -1,0 +1,290 @@
+FULL APP TESTING PROMPT — MODULE-BY-MODULE, ACTIONS, EXPECTED, & MISSING ITEMS
+
+Goal: Perform a full end-to-end QA & product readiness audit. For each module below, perform the listed actions, record exact results, capture logs/screenshots, and then state (A) what is working, (B) what is failing (steps to reproduce + exact error text), and (C) what is missing and should be added before per-user commercial launch. Prioritize each finding as Critical / High / Medium / Low.
+
+Instructions for the tester
+
+Use the latest production/staging build. Note the build/commit hash and environment (staging/prod).
+
+Use three user accounts: Free plan user, Pro plan user, Enterprise admin. Provide credentials in the test report.
+
+Use Chrome DevTools (Console + Network) and capture console logs and failing network requests. Save HAR files where relevant.
+
+Take screenshots and short screencasts for all failures. Attach logs and screenshots to each issue.
+
+For backend/API failures, include request payload, response body, headers, and timestamps.
+
+Use Postman to validate backend APIs where UI triggers them. Log endpoint, method, request, and response.
+
+Output format required at the end (module table + prioritized fixes + 30-day roadmap + missing features list).
+
+Output format required
+
+At the end of the run, deliver:
+
+Module-by-module table (Module | Works? | Errors Found | Steps to Reproduce | Logs/Screenshots | Severity | Missing Features | Suggested Fix)
+
+Top 10 blocking issues (Critical) with reproduction and guidance.
+
+30-day roadmap to fix Critical → High → Medium issues.
+
+Complete list of missing features grouped by: Billing/Usage, UX, Backend, Security, Deliverability, Compliance, Scale.
+
+Suggested test automation scripts (Puppeteer / Cypress / Postman collections) for regression.
+
+MODULE TESTS — DO THESE STEP-BY-STEP
+1) AI Search
+
+Test data: example queries (e.g., “CTOs in fintech in NYC, 100+ employees”), long & malformed queries, empty query.
+Steps:
+
+Open AI Search page. Execute 5 queries (simple, complex, malformed, empty, with filters).
+
+Toggle advanced filters: status, country, job title.
+
+Bulk select results (10 rows) → add to list / export / send to sequence.
+
+Save a search (if UI exists) and re-run.
+
+Monitor network calls to AI endpoints; capture latency and failures.
+Expected:
+
+All queries return results or a clear fallback message on failure.
+
+Filters apply correctly.
+
+Bulk actions complete with success toasts and accurate counts.
+
+AI usage counter and credit consumption are shown or logged on each query.
+Record:
+
+Query text, response time, response size, credit usage, errors (stack/traces).
+Missing to check for: saved searches, usage logging, export, rate limiting for abuse.
+
+2) Prospects
+
+Test data: CSV with 50 prospects, duplicates, invalid emails, custom fields.
+Steps:
+
+View prospect list; sort/filter by name, company, status.
+
+Single/prospects bulk edit (tag, move to list, delete).
+
+Open a prospect details panel: check enrichment fields and activity timeline.
+
+Create smart list and verify dynamic membership.
+
+Run duplicate detection via import & UI.
+Expected:
+
+Filters work; prospect detail shows history; bulk actions succeed; duplicates flagged.
+Record: UI errors, network failures, missing fields.
+Missing to check for: duplicate merge rules, prospect activity timeline, custom attributes.
+
+3) Import
+
+Test data: CSVs: good, malformed, with extra columns, missing headers.
+Steps:
+
+Start new import, map fields, preview mapping, confirm import.
+
+Attempt imports that cause parse errors; try to resume/cancel.
+
+Check import history & status.
+
+Test duplicate merge options.
+Expected:
+
+Field mapping UI present; preview shows correct parsed rows; errors are descriptive; import history logs present.
+Record: parsing errors, missing preview, incorrect merges.
+Missing to check for: template CSV, import previews, merge rules, notifications on completion.
+
+4) Sequences
+
+Test data: 3 sequences with different steps, send windows, and templates.
+Steps:
+
+Create new sequence with 4 steps (email, wait, email, wait).
+
+Set conditional step (stop on reply) and A/B content variants.
+
+Start sequence for 10 prospects. Monitor send logs/workers.
+
+Pause/resume a sequence mid-run. Cancel sequence.
+
+Check step analytics after initial sends.
+Expected:
+
+Sequence creation UI functional, sends scheduled, conditional stops work, A/B splits recorded, pause halts sends.
+Record: failed sends, missing analytics, worker errors.
+Missing to check for: A/B testing data, throttling per mailbox, time windows, instant pause.
+
+5) Automation
+
+Test data: workflows linking triggers: prospect added → auto-enrich → add to sequence.
+Steps:
+
+Create an automation with trigger & actions.
+
+Add a prospect to trigger; examine automation logs.
+
+Force an error in one action and check retry behavior.
+
+Test chain of automations (race conditions).
+Expected:
+
+Triggers fire correctly; logs show each step; errors are surfaced and retries attempted.
+Record: missing logs, silent failures.
+Missing to check for: workflow builder, error logs, retry policies.
+
+6) Mailboxes
+
+Test data: Gmail OAuth account, Outlook via OAuth, custom SMTP.
+Steps:
+
+Add mailbox via OAuth; validate OAuth flow.
+
+Send a test email; check inbox & deliverability headers.
+
+Simulate bounce/soft bounce and check platform handling.
+
+Check daily send limit enforcement and warmup settings.
+
+Check IMAP syncing for incoming replies and reply detection.
+Expected:
+
+OAuth succeeds; send test produces accepted status; bounce handling marks prospect; reply detection works.
+Record: failed OAuth, missing signature/dkim info, bounce handling gaps.
+Missing to check for: DKIM/SPF setup checks, warmup, per-mailbox throttles, IMAP sync reliability.
+
+7) Content (Templates)
+
+Test data: templates with variables, long templates, templates with attachments.
+Steps:
+
+Create, edit, delete templates. Use placeholders ({{first_name}}).
+
+Share templates to team. Check version history.
+
+Use a template in a sequence and send.
+Expected: templates support variables, preview, sharing, and version history.
+Record: missing variable replacements, corrupted attachments.
+Missing to check for: shared folders, AI assist, versioning.
+
+8) Enrichment
+
+Test data: pros with partial data, company domains.
+Steps:
+
+Run enrichment on a list; check queue & progress.
+
+View enriched fields, failed enrich logs.
+
+Check enrichment credit usage and counters.
+Expected: Enrichment returns structured company & contact data; failures clearly logged.
+Record: timeouts, missing credits counter.
+Missing: enrichment credit UI, retries, fallback.
+
+9) Analytics
+
+Test data: run sequences & sends for 48 hours; generate reports.
+Steps:
+
+Open analytics overview: check open, click, reply, bounce, delivery rates.
+
+Drill-down per-sequence and per-mailbox.
+
+Export reports (CSV/PDF).
+Expected: metrics are accurate & export works.
+Record: mismatched numbers vs mailbox logs, missing export.
+Missing: mailbox health, A/B test reporting, team metrics.
+
+10) User Management
+
+Steps:
+
+Create new user, assign role (Admin/Member), invite via email.
+
+Test SSO login if available.
+
+Check per-user limits and role-based access.
+
+Check audit logs for user actions (create, delete, export).
+Expected: invites, role permissions, and audit logs present and accurate.
+Record: missing role enforcement or missing audit trail.
+Missing: SSO, granular roles, per-user quotas.
+
+11) Settings & Billing
+
+Steps:
+
+Update profile & password. Use Forgot Password flow.
+
+Check email verification flow.
+
+Test billing: view plan, start Stripe checkout (test cards), change plan, downgrade/upgrade, check webhook handling.
+
+Check API keys & webhook creation.
+Expected: password reset works, email verification required, billing checkout completes and plan changes reflected with usage enforcement.
+Record: login bug (200 with no cookie), missing password reset, Stripe webhook failures.
+Missing: complete billing flow, usage enforcement middleware, legal pages.
+
+Non-functional tests (run these too)
+
+Load: upload 10k prospects, send 5k emails in simulated queue. Capture CPU/memory and DB slow queries.
+
+Security: test session timeout, brute force, password strength, HTTP-only cookie, CORS.
+
+Deliverability: check SPF/DKIM/DMARC results for outbound emails.
+
+Compliance: request data export & deletion for a test user (GDPR flows).
+
+Scalability: create 100 automation jobs concurrently and monitor queue/backlog.
+
+How to REPORT each issue (mandatory)
+
+Title: short descriptive
+
+Module: e.g., Mailboxes → OAuth fails
+
+Environment: staging/prod, build id
+
+Steps to reproduce: numbered exact clicks + payloads
+
+Actual result: verbatim error messages, console logs, HTTP code + body
+
+Expected result: one-liner
+
+Severity: Critical/High/Medium/Low
+
+Attachments: screenshots, HAR, console logs, Postman request/response
+
+Suggested fix / probable root cause: short note
+
+FINAL: “WHAT YOU ARE MISSING” CHECKLIST (Tester MUST COMPLETE)
+
+For each module, explicitly answer these bullet points in the report:
+
+Which required features from the earlier “Top 10 Missing Essentials” are missing here? (Billing, usage limits, password reset, email verification, logs, onboarding, automation reliability, mailbox health, security, data export)
+
+Which competitor-standard features are absent? (A/B testing, DKIM tool, saved searches, team roles, API docs, rate limiting, webhook reliability)
+
+Any hidden technical debt — background jobs, missing indexes, single-point failures?
+
+Any security or compliance risks found? (e.g., PII stored unencrypted, missing cookie flags, missing DPA)
+
+For each missing feature: estimate dev effort (days) and suggested priority.
+
+DELIVERABLE (copy/paste into ticket or chat)
+
+At the end, produce:
+
+Module-by-module table (as described above).
+
+ZIP of all logs/screenshots/HARs.
+
+Prioritized fix list (Critical → High → Medium → Low).
+
+30-day remediation roadmap with owners for each task.
+
+“Missing features” consolidated checklist mapped to modules and business impact (revenue/legal/risk).

@@ -48,11 +48,11 @@ export type RequestContext = {
   actingAs?: string;
 };
 
-function isAdmin(ctx: RequestContext): boolean {
+export function isAdmin(ctx: RequestContext): boolean {
   return ctx?.roles?.includes('admin') ?? false;
 }
 
-function getEffectiveUserId(ctx: RequestContext): string {
+export function getEffectiveUserId(ctx: RequestContext): string {
   if (ctx.actingAs && !isAdmin(ctx)) {
     throw new Error('Only administrators can use actingAs');
   }

@@ -559,4 +559,55 @@ router.get('/api/auth/validate-verification-token', async (req, res) => {
   }
 });
 
+// Onboarding routes
+router.post('/api/user/onboarding/complete', authenticate, async (req, res) => {
+  try {
+    if (!req.userContext?.userId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    await db
+      .update(users)
+      .set({ 
+        onboardingCompleted: true,
+        onboardingCompletedAt: new Date()
+      })
+      .where(eq(users.id, req.userContext.userId));
+
+    auditService.logFromRequest(req, 'ONBOARDING_COMPLETED', 'user', {
+      userId: req.userContext.userId
+    });
+
+    res.json({ success: true, message: 'Onboarding completed successfully' });
+  } catch (error) {
+    console.error('Complete onboarding error:', error);
+    res.status(500).json({ error: 'Failed to complete onboarding' });
+  }
+});
+
+router.post('/api/user/onboarding/skip', authenticate, async (req, res) => {
+  try {
+    if (!req.userContext?.userId) {
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+
+    await db
+      .update(users)
+      .set({ 
+        onboardingCompleted: true,
+        onboardingCompletedAt: new Date()
+      })
+      .where(eq(users.id, req.userContext.userId));
+
+    auditService.logFromRequest(req, 'ONBOARDING_SKIPPED', 'user', {
+      userId: req.userContext.userId
+    });
+
+    res.json({ success: true, message: 'Onboarding skipped successfully' });
+  } catch (error) {
+    console.error('Skip onboarding error:', error);
+    res.status(500).json({ error: 'Failed to skip onboarding' });
+  }
+});
+
 export default router;
