@@ -11,6 +11,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Mail, Plus, Trash2, Play, Pause, CheckCircle, AlertCircle, Loader2, Settings, ArrowLeft } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Link } from "wouter";
+import { Breadcrumbs } from "@/components/breadcrumbs";
 
 type EmailMailbox = {
   id: string;
@@ -45,6 +46,8 @@ export default function Mailboxes() {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <div className="container mx-auto p-6">
+        <Breadcrumbs />
+        
         <div className="flex justify-between items-center mb-6">
           <div className="flex items-center gap-4">
             <Link href="/">

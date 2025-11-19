@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { formatDistanceToNow } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
+import { Breadcrumbs } from "@/components/breadcrumbs";
 
 interface AnalyticsOverview {
   totalProspects: number;
@@ -76,6 +77,8 @@ export default function AnalyticsPage() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 p-6">
       <div className="max-w-7xl mx-auto space-y-6">
+        <Breadcrumbs />
+        
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Link href="/">
