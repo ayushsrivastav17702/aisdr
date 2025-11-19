@@ -16,8 +16,9 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
-import { User, Key, Monitor, Trash2, Loader2 } from 'lucide-react';
+import { User, Key, Monitor, Trash2, Loader2, Download, FileText, Database } from 'lucide-react';
 
 interface Session {
   id: string;
@@ -153,7 +154,7 @@ export default function ProfilePage() {
       </div>
 
       <Tabs defaultValue="profile" className="w-full">
-        <TabsList className="grid w-full grid-cols-3 max-w-[400px]">
+        <TabsList className="grid w-full grid-cols-4 max-w-[600px]">
           <TabsTrigger value="profile" data-testid="tab-profile">
             <User className="mr-2 h-4 w-4" />
             Profile
@@ -165,6 +166,10 @@ export default function ProfilePage() {
           <TabsTrigger value="sessions" data-testid="tab-sessions">
             <Monitor className="mr-2 h-4 w-4" />
             Sessions
+          </TabsTrigger>
+          <TabsTrigger value="data" data-testid="tab-data-export">
+            <Download className="mr-2 h-4 w-4" />
+            Data Export
           </TabsTrigger>
         </TabsList>
 
@@ -385,6 +390,182 @@ export default function ProfilePage() {
                   </TableBody>
                 </Table>
               )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="data" className="space-y-4 mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Export Your Data</CardTitle>
+              <CardDescription>
+                Download your data in CSV or JSON format for backup, analysis, or GDPR compliance
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {/* Prospects Export */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Database className="h-5 w-5 text-primary" />
+                  <h3 className="font-semibold">Prospects</h3>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Export all your prospect data including contact details, enrichment data, and custom fields
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => window.open('/api/export/prospects/csv', '_blank')}
+                    data-testid="button-export-prospects-csv"
+                  >
+                    <FileText className="mr-2 h-4 w-4" />
+                    Download CSV
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => window.open('/api/export/prospects/json', '_blank')}
+                    data-testid="button-export-prospects-json"
+                  >
+                    <Database className="mr-2 h-4 w-4" />
+                    Download JSON
+                  </Button>
+                </div>
+              </div>
+
+              <div className="border-t" />
+
+              {/* Sequences Export */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <FileText className="h-5 w-5 text-primary" />
+                  <h3 className="font-semibold">Sequences</h3>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Export your email sequences including all steps and templates
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => window.open('/api/export/sequences/csv', '_blank')}
+                    data-testid="button-export-sequences-csv"
+                  >
+                    <FileText className="mr-2 h-4 w-4" />
+                    Download CSV
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => window.open('/api/export/sequences/json', '_blank')}
+                    data-testid="button-export-sequences-json"
+                  >
+                    <Database className="mr-2 h-4 w-4" />
+                    Download JSON
+                  </Button>
+                </div>
+              </div>
+
+              <div className="border-t" />
+
+              {/* Email Activity Export */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Monitor className="h-5 w-5 text-primary" />
+                  <h3 className="font-semibold">Email Activity</h3>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Export email sending logs including delivery status and timestamps
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => window.open('/api/export/emails/csv', '_blank')}
+                    data-testid="button-export-emails-csv"
+                  >
+                    <FileText className="mr-2 h-4 w-4" />
+                    Download CSV
+                  </Button>
+                </div>
+              </div>
+
+              <div className="border-t" />
+
+              {/* Email Replies Export */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Monitor className="h-5 w-5 text-primary" />
+                  <h3 className="font-semibold">Email Replies</h3>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Export all received email replies and their sentiment analysis
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => window.open('/api/export/replies/csv', '_blank')}
+                    data-testid="button-export-replies-csv"
+                  >
+                    <FileText className="mr-2 h-4 w-4" />
+                    Download CSV
+                  </Button>
+                </div>
+              </div>
+
+              <div className="border-t" />
+
+              {/* Analytics Export */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <FileText className="h-5 w-5 text-primary" />
+                  <h3 className="font-semibold">Search History & Analytics</h3>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Export your search history and analytics data
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => window.open('/api/export/analytics/csv', '_blank')}
+                    data-testid="button-export-analytics-csv"
+                  >
+                    <FileText className="mr-2 h-4 w-4" />
+                    Download CSV
+                  </Button>
+                </div>
+              </div>
+
+              <div className="border-t" />
+
+              {/* Full Account Export */}
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Download className="h-5 w-5 text-primary" />
+                  <h3 className="font-semibold">Complete Account Data</h3>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  Download all your data in a single JSON file (GDPR complete export)
+                </p>
+                <Button
+                  variant="default"
+                  onClick={() => window.open('/api/export/account/full', '_blank')}
+                  data-testid="button-export-account-full"
+                >
+                  <Download className="mr-2 h-4 w-4" />
+                  Download Complete Export
+                </Button>
+              </div>
+
+              <div className="mt-6 p-4 bg-muted rounded-lg">
+                <p className="text-sm text-muted-foreground">
+                  <strong>GDPR Compliance:</strong> You have the right to access, export, and delete your personal data. 
+                  These exports contain all data associated with your account. For data deletion requests, please contact support.
+                </p>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
