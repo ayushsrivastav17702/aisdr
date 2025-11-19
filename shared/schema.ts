@@ -756,6 +756,18 @@ export const auditLogs = pgTable("audit_logs", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// Account lockout tracking table
+export const accountLockouts = pgTable("account_lockouts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  email: text("email").notNull().unique(),
+  failedAttempts: integer("failed_attempts").notNull().default(0),
+  lockedUntil: timestamp("locked_until"),
+  lastAttemptAt: timestamp("last_attempt_at").notNull().defaultNow(),
+  recentIPs: jsonb("recent_ips").$type<string[]>().default(sql`'[]'::jsonb`),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
 // User relations
 export const usersRelations = relations(users, ({ many }) => ({
   sessions: many(userSessions),
@@ -795,6 +807,8 @@ export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
 export type InsertPasswordResetToken = typeof passwordResetTokens.$inferInsert;
 export type AuditLog = typeof auditLogs.$inferSelect;
 export type InsertAuditLog = typeof auditLogs.$inferInsert;
+export type AccountLockout = typeof accountLockouts.$inferSelect;
+export type InsertAccountLockout = typeof accountLockouts.$inferInsert;
 
 // User schemas
 export const insertUserSchema = createInsertSchema(users).omit({
