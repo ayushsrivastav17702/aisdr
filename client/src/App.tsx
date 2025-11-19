@@ -21,6 +21,7 @@ import ResetPasswordPage from "@/pages/reset-password";
 import VerifyEmailPage from "@/pages/verify-email";
 import AdminPanel from "@/pages/admin-panel";
 import ProfilePage from "@/pages/profile";
+import SettingsPage from "@/pages/settings";
 import APIDocumentationPage from "@/pages/api-docs";
 import TermsOfServicePage from "@/pages/terms-of-service";
 import PrivacyPolicyPage from "@/pages/privacy-policy";
@@ -53,6 +54,11 @@ function Router() {
       <Route path="/profile">
         <ProtectedRoute>
           <ProfilePage />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/settings">
+        <ProtectedRoute>
+          <SettingsPage />
         </ProtectedRoute>
       </Route>
       <Route path="/">

@@ -53,12 +53,6 @@ export default function Dashboard() {
   };
 
 
-  const handleSettingsClick = () => {
-    toast({
-      title: "Settings",
-      description: "Configure API keys (APOLLO_API_KEY, LUSHA_API_KEY, REDIS_URL) in your Replit Secrets panel.",
-    });
-  };
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -205,15 +199,16 @@ export default function Dashboard() {
             </Link>
           )}
           
-          <Button
-            variant="ghost"
-            className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
-            onClick={handleSettingsClick}
-            data-testid="nav-settings"
-          >
-            <SettingsIcon className="w-4 h-4" />
-            <span>Settings</span>
-          </Button>
+          <Link href="/settings">
+            <Button
+              variant="ghost"
+              className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
+              data-testid="nav-settings"
+            >
+              <SettingsIcon className="w-4 h-4" />
+              <span>Settings</span>
+            </Button>
+          </Link>
         </nav>
 
         {/* User Profile */}

@@ -6,10 +6,13 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Code, Lock, Zap, Shield, Info, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Link } from 'wouter';
+import { Breadcrumbs } from '@/components/breadcrumbs';
 
 export default function APIDocumentationPage() {
   return (
     <div className="container mx-auto py-8 px-4 max-w-7xl">
+      <Breadcrumbs />
+      
       <div className="mb-8">
         <div className="flex items-center gap-4 mb-4">
           <Link href="/">
