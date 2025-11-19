@@ -281,17 +281,17 @@ export default function SettingsPage() {
                         Required for prospect search and enrichment
                       </p>
                     </div>
-                    <Badge variant={process.env.APOLLO_API_KEY ? 'default' : 'destructive'}>
-                      {process.env.APOLLO_API_KEY ? 'Configured' : 'Missing'}
+                    <Badge variant="secondary">
+                      Check Secrets Panel
                     </Badge>
                   </div>
                   <div className="flex gap-2">
                     <Input
                       type="password"
-                      value={process.env.APOLLO_API_KEY ? '••••••••••••••••' : ''}
+                      value="••••••••••••••••"
                       disabled
                       className="flex-1 bg-muted"
-                      placeholder="Configure in Replit Secrets"
+                      placeholder="Configured in Replit Secrets"
                       data-testid="input-apollo-api-key"
                     />
                     <Button
@@ -323,10 +323,10 @@ export default function SettingsPage() {
                   <div className="flex gap-2">
                     <Input
                       type="password"
-                      value={process.env.LUSHA_API_KEY ? '••••••••••••••••' : ''}
+                      value="••••••••••••••••"
                       disabled
                       className="flex-1 bg-muted"
-                      placeholder="Configure in Replit Secrets"
+                      placeholder="Configured in Replit Secrets"
                       data-testid="input-lusha-api-key"
                     />
                     <Button
@@ -353,17 +353,17 @@ export default function SettingsPage() {
                         Required for background jobs and email queue
                       </p>
                     </div>
-                    <Badge variant={process.env.REDIS_URL ? 'default' : 'destructive'}>
-                      {process.env.REDIS_URL ? 'Configured' : 'Missing'}
+                    <Badge variant="secondary">
+                      Check Secrets Panel
                     </Badge>
                   </div>
                   <div className="flex gap-2">
                     <Input
                       type="password"
-                      value={process.env.REDIS_URL ? '••••••••••••••••' : ''}
+                      value="••••••••••••••••"
                       disabled
                       className="flex-1 bg-muted"
-                      placeholder="Configure in Replit Secrets"
+                      placeholder="Configured in Replit Secrets"
                       data-testid="input-redis-url"
                     />
                     <Button
