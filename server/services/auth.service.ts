@@ -2,7 +2,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { db } from '../db';
-import { users, userSessions, userInvitations, auditLogs, passwordResetTokens } from '@shared/schema';
+import { users, userSessions, userInvitations, auditLogs, passwordResetTokens, emailVerificationTokens } from '@shared/schema';
 import { eq, and, gt, isNull } from 'drizzle-orm';
 
 const SALT_ROUNDS = 12;
@@ -17,6 +17,8 @@ const INVITATION_TOKEN_LENGTH = 32;
 const INVITATION_EXPIRY_HOURS = 72; // 3 days
 const RESET_TOKEN_LENGTH = 32;
 const RESET_TOKEN_EXPIRY_MINUTES = 30; // 30 minutes for password reset
+const EMAIL_VERIFICATION_TOKEN_LENGTH = 32;
+const EMAIL_VERIFICATION_EXPIRY_HOURS = 24; // 24 hours for email verification
 
 export interface AuthUser {
   id: string;
@@ -503,6 +505,172 @@ export class AuthService {
     });
 
     return true;
+  }
+
+  async sendEmailVerification(userId: string, email: string, userName?: string): Promise<string> {
+    // SECURITY: Invalidate all previous unused verification tokens for this user
+    // This ensures only the latest verification link works
+    await db
+      .update(emailVerificationTokens)
+      .set({ usedAt: new Date() })
+      .where(
+        and(
+          eq(emailVerificationTokens.userId, userId),
+          isNull(emailVerificationTokens.usedAt)
+        )
+      );
+
+    // Generate secure verification token
+    const verificationToken = crypto.randomBytes(EMAIL_VERIFICATION_TOKEN_LENGTH).toString('hex');
+    const hashedToken = await this.hashPassword(verificationToken);
+    const expiresAt = new Date(Date.now() + EMAIL_VERIFICATION_EXPIRY_HOURS * 60 * 60 * 1000);
+
+    // Store hashed token in database
+    await db.insert(emailVerificationTokens).values({
+      userId,
+      token: hashedToken,
+      expiresAt,
+    });
+
+    await this.logAuditEvent(userId, 'email_verification_sent', { email });
+
+    // Return unhashed token to send in email
+    return verificationToken;
+  }
+
+  async validateEmailVerificationToken(token: string): Promise<{ valid: boolean; userId?: string; email?: string }> {
+    // Get all non-expired, unused verification tokens
+    const tokens = await db
+      .select({
+        id: emailVerificationTokens.id,
+        userId: emailVerificationTokens.userId,
+        token: emailVerificationTokens.token,
+        expiresAt: emailVerificationTokens.expiresAt,
+        usedAt: emailVerificationTokens.usedAt,
+      })
+      .from(emailVerificationTokens)
+      .innerJoin(users, eq(emailVerificationTokens.userId, users.id))
+      .where(
+        and(
+          gt(emailVerificationTokens.expiresAt, new Date()),
+          isNull(emailVerificationTokens.usedAt)
+        )
+      );
+
+    // Try to match the token
+    for (const verificationToken of tokens) {
+      const isMatch = await this.verifyPassword(token, verificationToken.token);
+      if (isMatch) {
+        const [user] = await db.select().from(users).where(eq(users.id, verificationToken.userId)).limit(1);
+        return { 
+          valid: true, 
+          userId: verificationToken.userId,
+          email: user.email 
+        };
+      }
+    }
+
+    return { valid: false };
+  }
+
+  async verifyEmailWithToken(token: string): Promise<boolean> {
+    const validation = await this.validateEmailVerificationToken(token);
+    
+    if (!validation.valid || !validation.userId) {
+      await this.logAuditEvent(validation.userId || 'unknown', 'email_verification_failed', { 
+        reason: 'Invalid or expired token'
+      });
+      return false;
+    }
+
+    // Mark user email as verified
+    await db
+      .update(users)
+      .set({ 
+        emailVerified: true,
+        updatedAt: new Date()
+      })
+      .where(eq(users.id, validation.userId));
+
+    // Mark the specific token as used (find and mark only the matching one)
+    const tokens = await db
+      .select()
+      .from(emailVerificationTokens)
+      .where(
+        and(
+          eq(emailVerificationTokens.userId, validation.userId),
+          gt(emailVerificationTokens.expiresAt, new Date()),
+          isNull(emailVerificationTokens.usedAt)
+        )
+      );
+
+    for (const verificationToken of tokens) {
+      const isMatch = await this.verifyPassword(token, verificationToken.token);
+      if (isMatch) {
+        await db
+          .update(emailVerificationTokens)
+          .set({ usedAt: new Date() })
+          .where(eq(emailVerificationTokens.id, verificationToken.id));
+        break;
+      }
+    }
+
+    // SECURITY CRITICAL: Mark ALL other unused tokens as used to enforce single-use semantics
+    // This prevents reuse of any other verification links that were generated but not yet used
+    await db
+      .update(emailVerificationTokens)
+      .set({ usedAt: new Date() })
+      .where(
+        and(
+          eq(emailVerificationTokens.userId, validation.userId),
+          isNull(emailVerificationTokens.usedAt)
+        )
+      );
+
+    await this.logAuditEvent(validation.userId, 'email_verified', { 
+      email: validation.email
+    });
+
+    return true;
+  }
+
+  async resendEmailVerification(email: string, baseUrl: string): Promise<{ 
+    success: boolean; 
+    alreadyVerified?: boolean; 
+    emailSent?: boolean 
+  }> {
+    const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+    
+    if (!user) {
+      // Don't reveal if email exists or not (security best practice)
+      return { success: true, emailSent: false };
+    }
+
+    // Check if already verified
+    if (user.emailVerified) {
+      // Don't reveal status but don't send email
+      return { success: true, alreadyVerified: true, emailSent: false };
+    }
+
+    // Generate and send new verification email (this will invalidate old tokens automatically)
+    const verificationToken = await this.sendEmailVerification(
+      user.id, 
+      user.email, 
+      user.firstName || undefined
+    );
+
+    const verificationUrl = `${baseUrl}/verify-email?token=${verificationToken}`;
+    
+    const { emailService } = await import('./email.service');
+    await emailService.sendEmailVerification({
+      to: user.email,
+      verificationUrl,
+      userName: user.firstName || undefined,
+    });
+
+    console.log(`✅ Verification email sent to ${user.email}`);
+
+    return { success: true, emailSent: true };
   }
 }
 
