@@ -6,6 +6,7 @@ import { emailReplies, emailQueue, emailMailboxes, sequenceProspects, emails, au
 import { eq, and, sql, desc } from "drizzle-orm";
 import { mailboxService } from "./mailbox.service";
 import sequenceStepService from "./sequence-step.service";
+import { Sentry, isSentryEnabled } from "../sentry";
 
 export class ReplyDetectionService {
   private pollInterval: NodeJS.Timeout | null = null;
@@ -57,6 +58,11 @@ export class ReplyDetectionService {
       }
     } catch (error) {
       console.error("❌ Reply check error:", error);
+      if (isSentryEnabled()) {
+        Sentry.captureException(error, {
+          tags: { service: 'reply-detection', operation: 'checkForReplies' }
+        });
+      }
     } finally {
       this.isProcessing = false;
     }
@@ -195,6 +201,12 @@ export class ReplyDetectionService {
 
       } catch (error) {
         console.error(`❌ Mailbox check error for ${mailbox.email}:`, error);
+        if (isSentryEnabled()) {
+          Sentry.captureException(error, {
+            tags: { service: 'reply-detection', operation: 'checkMailboxReplies' },
+            extra: { mailboxEmail: mailbox.email }
+          });
+        }
         resolve();
       }
     });

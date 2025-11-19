@@ -80,6 +80,12 @@ The platform is built on a modern web stack, featuring a multi-tenant architectu
 - **Rate Limiting**: Applied to sensitive endpoints like login and invitations.
 - **User Invitation System**: Admin-only invitation creation with email delivery, secure token-based registration, and expiration handling.
 - **Admin Impersonation**: Secure user impersonation for troubleshooting with full audit trails.
+- **Error Monitoring (Sentry)**: Comprehensive error tracking and monitoring for both frontend and backend:
+  - **Backend**: Automatic error capture with Express integration, environment-aware logging, and stack traces
+  - **Frontend**: React Error Boundary component catches rendering errors, session replay for debugging, browser tracing integration
+  - **Configuration**: Conditional initialization - requires `SENTRY_DSN` (backend) and `VITE_SENTRY_DSN` (frontend) environment variables
+  - **Features**: Error aggregation, performance monitoring, user-friendly error pages with reset/reload options
+  - **Development Mode**: Enhanced error logging with full stack traces and event details for debugging
 
 ## External Dependencies
 - **Apollo.io**: Prospect search, data enrichment, and bulk matching API.
@@ -90,6 +96,7 @@ The platform is built on a modern web stack, featuring a multi-tenant architectu
 - **PostgreSQL (Neon)**: Cloud-hosted relational database.
 - **Redis/Upstash**: Required for BullMQ job queue.
 - **Resend**: Email service for sending HTML invitation emails.
+- **Sentry**: Error monitoring and performance tracking service (optional, requires DSN configuration).
 
 ## AI Provider Configuration
 The platform supports multiple AI providers with automatic failover. Configure via environment variables:

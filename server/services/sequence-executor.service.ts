@@ -2,6 +2,7 @@ import { db } from "../db";
 import { sequenceProspects, emailQueue, sequenceSteps, prospects, emails } from "@shared/schema";
 import { eq, and, isNotNull, desc } from "drizzle-orm";
 import { emailQueueService } from "./email-queue.service";
+import { Sentry, isSentryEnabled } from "../sentry";
 
 export class SequenceExecutorService {
   private executorInterval: NodeJS.Timeout | null = null;
@@ -172,6 +173,12 @@ export class SequenceExecutorService {
           processedCount++;
         } catch (error) {
           console.error(`[SequenceExecutor] Error processing enrollment ${enrollment.id}:`, error);
+          if (isSentryEnabled()) {
+            Sentry.captureException(error, {
+              tags: { service: 'sequence-executor', operation: 'processEnrollment' },
+              extra: { enrollmentId: enrollment.id, prospectId: enrollment.prospectId }
+            });
+          }
           // Continue with other prospects
         }
       }
@@ -182,6 +189,11 @@ export class SequenceExecutorService {
       
     } catch (error) {
       console.error("[SequenceExecutor] ❌ Error in processNextSteps:", error);
+      if (isSentryEnabled()) {
+        Sentry.captureException(error, {
+          tags: { service: 'sequence-executor', operation: 'processNextSteps' }
+        });
+      }
     } finally {
       this.isProcessing = false;
     }
