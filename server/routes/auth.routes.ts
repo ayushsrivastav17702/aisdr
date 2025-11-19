@@ -64,8 +64,8 @@ router.post('/api/auth/login', loginRateLimit, async (req, res) => {
 
     // Check if account is locked
     const { accountLockoutService } = await import('../services/account-lockout.service');
-    if (accountLockoutService.isLocked(email, ipAddress)) {
-      const remainingTime = accountLockoutService.getRemainingLockoutTime(email, ipAddress);
+    if (await accountLockoutService.isLocked(email, ipAddress)) {
+      const remainingTime = await accountLockoutService.getRemainingLockoutTime(email, ipAddress);
       
       auditService.logFromRequest(req, 'LOGIN_BLOCKED', 'auth', { 
         email,
