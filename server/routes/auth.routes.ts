@@ -609,6 +609,39 @@ router.post('/api/user/onboarding/complete', authenticate, async (req, res) => {
   }
 });
 
+// Admin: Unlock user account
+router.post('/api/auth/unlock-account', authenticate, requireAdmin, async (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required' });
+    }
+
+    const { accountLockoutService } = await import('../services/account-lockout.service');
+    await accountLockoutService.resetAttempts(email);
+
+    // Log admin unlock action
+    await auditService.log({
+      userId: req.user!.id,
+      action: 'ADMIN_UNLOCK_ACCOUNT',
+      module: 'auth',
+      details: {
+        targetEmail: email,
+        adminEmail: req.user!.email,
+        reason: 'Manual unlock by administrator',
+      },
+      ipAddress: (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || 'unknown',
+      userAgent: req.headers['user-agent'],
+    });
+
+    res.json({ message: 'Account unlocked successfully' });
+  } catch (error) {
+    console.error('Error unlocking account:', error);
+    res.status(500).json({ error: 'Failed to unlock account' });
+  }
+});
+
 router.post('/api/user/onboarding/skip', authenticate, async (req, res) => {
   try {
     if (!req.userContext?.userId) {
