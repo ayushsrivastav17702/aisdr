@@ -31,7 +31,7 @@ The platform is built on a modern web stack, featuring a multi-tenant architectu
   - **Use Cases**: NLP query parsing, email generation, LinkedIn analysis, sentiment analysis
   - **See**: [AI_PROVIDER.md](./AI_PROVIDER.md) for comprehensive configuration guide
 - **Job Queue**: BullMQ (requires Redis/Upstash) for background tasks like enrichment, CSV imports, and email sending.
-- **Authentication & Security**: Email/password authentication (bcrypt 12 rounds), JWT tokens (7-day expiry), 30-minute idle timeout, role-based access control (Admin/User), comprehensive audit logging, and rate limiting.
+- **Authentication & Security**: Email/password authentication (bcrypt 12 rounds), JWT tokens (7-day expiry), HTTP-only cookies with SameSite/Secure flags, password reset flow with 30-minute token expiry, 30-minute idle timeout, role-based access control (Admin/User), comprehensive audit logging, and rate limiting.
 - **Multi-Tenancy**: Full multi-user support with RequestContext-based data isolation, user invitation system via Resend, and admin impersonation.
 - **Natural Language Processing**: Converts user queries into structured Apollo.io filters with AI and intelligent fallback mechanisms, including keyword-based extraction for job titles, locations, companies, and industries.
 - **Email Revelation**: Apollo searches automatically include `reveal_personal_emails=true` to acquire personal emails directly.

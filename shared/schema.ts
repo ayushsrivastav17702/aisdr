@@ -722,6 +722,16 @@ export const userInvitations = pgTable("user_invitations", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// Password reset tokens table
+export const passwordResetTokens = pgTable("password_reset_tokens", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  token: text("token").notNull().unique(),
+  expiresAt: timestamp("expires_at").notNull(),
+  usedAt: timestamp("used_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
 // Audit logs table
 export const auditLogs = pgTable("audit_logs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -769,6 +779,8 @@ export type UserSession = typeof userSessions.$inferSelect;
 export type InsertUserSession = typeof userSessions.$inferInsert;
 export type UserInvitation = typeof userInvitations.$inferSelect;
 export type InsertUserInvitation = typeof userInvitations.$inferInsert;
+export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
+export type InsertPasswordResetToken = typeof passwordResetTokens.$inferInsert;
 export type AuditLog = typeof auditLogs.$inferSelect;
 export type InsertAuditLog = typeof auditLogs.$inferInsert;
 
@@ -791,6 +803,12 @@ export const insertUserInvitationSchema = createInsertSchema(userInvitations).om
   id: true,
   createdAt: true,
   acceptedAt: true,
+});
+
+export const insertPasswordResetTokenSchema = createInsertSchema(passwordResetTokens).omit({
+  id: true,
+  createdAt: true,
+  usedAt: true,
 });
 
 export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({
