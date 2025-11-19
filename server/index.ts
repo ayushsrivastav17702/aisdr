@@ -1,4 +1,5 @@
 import express, { type Request, Response, NextFunction } from "express";
+import cookieParser from "cookie-parser";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { emailQueueService } from "./services/email-queue.service";
@@ -11,6 +12,8 @@ declare module 'http' {
     rawBody: unknown
   }
 }
+
+app.use(cookieParser());
 app.use(express.json({
   limit: '10mb', // Increased limit to handle bulk operations (e.g., deleting 48k+ prospects)
   verify: (req, _res, buf) => {

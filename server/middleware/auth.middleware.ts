@@ -14,13 +14,19 @@ declare global {
 }
 
 export async function authenticate(req: Request, res: Response, next: NextFunction) {
+  // Try to get token from Authorization header first, then from cookie
   const authHeader = req.headers.authorization;
+  let token: string | undefined;
   
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.substring(7);
+  } else if (req.cookies?.auth_token) {
+    token = req.cookies.auth_token;
+  }
+  
+  if (!token) {
     return res.status(401).json({ error: 'No authentication token provided' });
   }
-
-  const token = authHeader.substring(7);
 
   try {
     const user = await authService.validateSession(token);
@@ -58,13 +64,19 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
 }
 
 export function optionalAuth(req: Request, res: Response, next: NextFunction) {
+  // Try to get token from Authorization header first, then from cookie
   const authHeader = req.headers.authorization;
+  let token: string | undefined;
   
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.substring(7);
+  } else if (req.cookies?.auth_token) {
+    token = req.cookies.auth_token;
+  }
+  
+  if (!token) {
     return next();
   }
-
-  const token = authHeader.substring(7);
 
   authService.validateSession(token)
     .then(user => {

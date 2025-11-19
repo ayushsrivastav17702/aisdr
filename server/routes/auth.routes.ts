@@ -34,6 +34,15 @@ const createInvitationSchema = z.object({
   role: z.enum(['admin', 'user']),
 });
 
+const forgotPasswordSchema = z.object({
+  email: z.string().email(),
+});
+
+const resetPasswordSchema = z.object({
+  token: z.string(),
+  newPassword: z.string().min(8),
+});
+
 router.post('/api/auth/login', loginRateLimit, async (req, res) => {
   try {
     const validationResult = loginSchema.safeParse(req.body);
@@ -62,6 +71,18 @@ router.post('/api/auth/login', loginRateLimit, async (req, res) => {
       email,
       ipAddress,
       userAgent
+    });
+
+    // Set HTTP-only cookie for enhanced security
+    const isProduction = process.env.NODE_ENV === 'production';
+    const cookieMaxAge = 7 * 24 * 60 * 60 * 1000; // 7 days in milliseconds
+    
+    res.cookie('auth_token', session.token, {
+      httpOnly: true,
+      secure: isProduction, // HTTPS only in production
+      sameSite: isProduction ? 'strict' : 'lax', // CSRF protection
+      maxAge: cookieMaxAge,
+      path: '/',
     });
 
     res.json({
@@ -106,6 +127,18 @@ router.post('/api/auth/refresh', async (req, res) => {
       sessionId: newSession.sessionId
     });
 
+    // Update HTTP-only cookie
+    const isProduction = process.env.NODE_ENV === 'production';
+    const cookieMaxAge = 7 * 24 * 60 * 60 * 1000; // 7 days in milliseconds
+    
+    res.cookie('auth_token', newSession.token, {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: isProduction ? 'strict' : 'lax',
+      maxAge: cookieMaxAge,
+      path: '/',
+    });
+
     res.json({
       token: newSession.token,
       expiresAt: newSession.expiresAt,
@@ -125,6 +158,15 @@ router.post('/api/auth/logout', authenticate, async (req, res) => {
 
     await authService.logout(req.sessionId, req.user?.id);
     auditService.logAuth(req, 'LOGOUT');
+    
+    // Clear HTTP-only cookie
+    res.clearCookie('auth_token', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+      path: '/',
+    });
+    
     res.json({ message: 'Logged out successfully' });
   } catch (error) {
     console.error('Logout error:', error);
@@ -359,6 +401,87 @@ router.get('/api/auth/invitations', authenticate, requireAdmin, async (req, res)
   } catch (error) {
     console.error('Get invitations error:', error);
     res.status(500).json({ error: 'Failed to get invitations' });
+  }
+});
+
+router.post('/api/auth/forgot-password', loginRateLimit, async (req, res) => {
+  try {
+    const validationResult = forgotPasswordSchema.safeParse(req.body);
+    if (!validationResult.success) {
+      return res.status(400).json({ error: 'Invalid request data', details: validationResult.error.issues });
+    }
+
+    const { email } = validationResult.data;
+    
+    const result = await authService.requestPasswordReset(email);
+    
+    if (result.success && result.token) {
+      const baseUrl = process.env.REPLIT_DEV_DOMAIN 
+        ? `https://${process.env.REPLIT_DEV_DOMAIN}` 
+        : 'http://localhost:5000';
+      
+      const resetUrl = `${baseUrl}/reset-password?token=${result.token}`;
+      
+      const { emailService } = await import('../services/email.service');
+      await emailService.sendPasswordResetEmail({
+        to: email,
+        resetUrl,
+      });
+      
+      console.log(`✅ Password reset email sent to ${email}`);
+    }
+    
+    // Always return success to prevent email enumeration
+    res.json({ 
+      success: true, 
+      message: 'If an account with that email exists, we sent a password reset link.' 
+    });
+  } catch (error) {
+    console.error('Forgot password error:', error);
+    res.status(500).json({ error: 'Failed to process password reset request' });
+  }
+});
+
+router.post('/api/auth/reset-password', async (req, res) => {
+  try {
+    const validationResult = resetPasswordSchema.safeParse(req.body);
+    if (!validationResult.success) {
+      return res.status(400).json({ error: 'Invalid request data', details: validationResult.error.issues });
+    }
+
+    const { token, newPassword } = validationResult.data;
+    
+    const success = await authService.resetPassword(token, newPassword);
+    
+    if (!success) {
+      return res.status(400).json({ error: 'Invalid or expired reset token' });
+    }
+    
+    res.json({ success: true, message: 'Password reset successfully' });
+  } catch (error) {
+    console.error('Reset password error:', error);
+    res.status(500).json({ error: 'Failed to reset password' });
+  }
+});
+
+router.get('/api/auth/validate-reset-token', async (req, res) => {
+  try {
+    const token = req.query.token as string;
+    
+    if (!token) {
+      return res.status(400).json({ error: 'Token is required' });
+    }
+    
+    const validation = await authService.validateResetToken(token);
+    
+    if (!validation.valid) {
+      return res.status(400).json({ error: 'Invalid or expired reset token', valid: false });
+    }
+    
+    res.json({ valid: true, email: validation.email });
+  } catch (error) {
+    console.error('Validate reset token error:', error);
+    res.status(500).json({ error: 'Failed to validate reset token' });
   }
 });
 

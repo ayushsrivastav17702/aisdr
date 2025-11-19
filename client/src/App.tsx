@@ -12,6 +12,8 @@ import ContentManagement from "@/pages/content-management";
 import AutomationDashboard from "@/pages/AutomationDashboard";
 import LoginPage from "@/pages/login";
 import AcceptInvitationPage from "@/pages/accept-invitation";
+import ForgotPasswordPage from "@/pages/forgot-password";
+import ResetPasswordPage from "@/pages/reset-password";
 import AdminPanel from "@/pages/admin-panel";
 import ProfilePage from "@/pages/profile";
 import NotFound from "@/pages/not-found";
@@ -21,6 +23,8 @@ function Router() {
     <Switch>
       <Route path="/login" component={LoginPage} />
       <Route path="/accept-invitation" component={AcceptInvitationPage} />
+      <Route path="/forgot-password" component={ForgotPasswordPage} />
+      <Route path="/reset-password" component={ResetPasswordPage} />
       <Route path="/admin/users">
         <ProtectedRoute requireAdmin>
           <AdminPanel />

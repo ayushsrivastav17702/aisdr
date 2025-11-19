@@ -2,8 +2,8 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { db } from '../db';
-import { users, userSessions, userInvitations, auditLogs } from '@shared/schema';
-import { eq, and, gt } from 'drizzle-orm';
+import { users, userSessions, userInvitations, auditLogs, passwordResetTokens } from '@shared/schema';
+import { eq, and, gt, isNull } from 'drizzle-orm';
 
 const SALT_ROUNDS = 12;
 if (!process.env.SESSION_SECRET) {
@@ -15,6 +15,8 @@ const SESSION_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days in milliseconds
 const SESSION_IDLE_TIMEOUT = 30 * 60 * 1000; // 30 minutes of inactivity
 const INVITATION_TOKEN_LENGTH = 32;
 const INVITATION_EXPIRY_HOURS = 72; // 3 days
+const RESET_TOKEN_LENGTH = 32;
+const RESET_TOKEN_EXPIRY_MINUTES = 30; // 30 minutes for password reset
 
 export interface AuthUser {
   id: string;
@@ -358,6 +360,149 @@ export class AuthService {
     } catch (error) {
       console.error('Failed to log audit event:', error);
     }
+  }
+
+  async requestPasswordReset(email: string): Promise<{ success: boolean; token?: string }> {
+    const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+    
+    if (!user) {
+      // Don't reveal if email exists or not (security best practice)
+      return { success: true };
+    }
+
+    // SECURITY: Invalidate all previous unused reset tokens for this user
+    // This ensures only the latest reset link works
+    await db
+      .update(passwordResetTokens)
+      .set({ usedAt: new Date() })
+      .where(
+        and(
+          eq(passwordResetTokens.userId, user.id),
+          isNull(passwordResetTokens.usedAt)
+        )
+      );
+
+    // Generate secure reset token
+    const resetToken = crypto.randomBytes(RESET_TOKEN_LENGTH).toString('hex');
+    const hashedToken = await this.hashPassword(resetToken);
+    const expiresAt = new Date(Date.now() + RESET_TOKEN_EXPIRY_MINUTES * 60 * 1000);
+
+    // Store hashed token in database
+    await db.insert(passwordResetTokens).values({
+      userId: user.id,
+      token: hashedToken,
+      expiresAt,
+    });
+
+    await this.logAuditEvent(user.id, 'password_reset_requested', { email });
+
+    // Return unhashed token to send in email
+    return { success: true, token: resetToken };
+  }
+
+  async validateResetToken(token: string): Promise<{ valid: boolean; userId?: string; email?: string }> {
+    // Get all non-expired, unused reset tokens
+    const tokens = await db
+      .select({
+        id: passwordResetTokens.id,
+        userId: passwordResetTokens.userId,
+        token: passwordResetTokens.token,
+        usedAt: passwordResetTokens.usedAt,
+        email: users.email,
+      })
+      .from(passwordResetTokens)
+      .innerJoin(users, eq(passwordResetTokens.userId, users.id))
+      .where(
+        and(
+          gt(passwordResetTokens.expiresAt, new Date()),
+          isNull(passwordResetTokens.usedAt)
+        )
+      );
+
+    // Check if any token matches the provided token
+    for (const resetToken of tokens) {
+      const isValid = await this.verifyPassword(token, resetToken.token);
+      if (isValid && !resetToken.usedAt) {
+        return { 
+          valid: true, 
+          userId: resetToken.userId,
+          email: resetToken.email 
+        };
+      }
+    }
+
+    return { valid: false };
+  }
+
+  async resetPassword(token: string, newPassword: string): Promise<boolean> {
+    const validation = await this.validateResetToken(token);
+    
+    if (!validation.valid || !validation.userId) {
+      await this.logAuditEvent(validation.userId || 'unknown', 'password_reset_failed', { 
+        reason: 'Invalid or expired token'
+      });
+      return false;
+    }
+
+    // Hash new password
+    const hashedPassword = await this.hashPassword(newPassword);
+
+    // Update user password
+    await db
+      .update(users)
+      .set({ 
+        passwordHash: hashedPassword,
+        updatedAt: new Date()
+      })
+      .where(eq(users.id, validation.userId));
+
+    // Mark the specific token as used (find and mark only the matching one)
+    const tokens = await db
+      .select()
+      .from(passwordResetTokens)
+      .where(
+        and(
+          eq(passwordResetTokens.userId, validation.userId),
+          gt(passwordResetTokens.expiresAt, new Date()),
+          isNull(passwordResetTokens.usedAt)
+        )
+      );
+
+    for (const resetToken of tokens) {
+      const isMatch = await this.verifyPassword(token, resetToken.token);
+      if (isMatch) {
+        await db
+          .update(passwordResetTokens)
+          .set({ usedAt: new Date() })
+          .where(eq(passwordResetTokens.id, resetToken.id));
+        break;
+      }
+    }
+
+    // SECURITY CRITICAL: Mark ALL other unused tokens as used to enforce single-use semantics
+    // This prevents reuse of any other reset links that were generated but not yet used
+    await db
+      .update(passwordResetTokens)
+      .set({ usedAt: new Date() })
+      .where(
+        and(
+          eq(passwordResetTokens.userId, validation.userId),
+          isNull(passwordResetTokens.usedAt)
+        )
+      );
+
+    // SECURITY CRITICAL: Revoke ALL user sessions after password reset
+    // This logs out the user from all devices to prevent session hijacking
+    await db
+      .delete(userSessions)
+      .where(eq(userSessions.userId, validation.userId));
+
+    await this.logAuditEvent(validation.userId, 'password_reset_completed', { 
+      email: validation.email,
+      sessionsRevoked: true
+    });
+
+    return true;
   }
 }
 
