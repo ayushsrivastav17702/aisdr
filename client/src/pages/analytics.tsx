@@ -2,11 +2,13 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { BarChart3, TrendingUp, Users, Mail, Sparkles, Target, Activity } from "lucide-react";
+import { BarChart3, TrendingUp, Users, Mail, Sparkles, Target, Activity, ArrowLeft } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { formatDistanceToNow } from "date-fns";
+import { Button } from "@/components/ui/button";
+import { Link } from "wouter";
 
 interface AnalyticsOverview {
   totalProspects: number;
@@ -75,13 +77,20 @@ export default function AnalyticsPage() {
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 p-6">
       <div className="max-w-7xl mx-auto space-y-6">
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white" data-testid="text-analytics-title">
-              Analytics Dashboard
-            </h1>
-            <p className="text-gray-600 dark:text-gray-400 mt-1">
-              Track your outreach performance and activity
-            </p>
+          <div className="flex items-center gap-4">
+            <Link href="/">
+              <Button variant="ghost" size="icon" data-testid="button-back-dashboard">
+                <ArrowLeft className="w-4 h-4" />
+              </Button>
+            </Link>
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 dark:text-white" data-testid="text-analytics-title">
+                Analytics Dashboard
+              </h1>
+              <p className="text-gray-600 dark:text-gray-400 mt-1">
+                Track your outreach performance and activity
+              </p>
+            </div>
           </div>
         </div>
 
