@@ -43,6 +43,10 @@ const resetPasswordSchema = z.object({
   newPassword: z.string().min(8),
 });
 
+const resendVerificationSchema = z.object({
+  email: z.string().email(),
+});
+
 router.post('/api/auth/login', loginRateLimit, async (req, res) => {
   try {
     const validationResult = loginSchema.safeParse(req.body);
@@ -482,6 +486,76 @@ router.get('/api/auth/validate-reset-token', async (req, res) => {
   } catch (error) {
     console.error('Validate reset token error:', error);
     res.status(500).json({ error: 'Failed to validate reset token' });
+  }
+});
+
+// Email verification routes
+router.post('/api/auth/resend-verification-email', loginRateLimit, async (req, res) => {
+  try {
+    const validationResult = resendVerificationSchema.safeParse(req.body);
+    if (!validationResult.success) {
+      return res.status(400).json({ error: 'Invalid request data', details: validationResult.error.issues });
+    }
+
+    const { email } = validationResult.data;
+    
+    const baseUrl = process.env.REPLIT_DEV_DOMAIN 
+      ? `https://${process.env.REPLIT_DEV_DOMAIN}` 
+      : 'http://localhost:5000';
+    
+    // This method handles everything: token generation, email sending, and verification checks
+    const result = await authService.resendEmailVerification(email, baseUrl);
+    
+    // Always return success to prevent email enumeration
+    res.json({ 
+      success: true, 
+      message: 'If an unverified account with that email exists, we sent a verification link.' 
+    });
+  } catch (error) {
+    console.error('Resend verification email error:', error);
+    res.status(500).json({ error: 'Failed to send verification email' });
+  }
+});
+
+router.get('/api/auth/verify-email', async (req, res) => {
+  try {
+    const token = req.query.token as string;
+    
+    if (!token) {
+      return res.status(400).json({ error: 'Token is required' });
+    }
+    
+    const success = await authService.verifyEmailWithToken(token);
+    
+    if (!success) {
+      return res.status(400).json({ error: 'Invalid or expired verification token' });
+    }
+    
+    res.json({ success: true, message: 'Email verified successfully' });
+  } catch (error) {
+    console.error('Verify email error:', error);
+    res.status(500).json({ error: 'Failed to verify email' });
+  }
+});
+
+router.get('/api/auth/validate-verification-token', async (req, res) => {
+  try {
+    const token = req.query.token as string;
+    
+    if (!token) {
+      return res.status(400).json({ error: 'Token is required' });
+    }
+    
+    const validation = await authService.validateEmailVerificationToken(token);
+    
+    if (!validation.valid) {
+      return res.status(400).json({ error: 'Invalid or expired verification token', valid: false });
+    }
+    
+    res.json({ valid: true, email: validation.email });
+  } catch (error) {
+    console.error('Validate verification token error:', error);
+    res.status(500).json({ error: 'Failed to validate verification token' });
   }
 });
 
