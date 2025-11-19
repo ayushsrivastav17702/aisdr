@@ -8,14 +8,15 @@ purify.setConfig({
   ALLOWED_TAGS: [
     'p', 'br', 'strong', 'em', 'u', 's', 'a', 'ul', 'ol', 'li',
     'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'code', 'pre',
-    'img', 'div', 'span', 'table', 'thead', 'tbody', 'tr', 'th', 'td'
+    'img', 'div', 'span'
   ],
   ALLOWED_ATTR: [
-    'href', 'title', 'target', 'rel', 'src', 'alt', 'width', 'height',
-    'class', 'id', 'style'
+    'href', 'title', 'target', 'rel', 'src', 'alt'
   ],
   ALLOW_DATA_ATTR: false,
-  ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel|callto|cid|xmpp):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
+  ALLOWED_URI_REGEXP: /^(?:(?:(?:f|ht)tps?|mailto|tel):|[^a-z]|[a-z+.\-]+(?:[^a-z+.\-:]|$))/i,
+  FORBID_ATTR: ['style', 'onerror', 'onload', 'onclick', 'onmouseover'],
+  FORBID_TAGS: ['script', 'iframe', 'embed', 'object', 'form', 'input', 'textarea', 'button'],
 });
 
 export function sanitizeHtml(dirty: string): string {
