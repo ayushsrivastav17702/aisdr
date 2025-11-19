@@ -24,6 +24,7 @@ import { registerAutomationRoutes } from "./automation-routes";
 import authRoutes from "./routes/auth.routes";
 import userRoutes from "./routes/user.routes";
 import analyticsRoutes from "./routes/analytics.routes";
+import dataExportRoutes from "./routes/data-export.routes";
 import { authenticate } from "./middleware/auth.middleware";
 
 const upload = multer({ 
@@ -1223,6 +1224,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Analytics routes
   app.use("/api/analytics", analyticsRoutes);
+
+  // Data export routes (GDPR compliance)
+  app.use("/api", dataExportRoutes);
 
   // Sequence module routes
   app.use("/api", sequenceRoutes);

@@ -687,6 +687,8 @@ export const users = pgTable("users", {
   status: userStatusEnum("status").notNull().default("active"),
   isActive: boolean("is_active").notNull().default(true),
   emailVerified: boolean("email_verified").default(false),
+  onboardingCompleted: boolean("onboarding_completed").default(false),
+  onboardingCompletedAt: timestamp("onboarding_completed_at"),
   lastLogin: timestamp("last_login"),
   createdBy: varchar("created_by"), // References users.id (self-referential)
   createdAt: timestamp("created_at").notNull().defaultNow(),
