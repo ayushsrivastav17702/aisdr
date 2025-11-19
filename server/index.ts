@@ -77,8 +77,13 @@ app.use(express.json({
 app.use(express.urlencoded({ extended: false }));
 
 app.get("/api/csrf-token", (req, res) => {
-  const csrfToken = generateToken(req, res);
-  res.json({ csrfToken });
+  try {
+    const csrfToken = generateToken(req, res);
+    res.json({ csrfToken });
+  } catch (error) {
+    log(`CSRF token generation error: ${error}`);
+    res.status(500).json({ error: "CSRF token generation failed" });
+  }
 });
 
 const csrfExcludedPaths = [

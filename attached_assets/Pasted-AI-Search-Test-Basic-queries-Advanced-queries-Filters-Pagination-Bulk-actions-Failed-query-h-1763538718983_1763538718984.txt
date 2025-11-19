@@ -1,0 +1,341 @@
+AI Search
+
+Test:
+
+Basic queries
+
+Advanced queries
+
+Filters
+
+Pagination
+
+Bulk actions
+
+Failed query handling
+
+Saved searches
+
+Check:
+
+Latency
+
+AI credit usage
+
+Fallbacks
+
+Rate limiting
+
+4️⃣ Prospects
+
+Test:
+
+Add manually
+
+Bulk import
+
+Tagging
+
+Smart lists
+
+Duplicate detection
+
+Activity timeline
+
+Prospect enrichment
+
+Check:
+
+Merge rules
+
+Deduplication accuracy
+
+Field correctness
+
+5️⃣ Import Module
+
+Test:
+
+CSV mapping
+
+Invalid file handling
+
+Preview import
+
+Duplicate merge
+
+Import history
+
+Large imports (5k rows)
+
+Error messages
+
+6️⃣ Sequences
+
+Test:
+
+Create/edit sequences
+
+Multi-step flows
+
+Time windows
+
+A/B testing
+
+Stop on reply
+
+Pause/Resume
+
+Deliverability
+
+Daily throttling
+
+7️⃣ Automation
+
+Test:
+
+Trigger + actions
+
+Add prospect → auto sequence
+
+Enrichment automation
+
+Error handling
+
+Retry logic
+
+Automation logs
+
+8️⃣ Mailboxes
+
+Test:
+
+OAuth with Gmail
+
+OAuth with Outlook
+
+SMTP
+
+Test send
+
+Reply detection
+
+Bounce handling
+
+DKIM/SPF validation
+
+9️⃣ Content / Templates
+
+Test:
+
+Create
+
+Edit
+
+Delete
+
+Variables
+
+Attachments
+
+Shared templates
+
+Version history
+
+🔟 Enrichment
+
+Test:
+
+Single enrichment
+
+Bulk enrichment
+
+Failure handling
+
+Credit usage
+
+Logs
+
+1️⃣1️⃣ Analytics
+
+Test:
+
+Sequence analytics
+
+Mailbox analytics
+
+Prospect analytics
+
+Export CSV/PDF
+
+Trends & graphs
+
+Real-time updates
+
+1️⃣2️⃣ User Management
+
+Test:
+
+Add users
+
+Remove users
+
+Role permissions
+
+Activity logs
+
+Access control
+
+1️⃣3️⃣ Settings
+
+Test:
+
+Profile update
+
+Password change
+
+Time zone settings
+
+API keys
+
+Webhooks
+
+Email signature
+
+Notification preferences
+
+🔐 SECURITY AUDIT
+
+Run penetration-level checks:
+
+Authentication
+
+JWT tampering
+
+Cookie theft attempts
+
+Session fixation
+
+API
+
+Unauthorized API calls
+
+Missing auth headers
+
+Unvalidated inputs
+
+Database
+
+SQL injection
+
+Rate-limiting gaps
+
+Misc
+
+XSS
+
+CSRF
+
+CORS misconfig
+
+Provide severity-level findings.
+
+⚡ PERFORMANCE + LOAD TEST
+
+Test:
+
+1000 concurrent sequence sends
+
+10k prospect import
+
+2000 AI searches/day
+
+Stress Mailbox sync
+
+Automation queue under load
+
+Report:
+
+API latency
+
+Worker timeouts
+
+Query slow logs
+
+Memory usage
+
+📜 COMPLIANCE AUDIT
+
+Check:
+
+GDPR export
+
+GDPR delete
+
+Data processing consent
+
+Terms of Service links
+
+Privacy policy
+
+Cookie policy
+
+🧭 UX POLISH REVIEW
+
+Test:
+
+Empty states
+
+Error states
+
+Loading skeletons
+
+Tooltips
+
+Onboarding flow
+
+Navigation clarity
+
+🧩 FINAL REPORT FORMAT
+
+You must deliver:
+
+1. Module-by-module table
+
+Module | Working | Errors | Missing | Severity | Fix Suggestions | ETA
+
+2. Top Critical Issues (Blockers)
+
+List with reproduction + logs.
+
+3. Full Missing Feature Matrix
+
+Grouped by: Functional, UX, Security, Billing, Compliance, Deliverability.
+
+4. Product Readiness Score (0–100)
+
+Based on:
+
+Stability (30)
+
+Usability (20)
+
+Performance (15)
+
+Security (20)
+
+Compliance (10)
+
+Core features (5)
+
+5. Go-to-Market Readiness Verdict
+
+Choose one:
+
+❌ Not ready
+
+⚠️ Almost ready (needs fixes)
+
+✅ Ready to launch
+
+🚀 Ready for scaling
