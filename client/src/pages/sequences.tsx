@@ -1619,16 +1619,105 @@ function SequenceTab({
       />
 
       <Dialog open={showAITemplate} onOpenChange={setShowAITemplate}>
-        <DialogContent>
+        <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>AI Template Library</DialogTitle>
-          </DialogHeader>
-          <div className="text-center py-8">
-            <Sparkles className="w-16 h-16 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-lg font-semibold mb-2">AI Template Library Coming Soon</h3>
-            <p className="text-muted-foreground">
-              Choose from pre-built email templates optimized for different industries and use cases.
+            <DialogTitle className="flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-primary" />
+              AI Template Library
+            </DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              Choose from AI-optimized email templates designed for different industries and use cases
             </p>
+          </DialogHeader>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+            {SEQUENCE_TEMPLATES.map((template) => {
+              const IconComponent = template.icon;
+              return (
+                <Card 
+                  key={template.id} 
+                  className="cursor-pointer hover:border-primary hover:shadow-md transition-all"
+                  onClick={async () => {
+                    try {
+                      // Create sequence from template
+                      const res = await apiRequest("POST", "/api/sequences/from-template", { 
+                        templateId: template.id 
+                      });
+                      const data = await res.json();
+                      
+                      setShowAITemplate(false);
+                      queryClient.invalidateQueries({ queryKey: ['/api/sequences'] });
+                      
+                      toast({ 
+                        title: "Sequence created from AI template successfully",
+                        description: `"${template.name}" has been added to your sequences`
+                      });
+                      
+                      // Navigate to the new sequence
+                      window.location.href = `/sequences/${data.sequenceId}`;
+                    } catch (error) {
+                      console.error("Failed to create sequence from template:", error);
+                      toast({
+                        title: "Failed to create sequence",
+                        description: "Please try again",
+                        variant: "destructive"
+                      });
+                    }
+                  }}
+                  data-testid={`ai-template-${template.id}`}
+                >
+                  <CardHeader>
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-primary/10 rounded-lg">
+                          <IconComponent className="w-5 h-5 text-primary" />
+                        </div>
+                        <div>
+                          <CardTitle className="text-base">{template.name}</CardTitle>
+                          <Badge variant="secondary" className="mt-1 text-xs">
+                            {template.category}
+                          </Badge>
+                        </div>
+                      </div>
+                    </div>
+                    <CardDescription className="mt-2">
+                      {template.description}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                      <div className="flex items-center gap-1">
+                        <Mail className="w-4 h-4" />
+                        <span>{template.steps.length} emails</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Clock className="w-4 h-4" />
+                        <span>
+                          {template.steps.reduce((sum, step) => sum + (step.delayDays || 0), 0)} days
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Sparkles className="w-4 h-4 text-primary" />
+                        <span className="text-primary font-medium">AI-Optimized</span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+          
+          <div className="mt-6 p-4 bg-muted/50 rounded-lg">
+            <div className="flex items-start gap-3">
+              <Sparkles className="w-5 h-5 text-primary mt-0.5" />
+              <div>
+                <h4 className="font-semibold text-sm mb-1">AI-Powered Templates</h4>
+                <p className="text-sm text-muted-foreground">
+                  These templates are optimized using AI for maximum engagement. Each template includes 
+                  personalization variables and proven copywriting patterns for your industry.
+                </p>
+              </div>
+            </div>
           </div>
         </DialogContent>
       </Dialog>
