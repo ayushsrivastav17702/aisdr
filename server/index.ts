@@ -1,5 +1,7 @@
 import express, { type Request, Response, NextFunction } from "express";
 import cookieParser from "cookie-parser";
+import helmet from "helmet";
+import { doubleCsrf } from "csrf-csrf";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { emailQueueService } from "./services/email-queue.service";
@@ -9,6 +11,22 @@ import { initSentry, Sentry, isSentryEnabled } from "./sentry";
 initSentry();
 
 const app = express();
+
+const isProduction = process.env.NODE_ENV === "production";
+
+const { generateToken, doubleCsrfProtection } = doubleCsrf({
+  getSecret: () => process.env.SESSION_SECRET || "default-csrf-secret-change-in-production",
+  cookieName: "x-csrf-token",
+  cookieOptions: {
+    httpOnly: true,
+    secure: isProduction,
+    sameSite: isProduction ? "strict" : "lax",
+    path: "/",
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  },
+  size: 64,
+  ignoredMethods: ["GET", "HEAD", "OPTIONS"],
+});
 
 declare module 'http' {
   interface IncomingMessage {
@@ -20,6 +38,24 @@ if (isSentryEnabled()) {
   app.use(Sentry.Handlers.requestHandler());
 }
 
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com"],
+      imgSrc: ["'self'", "data:", "https:", "blob:"],
+      connectSrc: ["'self'"],
+      frameSrc: ["'none'"],
+      objectSrc: ["'none'"],
+      upgradeInsecureRequests: isProduction ? [] : null,
+    },
+  },
+  crossOriginEmbedderPolicy: false,
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+}));
+
 app.use(cookieParser());
 app.use(express.json({
   limit: '10mb', // Increased limit to handle bulk operations (e.g., deleting 48k+ prospects)
@@ -28,6 +64,13 @@ app.use(express.json({
   }
 }));
 app.use(express.urlencoded({ extended: false }));
+
+app.use(doubleCsrfProtection);
+
+app.get("/api/csrf-token", (req, res) => {
+  const csrfToken = generateToken(req, res);
+  res.json({ csrfToken });
+});
 
 app.use((req, res, next) => {
   const start = Date.now();
