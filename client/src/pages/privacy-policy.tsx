@@ -196,14 +196,18 @@ export default function PrivacyPolicyPage() {
 
           <h2>9. International Data Transfers</h2>
           <p>
-            Your information may be transferred to and processed in countries other than your country of residence. 
-            We ensure adequate safeguards are in place, including:
+            Your information may be transferred to and processed in countries other than your country of residence, 
+            primarily in the United States where our infrastructure is hosted. We implement appropriate safeguards including:
           </p>
           <ul>
-            <li>Standard Contractual Clauses approved by the European Commission</li>
-            <li>Privacy Shield certification (where applicable)</li>
-            <li>Adequacy decisions by relevant authorities</li>
+            <li>Encryption at rest (AES-256) and in transit (TLS 1.3)</li>
+            <li>Contractual data protection obligations with service providers</li>
+            <li>Access controls and multi-tenant data isolation</li>
           </ul>
+          <p className="text-sm text-muted-foreground italic mt-4">
+            <strong>Note:</strong> We are actively working toward Standard Contractual Clauses (SCCs) certification 
+            for full GDPR compliance. If you require specific data residency or transfer mechanisms, please contact us.
+          </p>
 
           <Separator className="my-6" />
 

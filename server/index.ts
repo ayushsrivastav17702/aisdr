@@ -46,7 +46,18 @@ app.use(helmet({
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
       imgSrc: ["'self'", "data:", "https:", "blob:"],
-      connectSrc: ["'self'"],
+      connectSrc: [
+        "'self'",
+        "https://api.apollo.io",
+        "https://api.lusha.io",
+        "https://api.openai.com",
+        "https://api.anthropic.com",
+        "https://openrouter.ai",
+        "https://api.stripe.com",
+        "https://sentry.io",
+        "https://*.sentry.io",
+        "wss:"
+      ],
       frameSrc: ["'none'"],
       objectSrc: ["'none'"],
       upgradeInsecureRequests: isProduction ? [] : null,
@@ -65,11 +76,29 @@ app.use(express.json({
 }));
 app.use(express.urlencoded({ extended: false }));
 
-app.use(doubleCsrfProtection);
-
 app.get("/api/csrf-token", (req, res) => {
   const csrfToken = generateToken(req, res);
   res.json({ csrfToken });
+});
+
+const csrfExcludedPaths = [
+  '/api/auth/login',
+  '/api/auth/logout',
+  '/api/auth/signup',
+  '/api/auth/change-password',
+  '/api/auth/forgot-password',
+  '/api/auth/reset-password',
+  '/api/auth/verify-email',
+  '/api/auth/resend-verification',
+  '/api/auth/invitations/accept',
+  '/api/csrf-token'
+];
+
+app.use((req, res, next) => {
+  if (csrfExcludedPaths.includes(req.path) || req.path.startsWith('/api/csrf-token')) {
+    return next();
+  }
+  return doubleCsrfProtection(req, res, next);
 });
 
 app.use((req, res, next) => {
