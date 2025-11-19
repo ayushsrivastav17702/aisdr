@@ -81,11 +81,28 @@ The platform is built on a modern web stack, featuring a multi-tenant architectu
 - **User Invitation System**: Admin-only invitation creation with email delivery, secure token-based registration, and expiration handling.
 - **Admin Impersonation**: Secure user impersonation for troubleshooting with full audit trails.
 - **Error Monitoring (Sentry)**: Comprehensive error tracking and monitoring for both frontend and backend:
-  - **Backend**: Automatic error capture with Express integration, environment-aware logging, and stack traces
+  - **Backend**: Automatic error capture with Express integration, environment-aware logging, stack traces, uncaught exception handling, and unhandled rejection tracking
   - **Frontend**: React Error Boundary component catches rendering errors, session replay for debugging, browser tracing integration
   - **Configuration**: Conditional initialization - requires `SENTRY_DSN` (backend) and `VITE_SENTRY_DSN` (frontend) environment variables
+  - **Release Tracking**: Supports version tracking via `RELEASE` environment variable (e.g., `sdr-platform@1.0.0`)
   - **Features**: Error aggregation, performance monitoring, user-friendly error pages with reset/reload options
   - **Development Mode**: Enhanced error logging with full stack traces and event details for debugging
+  - **See**: [PRODUCTION_MONITORING_SETUP.md](./PRODUCTION_MONITORING_SETUP.md) for complete monitoring setup guide
+- **Uptime Monitoring**: `/healthz` endpoint for external monitoring services (UptimeRobot, Pingdom, etc.):
+  - **Response Format**: JSON with status, timestamp, uptime, and environment
+  - **Status Codes**: 200 (healthy), 503 (unhealthy)
+  - **Monitoring Interval**: Recommended 5 minutes (production) or 1 minute (critical systems)
+- **Load Testing**: K6 script for performance validation with 10-20 concurrent users:
+  - **Test Coverage**: Health checks, authentication, AI search, prospect management
+  - **Performance Thresholds**: P95 < 2s for general requests, P95 < 500ms for health checks
+  - **Failure Rate**: < 5% target
+  - **Script Location**: `k6-load-test.js`
+- **Email Deliverability**: DKIM/SPF/DMARC configuration for optimal email delivery:
+  - **DKIM**: Domain-based authentication (configured via email provider)
+  - **SPF**: Sender Policy Framework for authorized mail servers
+  - **DMARC**: Policy enforcement for failed authentication
+  - **Testing**: mail-tester.com for spam score validation
+  - **Target Score**: 9/10 or higher
 
 ## External Dependencies
 - **Apollo.io**: Prospect search, data enrichment, and bulk matching API.

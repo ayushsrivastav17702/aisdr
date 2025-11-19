@@ -1,0 +1,126 @@
+Production Monitoring — Sentry (Node/Express) + UptimeRobot checklist
+Sentry (Node/Express) — minimal setup
+
+Install:
+
+npm install @sentry/node @sentry/tracing
+
+
+Add to src/sentry.js:
+
+const Sentry = require('@sentry/node');
+const Tracing = require('@sentry/tracing');
+
+function initSentry() {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN, // set in prod env
+    environment: process.env.NODE_ENV || 'production',
+    tracesSampleRate: 0.1, // start low
+    release: process.env.RELEASE || 'app@latest',
+    integrations: [
+      new Sentry.Integrations.OnUncaughtException(),
+      new Sentry.Integrations.OnUnhandledRejection()
+    ]
+  });
+}
+
+module.exports = { Sentry, initSentry };
+
+
+In app.js (Express):
+
+const { initSentry, Sentry } = require('./sentry');
+initSentry();
+
+app.use(Sentry.Handlers.requestHandler());
+app.use(Sentry.Handlers.tracingHandler());
+
+// your routes...
+
+app.use(Sentry.Handlers.errorHandler({ shouldHandleError: () => true }));
+
+
+Actions:
+
+Add SENTRY_DSN to production env.
+
+Create Sentry project, enable email/Slack alerts for error.rate > 1% or new issue.
+
+Hook Sentry to Slack/Teams and set heartbeat alerts.
+
+UptimeRobot — basic monitors
+
+Create monitors for:
+
+Healthcheck endpoint: GET /healthz — expect 200 + JSON {status: "ok"}.
+
+Public web app domain (HTTP)
+
+IMAP webhook endpoint (if public)
+
+Email webhook callback endpoint (if any)
+
+Checks:
+
+Interval: 5 minutes for public site, 1 minute for health-check in pilot.
+
+Alert contacts: Slack + email.
+
+2) Basic Load Testing — k6 script (10–20 concurrent users)
+
+Install: use k6 or run in CI.
+
+k6-script.js
+
+import http from 'k6/http';
+import { check, sleep } from 'k6';
+
+export let options = {
+  vus: 20,         // 20 virtual users
+  duration: '2m',  // 2 minutes
+  thresholds: {
+    'http_req_duration': ['p(95)<1000'], // 95% requests < 1s
+    'http_req_failed': ['rate<0.02'],    // <2% failures
+  }
+};
+
+const BASE = __ENV.BASE_URL || 'https://api.yourapp.com';
+
+export default function () {
+  const headers = { 'Authorization': `Bearer ${__ENV.TEST_API_KEY}` };
+
+  let res = http.get(`${BASE}/healthz`, { headers });
+  check(res, { 'health ok': r => r.status === 200 });
+
+  // simulate typical automation flow: start automation
+  let start = http.post(`${BASE}/api/automation/start`, JSON.stringify({
+    sequenceId: 'test-seq',
+    prospectCount: 5
+  }), { headers: { ...headers, 'Content-Type': 'application/json' }});
+  check(start, { 'started': r => r.status === 200 || r.status === 202 });
+
+  sleep(1 + Math.random()*2);
+}
+
+
+Run:
+
+k6 run -e BASE_URL=https://staging.api.yourapp.com -e TEST_API_KEY=xxx k6-script.js
+
+
+What to watch: CPU, memory, DB connections, Redis queue length, worker errors. Log and screenshot metrics for post-mortem.
+
+3) Email Deliverability & Reply Detection healthcheck
+DKIM/SPF quick checklist
+
+Ensure SPF record includes sending IPs / Sendgrid/Gmail: v=spf1 include:_spf.google.com include:sendgrid.net -all
+
+DKIM: generate key for your domain in provider (Sendgrid/SES) and add TXT record.
+
+DMARC: v=DMARC1; p=none; rua=mailto:postmaster@yourdomain.com (start p=none then tighten)
+
+Quick tests
+
+Send a series of test emails to: mail-tester.com (or internal seed inbox) and verify spam score.
+
+Verify reply detection: send email, reply from external account, confirm IMAP poll picks up in <30s and matches messageId.
