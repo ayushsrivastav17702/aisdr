@@ -8,8 +8,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Mail, Plus, Trash2, Play, Pause, CheckCircle, AlertCircle, Loader2, Settings } from "lucide-react";
+import { Mail, Plus, Trash2, Play, Pause, CheckCircle, AlertCircle, Loader2, Settings, ArrowLeft } from "lucide-react";
 import { Label } from "@/components/ui/label";
+import { Link } from "wouter";
 
 type EmailMailbox = {
   id: string;
@@ -45,13 +46,20 @@ export default function Mailboxes() {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       <div className="container mx-auto p-6">
         <div className="flex justify-between items-center mb-6">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white" data-testid="text-title">
-              Email Mailboxes
-            </h1>
-            <p className="text-gray-500 dark:text-gray-400 mt-1">
-              Manage your email sending accounts
-            </p>
+          <div className="flex items-center gap-4">
+            <Link href="/">
+              <Button variant="ghost" size="icon" data-testid="button-back-dashboard">
+                <ArrowLeft className="w-4 h-4" />
+              </Button>
+            </Link>
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900 dark:text-white" data-testid="text-title">
+                Email Mailboxes
+              </h1>
+              <p className="text-gray-500 dark:text-gray-400 mt-1">
+                Manage your email sending accounts
+              </p>
+            </div>
           </div>
           <AddMailboxButton />
         </div>

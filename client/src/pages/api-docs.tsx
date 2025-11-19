@@ -3,16 +3,27 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Code, Lock, Zap, Shield, Info } from 'lucide-react';
+import { Code, Lock, Zap, Shield, Info, ArrowLeft } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Link } from 'wouter';
 
 export default function APIDocumentationPage() {
   return (
     <div className="container mx-auto py-8 px-4 max-w-7xl">
       <div className="mb-8">
-        <h1 className="text-4xl font-bold mb-2">API Documentation</h1>
-        <p className="text-muted-foreground text-lg">
-          Complete reference for the SDR Platform REST API
-        </p>
+        <div className="flex items-center gap-4 mb-4">
+          <Link href="/">
+            <Button variant="ghost" size="icon" data-testid="button-back-dashboard">
+              <ArrowLeft className="w-4 h-4" />
+            </Button>
+          </Link>
+          <div>
+            <h1 className="text-4xl font-bold mb-2">API Documentation</h1>
+            <p className="text-muted-foreground text-lg">
+              Complete reference for the SDR Platform REST API
+            </p>
+          </div>
+        </div>
       </div>
 
       <div className="grid gap-6 mb-8 md:grid-cols-3">

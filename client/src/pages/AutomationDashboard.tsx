@@ -43,6 +43,7 @@ import {
   Eye,
   TrendingUp,
   Clock,
+  ArrowLeft,
 } from "lucide-react";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
@@ -226,11 +227,18 @@ export default function AutomationDashboard() {
     <div className="container mx-auto p-8 max-w-7xl" data-testid="page-automation-dashboard">
       {/* Header */}
       <div className="flex items-center justify-between mb-8">
-        <div>
-          <h1 className="text-3xl font-bold">Automation Dashboard</h1>
-          <p className="text-muted-foreground mt-2">
-            Monitor and manage your sequence automation runs
-          </p>
+        <div className="flex items-center gap-4">
+          <Link href="/">
+            <Button variant="ghost" size="icon" data-testid="button-back-dashboard">
+              <ArrowLeft className="w-4 h-4" />
+            </Button>
+          </Link>
+          <div>
+            <h1 className="text-3xl font-bold">Automation Dashboard</h1>
+            <p className="text-muted-foreground mt-2">
+              Monitor and manage your sequence automation runs
+            </p>
+          </div>
         </div>
         <Button asChild data-testid="button-back-sequences">
           <Link href="/sequences">← Back to Sequences</Link>
