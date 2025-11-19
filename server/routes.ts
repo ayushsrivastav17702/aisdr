@@ -36,6 +36,25 @@ const upload = multer({
 
 export async function registerRoutes(app: Express): Promise<Server> {
   
+  // Health check endpoint for monitoring (UptimeRobot, etc.)
+  app.get("/healthz", async (_req, res) => {
+    try {
+      // Basic health check - no database check to avoid unnecessary load
+      res.status(200).json({ 
+        status: "ok",
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime(),
+        environment: process.env.NODE_ENV || 'development'
+      });
+    } catch (error) {
+      res.status(503).json({ 
+        status: "error",
+        message: "Service unavailable",
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+  
   // AI Search endpoint
   app.post("/api/ai-search", authenticate, async (req, res) => {
     try {

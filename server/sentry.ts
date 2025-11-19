@@ -12,10 +12,17 @@ export function initSentry() {
   Sentry.init({
     dsn: SENTRY_DSN,
     environment: process.env.NODE_ENV || 'development',
+    release: process.env.RELEASE || 'sdr-platform@latest',
     tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,
     integrations: [
       Sentry.httpIntegration(),
       Sentry.expressIntegration(),
+      Sentry.onUncaughtExceptionIntegration({
+        exitEvenIfOtherHandlersAreRegistered: false,
+      }),
+      Sentry.onUnhandledRejectionIntegration({
+        mode: 'warn',
+      }),
     ],
     beforeSend(event, hint) {
       if (process.env.NODE_ENV === 'development') {
