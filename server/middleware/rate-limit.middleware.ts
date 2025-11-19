@@ -94,6 +94,12 @@ export const invitationRateLimit = rateLimiter.createMiddleware({
   message: 'Too many invitation requests. Please try again in 1 hour.',
 });
 
+export const passwordResetRateLimit = rateLimiter.createMiddleware({
+  windowMs: 15 * 60 * 1000,
+  maxRequests: 10,
+  message: 'Too many password reset attempts. Please try again in 15 minutes.',
+});
+
 export const generalApiRateLimit = rateLimiter.createMiddleware({
   windowMs: 15 * 60 * 1000,
   maxRequests: 100,

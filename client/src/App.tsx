@@ -7,6 +7,7 @@ import { AuthProvider } from "@/contexts/auth-context";
 import { ProtectedRoute } from "@/components/protected-route";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { OnboardingWizard } from "@/components/onboarding-wizard";
+import { CookieConsent } from "@/components/CookieConsent";
 import Dashboard from "@/pages/dashboard";
 import Sequences from "@/pages/sequences";
 import Mailboxes from "@/pages/mailboxes";
@@ -117,6 +118,7 @@ function App() {
           <TooltipProvider>
             <Toaster />
             <OnboardingWizard />
+            <CookieConsent />
             <Router />
           </TooltipProvider>
         </AuthProvider>
