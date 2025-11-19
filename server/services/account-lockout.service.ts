@@ -1,13 +1,42 @@
 import { auditService } from './audit.service';
+import { emailService } from './email.service';
 import { db } from '../db';
-import { accountLockouts } from '@shared/schema';
+import { accountLockouts, users } from '@shared/schema';
 import { eq, and, gt, lt, sql } from 'drizzle-orm';
 
-const MAX_FAILED_ATTEMPTS = 5;
-const LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
+// Progressive lockout thresholds and durations
+const LOCKOUT_TIERS = [
+  { threshold: 5, duration: 15 * 60 * 1000, label: '15 minutes' },     // Tier 1: 5 failures = 15 min
+  { threshold: 10, duration: 60 * 60 * 1000, label: '1 hour' },         // Tier 2: 10 failures = 1 hour
+  { threshold: 20, duration: 24 * 60 * 60 * 1000, label: '24 hours' },  // Tier 3: 20 failures = 24 hours
+];
+
 const ATTEMPT_WINDOW_MS = 15 * 60 * 1000; // Track attempts within 15 minutes
 
 class AccountLockoutService {
+  /**
+   * Calculate lockout duration based on number of failed attempts (progressive lockout)
+   */
+  private calculateLockoutDuration(failedAttempts: number): {
+    duration: number;
+    label: string;
+    tier: number;
+  } {
+    // Find the highest tier threshold that the failed attempts have reached
+    for (let i = LOCKOUT_TIERS.length - 1; i >= 0; i--) {
+      const tier = LOCKOUT_TIERS[i];
+      if (failedAttempts >= tier.threshold) {
+        return {
+          duration: tier.duration,
+          label: tier.label,
+          tier: i + 1,
+        };
+      }
+    }
+    
+    // Default: no lockout (shouldn't reach here if thresholds are correct)
+    return { duration: 0, label: 'none', tier: 0 };
+  }
   /**
    * Normalize email for consistent lookups
    */
@@ -172,29 +201,47 @@ class AccountLockoutService {
       const newFailedAttempts = (existing.failedAttempts || 0) + 1;
       let lockedUntil = existing.lockedUntil;
 
-      // Lock account if threshold reached
-      if (newFailedAttempts >= MAX_FAILED_ATTEMPTS) {
-        lockedUntil = new Date(now.getTime() + LOCKOUT_DURATION_MS);
+      // Check if any lockout threshold is reached (progressive lockout)
+      const lockoutInfo = this.calculateLockoutDuration(newFailedAttempts);
+      
+      if (lockoutInfo.tier > 0) {
+        const newLockedUntil = new Date(now.getTime() + lockoutInfo.duration);
         
-        // Log lockout event
-        if (userId) {
-          await auditService.log({
-            userId,
-            action: 'ACCOUNT_LOCKED',
-            module: 'auth',
-            details: {
-              email: normalizedEmail,
-              currentIP: ipAddress,
-              recentIPs,
-              failedAttempts: newFailedAttempts,
-              lockedUntil,
-              reason: 'Too many failed login attempts',
-            },
-            ipAddress,
-          });
-        }
+        // Only update lockout if:
+        // 1. Account isn't already locked, OR
+        // 2. New lockout extends the existing one (higher tier)
+        if (!lockedUntil || newLockedUntil > lockedUntil) {
+          lockedUntil = newLockedUntil;
+          
+          // Log lockout event
+          if (userId) {
+            await auditService.log({
+              userId,
+              action: 'ACCOUNT_LOCKED',
+              module: 'auth',
+              details: {
+                email: normalizedEmail,
+                currentIP: ipAddress,
+                recentIPs,
+                failedAttempts: newFailedAttempts,
+                lockedUntil,
+                lockoutTier: lockoutInfo.tier,
+                lockoutDuration: lockoutInfo.label,
+                reason: `Too many failed login attempts (Tier ${lockoutInfo.tier}: ${lockoutInfo.label})`,
+              },
+              ipAddress,
+            });
+          }
 
-        console.log(`🔒 Account locked: ${normalizedEmail} from ${ipAddress} until ${lockedUntil.toISOString()}`);
+          console.log(
+            `🔒 Account locked [Tier ${lockoutInfo.tier}]: ${normalizedEmail} from ${ipAddress} ` +
+            `(${newFailedAttempts} attempts) until ${lockedUntil.toISOString()} (${lockoutInfo.label})`
+          );
+
+          // Send email notification (fire and forget - don't block lockout)
+          this.sendLockoutNotification(normalizedEmail, lockoutInfo, newFailedAttempts, lockedUntil, ipAddress)
+            .catch(err => console.error('Failed to send lockout notification email:', err));
+        }
       }
 
       // Update the lockout record
@@ -303,6 +350,41 @@ class AccountLockoutService {
       await db.delete(accountLockouts);
     } catch (error) {
       console.error('Error clearing all lockouts:', error);
+    }
+  }
+
+  /**
+   * Send email notification about account lockout (private helper)
+   */
+  private async sendLockoutNotification(
+    email: string,
+    lockoutInfo: { duration: number; label: string; tier: number },
+    failedAttempts: number,
+    lockedUntil: Date,
+    ipAddress: string
+  ): Promise<void> {
+    try {
+      // Get user info for personalized email
+      const [user] = await db
+        .select()
+        .from(users)
+        .where(eq(users.email, email))
+        .limit(1);
+
+      const userName = user ? `${user.firstName || ''} ${user.lastName || ''}`.trim() : undefined;
+
+      await emailService.sendAccountLockoutNotification({
+        to: email,
+        userName,
+        lockoutDuration: lockoutInfo.label,
+        lockoutTier: lockoutInfo.tier,
+        failedAttempts,
+        lockedUntil,
+        ipAddress,
+      });
+    } catch (error) {
+      // Don't throw - email failure shouldn't prevent lockout
+      console.error('Failed to send lockout notification:', error);
     }
   }
 }
