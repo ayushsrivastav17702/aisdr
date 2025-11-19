@@ -21,6 +21,10 @@ import VerifyEmailPage from "@/pages/verify-email";
 import AdminPanel from "@/pages/admin-panel";
 import ProfilePage from "@/pages/profile";
 import APIDocumentationPage from "@/pages/api-docs";
+import TermsOfServicePage from "@/pages/terms-of-service";
+import PrivacyPolicyPage from "@/pages/privacy-policy";
+import CookiePolicyPage from "@/pages/cookie-policy";
+import DataProcessingAgreementPage from "@/pages/data-processing-agreement";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -31,6 +35,10 @@ function Router() {
       <Route path="/forgot-password" component={ForgotPasswordPage} />
       <Route path="/reset-password" component={ResetPasswordPage} />
       <Route path="/verify-email" component={VerifyEmailPage} />
+      <Route path="/terms-of-service" component={TermsOfServicePage} />
+      <Route path="/privacy-policy" component={PrivacyPolicyPage} />
+      <Route path="/cookie-policy" component={CookiePolicyPage} />
+      <Route path="/data-processing-agreement" component={DataProcessingAgreementPage} />
       <Route path="/admin/users">
         <ProtectedRoute requireAdmin>
           <AdminPanel />

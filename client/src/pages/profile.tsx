@@ -18,7 +18,8 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
-import { User, Key, Monitor, Trash2, Loader2, Download, FileText, Database } from 'lucide-react';
+import { User, Key, Monitor, Trash2, Loader2, Download, FileText, Database, ExternalLink } from 'lucide-react';
+import { Link } from 'wouter';
 
 interface Session {
   id: string;
@@ -570,6 +571,63 @@ export default function ProfilePage() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Legal Links Section */}
+      <Card className="mt-6">
+        <CardContent className="pt-6">
+          <div className="flex flex-col space-y-4">
+            <div className="flex items-center gap-2">
+              <FileText className="h-5 w-5 text-muted-foreground" />
+              <h3 className="font-semibold">Legal & Compliance</h3>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Link href="/terms-of-service">
+                <Button 
+                  variant="outline" 
+                  className="w-full justify-start"
+                  data-testid="link-terms-of-service"
+                >
+                  <ExternalLink className="mr-2 h-4 w-4" />
+                  Terms of Service
+                </Button>
+              </Link>
+              <Link href="/privacy-policy">
+                <Button 
+                  variant="outline" 
+                  className="w-full justify-start"
+                  data-testid="link-privacy-policy"
+                >
+                  <ExternalLink className="mr-2 h-4 w-4" />
+                  Privacy Policy
+                </Button>
+              </Link>
+              <Link href="/cookie-policy">
+                <Button 
+                  variant="outline" 
+                  className="w-full justify-start"
+                  data-testid="link-cookie-policy"
+                >
+                  <ExternalLink className="mr-2 h-4 w-4" />
+                  Cookie Policy
+                </Button>
+              </Link>
+              <Link href="/data-processing-agreement">
+                <Button 
+                  variant="outline" 
+                  className="w-full justify-start"
+                  data-testid="link-data-processing-agreement"
+                >
+                  <ExternalLink className="mr-2 h-4 w-4" />
+                  Data Processing Agreement
+                </Button>
+              </Link>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Last updated: November 19, 2024 • AISDR is committed to protecting your privacy and complying with GDPR, CCPA, and other data protection regulations.
+            </p>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   );
 }
