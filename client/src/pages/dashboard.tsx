@@ -51,12 +51,6 @@ export default function Dashboard() {
     });
   };
 
-  const handleAnalyticsClick = () => {
-    toast({
-      title: "Analytics Dashboard",
-      description: "Analytics features are being developed. Track your prospects in the table below for now.",
-    });
-  };
 
   const handleSettingsClick = () => {
     toast({
@@ -173,15 +167,16 @@ export default function Dashboard() {
             <span>Enrichment</span>
           </Button>
           
-          <Button
-            variant="ghost"
-            className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
-            onClick={handleAnalyticsClick}
-            data-testid="nav-analytics"
-          >
-            <BarChart3Icon className="w-4 h-4" />
-            <span>Analytics</span>
-          </Button>
+          <Link href="/analytics">
+            <Button
+              variant="ghost"
+              className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
+              data-testid="nav-analytics"
+            >
+              <BarChart3Icon className="w-4 h-4" />
+              <span>Analytics</span>
+            </Button>
+          </Link>
           
           <Separator className="my-4" />
           
