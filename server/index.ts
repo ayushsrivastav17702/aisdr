@@ -14,7 +14,7 @@ const app = express();
 
 const isProduction = process.env.NODE_ENV === "production";
 
-const { generateToken, doubleCsrfProtection } = doubleCsrf({
+const csrfProtection = doubleCsrf({
   getSecret: () => process.env.SESSION_SECRET || "default-csrf-secret-change-in-production",
   cookieName: "x-csrf-token",
   cookieOptions: {
@@ -27,6 +27,8 @@ const { generateToken, doubleCsrfProtection } = doubleCsrf({
   size: 64,
   ignoredMethods: ["GET", "HEAD", "OPTIONS"],
 });
+
+const { generateCsrfToken, doubleCsrfProtection } = csrfProtection;
 
 declare module 'http' {
   interface IncomingMessage {
@@ -78,8 +80,22 @@ app.use(express.urlencoded({ extended: false }));
 
 app.get("/api/csrf-token", (req, res) => {
   try {
-    const csrfToken = generateToken(req, res);
-    res.json({ csrfToken });
+    // Generate token and set cookie manually
+    const crypto = require('crypto');
+    const token = crypto.randomBytes(32).toString('hex');
+    
+    // Set cookie
+    const isProduction = process.env.NODE_ENV === 'production';
+    res.cookie('x-csrf-token', token, {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: isProduction ? 'strict' : 'lax',
+      path: '/',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+    
+    // Return token to client
+    res.json({ csrfToken: token });
   } catch (error) {
     log(`CSRF token generation error: ${error}`);
     res.status(500).json({ error: "CSRF token generation failed" });
