@@ -21,6 +21,16 @@ export interface EmailVerificationData {
   userName?: string;
 }
 
+export interface AccountLockoutEmailData {
+  to: string;
+  userName?: string;
+  lockoutDuration: string;
+  lockoutTier: number;
+  failedAttempts: number;
+  lockedUntil: Date;
+  ipAddress: string;
+}
+
 export class EmailService {
   private fromEmail = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev'; // Configurable sender email
   private productName = 'AI SDR Platform';
@@ -70,6 +80,30 @@ export class EmailService {
     } catch (error) {
       console.error('Failed to send email verification:', error);
       throw new Error('Failed to send email verification');
+    }
+  }
+
+  async sendAccountLockoutNotification(data: AccountLockoutEmailData): Promise<void> {
+    const { to, userName, lockoutDuration, lockoutTier, failedAttempts, lockedUntil, ipAddress } = data;
+
+    try {
+      await resend.emails.send({
+        from: this.fromEmail,
+        to,
+        subject: `🔒 Security Alert: Account Temporarily Locked - ${this.productName}`,
+        html: this.generateAccountLockoutEmailHTML(
+          userName,
+          lockoutDuration,
+          lockoutTier,
+          failedAttempts,
+          lockedUntil,
+          ipAddress
+        ),
+      });
+      console.log(`📧 Account lockout notification sent to ${to}`);
+    } catch (error) {
+      console.error('Failed to send account lockout notification:', error);
+      // Don't throw - lockout should proceed even if email fails
     }
   }
 
@@ -219,6 +253,118 @@ export class EmailService {
             
             <p style="font-size: 12px; color: #999; margin-top: 20px;">
               This verification link will expire in 24 hours. If you didn't create an account with ${this.productName}, you can safely ignore this email.
+            </p>
+          </div>
+        </body>
+      </html>
+    `;
+  }
+
+  private generateAccountLockoutEmailHTML(
+    userName: string | undefined,
+    lockoutDuration: string,
+    lockoutTier: number,
+    failedAttempts: number,
+    lockedUntil: Date,
+    ipAddress: string
+  ): string {
+    const formattedLockedUntil = lockedUntil.toLocaleString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      timeZoneName: 'short'
+    });
+
+    return `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Security Alert: Account Locked</title>
+        </head>
+        <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background: linear-gradient(135deg, #dc3545 0%, #c82333 100%); padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
+            <h1 style="color: white; margin: 0; font-size: 28px;">🔒 Security Alert</h1>
+          </div>
+          
+          <div style="background: #ffffff; padding: 40px; border-radius: 0 0 10px 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            <p style="font-size: 16px; margin-bottom: 20px;">Hello${userName ? ` ${userName}` : ''},</p>
+            
+            <div style="background: #f8d7da; border: 1px solid #dc3545; border-radius: 5px; padding: 20px; margin: 20px 0;">
+              <p style="margin: 0 0 15px 0; font-size: 16px; color: #721c24; font-weight: bold;">
+                ⚠️ Your account has been temporarily locked due to multiple failed login attempts.
+              </p>
+              <p style="margin: 0; font-size: 14px; color: #721c24;">
+                <strong>Lockout Level:</strong> Tier ${lockoutTier} (${lockoutDuration})<br>
+                <strong>Failed Attempts:</strong> ${failedAttempts}<br>
+                <strong>IP Address:</strong> ${ipAddress}<br>
+                <strong>Locked Until:</strong> ${formattedLockedUntil}
+              </p>
+            </div>
+            
+            <h2 style="color: #333; font-size: 20px; margin: 30px 0 15px 0;">What This Means</h2>
+            <p style="font-size: 16px; margin-bottom: 20px;">
+              To protect your account, we've temporarily restricted access after detecting ${failedAttempts} failed login attempts. 
+              Your account will automatically unlock in <strong>${lockoutDuration}</strong>.
+            </p>
+
+            <h2 style="color: #333; font-size: 20px; margin: 30px 0 15px 0;">Progressive Security Lockout</h2>
+            <div style="background: #f8f9fa; border-radius: 5px; padding: 15px; margin: 15px 0;">
+              <p style="margin: 0 0 10px 0; font-size: 14px; color: #666;">
+                Our progressive lockout system increases security based on failed attempts:
+              </p>
+              <ul style="margin: 0; padding-left: 20px; font-size: 14px; color: #666;">
+                <li><strong>Tier 1:</strong> 5 failures = 15 minute lockout</li>
+                <li><strong>Tier 2:</strong> 10 failures = 1 hour lockout</li>
+                <li><strong>Tier 3:</strong> 20 failures = 24 hour lockout</li>
+              </ul>
+            </div>
+            
+            <h2 style="color: #333; font-size: 20px; margin: 30px 0 15px 0;">What to Do</h2>
+            
+            <div style="background: #e8f4fd; border: 1px solid #0d6efd; border-radius: 5px; padding: 15px; margin: 15px 0;">
+              <p style="margin: 0 0 10px 0; font-size: 14px; color: #084298;">
+                <strong>If this was you:</strong>
+              </p>
+              <ul style="margin: 0; padding-left: 20px; font-size: 14px; color: #084298;">
+                <li>Wait for the lockout period to expire (${lockoutDuration})</li>
+                <li>Make sure you're using the correct password</li>
+                <li>Consider using the "Forgot Password" option if needed</li>
+              </ul>
+            </div>
+
+            <div style="background: #fef3cd; border: 1px solid #ffc107; border-radius: 5px; padding: 15px; margin: 15px 0;">
+              <p style="margin: 0 0 10px 0; font-size: 14px; color: #856404;">
+                <strong>⚠️ If this wasn't you:</strong>
+              </p>
+              <ul style="margin: 0; padding-left: 20px; font-size: 14px; color: #856404;">
+                <li>Someone may be trying to access your account</li>
+                <li>Change your password immediately after the lockout expires</li>
+                <li>Enable two-factor authentication (coming soon)</li>
+                <li>Contact our support team if you suspect unauthorized access</li>
+              </ul>
+            </div>
+
+            <h2 style="color: #333; font-size: 20px; margin: 30px 0 15px 0;">Need Help?</h2>
+            <p style="font-size: 16px; margin-bottom: 20px;">
+              If you're having trouble accessing your account or suspect unauthorized access, please contact our support team.
+            </p>
+            
+            <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
+            
+            <p style="font-size: 12px; color: #999; margin: 0;">
+              This is an automated security notification from ${this.productName}. This email was sent because multiple failed login attempts were detected on your account.
+            </p>
+            
+            <p style="font-size: 12px; color: #999; margin-top: 10px;">
+              <strong>Security Details:</strong><br>
+              Time: ${new Date().toLocaleString()}<br>
+              IP Address: ${ipAddress}<br>
+              Failed Attempts: ${failedAttempts}
             </p>
           </div>
         </body>
