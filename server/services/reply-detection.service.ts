@@ -178,7 +178,12 @@ export class ReplyDetectionService {
         });
 
         imap.once("error", (err: any) => {
-          console.error(`❌ IMAP connection error for ${mailbox.email}:`, err);
+          // Check if it's an authentication error - these are expected when IMAP passwords need updating
+          if (err.textCode === 'AUTHENTICATIONFAILED' || err.source === 'authentication') {
+            console.log(`⏭️ Skipping ${mailbox.email} - IMAP credentials need updating in Settings (email sending still works)`);
+          } else {
+            console.error(`❌ IMAP connection error for ${mailbox.email}:`, err);
+          }
           resolve();
         });
 
