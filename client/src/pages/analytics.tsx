@@ -67,15 +67,15 @@ export default function AnalyticsPage() {
   const [dateRange, setDateRange] = useState("30");
 
   const { data: overview, isLoading: overviewLoading } = useQuery<AnalyticsOverview>({
-    queryKey: ["/api/analytics/overview"],
+    queryKey: ["/api/analytics/overview", { dateRange }],
   });
 
   const { data: timeSeries, isLoading: timeSeriesLoading } = useQuery<TimeSeriesData[]>({
-    queryKey: ["/api/analytics/time-series"],
+    queryKey: ["/api/analytics/time-series", { dateRange }],
   });
 
   const { data: sequencePerformance, isLoading: performanceLoading } = useQuery<SequencePerformance[]>({
-    queryKey: ["/api/analytics/sequence-performance"],
+    queryKey: ["/api/analytics/sequence-performance", { dateRange }],
   });
 
   const { data: activityLogs, isLoading: logsLoading } = useQuery<ActivityLog[]>({

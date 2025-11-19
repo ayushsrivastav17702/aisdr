@@ -4,11 +4,10 @@ import { db } from '../db';
 import { accountLockouts, users } from '@shared/schema';
 import { eq, and, gt, lt, sql } from 'drizzle-orm';
 
-// Progressive lockout thresholds and durations
+// Progressive lockout thresholds and durations (2-tier system as per requirements)
 const LOCKOUT_TIERS = [
-  { threshold: 5, duration: 15 * 60 * 1000, label: '15 minutes' },     // Tier 1: 5 failures = 15 min
-  { threshold: 10, duration: 60 * 60 * 1000, label: '1 hour' },         // Tier 2: 10 failures = 1 hour
-  { threshold: 20, duration: 24 * 60 * 60 * 1000, label: '24 hours' },  // Tier 3: 20 failures = 24 hours
+  { threshold: 10, duration: 60 * 60 * 1000, label: '1 hour' },         // Tier 1: 10 failures = 1 hour
+  { threshold: 20, duration: 24 * 60 * 60 * 1000, label: '24 hours' },  // Tier 2: 20 failures = 24 hours
 ];
 
 const ATTEMPT_WINDOW_MS = 15 * 60 * 1000; // Track attempts within 15 minutes
