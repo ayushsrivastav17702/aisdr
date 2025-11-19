@@ -2,6 +2,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { emailQueueService } from "./services/email-queue.service";
+import { mailboxService } from "./services/mailbox.service";
 
 const app = express();
 
@@ -107,6 +108,18 @@ app.use((req, res, next) => {
     const { sequenceExecutorService } = await import("./services/sequence-executor.service");
     sequenceExecutorService.startExecutor(5); // Check every 5 minutes
     log(`✅ Sequence executor started`);
+    
+    // Reset daily mailbox counters every 24 hours
+    log(`🔄 Starting daily mailbox counter reset scheduler...`);
+    setInterval(async () => {
+      try {
+        await mailboxService.resetDailyCounters();
+        log("✅ Daily mailbox counters reset successfully");
+      } catch (error) {
+        console.error("❌ Failed to reset daily counters:", error);
+      }
+    }, 24 * 60 * 60 * 1000); // Reset every 24 hours
+    log(`✅ Daily reset scheduler started`);
     
     // Start automation worker (BullMQ)
     log(`🔧 Starting automation worker...`);
