@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, jsonb, timestamp, boolean, integer, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, jsonb, timestamp, boolean, integer, pgEnum, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations } from "drizzle-orm";
@@ -40,7 +40,12 @@ export const prospects = pgTable("prospects", {
   leadScore: integer("lead_score").default(0),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => ({
+  userIdIdx: index("prospects_user_id_idx").on(table.userId),
+  emailIdx: index("prospects_email_idx").on(table.primaryEmail),
+  apolloIdIdx: index("prospects_apollo_id_idx").on(table.apolloId),
+  createdAtIdx: index("prospects_created_at_idx").on(table.createdAt),
+}));
 
 // Searches table
 export const searches = pgTable("searches", {
@@ -689,6 +694,12 @@ export const users = pgTable("users", {
   emailVerified: boolean("email_verified").default(false),
   onboardingCompleted: boolean("onboarding_completed").default(false),
   onboardingCompletedAt: timestamp("onboarding_completed_at"),
+  onboardingSteps: jsonb("onboarding_steps").$type<{
+    mailboxConnected?: boolean;
+    sequenceCreated?: boolean;
+    prospectsAdded?: boolean;
+    firstCampaignLaunched?: boolean;
+  }>(),
   lastLogin: timestamp("last_login"),
   createdBy: varchar("created_by"), // References users.id (self-referential)
   createdAt: timestamp("created_at").notNull().defaultNow(),
