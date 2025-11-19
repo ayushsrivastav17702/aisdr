@@ -67,6 +67,9 @@ export class AuthService {
     const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
 
     if (!user || !user.passwordHash) {
+      // Record failed attempt even if user doesn't exist (to prevent enumeration attacks)
+      const { accountLockoutService } = await import('./account-lockout.service');
+      await accountLockoutService.recordFailedAttempt(email, ipAddress || 'unknown');
       return null;
     }
 
@@ -77,6 +80,10 @@ export class AuthService {
     const isValidPassword = await this.verifyPassword(password, user.passwordHash);
     if (!isValidPassword) {
       await this.logAuditEvent(user.id, 'login_failed', { email, ipAddress, reason: 'Invalid password' });
+      
+      // Record failed attempt for account lockout tracking
+      const { accountLockoutService } = await import('./account-lockout.service');
+      await accountLockoutService.recordFailedAttempt(email, ipAddress || 'unknown', user.id);
       return null;
     }
 
@@ -96,6 +103,10 @@ export class AuthService {
     await db.update(users).set({ lastLogin: new Date() }).where(eq(users.id, user.id));
 
     await this.logAuditEvent(user.id, 'login_success', { email, ipAddress });
+
+    // Reset failed attempts on successful login
+    const { accountLockoutService } = await import('./account-lockout.service');
+    accountLockoutService.resetAttempts(email, ipAddress || 'unknown');
 
     return {
       userId: user.id,
@@ -317,6 +328,7 @@ export class AuthService {
       lastName: user.lastName,
       role: user.role as 'admin' | 'user',
       status: user.status as 'active' | 'inactive' | 'suspended',
+      emailVerified: user.emailVerified,
     };
   }
 

@@ -3,7 +3,7 @@ import { authService } from '../services/auth.service';
 import { auditService } from '../services/audit.service';
 import { invitationService } from '../services/invitation.service';
 import { authenticate, requireAdmin } from '../middleware/auth.middleware';
-import { loginRateLimit, invitationRateLimit } from '../middleware/rate-limit.middleware';
+import { loginRateLimit, invitationRateLimit, passwordResetRateLimit } from '../middleware/rate-limit.middleware';
 import { db } from '../db';
 import { users, userSessions, userInvitations } from '@shared/schema';
 import { eq, desc } from 'drizzle-orm';
@@ -55,8 +55,32 @@ router.post('/api/auth/login', loginRateLimit, async (req, res) => {
     }
     const { email, password } = validationResult.data;
     
-    const ipAddress = req.ip || req.socket.remoteAddress;
+    // Extract client IP properly (trust proxy is configured)
+    const ipAddress = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || 
+                     req.ip || 
+                     req.socket.remoteAddress || 
+                     'unknown';
     const userAgent = req.headers['user-agent'];
+
+    // Check if account is locked
+    const { accountLockoutService } = await import('../services/account-lockout.service');
+    if (accountLockoutService.isLocked(email, ipAddress)) {
+      const remainingTime = accountLockoutService.getRemainingLockoutTime(email, ipAddress);
+      
+      auditService.logFromRequest(req, 'LOGIN_BLOCKED', 'auth', { 
+        email,
+        reason: 'Account locked due to too many failed attempts',
+        ipAddress,
+        userAgent,
+        remainingLockoutSeconds: remainingTime,
+      });
+      
+      return res.status(423).json({ 
+        error: 'Account temporarily locked due to too many failed login attempts', 
+        retryAfter: remainingTime,
+        message: `Please try again in ${Math.ceil(remainingTime / 60)} minutes`,
+      });
+    }
 
     const session = await authService.login(email, password, ipAddress, userAgent);
 
@@ -408,7 +432,7 @@ router.get('/api/auth/invitations', authenticate, requireAdmin, async (req, res)
   }
 });
 
-router.post('/api/auth/forgot-password', loginRateLimit, async (req, res) => {
+router.post('/api/auth/forgot-password', passwordResetRateLimit, async (req, res) => {
   try {
     const validationResult = forgotPasswordSchema.safeParse(req.body);
     if (!validationResult.success) {
@@ -446,7 +470,7 @@ router.post('/api/auth/forgot-password', loginRateLimit, async (req, res) => {
   }
 });
 
-router.post('/api/auth/reset-password', async (req, res) => {
+router.post('/api/auth/reset-password', passwordResetRateLimit, async (req, res) => {
   try {
     const validationResult = resetPasswordSchema.safeParse(req.body);
     if (!validationResult.success) {

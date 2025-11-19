@@ -12,6 +12,9 @@ initSentry();
 
 const app = express();
 
+// Configure trust proxy for proper IP extraction behind proxies (Heroku, Vercel, etc.)
+app.set('trust proxy', true);
+
 const isProduction = process.env.NODE_ENV === "production";
 
 const csrfProtection = doubleCsrf({
@@ -26,6 +29,11 @@ const csrfProtection = doubleCsrf({
   },
   size: 64,
   ignoredMethods: ["GET", "HEAD", "OPTIONS"],
+  getSessionIdentifier: (req) => {
+    // Use session ID if available, otherwise use a placeholder
+    // This is required for csrf-csrf v4
+    return req.sessionId || req.ip || 'anonymous';
+  },
 });
 
 const { generateCsrfToken, doubleCsrfProtection } = csrfProtection;
@@ -37,7 +45,8 @@ declare module 'http' {
 }
 
 if (isSentryEnabled()) {
-  app.use(Sentry.Handlers.requestHandler());
+  // Sentry v8 uses middleware setup in sentry.ts (expressIntegration)
+  // No need for Handlers.requestHandler() anymore
 }
 
 app.use(helmet({
@@ -80,19 +89,8 @@ app.use(express.urlencoded({ extended: false }));
 
 app.get("/api/csrf-token", (req, res) => {
   try {
-    // Generate token and set cookie manually
-    const crypto = require('crypto');
-    const token = crypto.randomBytes(32).toString('hex');
-    
-    // Set cookie
-    const isProduction = process.env.NODE_ENV === 'production';
-    res.cookie('x-csrf-token', token, {
-      httpOnly: true,
-      secure: isProduction,
-      sameSite: isProduction ? 'strict' : 'lax',
-      path: '/',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
+    // Use the csrf-csrf library's token generation
+    const token = generateCsrfToken(req, res);
     
     // Return token to client
     res.json({ csrfToken: token });
@@ -155,10 +153,7 @@ app.use((req, res, next) => {
 (async () => {
   const server = await registerRoutes(app);
 
-  if (isSentryEnabled()) {
-    app.use(Sentry.Handlers.errorHandler());
-  }
-
+  // Sentry v8 error handling - expressIntegration handles it automatically
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
