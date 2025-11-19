@@ -318,9 +318,8 @@ export class EmailService {
                 Our progressive lockout system increases security based on failed attempts:
               </p>
               <ul style="margin: 0; padding-left: 20px; font-size: 14px; color: #666;">
-                <li><strong>Tier 1:</strong> 5 failures = 15 minute lockout</li>
-                <li><strong>Tier 2:</strong> 10 failures = 1 hour lockout</li>
-                <li><strong>Tier 3:</strong> 20 failures = 24 hour lockout</li>
+                <li><strong>Tier 1:</strong> 10 failures = 1 hour lockout</li>
+                <li><strong>Tier 2:</strong> 20 failures = 24 hour lockout</li>
               </ul>
             </div>
             
