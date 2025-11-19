@@ -23,6 +23,7 @@ const EMAIL_VERIFICATION_EXPIRY_HOURS = 24; // 24 hours for email verification
 export interface AuthUser {
   id: string;
   email: string;
+  emailVerified: boolean;
   firstName: string | null;
   lastName: string | null;
   role: 'admin' | 'user';
@@ -158,6 +159,7 @@ export class AuthService {
     return {
       id: user.id,
       email: user.email,
+      emailVerified: user.emailVerified || false,
       firstName: user.firstName,
       lastName: user.lastName,
       role: user.role as 'admin' | 'user',

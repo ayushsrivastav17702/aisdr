@@ -11,6 +11,7 @@ import AISearch from "@/components/ai-search";
 import ProspectsTable from "@/components/prospects-table";
 import ImportWizard from "@/components/import-wizard";
 import JobDrawer from "@/components/job-drawer";
+import { EmailVerificationBanner } from "@/components/email-verification-banner";
 import { Link } from "wouter";
 import { 
   BrainIcon, 
@@ -224,6 +225,11 @@ export default function Dashboard() {
 
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col overflow-hidden">
+        {/* Email Verification Banner */}
+        <div className="px-8 pt-4">
+          <EmailVerificationBanner />
+        </div>
+        
         {/* Top Header Bar */}
         <header className="h-16 border-b border-border bg-card px-8 flex items-center justify-between">
           <div className="flex items-center gap-4">
