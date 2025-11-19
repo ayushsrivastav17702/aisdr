@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Mail, Plus, Trash2, Play, Pause, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Mail, Plus, Trash2, Play, Pause, CheckCircle, AlertCircle, Loader2, Settings } from "lucide-react";
 import { Label } from "@/components/ui/label";
 
 type EmailMailbox = {
@@ -119,8 +120,165 @@ export default function Mailboxes() {
   );
 }
 
+function EditMailboxDialog({
+  mailbox,
+  open,
+  onOpenChange,
+}: {
+  mailbox: EmailMailbox;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const { toast } = useToast();
+  const [dailyLimit, setDailyLimit] = useState(mailbox.dailyLimit.toString());
+  const [delayBetweenEmails, setDelayBetweenEmails] = useState("30");
+  const [smtpPassword, setSmtpPassword] = useState("");
+  const [imapPassword, setImapPassword] = useState("");
+
+  const updateMutation = useMutation({
+    mutationFn: async (data: any) =>
+      await apiRequest("PATCH", `/api/mailboxes/${mailbox.id}`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/mailboxes"] });
+      toast({ title: "Mailbox updated successfully" });
+      onOpenChange(false);
+    },
+    onError: () => {
+      toast({ title: "Failed to update mailbox", variant: "destructive" });
+    },
+  });
+
+  const handleSubmit = () => {
+    const updateData: any = {
+      dailyLimit: parseInt(dailyLimit),
+    };
+
+    if (delayBetweenEmails) {
+      updateData.delayBetweenEmails = parseInt(delayBetweenEmails) * 1000;
+    }
+
+    if (smtpPassword) {
+      updateData.smtpPassword = smtpPassword;
+    }
+
+    if (imapPassword) {
+      updateData.imapPassword = imapPassword;
+    }
+
+    updateMutation.mutate(updateData);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md" data-testid="dialog-edit-mailbox">
+        <DialogHeader>
+          <DialogTitle>Edit Mailbox Settings</DialogTitle>
+          <DialogDescription>
+            Update daily limits and credentials for {mailbox.email}
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-4">
+          <div>
+            <Label htmlFor="dailyLimit">Daily Sending Limit</Label>
+            <Input
+              id="dailyLimit"
+              type="number"
+              value={dailyLimit}
+              onChange={(e) => setDailyLimit(e.target.value)}
+              placeholder="500"
+              min="1"
+              max="10000"
+              data-testid="input-daily-limit"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Maximum emails to send per day (1-10,000)
+            </p>
+          </div>
+
+          <div>
+            <Label htmlFor="delayBetweenEmails">Delay Between Emails (seconds)</Label>
+            <Input
+              id="delayBetweenEmails"
+              type="number"
+              value={delayBetweenEmails}
+              onChange={(e) => setDelayBetweenEmails(e.target.value)}
+              placeholder="30"
+              min="5"
+              max="300"
+              data-testid="input-delay-between-emails"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Wait time between emails to avoid spam filters (5-300 seconds)
+            </p>
+          </div>
+
+          {(mailbox.provider === "smtp" || mailbox.provider === "gmail" || mailbox.provider === "outlook") && (
+            <>
+              <div>
+                <Label htmlFor="smtpPassword">SMTP Password (optional)</Label>
+                <Input
+                  id="smtpPassword"
+                  type="password"
+                  value={smtpPassword}
+                  onChange={(e) => setSmtpPassword(e.target.value)}
+                  placeholder="Leave empty to keep current"
+                  data-testid="input-smtp-password"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Update password for sending emails
+                </p>
+              </div>
+
+              <div>
+                <Label htmlFor="imapPassword">IMAP Password (optional)</Label>
+                <Input
+                  id="imapPassword"
+                  type="password"
+                  value={imapPassword}
+                  onChange={(e) => setImapPassword(e.target.value)}
+                  placeholder="Leave empty to keep current"
+                  data-testid="input-imap-password"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Update password for reply detection
+                </p>
+              </div>
+            </>
+          )}
+
+          <div className="flex gap-2 justify-end pt-4">
+            <Button
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={updateMutation.isPending}
+              data-testid="button-cancel-edit"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSubmit}
+              disabled={updateMutation.isPending}
+              data-testid="button-save-edit"
+            >
+              {updateMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                "Save Changes"
+              )}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function MailboxCard({ mailbox }: { mailbox: EmailMailbox }) {
   const { toast } = useToast();
+  const [showEditDialog, setShowEditDialog] = useState(false);
 
   const deleteMutation = useMutation({
     mutationFn: async () => await apiRequest("DELETE", `/api/mailboxes/${mailbox.id}`, undefined),
@@ -209,6 +367,15 @@ function MailboxCard({ mailbox }: { mailbox: EmailMailbox }) {
             )}
             <Button
               size="sm"
+              variant="outline"
+              onClick={() => setShowEditDialog(true)}
+              data-testid={`button-edit-${mailbox.id}`}
+            >
+              <Settings className="w-4 h-4 mr-1" />
+              Edit
+            </Button>
+            <Button
+              size="sm"
               variant="destructive"
               onClick={() => deleteMutation.mutate()}
               disabled={deleteMutation.isPending}
@@ -219,6 +386,11 @@ function MailboxCard({ mailbox }: { mailbox: EmailMailbox }) {
           </div>
         </div>
       </CardContent>
+      <EditMailboxDialog
+        mailbox={mailbox}
+        open={showEditDialog}
+        onOpenChange={setShowEditDialog}
+      />
     </Card>
   );
 }
