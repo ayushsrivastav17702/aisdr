@@ -10,6 +10,7 @@ import Sequences from "@/pages/sequences";
 import Mailboxes from "@/pages/mailboxes";
 import ContentManagement from "@/pages/content-management";
 import AutomationDashboard from "@/pages/AutomationDashboard";
+import AnalyticsPage from "@/pages/analytics";
 import LoginPage from "@/pages/login";
 import AcceptInvitationPage from "@/pages/accept-invitation";
 import ForgotPasswordPage from "@/pages/forgot-password";
@@ -80,6 +81,11 @@ function Router() {
       <Route path="/automation">
         <ProtectedRoute>
           <AutomationDashboard />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/analytics">
+        <ProtectedRoute>
+          <AnalyticsPage />
         </ProtectedRoute>
       </Route>
       <Route component={NotFound} />

@@ -23,6 +23,7 @@ import mailboxRoutes from "./mailbox-routes";
 import { registerAutomationRoutes } from "./automation-routes";
 import authRoutes from "./routes/auth.routes";
 import userRoutes from "./routes/user.routes";
+import analyticsRoutes from "./routes/analytics.routes";
 import { authenticate } from "./middleware/auth.middleware";
 
 const upload = multer({ 
@@ -1219,6 +1220,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // User management routes
   app.use(userRoutes);
+
+  // Analytics routes
+  app.use("/api/analytics", analyticsRoutes);
 
   // Sequence module routes
   app.use("/api", sequenceRoutes);
