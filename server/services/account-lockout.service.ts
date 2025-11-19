@@ -148,6 +148,13 @@ class AccountLockoutService {
             recentIPs: [ipAddress],
           });
         }
+        
+        // Cleanup after first attempt
+        try {
+          await this.cleanupExpiredEntries();
+        } catch (cleanupError) {
+          console.error('Cleanup failed (non-fatal):', cleanupError);
+        }
         return;
       }
 
@@ -204,13 +211,13 @@ class AccountLockoutService {
     } catch (error) {
       console.error('Error recording failed login attempt:', error);
       throw new Error('Failed to record lockout attempt');
-    }
-
-    // Always cleanup after recording attempt
-    try {
-      await this.cleanupExpiredEntries();
-    } catch (cleanupError) {
-      console.error('Cleanup failed (non-fatal):', cleanupError);
+    } finally {
+      // Always cleanup after recording attempt (in finally block to ensure it runs)
+      try {
+        await this.cleanupExpiredEntries();
+      } catch (cleanupError) {
+        console.error('Cleanup failed (non-fatal):', cleanupError);
+      }
     }
   }
 
