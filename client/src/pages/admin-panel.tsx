@@ -30,7 +30,7 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { UserPlus, Search, MoreVertical, Trash2, RotateCcw, Loader2 } from 'lucide-react';
+import { UserPlus, Search, MoreVertical, Trash2, RotateCcw, Loader2, Unlock } from 'lucide-react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -144,6 +144,30 @@ export default function AdminPanel() {
     onError: (error: Error) => {
       toast({
         title: 'Failed to reactivate user',
+        description: error.message,
+        variant: 'destructive',
+      });
+    },
+  });
+
+  const unlockAccountMutation = useMutation({
+    mutationFn: async (email: string) => {
+      const response = await apiRequest('POST', '/api/auth/unlock-account', { email });
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to unlock account');
+      }
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: 'Account unlocked',
+        description: 'Account has been unlocked successfully',
+      });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: 'Failed to unlock account',
         description: error.message,
         variant: 'destructive',
       });
@@ -323,6 +347,13 @@ export default function AdminPanel() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onClick={() => unlockAccountMutation.mutate(user.email)}
+                            data-testid={`button-unlock-account-${user.id}`}
+                          >
+                            <Unlock className="mr-2 h-4 w-4" />
+                            Unlock Account
+                          </DropdownMenuItem>
                           {user.status === 'active' ? (
                             <DropdownMenuItem
                               onClick={() => deleteUserMutation.mutate(user.id)}
