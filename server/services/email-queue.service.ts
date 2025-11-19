@@ -4,6 +4,7 @@ import { eq, and, lte, sql } from "drizzle-orm";
 import { emailSendingService } from "./email-sending.service";
 import { mailboxService } from "./mailbox.service";
 import automationService from "./automation.service";
+import { Sentry, isSentryEnabled } from "../sentry";
 
 export class EmailQueueService {
   async addToQueue(queueData: {
@@ -45,6 +46,12 @@ export class EmailQueueService {
       return queueItem;
     } catch (error) {
       console.error("Failed to add email to queue:", error);
+      if (isSentryEnabled()) {
+        Sentry.captureException(error, {
+          tags: { service: 'email-queue', operation: 'addToQueue' },
+          extra: { userId: queueData.userId, prospectId: queueData.prospectId }
+        });
+      }
       throw error;
     }
   }
@@ -143,6 +150,11 @@ export class EmailQueueService {
       }
     } catch (error) {
       console.error("Failed to process pending emails:", error);
+      if (isSentryEnabled()) {
+        Sentry.captureException(error, {
+          tags: { service: 'email-queue', operation: 'processPendingEmails' }
+        });
+      }
     }
   }
 
