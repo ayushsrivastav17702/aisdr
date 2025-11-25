@@ -16,6 +16,9 @@ export async function getCsrfToken(): Promise<string> {
     
     const data = await response.json();
     csrfToken = data.csrfToken;
+    if (!csrfToken) {
+      throw new Error('CSRF token is empty');
+    }
     return csrfToken;
   } catch (error) {
     console.error('CSRF token fetch error:', error);
