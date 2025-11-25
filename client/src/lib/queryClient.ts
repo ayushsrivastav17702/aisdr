@@ -1,4 +1,5 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
+import { getCsrfToken } from "./csrf";
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
@@ -21,6 +22,17 @@ export async function apiRequest(
   
   if (token) {
     headers["Authorization"] = `Bearer ${token}`;
+  }
+
+  // Add CSRF token for mutating methods
+  const upperMethod = method.toUpperCase();
+  if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(upperMethod)) {
+    try {
+      const csrfToken = await getCsrfToken();
+      headers["x-csrf-token"] = csrfToken;
+    } catch (error) {
+      console.error('Failed to get CSRF token:', error);
+    }
   }
 
   const res = await fetch(url, {
