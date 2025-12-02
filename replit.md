@@ -68,6 +68,26 @@ The platform is built on a modern web stack, featuring a multi-tenant architectu
   - **Status Transitions**: Validates state changes to prevent race conditions
   - **See**: [SCHEDULER_IMPLEMENTATION.md](./SCHEDULER_IMPLEMENTATION.md) for complete documentation
 - **Reply Classification**: Automated sentiment analysis (positive, negative, unsubscribe, neutral) with automatic unsubscribe processing.
+- **Email Tracking & Analytics**: Comprehensive email engagement tracking:
+  - **Open Tracking**: 1x1 transparent pixel tracking with first-open detection
+  - **Click Tracking**: HMAC-signed URL wrapping with timing-safe signature verification
+  - **Security**: Protocol validation (http/https only), localhost blocking, signature verification
+  - **Performance Metrics**: Open rate, click rate, reply rate, bounce rate, meeting rate
+  - **Sequence Step Analysis**: Per-step performance metrics (opens/clicks/replies per step)
+  - **Domain Health**: Deliverability scoring based on bounce rates and engagement
+  - **Daily/Weekly Summaries**: Automated performance reports
+  - **Top Content Analysis**: Best-performing subject lines and email content
+  - **Multi-Tenant Scoping**: All analytics endpoints enforce userId isolation
+- **Reply Detection Integration**: Full automation integration:
+  - **OOO Detection**: Parses return dates and reschedules follow-ups after OOO period
+  - **Bounce Handling**: Marks prospects as bounced, cancels future emails
+  - **Human Reply Handling**: Cancels future sequence steps when prospect replies
+  - **Unsubscribe Processing**: Automatically adds to unsubscribe list and halts sequences
+  - **Intent Classification**: Detects interested, meeting_request, not_now, unsubscribe
+  - **Key Info Extraction**: AI-powered extraction of preferred times, questions, objections
+  - **Automation Run Statistics**: Updates repliesReceived counter on automation runs
+- **Merge Field Fallbacks**: Support for `{{variable|fallback}}` syntax to handle missing prospect data gracefully
+- **Failed Send Notifications**: Email alerts to users when sends fail after max retry attempts
 - **ICP Templates**: Pre-configured Ideal Customer Profile templates.
 - **Lead Scoring**: Automated 0-100 scoring based on seniority, data completeness, etc.
 - **Duplicate Detection**: Intelligent checks by email, Apollo ID, LinkedIn URL, and name+company.

@@ -2151,6 +2151,176 @@ Respond in JSON format:
     }
   });
 
+  // ==========================================
+  // Email Tracking Routes
+  // ==========================================
+  
+  // Import tracking service
+  const { emailTrackingService } = await import("./services/email-tracking.service");
+  
+  // Tracking pixel - records email opens (no auth required for tracking)
+  app.get("/api/track/open/:trackingId", async (req, res) => {
+    const { trackingId } = req.params;
+    
+    // Record the open asynchronously
+    emailTrackingService.recordOpen(trackingId).catch(err => {
+      console.error("Error recording email open:", err);
+    });
+    
+    // Return a 1x1 transparent GIF
+    const transparentGif = Buffer.from(
+      'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
+      'base64'
+    );
+    
+    res.set({
+      'Content-Type': 'image/gif',
+      'Content-Length': transparentGif.length,
+      'Cache-Control': 'no-store, no-cache, must-revalidate',
+      'Pragma': 'no-cache',
+      'Expires': '0',
+    });
+    res.send(transparentGif);
+  });
+  
+  // Link click tracking - records clicks and redirects (no auth required)
+  app.get("/api/track/click/:trackingId", async (req, res) => {
+    const { trackingId } = req.params;
+    const { url, sig } = req.query;
+    
+    // Validate and redirect to the original URL
+    if (url && typeof url === 'string') {
+      try {
+        const decodedUrl = decodeURIComponent(url);
+        
+        // Security: Verify HMAC signature to prevent URL tampering
+        if (!sig || typeof sig !== 'string') {
+          console.warn(`Click tracking rejected: Missing signature for ${trackingId}`);
+          res.status(400).send("Invalid tracking link");
+          return;
+        }
+        
+        if (!emailTrackingService.verifySignature(trackingId, decodedUrl, sig)) {
+          console.warn(`Click tracking rejected: Invalid signature for ${trackingId}`);
+          res.status(400).send("Invalid tracking link");
+          return;
+        }
+        
+        const parsedUrl = new URL(decodedUrl);
+        
+        // Security: Only allow http/https protocols to prevent javascript: or data: URLs
+        if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+          console.warn(`Blocked unsafe redirect protocol: ${parsedUrl.protocol}`);
+          res.status(400).send("Invalid redirect URL protocol");
+          return;
+        }
+        
+        // Security: Block common attack patterns
+        const hostname = parsedUrl.hostname.toLowerCase();
+        const blockedPatterns = ['localhost', '127.0.0.1', '0.0.0.0', '[::1]'];
+        if (blockedPatterns.some(pattern => hostname.includes(pattern))) {
+          console.warn(`Blocked localhost redirect attempt: ${hostname}`);
+          res.status(400).send("Invalid redirect URL");
+          return;
+        }
+        
+        // Record the click asynchronously after validation passes
+        emailTrackingService.recordClick(trackingId).catch(err => {
+          console.error("Error recording email click:", err);
+        });
+        
+        res.redirect(301, decodedUrl);
+      } catch (error) {
+        console.error("Invalid URL in click tracking:", error);
+        res.status(400).send("Invalid redirect URL");
+      }
+    } else {
+      res.status(400).send("Missing redirect URL");
+    }
+  });
+  
+  // Get email performance metrics
+  app.get("/api/email-analytics/performance", authenticate, async (req, res) => {
+    try {
+      const userId = req.userId!;
+      const days = parseInt(req.query.days as string) || 30;
+      
+      const metrics = await emailTrackingService.getPerformanceMetrics(userId, days);
+      res.json(metrics);
+    } catch (error) {
+      console.error("Error getting email performance metrics:", error);
+      res.status(500).json({ error: "Failed to get performance metrics" });
+    }
+  });
+  
+  // Get sequence step performance
+  app.get("/api/email-analytics/sequence/:sequenceId/steps", authenticate, async (req, res) => {
+    try {
+      const userId = req.userId!;
+      const { sequenceId } = req.params;
+      
+      const stepPerformance = await emailTrackingService.getSequenceStepPerformance(sequenceId, userId);
+      res.json(stepPerformance);
+    } catch (error) {
+      console.error("Error getting sequence step performance:", error);
+      res.status(500).json({ error: "Failed to get step performance" });
+    }
+  });
+  
+  // Get domain health
+  app.get("/api/email-analytics/domain-health", authenticate, async (req, res) => {
+    try {
+      const userId = req.userId!;
+      
+      const domainHealth = await emailTrackingService.getDomainHealth(userId);
+      res.json(domainHealth);
+    } catch (error) {
+      console.error("Error getting domain health:", error);
+      res.status(500).json({ error: "Failed to get domain health" });
+    }
+  });
+  
+  // Get top performing content
+  app.get("/api/email-analytics/top-content", authenticate, async (req, res) => {
+    try {
+      const userId = req.userId!;
+      const limit = parseInt(req.query.limit as string) || 5;
+      
+      const topContent = await emailTrackingService.getTopPerformingContent(userId, limit);
+      res.json(topContent);
+    } catch (error) {
+      console.error("Error getting top performing content:", error);
+      res.status(500).json({ error: "Failed to get top content" });
+    }
+  });
+  
+  // Get daily summary
+  app.get("/api/email-analytics/daily-summary", authenticate, async (req, res) => {
+    try {
+      const userId = req.userId!;
+      const date = req.query.date ? new Date(req.query.date as string) : new Date();
+      
+      const summary = await emailTrackingService.getDailySummary(userId, date);
+      res.json(summary);
+    } catch (error) {
+      console.error("Error getting daily summary:", error);
+      res.status(500).json({ error: "Failed to get daily summary" });
+    }
+  });
+  
+  // Get weekly summary
+  app.get("/api/email-analytics/weekly-summary", authenticate, async (req, res) => {
+    try {
+      const userId = req.userId!;
+      
+      const summary = await emailTrackingService.getWeeklySummary(userId);
+      res.json(summary);
+    } catch (error) {
+      console.error("Error getting weekly summary:", error);
+      res.status(500).json({ error: "Failed to get weekly summary" });
+    }
+  });
+
   // Health check
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", timestamp: new Date().toISOString() });

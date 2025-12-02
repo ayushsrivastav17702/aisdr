@@ -289,10 +289,15 @@ export const emailReplies = pgTable("email_replies", {
   sequenceId: varchar("sequence_id").references(() => sequences.id, { onDelete: "cascade" }),
   prospectId: varchar("prospect_id").notNull().references(() => prospects.id, { onDelete: "cascade" }),
   replyContent: text("reply_content").notNull(),
-  sentiment: text("sentiment").default("neutral"),
+  sentiment: text("sentiment").default("neutral"), // positive, negative, neutral, unsubscribe
+  replyType: text("reply_type").default("human_reply"), // human_reply, ooo, bounce, auto_reply
+  intent: text("intent"), // interested, meeting_request, not_now, question, objection, unsubscribe
+  extractedInfo: jsonb("extracted_info"), // { preferredTime, questions, objections, returnDate }
+  oooReturnDate: timestamp("ooo_return_date"), // For OOO auto-reschedule
   receivedAt: timestamp("received_at").notNull().defaultNow(),
   aiSummary: text("ai_summary"),
   nextAction: text("next_action"),
+  processed: boolean("processed").default(false), // Whether AI has processed this reply
   createdAt: timestamp("created_at").defaultNow(),
 });
 

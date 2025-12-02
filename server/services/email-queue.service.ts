@@ -5,6 +5,7 @@ import { emailSendingService } from "./email-sending.service";
 import { mailboxService } from "./mailbox.service";
 import automationService from "./automation.service";
 import { Sentry, isSentryEnabled } from "../sentry";
+import { notificationService } from "./notification.service";
 
 export class EmailQueueService {
   async addToQueue(queueData: {
@@ -247,6 +248,23 @@ export class EmailQueueService {
           .where(eq(emailQueue.id, email.id));
 
         console.error(`❌ Email failed after ${attempts} attempts: ${email.id}`);
+        
+        // Send failed send alert notification
+        if (email.userId && prospect) {
+          notificationService.notify({
+            userId: email.userId,
+            type: "failed_send",
+            data: {
+              prospectName: `${prospect.firstName || ''} ${prospect.lastName || ''}`.trim() || 'Unknown',
+              prospectEmail: prospect.primaryEmail || 'Unknown',
+              subject: email.subject,
+              errorMessage: error.message,
+              timestamp: new Date()
+            }
+          }).catch(err => {
+            console.error('Failed to send notification:', err);
+          });
+        }
       } else {
         await db
           .update(emailQueue)
@@ -306,6 +324,118 @@ export class EmailQueueService {
       .update(emailQueue)
       .set({ status: "failed", lastError: "Cancelled by user" })
       .where(eq(emailQueue.id, emailId));
+  }
+
+  /**
+   * Reschedule pending emails for a prospect after OOO return date
+   * Called when we detect an OOO auto-reply with a return date
+   */
+  async rescheduleForOOO(
+    prospectId: string, 
+    returnDate: Date, 
+    userId: string
+  ): Promise<number> {
+    try {
+      // Add 1 day buffer after return date
+      const newScheduleDate = new Date(returnDate);
+      newScheduleDate.setDate(newScheduleDate.getDate() + 1);
+      newScheduleDate.setHours(9, 0, 0, 0); // Schedule for 9 AM
+
+      // Find all pending emails for this prospect
+      const pendingEmails = await db
+        .select()
+        .from(emailQueue)
+        .where(
+          and(
+            eq(emailQueue.prospectId, prospectId),
+            eq(emailQueue.userId, userId),
+            eq(emailQueue.status, "pending")
+          )
+        );
+
+      if (pendingEmails.length === 0) {
+        console.log(`📭 No pending emails to reschedule for prospect ${prospectId}`);
+        return 0;
+      }
+
+      // Reschedule each email with sequential timing
+      let rescheduledCount = 0;
+      for (let i = 0; i < pendingEmails.length; i++) {
+        const email = pendingEmails[i];
+        const emailScheduleDate = new Date(newScheduleDate);
+        emailScheduleDate.setDate(emailScheduleDate.getDate() + i); // Space out by days
+
+        await db
+          .update(emailQueue)
+          .set({ 
+            scheduledFor: emailScheduleDate,
+            lastError: `Rescheduled due to OOO - original: ${email.scheduledFor?.toISOString()}`,
+          })
+          .where(eq(emailQueue.id, email.id));
+
+        rescheduledCount++;
+      }
+
+      console.log(`📅 Rescheduled ${rescheduledCount} emails for prospect ${prospectId} after OOO return date ${returnDate.toISOString()}`);
+      return rescheduledCount;
+
+    } catch (error) {
+      console.error(`❌ Failed to reschedule emails for OOO:`, error);
+      if (isSentryEnabled()) {
+        Sentry.captureException(error, {
+          tags: { service: 'email-queue', operation: 'rescheduleForOOO' },
+          extra: { prospectId, returnDate, userId }
+        });
+      }
+      return 0;
+    }
+  }
+
+  /**
+   * Mark a prospect's email as bounced and exclude from future sends
+   */
+  async handleBounce(prospectId: string, userId: string): Promise<void> {
+    try {
+      // Cancel all pending emails for this prospect
+      const result = await db
+        .update(emailQueue)
+        .set({ 
+          status: "cancelled",
+          lastError: "Email bounced - address invalid"
+        })
+        .where(
+          and(
+            eq(emailQueue.prospectId, prospectId),
+            eq(emailQueue.userId, userId),
+            eq(emailQueue.status, "pending")
+          )
+        );
+
+      // Update prospect record to mark as bounced
+      await db
+        .update(prospects)
+        .set({ 
+          enrichmentStatus: "failed",
+          enrichmentData: sql`COALESCE(${prospects.enrichmentData}, '{}'::jsonb) || '{"emailBounced": true}'::jsonb`
+        })
+        .where(
+          and(
+            eq(prospects.id, prospectId),
+            eq(prospects.userId, userId)
+          )
+        );
+
+      console.log(`📭 Handled bounce for prospect ${prospectId} - cancelled pending emails`);
+
+    } catch (error) {
+      console.error(`❌ Failed to handle bounce:`, error);
+      if (isSentryEnabled()) {
+        Sentry.captureException(error, {
+          tags: { service: 'email-queue', operation: 'handleBounce' },
+          extra: { prospectId, userId }
+        });
+      }
+    }
   }
 }
 

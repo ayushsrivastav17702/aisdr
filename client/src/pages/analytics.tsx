@@ -3,14 +3,15 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { BarChart3, TrendingUp, Users, Mail, Sparkles, Target, Activity, ArrowLeft, Download, Calendar } from "lucide-react";
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from "recharts";
+import { BarChart3, TrendingUp, Users, Mail, Sparkles, Target, Activity, ArrowLeft, Download, Calendar, MousePointer, Eye, MessageCircle, AlertTriangle, Shield, CalendarDays } from "lucide-react";
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, BarChart, Bar } from "recharts";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { formatDistanceToNow, format, subDays } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
 import { Breadcrumbs } from "@/components/breadcrumbs";
+import { Progress } from "@/components/ui/progress";
 import {
   Select,
   SelectContent,
@@ -62,6 +63,58 @@ interface UsageMetrics {
   aiCredits30Days: number;
 }
 
+interface EmailPerformanceMetrics {
+  totalSent: number;
+  totalOpened: number;
+  totalClicked: number;
+  totalReplied: number;
+  totalBounced: number;
+  openRate: number;
+  clickRate: number;
+  replyRate: number;
+  bounceRate: number;
+  meetingRate: number;
+}
+
+interface DomainHealth {
+  domain: string;
+  totalSent: number;
+  bounceRate: number;
+  spamRate: number;
+  replyRate: number;
+  score: number;
+  status: "healthy" | "warning" | "critical";
+}
+
+interface TopContent {
+  bestSubjects: { subject: string; openRate: number; sent: number }[];
+  worstSubjects: { subject: string; openRate: number; sent: number }[];
+}
+
+interface DailySummary {
+  date: string;
+  sent: number;
+  opened: number;
+  clicked: number;
+  replied: number;
+  bounced: number;
+  positiveReplies: number;
+  meetingRequests: number;
+  unsubscribes: number;
+}
+
+interface WeeklySummary {
+  weekStart: string;
+  weekEnd: string;
+  dailySummaries: DailySummary[];
+  totals: EmailPerformanceMetrics;
+  trend: {
+    sentChange: number;
+    openRateChange: number;
+    replyRateChange: number;
+  };
+}
+
 export default function AnalyticsPage() {
   const { toast } = useToast();
   const [dateRange, setDateRange] = useState("30");
@@ -84,6 +137,23 @@ export default function AnalyticsPage() {
 
   const { data: usageMetrics, isLoading: usageLoading } = useQuery<UsageMetrics>({
     queryKey: ["/api/analytics/usage-metrics"],
+  });
+
+  // Email Performance Queries
+  const { data: emailPerformance, isLoading: emailPerformanceLoading } = useQuery<EmailPerformanceMetrics>({
+    queryKey: ["/api/email-analytics/performance", { days: dateRange }],
+  });
+
+  const { data: domainHealth, isLoading: domainHealthLoading } = useQuery<DomainHealth[]>({
+    queryKey: ["/api/email-analytics/domain-health"],
+  });
+
+  const { data: topContent, isLoading: topContentLoading } = useQuery<TopContent>({
+    queryKey: ["/api/email-analytics/top-content"],
+  });
+
+  const { data: weeklySummary, isLoading: weeklySummaryLoading } = useQuery<WeeklySummary>({
+    queryKey: ["/api/email-analytics/weekly-summary"],
   });
 
   const handleExportCSV = () => {
@@ -256,6 +326,10 @@ export default function AnalyticsPage() {
               <BarChart3 className="h-4 w-4 mr-2" />
               Overview
             </TabsTrigger>
+            <TabsTrigger value="email-performance" data-testid="tab-email-performance">
+              <Mail className="h-4 w-4 mr-2" />
+              Email Performance
+            </TabsTrigger>
             <TabsTrigger value="performance" data-testid="tab-performance">
               <Target className="h-4 w-4 mr-2" />
               Sequence Performance
@@ -366,6 +440,286 @@ export default function AnalyticsPage() {
                   ) : (
                     <div className="text-2xl font-bold text-amber-600 dark:text-amber-400">
                       {usageMetrics?.aiCredits30Days.toLocaleString() || 0}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          <TabsContent value="email-performance" className="space-y-4">
+            {/* Email Performance Metrics Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+              <Card data-testid="card-open-rate">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                    Open Rate
+                  </CardTitle>
+                  <Eye className="h-4 w-4 text-blue-600" />
+                </CardHeader>
+                <CardContent>
+                  {emailPerformanceLoading ? (
+                    <Skeleton className="h-8 w-20" />
+                  ) : (
+                    <div className="text-2xl font-bold text-gray-900 dark:text-white" data-testid="text-open-rate">
+                      {emailPerformance?.openRate || 0}%
+                    </div>
+                  )}
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    {emailPerformance?.totalOpened || 0} of {emailPerformance?.totalSent || 0}
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card data-testid="card-click-rate">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                    Click Rate
+                  </CardTitle>
+                  <MousePointer className="h-4 w-4 text-green-600" />
+                </CardHeader>
+                <CardContent>
+                  {emailPerformanceLoading ? (
+                    <Skeleton className="h-8 w-20" />
+                  ) : (
+                    <div className="text-2xl font-bold text-gray-900 dark:text-white" data-testid="text-click-rate">
+                      {emailPerformance?.clickRate || 0}%
+                    </div>
+                  )}
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    {emailPerformance?.totalClicked || 0} clicks
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card data-testid="card-email-reply-rate">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                    Reply Rate
+                  </CardTitle>
+                  <MessageCircle className="h-4 w-4 text-purple-600" />
+                </CardHeader>
+                <CardContent>
+                  {emailPerformanceLoading ? (
+                    <Skeleton className="h-8 w-20" />
+                  ) : (
+                    <div className="text-2xl font-bold text-gray-900 dark:text-white" data-testid="text-email-reply-rate">
+                      {emailPerformance?.replyRate || 0}%
+                    </div>
+                  )}
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    {emailPerformance?.totalReplied || 0} replies
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card data-testid="card-bounce-rate">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                    Bounce Rate
+                  </CardTitle>
+                  <AlertTriangle className="h-4 w-4 text-red-600" />
+                </CardHeader>
+                <CardContent>
+                  {emailPerformanceLoading ? (
+                    <Skeleton className="h-8 w-20" />
+                  ) : (
+                    <div className={`text-2xl font-bold ${(emailPerformance?.bounceRate || 0) > 5 ? 'text-red-600' : 'text-gray-900 dark:text-white'}`} data-testid="text-bounce-rate">
+                      {emailPerformance?.bounceRate || 0}%
+                    </div>
+                  )}
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    {emailPerformance?.totalBounced || 0} bounced
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card data-testid="card-meeting-rate">
+                <CardHeader className="flex flex-row items-center justify-between pb-2">
+                  <CardTitle className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                    Meeting Rate
+                  </CardTitle>
+                  <CalendarDays className="h-4 w-4 text-amber-600" />
+                </CardHeader>
+                <CardContent>
+                  {emailPerformanceLoading ? (
+                    <Skeleton className="h-8 w-20" />
+                  ) : (
+                    <div className="text-2xl font-bold text-amber-600 dark:text-amber-400" data-testid="text-meeting-rate">
+                      {emailPerformance?.meetingRate || 0}%
+                    </div>
+                  )}
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                    Meetings booked
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Weekly Summary Chart */}
+            <Card data-testid="card-weekly-summary">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Weekly Performance</CardTitle>
+                    <CardDescription>
+                      {weeklySummary ? `${weeklySummary.weekStart} to ${weeklySummary.weekEnd}` : 'Loading...'}
+                    </CardDescription>
+                  </div>
+                  {weeklySummary?.trend && (
+                    <div className="flex gap-4 text-sm">
+                      <div className={`flex items-center gap-1 ${weeklySummary.trend.sentChange >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        <TrendingUp className="h-4 w-4" />
+                        <span>{weeklySummary.trend.sentChange >= 0 ? '+' : ''}{weeklySummary.trend.sentChange}% sent</span>
+                      </div>
+                      <div className={`flex items-center gap-1 ${weeklySummary.trend.openRateChange >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        <span>{weeklySummary.trend.openRateChange >= 0 ? '+' : ''}{weeklySummary.trend.openRateChange}% opens</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </CardHeader>
+              <CardContent>
+                {weeklySummaryLoading ? (
+                  <Skeleton className="h-80 w-full" />
+                ) : (
+                  <ResponsiveContainer width="100%" height={300}>
+                    <BarChart data={weeklySummary?.dailySummaries || []}>
+                      <CartesianGrid strokeDasharray="3 3" />
+                      <XAxis 
+                        dataKey="date" 
+                        tickFormatter={(value) => new Date(value).toLocaleDateString('en-US', { weekday: 'short' })}
+                      />
+                      <YAxis />
+                      <Tooltip 
+                        labelFormatter={(value) => new Date(value).toLocaleDateString()}
+                      />
+                      <Legend />
+                      <Bar dataKey="sent" name="Sent" fill="#3b82f6" />
+                      <Bar dataKey="opened" name="Opened" fill="#10b981" />
+                      <Bar dataKey="replied" name="Replied" fill="#8b5cf6" />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </CardContent>
+            </Card>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {/* Domain Health */}
+              <Card data-testid="card-domain-health">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Shield className="h-5 w-5" />
+                    Domain Health
+                  </CardTitle>
+                  <CardDescription>
+                    Deliverability score for your sending domains
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {domainHealthLoading ? (
+                    <div className="space-y-4">
+                      {[1, 2].map((i) => (
+                        <Skeleton key={i} className="h-16 w-full" />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {domainHealth && domainHealth.length > 0 ? (
+                        domainHealth.map((domain) => (
+                          <div key={domain.domain} className="p-4 rounded-lg border border-gray-200 dark:border-gray-700" data-testid={`domain-health-${domain.domain}`}>
+                            <div className="flex items-center justify-between mb-2">
+                              <span className="font-medium text-gray-900 dark:text-white">{domain.domain}</span>
+                              <Badge 
+                                variant={domain.status === 'healthy' ? 'default' : domain.status === 'warning' ? 'outline' : 'destructive'}
+                                className={domain.status === 'healthy' ? 'bg-green-600' : ''}
+                              >
+                                {domain.status}
+                              </Badge>
+                            </div>
+                            <div className="flex items-center gap-2 mb-2">
+                              <Progress value={domain.score} className="h-2 flex-1" />
+                              <span className="text-sm font-medium text-gray-600 dark:text-gray-400">{domain.score}/100</span>
+                            </div>
+                            <div className="flex gap-4 text-xs text-gray-500 dark:text-gray-400">
+                              <span>{domain.totalSent} sent</span>
+                              <span>Bounce: {domain.bounceRate}%</span>
+                              <span>Reply: {domain.replyRate}%</span>
+                            </div>
+                          </div>
+                        ))
+                      ) : (
+                        <div className="text-center text-gray-500 dark:text-gray-400 py-8">
+                          No domain health data available yet
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Top Performing Content */}
+              <Card data-testid="card-top-content">
+                <CardHeader>
+                  <CardTitle>Subject Line Performance</CardTitle>
+                  <CardDescription>
+                    Best and worst performing subject lines
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {topContentLoading ? (
+                    <div className="space-y-2">
+                      {[1, 2, 3, 4, 5].map((i) => (
+                        <Skeleton key={i} className="h-10 w-full" />
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="space-y-6">
+                      {/* Best Performing */}
+                      <div>
+                        <h4 className="text-sm font-medium text-green-600 dark:text-green-400 mb-2 flex items-center gap-2">
+                          <TrendingUp className="h-4 w-4" />
+                          Best Performing
+                        </h4>
+                        <div className="space-y-2">
+                          {topContent?.bestSubjects && topContent.bestSubjects.length > 0 ? (
+                            topContent.bestSubjects.slice(0, 3).map((subject, idx) => (
+                              <div key={idx} className="flex items-center justify-between p-2 rounded bg-green-50 dark:bg-green-900/20" data-testid={`best-subject-${idx}`}>
+                                <span className="text-sm text-gray-900 dark:text-white truncate max-w-[60%]">{subject.subject}</span>
+                                <div className="flex items-center gap-2 text-xs">
+                                  <Badge variant="outline" className="bg-white dark:bg-gray-800">{subject.sent} sent</Badge>
+                                  <Badge className="bg-green-600">{subject.openRate}% open</Badge>
+                                </div>
+                              </div>
+                            ))
+                          ) : (
+                            <div className="text-sm text-gray-500">No data yet (min 5 sends)</div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Worst Performing */}
+                      <div>
+                        <h4 className="text-sm font-medium text-red-600 dark:text-red-400 mb-2 flex items-center gap-2">
+                          <AlertTriangle className="h-4 w-4" />
+                          Needs Improvement
+                        </h4>
+                        <div className="space-y-2">
+                          {topContent?.worstSubjects && topContent.worstSubjects.length > 0 ? (
+                            topContent.worstSubjects.slice(0, 3).map((subject, idx) => (
+                              <div key={idx} className="flex items-center justify-between p-2 rounded bg-red-50 dark:bg-red-900/20" data-testid={`worst-subject-${idx}`}>
+                                <span className="text-sm text-gray-900 dark:text-white truncate max-w-[60%]">{subject.subject}</span>
+                                <div className="flex items-center gap-2 text-xs">
+                                  <Badge variant="outline" className="bg-white dark:bg-gray-800">{subject.sent} sent</Badge>
+                                  <Badge variant="destructive">{subject.openRate}% open</Badge>
+                                </div>
+                              </div>
+                            ))
+                          ) : (
+                            <div className="text-sm text-gray-500">No data yet (min 5 sends)</div>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   )}
                 </CardContent>

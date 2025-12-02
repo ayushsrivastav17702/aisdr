@@ -3,6 +3,7 @@ import { db } from "../db";
 import { emailMailboxes, emailSendLog, InsertEmailSendLogEntry } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { mailboxService } from "./mailbox.service";
+import { emailTrackingService } from "./email-tracking.service";
 
 export class EmailSendingService {
   async sendEmail(params: {
@@ -60,9 +61,14 @@ export class EmailSendingService {
         console.log(`⚠️ No signature found for mailbox ${mailbox.email}`);
       }
       
+      // Add tracking if trackingId is provided
       if (params.trackingId) {
-        const trackingPixel = `<img src="${process.env.API_BASE_URL || ''}/webhooks/pixel/${params.trackingId}" width="1" height="1" />`;
-        emailBody = emailBody + trackingPixel;
+        // Wrap links for click tracking
+        emailBody = emailTrackingService.wrapAllUrls(emailBody, params.trackingId);
+        
+        // Add tracking pixel for open tracking
+        const trackingPixelHtml = emailTrackingService.getTrackingPixelHtml(params.trackingId);
+        emailBody = emailBody + trackingPixelHtml;
       }
 
       const mailOptions: any = {

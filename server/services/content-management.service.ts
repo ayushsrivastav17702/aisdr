@@ -106,20 +106,112 @@ Best of luck with your {{industry}} initiatives!
     return this.content.snippets;
   }
 
-  replaceVariables(content: string, variables: Record<string, string>): string {
+  /**
+   * Default fallback values for common merge fields when data is missing
+   */
+  private defaultFallbacks: Record<string, string> = {
+    first_name: 'there',
+    prospect_name: 'there',
+    company_name: 'your company',
+    company: 'your company',
+    position: 'professional',
+    job_title: 'professional',
+    industry: 'your industry',
+    location: 'your area',
+    seniority: 'leader',
+  };
+
+  /**
+   * Replace merge field variables with values, using fallbacks for missing data
+   * Supports {{variable|fallback}} syntax for inline fallbacks
+   * Uses default fallbacks for common fields when no inline fallback provided
+   */
+  replaceVariables(
+    content: string, 
+    variables: Record<string, string>,
+    customFallbacks?: Record<string, string>
+  ): string {
     let result = content;
+    const fallbacks = { ...this.defaultFallbacks, ...customFallbacks };
     
+    // First handle inline fallback syntax: {{variable|fallback text}}
+    const inlineFallbackPattern = /\{\{(\w+)\|([^}]+)\}\}/g;
+    result = result.replace(inlineFallbackPattern, (match, key, fallback) => {
+      const value = variables[key];
+      // Use the actual value if present and not empty, otherwise use inline fallback
+      if (value && value.trim()) {
+        return value;
+      }
+      return fallback.trim();
+    });
+    
+    // Then replace remaining variables with values from the variables object
     Object.entries(variables).forEach(([key, value]) => {
-      const regex = new RegExp(`{{${key}}}`, 'g');
-      result = result.replace(regex, value);
+      const regex = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
+      // Only replace if value is non-empty
+      if (value && value.trim()) {
+        result = result.replace(regex, value);
+      } else {
+        // Use default fallback if available
+        const fallbackValue = fallbacks[key] || '';
+        result = result.replace(regex, fallbackValue);
+      }
     });
 
+    // Replace with global content variables
     Object.entries(this.content.variables).forEach(([key, value]) => {
-      const regex = new RegExp(`{{${key}}}`, 'g');
+      const regex = new RegExp(`\\{\\{${key}\\}\\}`, 'g');
       result = result.replace(regex, value);
+    });
+    
+    // Clean up any remaining unreplaced variables with fallbacks
+    const remainingPattern = /\{\{(\w+)\}\}/g;
+    result = result.replace(remainingPattern, (match, key) => {
+      const fallbackValue = fallbacks[key];
+      if (fallbackValue) {
+        console.warn(`⚠️ Merge field {{${key}}} was missing, used fallback: "${fallbackValue}"`);
+        return fallbackValue;
+      }
+      console.warn(`⚠️ Merge field {{${key}}} was missing and has no fallback`);
+      return match; // Leave the placeholder if no fallback
     });
 
     return result;
+  }
+
+  /**
+   * Validate that all required merge fields have values
+   * Returns list of missing fields
+   */
+  validateMergeFields(content: string, variables: Record<string, string>): {
+    isValid: boolean;
+    missingFields: string[];
+    fieldsWithFallback: string[];
+  } {
+    const allFields = content.match(/\{\{(\w+)(?:\|[^}]+)?\}\}/g) || [];
+    const fieldNames = allFields.map(f => {
+      const match = f.match(/\{\{(\w+)/);
+      return match ? match[1] : '';
+    }).filter(Boolean);
+    
+    const missingFields: string[] = [];
+    const fieldsWithFallback: string[] = [];
+    
+    fieldNames.forEach(field => {
+      if (!variables[field] || !variables[field].trim()) {
+        if (this.defaultFallbacks[field] || content.includes(`{{${field}|`)) {
+          fieldsWithFallback.push(field);
+        } else {
+          missingFields.push(field);
+        }
+      }
+    });
+    
+    return {
+      isValid: missingFields.length === 0,
+      missingFields,
+      fieldsWithFallback
+    };
   }
 
   generateEmailFromTemplate(

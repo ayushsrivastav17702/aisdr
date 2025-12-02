@@ -2,11 +2,29 @@ import Imap from "imap";
 // @ts-ignore - mailparser doesn't have types
 import { simpleParser } from "mailparser";
 import { db } from "../db";
-import { emailReplies, emailQueue, emailMailboxes, sequenceProspects, emails, automationRuns } from "@shared/schema";
+import { emailReplies, emailQueue, emailMailboxes, sequenceProspects, emails, automationRuns, prospects as prospectsTable } from "@shared/schema";
 import { eq, and, sql, desc } from "drizzle-orm";
 import { mailboxService } from "./mailbox.service";
 import sequenceStepService from "./sequence-step.service";
 import { Sentry, isSentryEnabled } from "../sentry";
+import { emailQueueService } from "./email-queue.service";
+
+/**
+ * Comprehensive reply classification result
+ */
+interface ReplyClassification {
+  replyType: "human_reply" | "ooo" | "bounce" | "auto_reply";
+  sentiment: "positive" | "negative" | "neutral" | "unsubscribe";
+  intent: "interested" | "meeting_request" | "not_now" | "question" | "objection" | "unsubscribe" | "ooo" | "bounce" | null;
+  extractedInfo: {
+    preferredTime?: string;
+    questions?: string[];
+    objections?: string[];
+    returnDate?: Date;
+    forwardTo?: string;
+  };
+  oooReturnDate?: Date;
+}
 
 export class ReplyDetectionService {
   private pollInterval: NodeJS.Timeout | null = null;
@@ -123,7 +141,7 @@ export class ReplyDetectionService {
 
               const fetch = imap.fetch(results, {
                 bodies: "",
-                markSeen: false, // Don't mark as seen immediately - only after successful processing
+                markSeen: false,
               });
 
               const processingPromises: Promise<{ seqno: number; success: boolean }>[] = [];
@@ -152,7 +170,6 @@ export class ReplyDetectionService {
                 });
               });
               
-              // Wait for all messages to be processed, then mark as seen
               fetch.once("end", async () => {
                 const results = await Promise.all(processingPromises);
                 const emailsToMark = results.filter(r => r.success).map(r => r.seqno);
@@ -184,9 +201,8 @@ export class ReplyDetectionService {
         });
 
         imap.once("error", (err: any) => {
-          // Check if it's an authentication error - these are expected when IMAP passwords need updating
           if (err.textCode === 'AUTHENTICATIONFAILED' || err.source === 'authentication') {
-            console.log(`⏭️ Skipping ${mailbox.email} - IMAP credentials need updating in Settings (email sending still works)`);
+            console.log(`⏭️ Skipping ${mailbox.email} - IMAP credentials need updating`);
           } else {
             console.error(`❌ IMAP connection error for ${mailbox.email}:`, err);
           }
@@ -213,27 +229,21 @@ export class ReplyDetectionService {
   }
 
   private cleanReplyContent(rawContent: string): string {
-    // Remove quoted text and signatures from reply
-    let cleaned = rawContent;
-    
-    // Split by lines
-    const lines = cleaned.split('\n');
+    const lines = rawContent.split('\n');
     const result: string[] = [];
     
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
       
-      // Stop at quoted content indicators
       if (
-        line.startsWith('>') || // Quoted line
-        line.startsWith('On ') && line.includes('wrote:') || // Gmail/Outlook quote header
-        line.match(/^[-_]{3,}/) || // Signature separator
-        line.match(/^From:.*Sent:/) // Outlook quote header
+        line.startsWith('>') ||
+        (line.startsWith('On ') && line.includes('wrote:')) ||
+        line.match(/^[-_]{3,}/) ||
+        line.match(/^From:.*Sent:/)
       ) {
         break;
       }
       
-      // Stop at signature indicators
       if (
         line === '--' ||
         line.match(/^Best regards,?$/i) ||
@@ -251,81 +261,275 @@ export class ReplyDetectionService {
   }
 
   /**
-   * Classify reply sentiment based on content
-   * Returns: "positive", "negative", "unsubscribe", or "neutral"
+   * Detect if email is an Out-of-Office auto-reply
    */
-  private classifyReply(replyContent: string): string {
-    const lowerContent = replyContent.toLowerCase();
+  private detectOOO(content: string, subject: string): { isOOO: boolean; returnDate?: Date } {
+    const lowerContent = content.toLowerCase();
+    const lowerSubject = subject.toLowerCase();
 
-    // Check for unsubscribe/opt-out requests first (highest priority)
-    const unsubscribeKeywords = [
-      "unsubscribe",
-      "opt out",
-      "opt-out",
-      "remove me",
-      "stop emailing",
-      "stop sending",
-      "don't contact",
-      "do not contact",
-      "don't email",
-      "do not email",
-      "take me off",
-      "remove from list",
-      "not interested",
+    const oooIndicators = [
+      "out of office", "out of the office", "away from the office", "away from my desk",
+      "on vacation", "on holiday", "on leave", "on pto", "parental leave",
+      "maternity leave", "paternity leave", "limited access to email",
+      "will be out", "currently out", "automatic reply", "auto-reply", "autoreply",
+      "i am currently away", "i'm currently away", "i will be away", "i'll be away",
+      "will return", "returning on", "back on", "back in the office",
     ];
 
-    if (unsubscribeKeywords.some(keyword => lowerContent.includes(keyword))) {
+    const isOOO = oooIndicators.some(indicator => 
+      lowerContent.includes(indicator) || lowerSubject.includes(indicator)
+    );
+
+    if (!isOOO) {
+      return { isOOO: false };
+    }
+
+    const returnDate = this.extractReturnDate(content);
+    return { isOOO: true, returnDate };
+  }
+
+  /**
+   * Extract return date from OOO message
+   */
+  private extractReturnDate(content: string): Date | undefined {
+    const datePatterns = [
+      /(?:back|return|returning)\s+(?:on|by)?\s*(\w+\s+\d{1,2}(?:st|nd|rd|th)?(?:,?\s*\d{4})?)/i,
+      /(?:back|return|returning)\s+(?:on|by)?\s*(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)/i,
+      /(?:back|return|returning)\s+(?:on|by)?\s*(?:the\s+)?(\d{1,2})(?:st|nd|rd|th)/i,
+      /(?:out|away|unavailable)\s+(?:until|till)\s+(\w+\s+\d{1,2}(?:st|nd|rd|th)?(?:,?\s*\d{4})?)/i,
+      /(?:back|return|returning|until)\s+(\d{4}-\d{2}-\d{2})/i,
+    ];
+
+    for (const pattern of datePatterns) {
+      const match = content.match(pattern);
+      if (match) {
+        try {
+          const parsedDate = new Date(match[1]);
+          if (!isNaN(parsedDate.getTime())) {
+            if (parsedDate.getFullYear() < 2020) {
+              const now = new Date();
+              parsedDate.setFullYear(now.getFullYear());
+              if (parsedDate < now) {
+                parsedDate.setFullYear(now.getFullYear() + 1);
+              }
+            }
+            return parsedDate;
+          }
+        } catch (e) {
+          // Continue to next pattern
+        }
+      }
+    }
+
+    const daysPattern = /(?:back|return|returning)\s+in\s+(\d+)\s*days?/i;
+    const daysMatch = content.match(daysPattern);
+    if (daysMatch) {
+      const days = parseInt(daysMatch[1], 10);
+      const returnDate = new Date();
+      returnDate.setDate(returnDate.getDate() + days);
+      return returnDate;
+    }
+
+    if (/(?:back|return)\s+next\s+week/i.test(content)) {
+      const returnDate = new Date();
+      returnDate.setDate(returnDate.getDate() + 7);
+      return returnDate;
+    }
+
+    return undefined;
+  }
+
+  /**
+   * Detect if email is a bounce notification
+   */
+  private detectBounce(content: string, subject: string, fromEmail: string): boolean {
+    const lowerContent = content.toLowerCase();
+    const lowerSubject = subject.toLowerCase();
+    const lowerFrom = fromEmail.toLowerCase();
+
+    const bounceIndicators = [
+      "mail delivery failed", "delivery status notification", "undeliverable",
+      "undelivered mail", "message not delivered", "delivery failure",
+      "failed to deliver", "mailbox not found", "user unknown", "no such user",
+      "address rejected", "recipient rejected", "does not exist",
+      "mailbox unavailable", "permanent failure", "5.1.1", "550 5.1.1", "554 5.7.1",
+    ];
+
+    const bounceFromAddresses = ["mailer-daemon", "postmaster", "mail-daemon", "noreply", "no-reply"];
+
+    const isBounceContent = bounceIndicators.some(indicator => 
+      lowerSubject.includes(indicator) || lowerContent.includes(indicator)
+    );
+
+    const isBounceFrom = bounceFromAddresses.some(addr => lowerFrom.includes(addr));
+
+    return isBounceContent || isBounceFrom;
+  }
+
+  /**
+   * Classify intent from human reply
+   */
+  private classifyIntent(content: string): ReplyClassification["intent"] {
+    const lowerContent = content.toLowerCase();
+
+    const meetingIndicators = [
+      "schedule a call", "schedule a meeting", "book a time", "book a call",
+      "set up a meeting", "set up a call", "let's schedule", "let's set up",
+      "can we meet", "can we talk", "let's talk", "hop on a call", "quick call",
+      "15 minutes", "30 minutes", "availability", "calendar", "what times work",
+      "when are you free", "send me some times",
+    ];
+
+    if (meetingIndicators.some(ind => lowerContent.includes(ind))) {
+      return "meeting_request";
+    }
+
+    const questionIndicators = [
+      "how does", "what is", "what are", "can you explain", "could you tell me",
+      "i have a question", "quick question", "wondering if", "curious about",
+      "more details", "more information", "tell me more",
+    ];
+
+    const hasQuestion = questionIndicators.some(ind => lowerContent.includes(ind)) || lowerContent.includes("?");
+
+    const interestedIndicators = [
+      "interested", "sounds good", "sounds great", "this is interesting",
+      "i'd like to learn", "would love to", "please send", "send me",
+      "share more", "yes please", "absolutely", "definitely", "perfect", "excellent",
+    ];
+
+    if (interestedIndicators.some(ind => lowerContent.includes(ind))) {
+      return "interested";
+    }
+
+    const objectionIndicators = [
+      "too expensive", "not in our budget", "budget constraints",
+      "already using", "already have", "happy with", "not a priority",
+      "don't see the value", "not convinced", "concerns about", "worried about",
+      "hesitant", "not sure if",
+    ];
+
+    if (objectionIndicators.some(ind => lowerContent.includes(ind))) {
+      return "objection";
+    }
+
+    const notNowIndicators = [
+      "not now", "maybe later", "not at this time", "check back",
+      "reach out later", "follow up in", "revisit in", "not a good time",
+      "too busy", "bad timing", "end of quarter", "next quarter", "next year",
+    ];
+
+    if (notNowIndicators.some(ind => lowerContent.includes(ind))) {
+      return "not_now";
+    }
+
+    const unsubscribeIndicators = [
+      "unsubscribe", "opt out", "opt-out", "remove me", "stop emailing",
+      "stop sending", "don't contact", "do not contact", "take me off", "remove from list",
+    ];
+
+    if (unsubscribeIndicators.some(ind => lowerContent.includes(ind))) {
       return "unsubscribe";
     }
 
-    // Check for positive indicators
-    const positiveKeywords = [
-      "interested",
-      "tell me more",
-      "sounds good",
-      "let's talk",
-      "schedule",
-      "meeting",
-      "demo",
-      "yes",
-      "sure",
-      "absolutely",
-      "definitely",
-      "great",
-      "sounds interesting",
-      "can you share",
-      "i'd like to",
-      "would love to",
-      "perfect",
-      "excellent",
-    ];
-
-    const positiveCount = positiveKeywords.filter(keyword => lowerContent.includes(keyword)).length;
-
-    // Check for negative indicators
-    const negativeKeywords = [
-      "no thanks",
-      "not now",
-      "maybe later",
-      "too busy",
-      "don't need",
-      "already have",
-      "not looking",
-      "not a fit",
-      "wrong person",
-      "not the right",
-    ];
-
-    const negativeCount = negativeKeywords.filter(keyword => lowerContent.includes(keyword)).length;
-
-    // Classification logic
-    if (positiveCount > 0 && positiveCount >= negativeCount) {
-      return "positive";
-    } else if (negativeCount > 0) {
-      return "negative";
+    if (hasQuestion) {
+      return "question";
     }
 
-    return "neutral";
+    return null;
+  }
+
+  /**
+   * Extract key information from reply
+   */
+  private extractKeyInfo(content: string): ReplyClassification["extractedInfo"] {
+    const info: ReplyClassification["extractedInfo"] = {};
+
+    const timePatterns = [
+      /(?:available|free|works?|good)\s+(?:on\s+)?(\w+day)/i,
+      /(\w+day)\s+(?:works?|good|free)/i,
+      /(?:how about|let's do)\s+(\w+day\s+(?:at\s+)?\d{1,2}(?::\d{2})?\s*(?:am|pm)?)/i,
+      /(\d{1,2}(?::\d{2})?\s*(?:am|pm))\s+(?:works?|good)/i,
+      /(?:morning|afternoon|evening)\s+(?:works?|good|free)/i,
+    ];
+
+    for (const pattern of timePatterns) {
+      const match = content.match(pattern);
+      if (match) {
+        info.preferredTime = match[0];
+        break;
+      }
+    }
+
+    const questions = content.match(/[^.!?]*\?/g);
+    if (questions && questions.length > 0) {
+      info.questions = questions.map((q: string) => q.trim()).filter((q: string) => q.length > 10);
+    }
+
+    const objectionPhrases = [
+      /(?:concern[s]?\s+(?:is|are|about)\s+)([^.!?]+)/i,
+      /(?:worried\s+(?:about|that)\s+)([^.!?]+)/i,
+      /(?:not sure\s+(?:if|about|that)\s+)([^.!?]+)/i,
+      /(?:hesitant\s+(?:because|about)\s+)([^.!?]+)/i,
+    ];
+
+    const objections: string[] = [];
+    for (const pattern of objectionPhrases) {
+      const match = content.match(pattern);
+      if (match && match[1]) {
+        objections.push(match[1].trim());
+      }
+    }
+    if (objections.length > 0) {
+      info.objections = objections;
+    }
+
+    const forwardPattern = /(?:forward(?:ed|ing)?\s+(?:this\s+)?to\s+|cc[':]?ing\s+|looping\s+in\s+|adding\s+)([A-Z][a-z]+(?:\s+[A-Z][a-z]+)?)/;
+    const forwardMatch = content.match(forwardPattern);
+    if (forwardMatch) {
+      info.forwardTo = forwardMatch[1];
+    }
+
+    return info;
+  }
+
+  /**
+   * Comprehensive reply classification
+   */
+  private classifyReplyComprehensive(content: string, subject: string, fromEmail: string): ReplyClassification {
+    if (this.detectBounce(content, subject, fromEmail)) {
+      return {
+        replyType: "bounce",
+        sentiment: "neutral",
+        intent: "bounce",
+        extractedInfo: {},
+      };
+    }
+
+    const oooResult = this.detectOOO(content, subject);
+    if (oooResult.isOOO) {
+      return {
+        replyType: "ooo",
+        sentiment: "neutral",
+        intent: "ooo",
+        extractedInfo: { returnDate: oooResult.returnDate },
+        oooReturnDate: oooResult.returnDate,
+      };
+    }
+
+    const intent = this.classifyIntent(content);
+    const extractedInfo = this.extractKeyInfo(content);
+
+    let sentiment: ReplyClassification["sentiment"] = "neutral";
+    if (intent === "interested" || intent === "meeting_request") {
+      sentiment = "positive";
+    } else if (intent === "unsubscribe") {
+      sentiment = "unsubscribe";
+    } else if (intent === "objection" || intent === "not_now") {
+      sentiment = "negative";
+    }
+
+    return { replyType: "human_reply", sentiment, intent, extractedInfo };
   }
 
   private async processReply(email: any, mailbox: any): Promise<boolean> {
@@ -334,7 +538,6 @@ export class ReplyDetectionService {
       const subject = email.subject || "";
       const rawBody = email.text || email.html || "";
       const body = this.cleanReplyContent(rawBody);
-      const messageId = email.messageId;
       const inReplyTo = email.inReplyTo;
 
       if (!fromEmail || !body) {
@@ -342,10 +545,8 @@ export class ReplyDetectionService {
       }
 
       console.log(`📧 Processing reply from ${fromEmail} - Subject: "${subject.substring(0, 50)}..."`);
-      console.log(`📧 Cleaned reply content: "${body.substring(0, 100)}..."`);
 
-      // Find the original sent email by matching recipient and subject/message-id
-      // Order by scheduled_for DESC to prioritize most recent emails
+      // Find the original sent email
       const sentEmails = await db
         .select()
         .from(emailQueue)
@@ -358,17 +559,13 @@ export class ReplyDetectionService {
         .orderBy(desc(emailQueue.scheduledFor));
 
       let matchedEmail = null;
-      let potentialMatches: any[] = [];
+      const potentialMatches: any[] = [];
 
-      // First pass: collect all potential matches from this sender
       for (const sentEmail of sentEmails) {
         const prospectEmail = await this.getProspectEmail(sentEmail.prospectId);
-        
         if (!prospectEmail) continue;
 
-        // Match by prospect email
         if (prospectEmail.toLowerCase() === fromEmail.toLowerCase()) {
-          // Check if subject matches or is a reply
           if (
             subject.toLowerCase().includes(sentEmail.subject?.toLowerCase() || "") ||
             subject.toLowerCase().includes("re:")
@@ -381,26 +578,17 @@ export class ReplyDetectionService {
         }
       }
 
-      // Second pass: prioritize In-Reply-To match, otherwise use most recent
       if (potentialMatches.length > 0) {
-        // First try to find exact In-Reply-To match
         const inReplyToMatch = potentialMatches.find(m => m.isInReplyTo);
-        if (inReplyToMatch) {
-          matchedEmail = inReplyToMatch.email;
-          console.log(`✓ Matched via In-Reply-To header to sequence: ${matchedEmail.sequenceId}`);
-        } else {
-          // Use most recent email (already sorted by scheduledFor DESC)
-          matchedEmail = potentialMatches[0].email;
-          console.log(`✓ Matched to most recent email in sequence: ${matchedEmail.sequenceId}`);
-        }
+        matchedEmail = inReplyToMatch ? inReplyToMatch.email : potentialMatches[0].email;
       }
 
       if (!matchedEmail) {
         console.log(`⚠️ Could not match reply from ${fromEmail} to any sent email`);
-        return true; // Mark as seen anyway - not a match for our system
+        return true;
       }
 
-      // Check if this exact reply already exists (by content to avoid duplicates)
+      // Check for duplicate
       const [existingReply] = await db
         .select()
         .from(emailReplies)
@@ -413,14 +601,14 @@ export class ReplyDetectionService {
 
       if (existingReply) {
         console.log(`⏭️ Reply already recorded for prospect ${matchedEmail.prospectId}`);
-        return true; // Already processed - mark as seen
+        return true;
       }
 
-      // Classify the reply
-      const sentiment = this.classifyReply(body);
-      console.log(`🏷️ Reply classified as: ${sentiment}`);
+      // Comprehensive classification
+      const classification = this.classifyReplyComprehensive(body, subject, fromEmail);
+      console.log(`🏷️ Reply classified - Type: ${classification.replyType}, Sentiment: ${classification.sentiment}, Intent: ${classification.intent}`);
 
-      // Find the email record in the emails table for analytics
+      // Find the email record for analytics
       const [emailRecord] = await db
         .select()
         .from(emails)
@@ -433,54 +621,86 @@ export class ReplyDetectionService {
         .orderBy(desc(emails.sentAt))
         .limit(1);
 
-      // Store the reply
       const replyReceivedAt = new Date(email.date || Date.now());
+
+      // Store the reply with enhanced classification
       await db.insert(emailReplies).values({
         emailId: emailRecord?.id || null,
         sequenceId: matchedEmail.sequenceId || null,
         prospectId: matchedEmail.prospectId,
         replyContent: body,
-        sentiment,
+        sentiment: classification.sentiment,
+        replyType: classification.replyType,
+        intent: classification.intent,
+        extractedInfo: classification.extractedInfo,
+        oooReturnDate: classification.oooReturnDate,
         receivedAt: replyReceivedAt,
-        aiSummary: null,
-        nextAction: null,
+        processed: false,
       });
 
-      // Update the emails table to mark as replied for analytics
+      // Update email record with repliedAt
       if (emailRecord) {
         await db
           .update(emails)
           .set({ repliedAt: replyReceivedAt })
           .where(eq(emails.id, emailRecord.id));
-        
-        console.log(`📊 Updated email ${emailRecord.id} with repliedAt timestamp for analytics`);
       }
 
-      // Update sequence prospect based on reply classification
+      // Handle bounces - mark prospect email as bounced and cancel future sends
+      if (classification.replyType === "bounce") {
+        console.log(`📭 Bounce detected for prospect ${matchedEmail.prospectId}`);
+        if (emailRecord) {
+          await db.update(emails)
+            .set({ bouncedAt: replyReceivedAt })
+            .where(eq(emails.id, emailRecord.id));
+        }
+        // Get prospect userId for bounce handling
+        const bounceProspect = await db.query.prospects.findFirst({
+          where: eq(prospectsTable.id, matchedEmail.prospectId)
+        });
+        if (bounceProspect?.userId) {
+          await emailQueueService.handleBounce(matchedEmail.prospectId, bounceProspect.userId);
+        }
+      }
+
+      // Handle OOO - reschedule follow-ups after return date
+      if (classification.replyType === "ooo" && classification.oooReturnDate) {
+        console.log(`🏖️ OOO detected - Return date: ${classification.oooReturnDate.toISOString()}`);
+        const oooProspect = await db.query.prospects.findFirst({
+          where: eq(prospectsTable.id, matchedEmail.prospectId)
+        });
+        if (oooProspect?.userId) {
+          const rescheduled = await emailQueueService.rescheduleForOOO(
+            matchedEmail.prospectId, 
+            classification.oooReturnDate, 
+            oooProspect.userId
+          );
+          console.log(`📅 Rescheduled ${rescheduled} emails after OOO return`);
+        }
+      }
+
+      // Update sequence prospect status
       if (matchedEmail.sequenceId) {
         let newStatus = "replied";
         
-        // If unsubscribe detected, mark as unsubscribed and stop sequence
-        if (sentiment === "unsubscribe") {
+        if (classification.sentiment === "unsubscribe") {
           newStatus = "unsubscribed";
           
-          // Create unsubscribe record
-          const { unsubscribes, prospects: prospectsTable } = await import("@shared/schema");
+          const { unsubscribes } = await import("@shared/schema");
           const prospect = await db.query.prospects.findFirst({
             where: eq(prospectsTable.id, matchedEmail.prospectId)
           });
           
           await db.insert(unsubscribes).values({
-            userId: prospect?.userId || "", // CRITICAL: Multi-tenant security
+            userId: prospect?.userId || "",
             prospectId: matchedEmail.prospectId,
             email: fromEmail,
-            reason: body.substring(0, 500), // Store up to 500 chars of reason
+            reason: body.substring(0, 500),
           });
           
-          console.log(`🚫 Prospect ${matchedEmail.prospectId} unsubscribed - sequence stopped`);
+          console.log(`🚫 Prospect ${matchedEmail.prospectId} unsubscribed`);
         }
 
-        // Update sequence prospect status and increment reply count
         await db
           .update(sequenceProspects)
           .set({
@@ -494,8 +714,7 @@ export class ReplyDetectionService {
             )
           );
         
-        // 🔥 NEW: Update Automation Run Statistics
-        // Find the sequence prospect to get the automationRunId
+        // Update automation run statistics
         const [sequenceProspect] = await db.select()
           .from(sequenceProspects)
           .where(
@@ -507,19 +726,12 @@ export class ReplyDetectionService {
         
         if (sequenceProspect?.automationRunId) {
           await db.update(automationRuns)
-            .set({ 
-              repliesReceived: sql`${automationRuns.repliesReceived} + 1` 
-            })
+            .set({ repliesReceived: sql`${automationRuns.repliesReceived} + 1` })
             .where(eq(automationRuns.id, sequenceProspect.automationRunId));
-          
-          console.log(`📊 Updated automation run ${sequenceProspect.automationRunId} reply count`);
         }
         
-        // 🔥 CRITICAL: Auto-pause sequence by cancelling future steps
-        // For positive, neutral, or unsubscribe replies, stop the sequence
-        if (sentiment === "positive" || sentiment === "neutral" || sentiment === "unsubscribe") {
-          // Get prospect userId for multi-tenant security
-          const { prospects: prospectsTable } = await import("@shared/schema");
+        // Auto-pause sequence for human replies (not OOO or bounces)
+        if (classification.replyType === "human_reply") {
           const prospect = await db.query.prospects.findFirst({
             where: eq(prospectsTable.id, matchedEmail.prospectId)
           });
@@ -527,30 +739,36 @@ export class ReplyDetectionService {
           const cancelledCount = await sequenceStepService.cancelFutureSteps(
             matchedEmail.sequenceId,
             matchedEmail.prospectId,
-            prospect?.userId // Pass userId for multi-tenant security
+            prospect?.userId
           );
           
           if (cancelledCount > 0) {
-            console.log(`⏸️ Auto-paused sequence: Cancelled ${cancelledCount} future emails for prospect ${matchedEmail.prospectId}`);
+            console.log(`⏸️ Paused sequence: Cancelled ${cancelledCount} future emails`);
           }
         }
       }
 
-      console.log(`✅ Stored reply from ${fromEmail} for prospect ${matchedEmail.prospectId}`);
-      return true; // Success - mark as seen
+      console.log(`✅ Reply from ${fromEmail} processed successfully`);
+      return true;
+
     } catch (error) {
-      console.error("❌ Process reply error:", error);
-      return false; // Error - don't mark as seen, will retry
+      console.error("❌ Error processing reply:", error);
+      if (isSentryEnabled()) {
+        Sentry.captureException(error, {
+          tags: { service: 'reply-detection', operation: 'processReply' }
+        });
+      }
+      return false;
     }
   }
 
-  private async getProspectEmail(prospectId: string): Promise<string | null> {
+  private async getProspectEmail(prospectId: string | null): Promise<string | null> {
+    if (!prospectId) return null;
     try {
-      const [prospect] = await db.query.prospects.findMany({
-        where: (prospects, { eq }) => eq(prospects.id, prospectId),
+      const prospect = await db.query.prospects.findFirst({
+        where: eq(prospectsTable.id, prospectId)
       });
-      
-      return prospect?.primaryEmail || null;
+      return prospect?.primaryEmail || prospect?.secondaryEmail || null;
     } catch (error) {
       console.error("Error getting prospect email:", error);
       return null;
