@@ -67,9 +67,15 @@ function formatEmailBody(body: string): string {
   return body;
 }
 
-export async function generateEmail(request: EmailGenerationRequest): Promise<GeneratedEmail> {
+export async function generateEmail(request: EmailGenerationRequest, prospectData?: Prospect): Promise<GeneratedEmail> {
   try {
-    const prospect = await storage.getProspect(request.prospectId);
+    // Use passed prospect data if available, otherwise fetch from storage
+    let prospect: Prospect | null | undefined = prospectData;
+    
+    if (!prospect) {
+      prospect = await storage.getProspect(request.prospectId);
+    }
+    
     if (!prospect) {
       throw new Error(`Prospect with ID ${request.prospectId} not found`);
     }

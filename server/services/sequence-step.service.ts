@@ -119,6 +119,7 @@ class SequenceStepService {
           console.log(`[SequenceStep] Analysis complete - recommended tone: ${insights.recommendations.tone}`);
 
           // Generate personalized email using insights
+          // CRITICAL: Pass the already-fetched prospect to avoid "Prospect not found" errors
           const generatedEmail = await generateEmail({
             prospectId,
             emailType: 'cold_outreach',
@@ -129,7 +130,7 @@ class SequenceStepService {
               prospectTitle: prospect.jobTitle || undefined,
               prospectIndustry: prospect.companyIndustry || undefined
             }
-          });
+          }, prospect);
 
           // Use AI-generated content
           subject = generatedEmail.subject;
@@ -154,13 +155,60 @@ class SequenceStepService {
           console.log(`[SequenceStep] Personalization results saved for prospect ${prospectId}`);
 
         } catch (aiError) {
-          // AI personalization failed - fall back to template
-          console.error(`[SequenceStep] AI personalization failed, using template:`, aiError);
-          console.log(`[SequenceStep] Falling back to default template for prospect ${prospectId}`);
-          // subject and body remain as default from firstStep
+          // AI personalization failed - generate fallback content with prospect data
+          console.error(`[SequenceStep] AI personalization failed:`, aiError);
+          
+          // CRITICAL: Generate fallback content using available prospect data
+          // Don't rely on template which may be empty for AI-driven sequences
+          const prospectName = prospect.firstName || 'there';
+          const companyName = prospect.companyName || 'your company';
+          
+          // Use template if available, otherwise generate fallback
+          if (firstStep.subject && firstStep.subject.trim()) {
+            subject = firstStep.subject;
+          } else {
+            subject = `Quick question about ${companyName}`;
+          }
+          
+          if (firstStep.body && firstStep.body.trim()) {
+            body = firstStep.body;
+          } else {
+            // Generate a basic fallback email body
+            body = `Hi ${prospectName},
+
+I noticed ${companyName} and thought you might be interested in how we help companies streamline their operations.
+
+Would you be open to a quick 15-minute call to discuss how we could help?
+
+Best regards`;
+          }
+          
+          console.log(`[SequenceStep] Using fallback content - subject: "${subject.substring(0, 50)}..."`);
         }
       } else {
         console.log(`[SequenceStep] AI personalization disabled - using default template`);
+        
+        // CRITICAL: If template is empty, generate fallback content
+        if (!subject || !subject.trim() || !body || !body.trim()) {
+          const prospectName = prospect.firstName || 'there';
+          const companyName = prospect.companyName || 'your company';
+          
+          if (!subject || !subject.trim()) {
+            subject = `Quick question about ${companyName}`;
+          }
+          
+          if (!body || !body.trim()) {
+            body = `Hi ${prospectName},
+
+I noticed ${companyName} and thought you might be interested in how we help companies streamline their operations.
+
+Would you be open to a quick 15-minute call to discuss how we could help?
+
+Best regards`;
+          }
+          
+          console.log(`[SequenceStep] Template was empty, using generated fallback content`);
+        }
       }
 
       // =====================================
