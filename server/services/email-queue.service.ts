@@ -1,11 +1,68 @@
 import { db } from "../db";
-import { emailQueue, InsertEmailQueueItem, EmailQueueItem, prospects, emails, sequenceProspects } from "@shared/schema";
+import { emailQueue, InsertEmailQueueItem, EmailQueueItem, prospects, emails, sequenceProspects, emailMailboxes } from "@shared/schema";
 import { eq, and, lte, sql } from "drizzle-orm";
 import { emailSendingService } from "./email-sending.service";
 import { mailboxService } from "./mailbox.service";
 import automationService from "./automation.service";
 import { Sentry, isSentryEnabled } from "../sentry";
 import { notificationService } from "./notification.service";
+
+/**
+ * Renders merge fields in email content, replacing {{fieldName}} with actual prospect data.
+ * Supports fallback syntax: {{fieldName|fallback text}}
+ */
+function renderMergeFields(content: string, prospect: any): string {
+  if (!content || !prospect) return content;
+  
+  // Define available merge fields and their values
+  const mergeData: Record<string, string> = {
+    firstName: prospect.firstName || '',
+    lastName: prospect.lastName || '',
+    fullName: [prospect.firstName, prospect.lastName].filter(Boolean).join(' ') || '',
+    email: prospect.primaryEmail || prospect.email || '',
+    companyName: prospect.companyName || prospect.company || '',
+    company: prospect.companyName || prospect.company || '',
+    title: prospect.title || prospect.jobTitle || '',
+    jobTitle: prospect.title || prospect.jobTitle || '',
+    industry: prospect.industry || '',
+    city: prospect.city || '',
+    state: prospect.state || '',
+    country: prospect.country || '',
+    linkedinUrl: prospect.linkedinUrl || '',
+    website: prospect.websiteUrl || prospect.website || '',
+  };
+  
+  // Replace merge fields with fallback support: {{fieldName|fallback}}
+  let rendered = content.replace(/\{\{(\w+)(?:\|([^}]*))?\}\}/g, (match, fieldName, fallback) => {
+    const value = mergeData[fieldName];
+    if (value && value.trim()) {
+      return value;
+    }
+    // Use fallback if provided, otherwise use a sensible default
+    if (fallback !== undefined) {
+      return fallback;
+    }
+    // Default fallbacks for common fields
+    const defaultFallbacks: Record<string, string> = {
+      firstName: 'there',
+      fullName: 'there',
+      companyName: 'your company',
+      company: 'your company',
+      title: 'your role',
+      jobTitle: 'your role',
+      industry: 'your industry',
+    };
+    return defaultFallbacks[fieldName] || '';
+  });
+  
+  // Also replace [Product Name], [key benefit], etc. placeholder text
+  // These indicate incomplete templates that should have been customized
+  rendered = rendered.replace(/\[Product Name\]/g, 'our solution');
+  rendered = rendered.replace(/\[key benefit\]/g, 'save time and increase efficiency');
+  rendered = rendered.replace(/\[common pain point\]/g, 'manual processes');
+  
+  return rendered;
+}
 
 export class EmailQueueService {
   async addToQueue(queueData: {
@@ -130,6 +187,7 @@ export class EmailQueueService {
         // RATE LIMITING: Atomically reserve send slot
         // =====================================
         let automationRunId: string | null = null;
+        let rateLimitApplied = false;
 
         // Try to find the automation run for this email (if part of automation)
         if (email.sequenceId && email.prospectId) {
@@ -143,6 +201,7 @@ export class EmailQueueService {
 
           if (sequenceProspect?.automationRunId) {
             automationRunId = sequenceProspect.automationRunId;
+            rateLimitApplied = true;
 
             // ATOMICALLY reserve send slot (checks limit, delay, and increments counter)
             const reservation = await automationService.reserveSendSlot(automationRunId);
@@ -182,6 +241,35 @@ export class EmailQueueService {
           }
         }
 
+        // FALLBACK RATE LIMITING: Check mailbox-level delay even without automation
+        // Prevents rapid back-to-back sends for manual/non-automation emails
+        if (!rateLimitApplied && email.mailboxId) {
+          const [mailbox] = await db
+            .select()
+            .from(emailMailboxes)
+            .where(eq(emailMailboxes.id, email.mailboxId))
+            .limit(1);
+
+          if (mailbox && mailbox.lastUsedAt) {
+            const minDelayMs = 30000; // 30 second minimum delay between emails
+            const lastSendTime = new Date(mailbox.lastUsedAt).getTime();
+            const elapsedMs = now.getTime() - lastSendTime;
+            
+            if (elapsedMs < minDelayMs) {
+              const nextSendAfter = new Date(lastSendTime + minDelayMs);
+              await db.update(emailQueue)
+                .set({ 
+                  scheduledFor: nextSendAfter,
+                  status: "pending" 
+                })
+                .where(eq(emailQueue.id, email.id));
+
+              console.log(`⏱️ Mailbox delay not satisfied (${Math.round(elapsedMs/1000)}s < 30s), rescheduled email ${email.id} for ${nextSendAfter.toISOString()}`);
+              continue;
+            }
+          }
+        }
+
         // Process email - reservation already atomic, no need to track success for counter
         await this.processEmail(email);
       }
@@ -213,11 +301,22 @@ export class EmailQueueService {
         .set({ status: "sending" })
         .where(eq(emailQueue.id, email.id));
 
+      // CRITICAL: Render merge fields before sending
+      // Replace {{firstName}}, {{companyName}}, etc. with actual prospect data
+      const renderedSubject = renderMergeFields(email.subject, prospect);
+      const renderedBody = renderMergeFields(email.body, prospect);
+      
+      console.log(`📝 Rendered merge fields for ${prospect.primaryEmail}:`, {
+        originalSubject: email.subject.substring(0, 50),
+        renderedSubject: renderedSubject.substring(0, 50),
+        hadMergeFields: email.subject !== renderedSubject || email.body !== renderedBody
+      });
+
       const result = await emailSendingService.sendEmail({
         mailboxId: email.mailboxId,
         to: prospect.primaryEmail,
-        subject: email.subject,
-        body: email.body,
+        subject: renderedSubject,
+        body: renderedBody,
         fromName: email.fromName || undefined,
         trackingId: email.id,
         inReplyTo: email.inReplyTo || undefined,
@@ -228,12 +327,14 @@ export class EmailQueueService {
       if (result.success) {
         const sentAt = new Date();
         
-        // Update email queue status
+        // Update email queue status with rendered content
         await db
           .update(emailQueue)
           .set({
             status: "sent",
             sentAt,
+            subject: renderedSubject, // Store rendered subject
+            body: renderedBody, // Store rendered body
           })
           .where(eq(emailQueue.id, email.id));
 
@@ -243,7 +344,8 @@ export class EmailQueueService {
           await db
             .update(emails)
             .set({
-              content: result.finalBody || email.body, // Use final body with signature
+              subject: renderedSubject, // Use rendered subject
+              content: result.finalBody || renderedBody, // Use final body with signature
               sentAt,
               status: "sent",
               messageId: result.messageId, // Store Message-ID for threading
@@ -254,8 +356,8 @@ export class EmailQueueService {
           await db.insert(emails).values({
             prospectId: email.prospectId,
             sequenceId: email.sequenceId || null,
-            subject: email.subject,
-            content: result.finalBody || email.body, // Store final HTML with signature
+            subject: renderedSubject, // Use rendered subject
+            content: result.finalBody || renderedBody, // Store final HTML with signature
             status: "sent",
             sentAt,
             trackingId: email.id, // Use queue ID as tracking ID
