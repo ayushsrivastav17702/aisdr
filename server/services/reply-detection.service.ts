@@ -544,47 +544,87 @@ export class ReplyDetectionService {
         return false;
       }
 
-      console.log(`📧 Processing reply from ${fromEmail} - Subject: "${subject.substring(0, 50)}..."`);
+      console.log(`📧 Processing reply from ${fromEmail} - Subject: "${subject.substring(0, 50)}..." - In-Reply-To: ${inReplyTo || 'none'}`);
 
-      // Find the original sent email
-      const sentEmails = await db
-        .select()
-        .from(emailQueue)
-        .where(
-          and(
-            eq(emailQueue.mailboxId, mailbox.id),
-            eq(emailQueue.status, "sent")
-          )
-        )
-        .orderBy(desc(emailQueue.scheduledFor));
-
+      // First, try to match by Message-ID in the emails table (most reliable)
+      // The inReplyTo header contains the SMTP Message-ID of the original email
       let matchedEmail = null;
-      const potentialMatches: any[] = [];
+      let matchedEmailRecord = null;
 
-      for (const sentEmail of sentEmails) {
-        const prospectEmail = await this.getProspectEmail(sentEmail.prospectId);
-        if (!prospectEmail) continue;
+      if (inReplyTo) {
+        // Look for the email with this Message-ID in the emails table
+        const [emailRecord] = await db
+          .select()
+          .from(emails)
+          .where(eq(emails.messageId, inReplyTo))
+          .limit(1);
 
-        if (prospectEmail.toLowerCase() === fromEmail.toLowerCase()) {
-          if (
-            subject.toLowerCase().includes(sentEmail.subject?.toLowerCase() || "") ||
-            subject.toLowerCase().includes("re:")
-          ) {
-            potentialMatches.push({
-              email: sentEmail,
-              isInReplyTo: inReplyTo === sentEmail.emailId,
-            });
-          }
+        if (emailRecord) {
+          console.log(`✅ Matched reply by Message-ID: ${inReplyTo}`);
+          matchedEmailRecord = emailRecord;
+          
+          // Find corresponding queue item for additional data
+          const [queueItem] = await db
+            .select()
+            .from(emailQueue)
+            .where(eq(emailQueue.id, emailRecord.trackingId || ''))
+            .limit(1);
+          
+          matchedEmail = queueItem || {
+            prospectId: emailRecord.prospectId,
+            sequenceId: emailRecord.sequenceId,
+            subject: emailRecord.subject,
+          };
         }
       }
 
-      if (potentialMatches.length > 0) {
-        const inReplyToMatch = potentialMatches.find(m => m.isInReplyTo);
-        matchedEmail = inReplyToMatch ? inReplyToMatch.email : potentialMatches[0].email;
+      // Fallback: Match by prospect email + subject pattern
+      if (!matchedEmail) {
+        const sentEmails = await db
+          .select()
+          .from(emailQueue)
+          .where(
+            and(
+              eq(emailQueue.mailboxId, mailbox.id),
+              eq(emailQueue.status, "sent")
+            )
+          )
+          .orderBy(desc(emailQueue.scheduledFor));
+
+        const potentialMatches: any[] = [];
+
+        for (const sentEmail of sentEmails) {
+          const prospectEmail = await this.getProspectEmail(sentEmail.prospectId);
+          if (!prospectEmail) continue;
+
+          if (prospectEmail.toLowerCase() === fromEmail.toLowerCase()) {
+            // Check if subject matches (with or without "Re:" prefix)
+            const normalizedSentSubject = (sentEmail.subject || "").toLowerCase().replace(/^re:\s*/i, '').trim();
+            const normalizedReplySubject = subject.toLowerCase().replace(/^re:\s*/i, '').trim();
+            
+            if (
+              normalizedReplySubject.includes(normalizedSentSubject) ||
+              normalizedSentSubject.includes(normalizedReplySubject) ||
+              subject.toLowerCase().startsWith("re:")
+            ) {
+              potentialMatches.push({
+                email: sentEmail,
+                subjectMatch: normalizedReplySubject === normalizedSentSubject,
+              });
+            }
+          }
+        }
+
+        if (potentialMatches.length > 0) {
+          // Prefer exact subject match
+          const exactMatch = potentialMatches.find(m => m.subjectMatch);
+          matchedEmail = exactMatch ? exactMatch.email : potentialMatches[0].email;
+          console.log(`✅ Matched reply by subject/sender: ${fromEmail} -> prospect ${matchedEmail.prospectId}`);
+        }
       }
 
       if (!matchedEmail) {
-        console.log(`⚠️ Could not match reply from ${fromEmail} to any sent email`);
+        console.log(`⚠️ Could not match reply from ${fromEmail} to any sent email (Subject: "${subject}")`);
         return true;
       }
 
