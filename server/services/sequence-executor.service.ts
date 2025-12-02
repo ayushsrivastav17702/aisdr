@@ -1,6 +1,6 @@
 import { db } from "../db";
 import { sequenceProspects, emailQueue, sequenceSteps, prospects, emails } from "@shared/schema";
-import { eq, and, isNotNull, desc } from "drizzle-orm";
+import { eq, and, isNotNull, desc, sql } from "drizzle-orm";
 import { emailQueueService } from "./email-queue.service";
 import { Sentry, isSentryEnabled } from "../sentry";
 
@@ -216,19 +216,20 @@ export class SequenceExecutorService {
     try {
       const { prospectId, sequenceId, automationRunId, sequenceProspectId, stepConfig, userId } = params;
 
-      // Check if this step is already queued (avoid duplicates)
-      // CRITICAL: Scope by userId for multi-tenant security
+      // Check if this step is already queued OR sent (avoid duplicates)
+      // CRITICAL: Check by stepOrder AND include sent/sending status to prevent re-sending same step
       const existingQueueItem = await db.query.emailQueue.findFirst({
         where: and(
           eq(emailQueue.prospectId, prospectId),
           eq(emailQueue.sequenceId, sequenceId),
+          eq(emailQueue.stepOrder, stepConfig.stepOrder), // CRITICAL: Check by step order
           eq(emailQueue.userId, userId), // Multi-tenant scoping
-          eq(emailQueue.status, "pending")
+          sql`${emailQueue.status} IN ('pending', 'sending', 'sent')` // Include sent/sending status
         )
       });
 
       if (existingQueueItem) {
-        console.log(`[SequenceExecutor] Email already queued for prospect ${prospectId}, skipping`);
+        console.log(`[SequenceExecutor] Step ${stepConfig.stepOrder} already queued/sent for prospect ${prospectId}, skipping (status: ${existingQueueItem.status})`);
         return;
       }
       
