@@ -53,7 +53,7 @@ export function registerAutomationRoutes(app: Express) {
       const { 
         sequenceId, 
         prospectSource, 
-        prospectCount, 
+        prospectCount: requestedProspectCount, 
         selectedProspectIds,
         aiPersonalizationEnabled, 
         scheduledFor,
@@ -62,6 +62,11 @@ export function registerAutomationRoutes(app: Express) {
         rateLimitConfig,
         apolloFilters 
       } = validatedBody;
+
+      // If specific prospects are selected, use their count instead of the requested count
+      const prospectCount = selectedProspectIds && selectedProspectIds.length > 0 
+        ? selectedProspectIds.length 
+        : requestedProspectCount;
 
       // Verify sequence exists and is active
       const sequence = await db.query.sequences.findFirst({
