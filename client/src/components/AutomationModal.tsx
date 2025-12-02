@@ -85,6 +85,23 @@ export function AutomationModal({
   });
 
   const prospectSource = form.watch("prospectSource");
+  const selectedProspectIds = form.watch("selectedProspectIds") || [];
+
+  const handleProspectToggle = (id: string) => {
+    const current = form.getValues("selectedProspectIds") || [];
+    const newIds = current.includes(id)
+      ? current.filter((selectedId: string) => selectedId !== id)
+      : [...current, id];
+    form.setValue("selectedProspectIds", newIds, { shouldDirty: true, shouldTouch: true });
+  };
+
+  const handleProspectSelectAll = (ids: string[]) => {
+    form.setValue("selectedProspectIds", ids, { shouldDirty: true, shouldTouch: true });
+  };
+
+  const handleProspectClear = () => {
+    form.setValue("selectedProspectIds", [], { shouldDirty: true, shouldTouch: true });
+  };
 
   const startAutomationMutation = useMutation({
     mutationFn: async (data: AutomationFormData) => {
@@ -206,22 +223,18 @@ export function AutomationModal({
 
             {/* Prospect Selection - Show selector for existing, count for Apollo */}
             {prospectSource === "existing" ? (
-              <FormField
-                control={form.control}
-                name="selectedProspectIds"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Select Prospects</FormLabel>
-                    <FormControl>
-                      <ProspectSelector
-                        selectedIds={field.value || []}
-                        onSelectionChange={field.onChange}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+              <FormItem>
+                <FormLabel>Select Prospects</FormLabel>
+                <FormControl>
+                  <ProspectSelector
+                    selectedIds={selectedProspectIds}
+                    onToggle={handleProspectToggle}
+                    onSelectAll={handleProspectSelectAll}
+                    onClear={handleProspectClear}
+                  />
+                </FormControl>
+                <FormMessage />
+              </FormItem>
             ) : (
               <FormField
                 control={form.control}
