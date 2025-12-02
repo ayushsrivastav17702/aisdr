@@ -29,6 +29,42 @@ export class EmailQueueService {
         throw new Error("userId is required for email queue - multi-tenant security violation");
       }
 
+      // =====================================
+      // VALIDATION: Prevent empty emails from being queued
+      // =====================================
+      const trimmedSubject = (queueData.subject || '').trim();
+      const trimmedBody = (queueData.body || '').trim();
+      
+      if (!trimmedSubject) {
+        throw new Error("Cannot queue email with empty subject - AI personalization may have failed");
+      }
+      
+      if (!trimmedBody) {
+        throw new Error("Cannot queue email with empty body - AI personalization may have failed");
+      }
+
+      // =====================================
+      // DEDUPLICATION: Prevent duplicate emails for same prospect/sequence/step
+      // =====================================
+      if (queueData.sequenceId && queueData.stepOrder !== undefined) {
+        const existingEmail = await db.query.emailQueue.findFirst({
+          where: and(
+            eq(emailQueue.prospectId, queueData.prospectId),
+            eq(emailQueue.sequenceId, queueData.sequenceId),
+            eq(emailQueue.stepOrder, queueData.stepOrder),
+            eq(emailQueue.userId, queueData.userId),
+            // Only check pending/sending emails - allow re-queue if previous failed
+            sql`${emailQueue.status} IN ('pending', 'sending', 'sent')`
+          )
+        });
+
+        if (existingEmail) {
+          console.warn(`⚠️ Duplicate email detected: prospect ${queueData.prospectId}, sequence ${queueData.sequenceId}, step ${queueData.stepOrder} - skipping queue`);
+          // Return the existing queue item instead of creating a duplicate
+          return existingEmail;
+        }
+      }
+
       // Select mailbox scoped to the user
       const mailbox = await mailboxService.getNextMailbox(queueData.userId);
 
