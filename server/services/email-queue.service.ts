@@ -1,5 +1,5 @@
 import { db } from "../db";
-import { emailQueue, InsertEmailQueueItem, EmailQueueItem, prospects, emails, sequenceProspects, emailMailboxes } from "@shared/schema";
+import { emailQueue, InsertEmailQueueItem, EmailQueueItem, prospects, emails, sequenceProspects, emailMailboxes, automationRuns } from "@shared/schema";
 import { eq, and, lte, sql } from "drizzle-orm";
 import { emailSendingService } from "./email-sending.service";
 import { mailboxService } from "./mailbox.service";
@@ -101,8 +101,10 @@ export class EmailQueueService {
       }
 
       // =====================================
-      // DEDUPLICATION: Prevent duplicate emails for same prospect/sequence/step
+      // DEDUPLICATION: Multi-layer protection against duplicate emails
       // =====================================
+      
+      // LAYER 1: Check for exact duplicate (same prospect, sequence, step)
       if (queueData.sequenceId && queueData.stepOrder !== undefined) {
         const existingEmail = await db.query.emailQueue.findFirst({
           where: and(
@@ -110,16 +112,50 @@ export class EmailQueueService {
             eq(emailQueue.sequenceId, queueData.sequenceId),
             eq(emailQueue.stepOrder, queueData.stepOrder),
             eq(emailQueue.userId, queueData.userId),
-            // Only check pending/sending emails - allow re-queue if previous failed
             sql`${emailQueue.status} IN ('pending', 'sending', 'sent')`
           )
         });
 
         if (existingEmail) {
           console.warn(`⚠️ Duplicate email detected: prospect ${queueData.prospectId}, sequence ${queueData.sequenceId}, step ${queueData.stepOrder} - skipping queue`);
-          // Return the existing queue item instead of creating a duplicate
           return existingEmail;
         }
+      }
+
+      // LAYER 2: For FIRST email (step 1), check across ALL sequences  
+      // Prevents duplicate first emails when user starts multiple automations for same prospect
+      if (queueData.stepOrder === 1) {
+        const recentFirstEmail = await db.query.emailQueue.findFirst({
+          where: and(
+            eq(emailQueue.prospectId, queueData.prospectId),
+            eq(emailQueue.stepOrder, 1),
+            eq(emailQueue.userId, queueData.userId),
+            sql`${emailQueue.status} IN ('pending', 'sending', 'sent')`,
+            // Only check emails from last 24 hours to allow re-engagement
+            sql`${emailQueue.createdAt} > NOW() - INTERVAL '24 hours'`
+          )
+        });
+
+        if (recentFirstEmail) {
+          console.warn(`⚠️ First email already queued/sent for prospect ${queueData.prospectId} within 24 hours (from sequence ${recentFirstEmail.sequenceId}) - skipping duplicate`);
+          return recentFirstEmail;
+        }
+      }
+
+      // LAYER 3: Global rate limit - prevent ANY email to same prospect within 30 seconds
+      const veryRecentEmail = await db.query.emailQueue.findFirst({
+        where: and(
+          eq(emailQueue.prospectId, queueData.prospectId),
+          eq(emailQueue.userId, queueData.userId),
+          sql`${emailQueue.status} IN ('pending', 'sending', 'sent')`,
+          sql`${emailQueue.createdAt} > NOW() - INTERVAL '30 seconds'`
+        )
+      });
+
+      if (veryRecentEmail) {
+        console.warn(`⚠️ Email already queued for prospect ${queueData.prospectId} within last 30 seconds - adding 30s delay`);
+        // Delay the new email by 30 seconds from the last one
+        queueData.scheduledFor = new Date(new Date(veryRecentEmail.createdAt).getTime() + 30000);
       }
 
       // Select mailbox scoped to the user
@@ -349,6 +385,7 @@ export class EmailQueueService {
               sentAt,
               status: "sent",
               messageId: result.messageId, // Store Message-ID for threading
+              stepOrder: email.stepOrder, // Track which step in the sequence
             })
             .where(eq(emails.id, email.emailId));
         } else {
@@ -362,7 +399,33 @@ export class EmailQueueService {
             sentAt,
             trackingId: email.id, // Use queue ID as tracking ID
             messageId: result.messageId, // Store Message-ID for threading
+            stepOrder: email.stepOrder, // Track which step in the sequence
           });
+        }
+
+        // =====================================
+        // INCREMENT AUTOMATION RUN emailsSent COUNTER
+        // =====================================
+        if (email.sequenceId && email.prospectId) {
+          // Find the automation run for this email
+          const sequenceProspect = await db.query.sequenceProspects.findFirst({
+            where: (sp, { eq, and }) => 
+              and(
+                eq(sp.sequenceId, email.sequenceId!),
+                eq(sp.prospectId, email.prospectId)
+              )
+          });
+
+          if (sequenceProspect?.automationRunId) {
+            // Increment emailsSent counter on the automation run
+            await db.update(automationRuns)
+              .set({ 
+                emailsSent: sql`COALESCE(${automationRuns.emailsSent}, 0) + 1`
+              })
+              .where(eq(automationRuns.id, sequenceProspect.automationRunId));
+
+            console.log(`📊 Incremented emailsSent for automation run ${sequenceProspect.automationRunId}`);
+          }
         }
 
         console.log(`✅ Email sent successfully: ${email.id} to ${prospect.primaryEmail}`);
