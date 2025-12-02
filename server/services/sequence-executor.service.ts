@@ -162,7 +162,8 @@ export class SequenceExecutorService {
               automationRunId: enrollment.automationRunId || "",
               sequenceProspectId: enrollment.id,
               stepConfig: nextStepConfig,
-              userId: prospect.userId // CRITICAL: Pass userId for multi-tenant security
+              userId: prospect.userId, // CRITICAL: Pass userId for multi-tenant security
+              prospect // Pass prospect for fallback content generation
             });
             
             scheduledCount++;
@@ -210,6 +211,7 @@ export class SequenceExecutorService {
     sequenceProspectId: string;
     stepConfig: any;
     userId: string; // CRITICAL: Multi-tenant security
+    prospect?: any; // Optional: Prospect data for fallback content
   }): Promise<void> {
     try {
       const { prospectId, sequenceId, automationRunId, sequenceProspectId, stepConfig, userId } = params;
@@ -230,12 +232,46 @@ export class SequenceExecutorService {
         return;
       }
       
+      // Get prospect data for fallback content if not provided
+      let prospect = params.prospect;
+      if (!prospect) {
+        prospect = await db.query.prospects.findFirst({
+          where: eq(prospects.id, prospectId)
+        });
+      }
+      
+      // Get email content - use step template or generate fallback
+      let emailSubject = stepConfig.subject || '';
+      let emailBody = stepConfig.body || '';
+      
+      // CRITICAL: Generate fallback content if template is empty
+      if (!emailSubject.trim() || !emailBody.trim()) {
+        const prospectName = prospect?.firstName || 'there';
+        const companyName = prospect?.companyName || 'your company';
+        
+        if (!emailSubject.trim()) {
+          emailSubject = `Follow-up: Quick question about ${companyName}`;
+        }
+        
+        if (!emailBody.trim()) {
+          emailBody = `Hi ${prospectName},
+
+I wanted to follow up on my previous message. I believe there could be a great opportunity for ${companyName} to improve operations and efficiency.
+
+Would you have 15 minutes this week for a quick call to discuss?
+
+Best regards`;
+        }
+        
+        console.log(`[SequenceExecutor] Generated fallback content for step ${stepConfig.stepOrder}`);
+      }
+      
       // Add follow-up email to queue
       await emailQueueService.addToQueue({
         prospectId,
         sequenceId,
-        subject: stepConfig.defaultSubject || "Follow-up",
-        body: stepConfig.defaultBody || "",
+        subject: emailSubject,
+        body: emailBody,
         scheduledFor: new Date(), // Schedule immediately as delay has passed
         stepOrder: stepConfig.stepOrder, // CRITICAL: Track sequence progress
         userId, // CRITICAL: Multi-tenant security (validated above)
