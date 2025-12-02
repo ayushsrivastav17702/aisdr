@@ -16,7 +16,7 @@ export function ProspectSelector({ selectedIds = [], onSelectionChange }: Prospe
   const [searchTerm, setSearchTerm] = useState("");
 
   const { data, isLoading } = useQuery({
-    queryKey: ["/api/prospects"],
+    queryKey: ["/api/prospects", { limit: 1000 }],
   });
 
   const prospects = (data as any)?.prospects || [];
