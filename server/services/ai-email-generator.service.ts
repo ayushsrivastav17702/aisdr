@@ -1,6 +1,6 @@
 import { openaiHelper } from "./openai-helper";
-import { storage } from "../storage";
-import type { Prospect } from "@shared/schema";
+import { storage, type RequestContext } from "../storage";
+import type { Prospect, ContentLibraryItem } from "@shared/schema";
 import { 
   getPromptTemplate, 
   interpolatePrompt, 
@@ -8,6 +8,24 @@ import {
   type PromptContext,
   type EmailType 
 } from "./ai-prompt-templates";
+
+// Filter content library items by industry relevance
+function filterContentByIndustry(contentItems: ContentLibraryItem[], prospect: Prospect): ContentLibraryItem[] {
+  return contentItems.filter(item => {
+    // Include if no specific industry filter on the item
+    if (!item.industry) return true;
+    
+    // Match industry if prospect has industry info
+    if (prospect.companyIndustry && item.industry) {
+      const prospectIndustry = prospect.companyIndustry.toLowerCase();
+      const itemIndustry = item.industry.toLowerCase();
+      return itemIndustry.includes(prospectIndustry) || prospectIndustry.includes(itemIndustry);
+    }
+    
+    // Include general content if no prospect industry
+    return true;
+  }).slice(0, 5); // Limit to 5 most relevant items
+}
 
 export interface EmailGenerationRequest {
   prospectId: string;
@@ -67,13 +85,16 @@ function formatEmailBody(body: string): string {
   return body;
 }
 
-export async function generateEmail(request: EmailGenerationRequest, prospectData?: Prospect): Promise<GeneratedEmail> {
+export async function generateEmail(request: EmailGenerationRequest, prospectData?: Prospect, ctx?: RequestContext): Promise<GeneratedEmail> {
   try {
     // Use passed prospect data if available, otherwise fetch from storage
     let prospect: Prospect | null | undefined = prospectData;
     
+    // Create a default context if not provided (for backward compatibility)
+    const reqCtx: RequestContext = ctx || { userId: prospectData?.userId || 'system', roles: [] };
+    
     if (!prospect) {
-      prospect = await storage.getProspect(request.prospectId);
+      prospect = await storage.getProspect(reqCtx, request.prospectId);
     }
     
     if (!prospect) {
@@ -86,12 +107,15 @@ export async function generateEmail(request: EmailGenerationRequest, prospectDat
       console.warn(`⚠️ Prospect ${prospect.id} has limited data. Consider enriching for better personalization.`);
     }
 
-    // Fetch content library items
-    const contentLibraryItems = await storage.getContentLibraryItems();
+    // Fetch content library items and filter by industry
+    const allContentLibraryItems = await storage.getContentLibraryItems(reqCtx);
+    const contentLibraryItems = filterContentByIndustry(allContentLibraryItems, prospect);
     
-    const context = buildPromptContext(prospect, request, contentLibraryItems);
+    console.log(`📚 Content Library: ${allContentLibraryItems.length} total items, ${contentLibraryItems.length} relevant to ${prospect.companyIndustry || 'all industries'}`);
+    
+    const promptContext = buildPromptContext(prospect, request, contentLibraryItems);
     const template = getPromptTemplate(request.emailType);
-    const prompt = interpolatePrompt(template, context);
+    const prompt = interpolatePrompt(template, promptContext);
 
     const response = await openaiHelper.callWithFallback(
       // Primary OpenAI call
@@ -203,9 +227,11 @@ export async function generateEmail(request: EmailGenerationRequest, prospectDat
     
   } catch (error) {
     console.error('Email generation failed:', error);
-    const prospect = await storage.getProspect(request.prospectId);
-    if (prospect) {
-      return generateFallbackEmail(prospect, request);
+    // Create a system context for fallback retrieval
+    const fallbackCtx: RequestContext = { userId: 'system', roles: [] };
+    const fallbackProspect = await storage.getProspect(fallbackCtx, request.prospectId);
+    if (fallbackProspect) {
+      return generateFallbackEmail(fallbackProspect, request);
     }
     throw error;
   }
