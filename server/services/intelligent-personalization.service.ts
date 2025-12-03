@@ -170,14 +170,17 @@ Respond in JSON format with this exact structure:
       const insights: PersonalizationInsights = JSON.parse(jsonContent);
 
       // Store personalization results (with userId for multi-tenant security)
+      // Note: We only store the insights/recommendations here
+      // The actual generated email content is saved separately by sequence-step.service.ts
+      // Do NOT set emailSuggestions here - that's for the generated email, not recommendations
       await storage.createPersonalizationResult(ctx, {
         prospectId,
         userId: ctx.userId, // CRITICAL: Multi-tenant security - required field
         personalizationScore: this.calculatePersonalizationScore(insights),
         variables: insights.personalizationFactors,
         insights: insights,
-        emailSuggestions: insights.recommendations,
-        contentRecommendations: null,
+        emailSuggestions: null, // Will be populated by sequence-step service with actual email
+        contentRecommendations: insights.recommendations, // Store recommendations in correct field
         linkedinData: null,
       });
 

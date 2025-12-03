@@ -159,31 +159,46 @@ class SequenceStepService {
           console.error(`[SequenceStep] AI personalization failed:`, aiError);
           
           // CRITICAL: Generate fallback content using available prospect data
-          // Don't rely on template which may be empty for AI-driven sequences
+          // Don't rely on template which may contain placeholders like [Product Name]
           const prospectName = prospect.firstName || 'there';
           const companyName = prospect.companyName || 'your company';
+          const industry = prospect.companyIndustry || 'your industry';
+          const jobTitle = prospect.jobTitle || 'professional';
           
-          // Use template if available, otherwise generate fallback
-          if (firstStep.subject && firstStep.subject.trim()) {
+          // Check if template has unresolved placeholders like [Product Name]
+          const hasUnresolvedPlaceholders = (text: string) => /\[.*?\]/.test(text);
+          
+          // Use template ONLY if it exists AND doesn't have unresolved placeholders
+          const templateSubjectUsable = firstStep.subject && 
+            firstStep.subject.trim() && 
+            !hasUnresolvedPlaceholders(firstStep.subject);
+            
+          const templateBodyUsable = firstStep.body && 
+            firstStep.body.trim() && 
+            !hasUnresolvedPlaceholders(firstStep.body);
+          
+          if (templateSubjectUsable) {
             subject = firstStep.subject;
           } else {
             subject = `Quick question about ${companyName}`;
           }
           
-          if (firstStep.body && firstStep.body.trim()) {
+          if (templateBodyUsable) {
             body = firstStep.body;
           } else {
-            // Generate a basic fallback email body
-            body = `Hi ${prospectName},
+            // Generate a clean fallback email without any placeholders
+            body = `<p>Hi ${prospectName},</p>
 
-I noticed ${companyName} and thought you might be interested in how we help companies streamline their operations.
+<p>I work with ${industry} companies like ${companyName} to help optimize their operations and drive better results.</p>
 
-Would you be open to a quick 15-minute call to discuss how we could help?
+<p>Given your role as ${jobTitle}, I thought you might be interested in learning how we've helped similar organizations improve efficiency and reduce costs.</p>
 
-Best regards`;
+<p>Would you be open to a quick 15-minute call to discuss how we could help ${companyName}?</p>
+
+<p>Best regards</p>`;
           }
           
-          console.log(`[SequenceStep] Using fallback content - subject: "${subject.substring(0, 50)}..."`);
+          console.log(`[SequenceStep] Using fallback content (template had placeholders: ${hasUnresolvedPlaceholders(firstStep.body || '')}) - subject: "${subject.substring(0, 50)}..."`);
         }
       } else {
         console.log(`[SequenceStep] AI personalization disabled - using default template`);
