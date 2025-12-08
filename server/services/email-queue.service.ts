@@ -102,9 +102,11 @@ export class EmailQueueService {
 
       // =====================================
       // DEDUPLICATION: Multi-layer protection against duplicate emails
+      // CRITICAL FIX: Include 'failed' status to prevent retry spam
       // =====================================
       
       // LAYER 1: Check for exact duplicate (same prospect, sequence, step)
+      // Include 'failed' to prevent creating new entries when retrying failed emails
       if (queueData.sequenceId && queueData.stepOrder !== undefined) {
         const existingEmail = await db.query.emailQueue.findFirst({
           where: and(
@@ -112,50 +114,51 @@ export class EmailQueueService {
             eq(emailQueue.sequenceId, queueData.sequenceId),
             eq(emailQueue.stepOrder, queueData.stepOrder),
             eq(emailQueue.userId, queueData.userId),
-            sql`${emailQueue.status} IN ('pending', 'sending', 'sent')`
+            sql`${emailQueue.status} IN ('pending', 'sending', 'sent', 'failed')`
           )
         });
 
         if (existingEmail) {
-          console.warn(`⚠️ Duplicate email detected: prospect ${queueData.prospectId}, sequence ${queueData.sequenceId}, step ${queueData.stepOrder} - skipping queue`);
+          console.warn(`⚠️ Duplicate email detected: prospect ${queueData.prospectId}, sequence ${queueData.sequenceId}, step ${queueData.stepOrder}, status ${existingEmail.status} - skipping queue`);
           return existingEmail;
         }
       }
 
       // LAYER 2: For FIRST email (step 1), check across ALL sequences  
       // Prevents duplicate first emails when user starts multiple automations for same prospect
+      // Include 'failed' to prevent retry spam when emails fail
       if (queueData.stepOrder === 1) {
         const recentFirstEmail = await db.query.emailQueue.findFirst({
           where: and(
             eq(emailQueue.prospectId, queueData.prospectId),
             eq(emailQueue.stepOrder, 1),
             eq(emailQueue.userId, queueData.userId),
-            sql`${emailQueue.status} IN ('pending', 'sending', 'sent')`,
+            sql`${emailQueue.status} IN ('pending', 'sending', 'sent', 'failed')`,
             // Only check emails from last 24 hours to allow re-engagement
             sql`${emailQueue.createdAt} > NOW() - INTERVAL '24 hours'`
           )
         });
 
         if (recentFirstEmail) {
-          console.warn(`⚠️ First email already queued/sent for prospect ${queueData.prospectId} within 24 hours (from sequence ${recentFirstEmail.sequenceId}) - skipping duplicate`);
+          console.warn(`⚠️ First email already queued/sent/failed for prospect ${queueData.prospectId} within 24 hours (from sequence ${recentFirstEmail.sequenceId}, status: ${recentFirstEmail.status}) - skipping duplicate`);
           return recentFirstEmail;
         }
       }
 
       // LAYER 3: Global rate limit - prevent ANY email to same prospect within 30 seconds
+      // Include 'failed' to prevent rapid retry attempts
       const veryRecentEmail = await db.query.emailQueue.findFirst({
         where: and(
           eq(emailQueue.prospectId, queueData.prospectId),
           eq(emailQueue.userId, queueData.userId),
-          sql`${emailQueue.status} IN ('pending', 'sending', 'sent')`,
+          sql`${emailQueue.status} IN ('pending', 'sending', 'sent', 'failed')`,
           sql`${emailQueue.createdAt} > NOW() - INTERVAL '30 seconds'`
         )
       });
 
       if (veryRecentEmail) {
-        console.warn(`⚠️ Email already queued for prospect ${queueData.prospectId} within last 30 seconds - adding 30s delay`);
-        // Delay the new email by 30 seconds from the last one
-        queueData.scheduledFor = new Date(new Date(veryRecentEmail.createdAt).getTime() + 30000);
+        console.warn(`⚠️ Email already queued/sent/failed for prospect ${queueData.prospectId} within last 30 seconds (status: ${veryRecentEmail.status}) - skipping to prevent spam`);
+        return veryRecentEmail; // Return existing instead of creating duplicate
       }
 
       // Select mailbox scoped to the user

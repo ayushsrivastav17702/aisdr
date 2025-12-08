@@ -216,20 +216,20 @@ export class SequenceExecutorService {
     try {
       const { prospectId, sequenceId, automationRunId, sequenceProspectId, stepConfig, userId } = params;
 
-      // Check if this step is already queued OR sent (avoid duplicates)
-      // CRITICAL: Check by stepOrder AND include sent/sending status to prevent re-sending same step
+      // Check if this step is already queued, sent, OR failed (avoid duplicates and retry spam)
+      // CRITICAL: Include 'failed' to prevent creating duplicate entries on retry
       const existingQueueItem = await db.query.emailQueue.findFirst({
         where: and(
           eq(emailQueue.prospectId, prospectId),
           eq(emailQueue.sequenceId, sequenceId),
           eq(emailQueue.stepOrder, stepConfig.stepOrder), // CRITICAL: Check by step order
           eq(emailQueue.userId, userId), // Multi-tenant scoping
-          sql`${emailQueue.status} IN ('pending', 'sending', 'sent')` // Include sent/sending status
+          sql`${emailQueue.status} IN ('pending', 'sending', 'sent', 'failed')` // Include failed to prevent spam
         )
       });
 
       if (existingQueueItem) {
-        console.log(`[SequenceExecutor] Step ${stepConfig.stepOrder} already queued/sent for prospect ${prospectId}, skipping (status: ${existingQueueItem.status})`);
+        console.log(`[SequenceExecutor] Step ${stepConfig.stepOrder} already queued/sent/failed for prospect ${prospectId}, skipping (status: ${existingQueueItem.status})`);
         return;
       }
       
