@@ -420,6 +420,7 @@ export class EmailQueueService {
             trackingId: email.id, // Use queue ID as tracking ID
             messageId: result.messageId, // Store Message-ID for threading
             stepOrder: email.stepOrder, // Track which step in the sequence
+            userId: email.userId, // CRITICAL: Include userId for multi-tenant data isolation
           });
         }
 
