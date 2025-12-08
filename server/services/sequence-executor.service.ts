@@ -216,20 +216,37 @@ export class SequenceExecutorService {
     try {
       const { prospectId, sequenceId, automationRunId, sequenceProspectId, stepConfig, userId } = params;
 
-      // Check if this step is already queued, sent, OR failed (avoid duplicates and retry spam)
-      // CRITICAL: Include 'failed' to prevent creating duplicate entries on retry
-      const existingQueueItem = await db.query.emailQueue.findFirst({
+      // Check if this step is already queued, sent (avoid duplicates)
+      // For failed: only block if failed recently (within 1 hour) to allow retry after transient failures
+      const existingActiveEmail = await db.query.emailQueue.findFirst({
         where: and(
           eq(emailQueue.prospectId, prospectId),
           eq(emailQueue.sequenceId, sequenceId),
-          eq(emailQueue.stepOrder, stepConfig.stepOrder), // CRITICAL: Check by step order
-          eq(emailQueue.userId, userId), // Multi-tenant scoping
-          sql`${emailQueue.status} IN ('pending', 'sending', 'sent', 'failed')` // Include failed to prevent spam
+          eq(emailQueue.stepOrder, stepConfig.stepOrder),
+          eq(emailQueue.userId, userId),
+          sql`${emailQueue.status} IN ('pending', 'sending', 'sent')`
         )
       });
 
-      if (existingQueueItem) {
-        console.log(`[SequenceExecutor] Step ${stepConfig.stepOrder} already queued/sent/failed for prospect ${prospectId}, skipping (status: ${existingQueueItem.status})`);
+      if (existingActiveEmail) {
+        console.log(`[SequenceExecutor] Step ${stepConfig.stepOrder} already queued/sent for prospect ${prospectId}, skipping (status: ${existingActiveEmail.status})`);
+        return;
+      }
+
+      // Check for recently failed emails (within 1 hour) to prevent rapid retry spam
+      const recentFailedEmail = await db.query.emailQueue.findFirst({
+        where: and(
+          eq(emailQueue.prospectId, prospectId),
+          eq(emailQueue.sequenceId, sequenceId),
+          eq(emailQueue.stepOrder, stepConfig.stepOrder),
+          eq(emailQueue.userId, userId),
+          sql`${emailQueue.status} = 'failed'`,
+          sql`${emailQueue.createdAt} > NOW() - INTERVAL '1 hour'`
+        )
+      });
+
+      if (recentFailedEmail) {
+        console.log(`[SequenceExecutor] Step ${stepConfig.stepOrder} failed recently for prospect ${prospectId} - wait 1 hour before retrying`);
         return;
       }
       

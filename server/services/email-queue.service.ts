@@ -102,63 +102,80 @@ export class EmailQueueService {
 
       // =====================================
       // DEDUPLICATION: Multi-layer protection against duplicate emails
-      // CRITICAL FIX: Include 'failed' status to prevent retry spam
+      // Prevents spam while allowing legitimate retry after transient failures
       // =====================================
       
       // LAYER 1: Check for exact duplicate (same prospect, sequence, step)
-      // Include 'failed' to prevent creating new entries when retrying failed emails
+      // Block if already sent OR currently pending/sending
+      // For 'failed': only block if failed recently (within 1 hour) to prevent spam retries
       if (queueData.sequenceId && queueData.stepOrder !== undefined) {
-        const existingEmail = await db.query.emailQueue.findFirst({
+        // First check for sent/pending/sending - always block these
+        const existingActiveEmail = await db.query.emailQueue.findFirst({
           where: and(
             eq(emailQueue.prospectId, queueData.prospectId),
             eq(emailQueue.sequenceId, queueData.sequenceId),
             eq(emailQueue.stepOrder, queueData.stepOrder),
             eq(emailQueue.userId, queueData.userId),
-            sql`${emailQueue.status} IN ('pending', 'sending', 'sent', 'failed')`
+            sql`${emailQueue.status} IN ('pending', 'sending', 'sent')`
           )
         });
 
-        if (existingEmail) {
-          console.warn(`⚠️ Duplicate email detected: prospect ${queueData.prospectId}, sequence ${queueData.sequenceId}, step ${queueData.stepOrder}, status ${existingEmail.status} - skipping queue`);
-          return existingEmail;
+        if (existingActiveEmail) {
+          console.warn(`⚠️ Duplicate email detected: prospect ${queueData.prospectId}, sequence ${queueData.sequenceId}, step ${queueData.stepOrder}, status ${existingActiveEmail.status} - skipping queue`);
+          return existingActiveEmail;
+        }
+
+        // Check for recently failed emails (within 1 hour) to prevent rapid retry spam
+        const recentFailedEmail = await db.query.emailQueue.findFirst({
+          where: and(
+            eq(emailQueue.prospectId, queueData.prospectId),
+            eq(emailQueue.sequenceId, queueData.sequenceId),
+            eq(emailQueue.stepOrder, queueData.stepOrder),
+            eq(emailQueue.userId, queueData.userId),
+            sql`${emailQueue.status} = 'failed'`,
+            sql`${emailQueue.createdAt} > NOW() - INTERVAL '1 hour'`
+          )
+        });
+
+        if (recentFailedEmail) {
+          console.warn(`⚠️ Email failed recently for prospect ${queueData.prospectId}, step ${queueData.stepOrder} - wait 1 hour before retrying`);
+          return recentFailedEmail;
         }
       }
 
       // LAYER 2: For FIRST email (step 1), check across ALL sequences  
       // Prevents duplicate first emails when user starts multiple automations for same prospect
-      // Include 'failed' to prevent retry spam when emails fail
+      // Only block sent/pending/sending emails within 24 hours
       if (queueData.stepOrder === 1) {
         const recentFirstEmail = await db.query.emailQueue.findFirst({
           where: and(
             eq(emailQueue.prospectId, queueData.prospectId),
             eq(emailQueue.stepOrder, 1),
             eq(emailQueue.userId, queueData.userId),
-            sql`${emailQueue.status} IN ('pending', 'sending', 'sent', 'failed')`,
-            // Only check emails from last 24 hours to allow re-engagement
+            sql`${emailQueue.status} IN ('pending', 'sending', 'sent')`,
             sql`${emailQueue.createdAt} > NOW() - INTERVAL '24 hours'`
           )
         });
 
         if (recentFirstEmail) {
-          console.warn(`⚠️ First email already queued/sent/failed for prospect ${queueData.prospectId} within 24 hours (from sequence ${recentFirstEmail.sequenceId}, status: ${recentFirstEmail.status}) - skipping duplicate`);
+          console.warn(`⚠️ First email already queued/sent for prospect ${queueData.prospectId} within 24 hours (from sequence ${recentFirstEmail.sequenceId}, status: ${recentFirstEmail.status}) - skipping duplicate`);
           return recentFirstEmail;
         }
       }
 
       // LAYER 3: Global rate limit - prevent ANY email to same prospect within 30 seconds
-      // Include 'failed' to prevent rapid retry attempts
       const veryRecentEmail = await db.query.emailQueue.findFirst({
         where: and(
           eq(emailQueue.prospectId, queueData.prospectId),
           eq(emailQueue.userId, queueData.userId),
-          sql`${emailQueue.status} IN ('pending', 'sending', 'sent', 'failed')`,
+          sql`${emailQueue.status} IN ('pending', 'sending', 'sent')`,
           sql`${emailQueue.createdAt} > NOW() - INTERVAL '30 seconds'`
         )
       });
 
       if (veryRecentEmail) {
-        console.warn(`⚠️ Email already queued/sent/failed for prospect ${queueData.prospectId} within last 30 seconds (status: ${veryRecentEmail.status}) - skipping to prevent spam`);
-        return veryRecentEmail; // Return existing instead of creating duplicate
+        console.warn(`⚠️ Email already queued for prospect ${queueData.prospectId} within last 30 seconds - adding 30s delay`);
+        queueData.scheduledFor = new Date(new Date(veryRecentEmail.createdAt).getTime() + 30000);
       }
 
       // Select mailbox scoped to the user
