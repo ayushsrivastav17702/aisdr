@@ -520,6 +520,14 @@ export default function AutomationDashboard() {
                                 View Sequence
                               </Link>
                             </DropdownMenuItem>
+                            {automation.repliesReceived > 0 && (
+                              <DropdownMenuItem asChild>
+                                <Link href={`/sequences/${automation.sequenceId}?tab=replies`}>
+                                  <Mail className="w-4 h-4 mr-2" />
+                                  View Replies ({automation.repliesReceived})
+                                </Link>
+                              </DropdownMenuItem>
+                            )}
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </TableCell>
