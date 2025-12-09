@@ -28,6 +28,11 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import {
   ChartBar,
   Users,
   Mail,
@@ -44,11 +49,27 @@ import {
   TrendingUp,
   Clock,
   ArrowLeft,
+  ChevronDown,
+  ChevronRight,
+  Sparkles,
+  Timer,
+  Send,
+  CalendarClock,
 } from "lucide-react";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Breadcrumbs } from "@/components/breadcrumbs";
+
+interface SequenceStep {
+  id: string;
+  stepOrder: number;
+  stepType: string;
+  subject: string;
+  body: string;
+  delayDays: number;
+  delayHours: number;
+}
 
 interface AutomationRun {
   id: string;
@@ -72,6 +93,7 @@ interface AutomationRun {
     delayBetweenEmails: number;
   };
   prospectsEnrolled?: string[];
+  sequenceSteps?: SequenceStep[];
 }
 
 export default function AutomationDashboard() {
@@ -79,6 +101,46 @@ export default function AutomationDashboard() {
   const [selectedAutomation, setSelectedAutomation] = useState<AutomationRun | null>(null);
   const [showErrorsDialog, setShowErrorsDialog] = useState(false);
   const [showRateLimitDialog, setShowRateLimitDialog] = useState(false);
+  const [showTimelineDialog, setShowTimelineDialog] = useState(false);
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+
+  const toggleRowExpansion = (id: string) => {
+    setExpandedRows((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  };
+
+  const viewTimeline = (automation: AutomationRun) => {
+    setSelectedAutomation(automation);
+    setShowTimelineDialog(true);
+  };
+
+  const formatDelay = (days: number, hours: number) => {
+    const parts = [];
+    if (days > 0) parts.push(`${days}d`);
+    if (hours > 0) parts.push(`${hours}h`);
+    return parts.length > 0 ? parts.join(" ") : "Immediate";
+  };
+
+  const calculateScheduledTime = (startedAt: string, stepIndex: number, steps: SequenceStep[]) => {
+    // Each step's delay defines when it should be sent AFTER the previous step
+    // Step 0: Immediate (its own delay is ignored for the first step)
+    // Step 1: After step[1].delayDays from step 0
+    // Step 2: After step[1].delayDays + step[2].delayDays from start
+    let totalMinutes = 0;
+    for (let i = 1; i <= stepIndex; i++) {
+      totalMinutes += (steps[i].delayDays * 24 * 60) + (steps[i].delayHours * 60);
+    }
+    const date = new Date(startedAt);
+    date.setMinutes(date.getMinutes() + totalMinutes);
+    return date;
+  };
 
   const {
     data: automationsData,
@@ -444,6 +506,10 @@ export default function AutomationDashboard() {
                               </DropdownMenuItem>
                             )}
                             {(hasErrors || automation.status === "running") && <DropdownMenuSeparator />}
+                            <DropdownMenuItem onClick={() => viewTimeline(automation)}>
+                              <CalendarClock className="w-4 h-4 mr-2" />
+                              View Timeline
+                            </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => viewRateLimit(automation)}>
                               <Clock className="w-4 h-4 mr-2" />
                               Rate Limits
@@ -548,6 +614,200 @@ export default function AutomationDashboard() {
             <p className="text-xs text-muted-foreground">
               Rate limits reset daily at midnight UTC. This helps maintain sender reputation and avoid spam filters.
             </p>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Timeline Dialog */}
+      <Dialog open={showTimelineDialog} onOpenChange={setShowTimelineDialog}>
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CalendarClock className="w-5 h-5" />
+              Automation Timeline
+            </DialogTitle>
+            <DialogDescription>
+              Email sequence timeline for "{selectedAutomation?.sequenceName}"
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="space-y-6">
+            {/* Automation Info */}
+            <Card>
+              <CardContent className="pt-6">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Started</p>
+                    <p className="text-sm font-medium">
+                      {selectedAutomation?.startedAt 
+                        ? new Date(selectedAutomation.startedAt).toLocaleString()
+                        : "N/A"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Status</p>
+                    <div className="mt-1">
+                      {selectedAutomation && (
+                        selectedAutomation.status === "paused" ? (
+                          <Badge variant="secondary">
+                            <Pause className="w-3 h-3 mr-1" />
+                            Paused
+                          </Badge>
+                        ) : selectedAutomation.status === "running" ? (
+                          <Badge variant="default">
+                            <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                            Running
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline">{selectedAutomation.status}</Badge>
+                        )
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">AI Personalization</p>
+                    <div className="mt-1">
+                      {selectedAutomation?.aiPersonalizationEnabled ? (
+                        <Badge variant="default" className="bg-blue-500">
+                          <Sparkles className="w-3 h-3 mr-1" />
+                          Enabled
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary">Disabled</Badge>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Delay Between Emails</p>
+                    <p className="text-sm font-medium">
+                      {Math.round((selectedAutomation?.rateLimitConfig?.delayBetweenEmails || 30000) / 1000)}s
+                    </p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Sequence Steps Timeline */}
+            <div>
+              <h3 className="text-sm font-semibold mb-4 flex items-center gap-2">
+                <Timer className="w-4 h-4" />
+                Email Steps Timeline
+              </h3>
+              
+              {selectedAutomation?.sequenceSteps && selectedAutomation.sequenceSteps.length > 0 ? (
+                <div className="relative">
+                  {/* Timeline line */}
+                  <div className="absolute left-4 top-8 bottom-8 w-0.5 bg-border" />
+                  
+                  <div className="space-y-4">
+                    {selectedAutomation.sequenceSteps.map((step, index) => {
+                      const scheduledTime = selectedAutomation.startedAt 
+                        ? calculateScheduledTime(selectedAutomation.startedAt, index, selectedAutomation.sequenceSteps!)
+                        : null;
+                      const isFirstStep = index === 0;
+                      const isPastSchedule = scheduledTime ? new Date() > scheduledTime : false;
+                      
+                      return (
+                        <div key={step.id} className="relative pl-10">
+                          {/* Timeline dot */}
+                          <div className={`absolute left-2 top-3 w-4 h-4 rounded-full border-2 ${
+                            isPastSchedule 
+                              ? 'bg-green-500 border-green-500' 
+                              : 'bg-background border-primary'
+                          }`}>
+                            {isPastSchedule && (
+                              <CheckCircle className="w-3 h-3 text-white absolute -top-0.5 -left-0.5" />
+                            )}
+                          </div>
+                          
+                          <Card className={isPastSchedule ? 'border-green-200 bg-green-50/50 dark:bg-green-950/20' : ''}>
+                            <CardContent className="pt-4 pb-4">
+                              <div className="flex items-start justify-between gap-4">
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-2 mb-1">
+                                    <Badge variant="outline" className="text-xs">
+                                      Step {step.stepOrder}
+                                    </Badge>
+                                    <Badge variant="secondary" className="text-xs capitalize">
+                                      {step.stepType}
+                                    </Badge>
+                                    {!isFirstStep && (
+                                      <Badge variant="outline" className="text-xs">
+                                        <Timer className="w-3 h-3 mr-1" />
+                                        {formatDelay(step.delayDays, step.delayHours)} after previous
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  <p className="font-medium text-sm truncate" title={step.subject}>
+                                    {step.subject || "(No subject)"}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                                    {step.body?.replace(/<[^>]*>/g, '').substring(0, 100) || "(No body)"}...
+                                  </p>
+                                </div>
+                                <div className="text-right shrink-0">
+                                  <p className="text-xs text-muted-foreground">Scheduled</p>
+                                  <p className="text-sm font-medium">
+                                    {scheduledTime?.toLocaleDateString()}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {scheduledTime?.toLocaleTimeString()}
+                                  </p>
+                                </div>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <Card className="bg-muted/50">
+                  <CardContent className="py-8 text-center">
+                    <Mail className="w-8 h-8 text-muted-foreground mx-auto mb-2" />
+                    <p className="text-muted-foreground">
+                      No email steps found in this sequence.
+                    </p>
+                    <Button variant="link" asChild className="mt-2">
+                      <Link href={`/sequences/${selectedAutomation?.sequenceId}`}>
+                        Add steps to sequence →
+                      </Link>
+                    </Button>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+
+            {/* Pause/Resume Controls */}
+            {selectedAutomation && !selectedAutomation.isStopped && (
+              <div className="flex justify-end gap-2 pt-4 border-t">
+                {selectedAutomation.status === "running" ? (
+                  <Button 
+                    variant="outline" 
+                    onClick={() => {
+                      pauseMutation.mutate(selectedAutomation.id);
+                      setShowTimelineDialog(false);
+                    }}
+                    data-testid="button-pause-from-timeline"
+                  >
+                    <Pause className="w-4 h-4 mr-2" />
+                    Pause Automation
+                  </Button>
+                ) : selectedAutomation.status === "paused" ? (
+                  <Button 
+                    onClick={() => {
+                      resumeMutation.mutate(selectedAutomation.id);
+                      setShowTimelineDialog(false);
+                    }}
+                    data-testid="button-resume-from-timeline"
+                  >
+                    <Play className="w-4 h-4 mr-2" />
+                    Resume Automation
+                  </Button>
+                ) : null}
+              </div>
+            )}
           </div>
         </DialogContent>
       </Dialog>

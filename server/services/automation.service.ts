@@ -397,9 +397,9 @@ class AutomationService {
   }
 
   /**
-   * Get all automation runs
+   * Get all automation runs with sequence steps for timeline display
    */
-  async getAutomationRuns(userId?: string, limit = 50): Promise<Array<AutomationRun & { sequenceName?: string }>> {
+  async getAutomationRuns(userId?: string, limit = 50): Promise<Array<AutomationRun & { sequenceName?: string; sequenceSteps?: any[] }>> {
     const runs = await db.query.automationRuns.findMany({
       where: userId ? (runs, { eq }) => eq(runs.userId, userId) : undefined,
       limit,
@@ -408,14 +408,31 @@ class AutomationService {
         sequence: {
           columns: {
             name: true,
+          },
+          with: {
+            steps: {
+              orderBy: (steps: any, { asc }: any) => [asc(steps.stepOrder)],
+              columns: {
+                id: true,
+                stepOrder: true,
+                stepType: true,
+                subject: true,
+                body: true,
+                delayDays: true,
+              }
+            }
           }
         }
       }
-    });
+    }) as any[];
 
     return runs.map(run => ({
       ...run,
-      sequenceName: run.sequence?.name
+      sequenceName: run.sequence?.name,
+      sequenceSteps: (run.sequence?.steps || []).map((step: any) => ({
+        ...step,
+        delayHours: 0 // Default to 0 since schema only has delayDays
+      }))
     }));
   }
 
