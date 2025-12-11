@@ -782,6 +782,116 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Waterfall enrichment - tries Apollo → Lusha → Email pattern guessing
+  app.post("/api/waterfall-enrich", authenticate, async (req, res) => {
+    try {
+      const { enrichmentWaterfallService } = await import('./services/enrichment-waterfall.service');
+      
+      const { prospectIds } = z.object({ 
+        prospectIds: z.array(z.string()).min(1).max(50)
+      }).parse(req.body);
+
+      console.log(`\n🔄 Starting waterfall enrichment for ${prospectIds.length} prospects`);
+      
+      const results = [];
+      let successCount = 0;
+      let failureCount = 0;
+      
+      for (const prospectId of prospectIds) {
+        const prospect = await storage.getProspect(req.userContext!, prospectId);
+        
+        if (!prospect) {
+          results.push({ id: prospectId, success: false, error: "Prospect not found" });
+          failureCount++;
+          continue;
+        }
+
+        // Skip if email already found
+        if (prospect.primaryEmail && !prospect.primaryEmail.includes('email_not_unlocked')) {
+          results.push({ 
+            id: prospectId, 
+            success: true, 
+            skipped: true,
+            source: 'existing',
+            email: prospect.primaryEmail
+          });
+          successCount++;
+          continue;
+        }
+
+        // Run waterfall enrichment
+        const enrichResult = await enrichmentWaterfallService.enrichProspect({
+          firstName: prospect.firstName || undefined,
+          lastName: prospect.lastName || undefined,
+          fullName: prospect.fullName || undefined,
+          companyName: prospect.companyName || undefined,
+          companyDomain: prospect.companyDomain || undefined,
+          linkedinUrl: prospect.linkedinUrl || undefined,
+          jobTitle: prospect.jobTitle || undefined,
+          apolloId: prospect.apolloId || undefined,
+        });
+
+        if (enrichResult.email) {
+          // Update prospect with found email
+          const updates: any = {
+            primaryEmail: enrichResult.email,
+            enrichmentStatus: enrichResult.source === 'web_search' ? 'partial' as const : 'enriched' as const,
+            enrichmentData: {
+              ...(prospect.enrichmentData || {}),
+              ...enrichResult.enrichmentData,
+              waterfallEnrichedAt: new Date().toISOString(),
+              emailSource: enrichResult.source,
+            }
+          };
+
+          if (enrichResult.phone && !prospect.phoneNumber) {
+            updates.phoneNumber = enrichResult.phone;
+          }
+
+          const updated = await storage.updateProspect(req.userContext!, prospectId, updates);
+          results.push({ 
+            id: prospectId, 
+            success: true, 
+            source: enrichResult.source,
+            email: enrichResult.email,
+            phone: enrichResult.phone,
+            needsVerification: enrichResult.enrichmentData?.needsVerification,
+            prospect: updated
+          });
+          successCount++;
+        } else {
+          results.push({ 
+            id: prospectId, 
+            success: false, 
+            source: enrichResult.source,
+            error: "Email not found in any source"
+          });
+          failureCount++;
+        }
+      }
+
+      console.log(`✅ Waterfall enrichment complete: ${successCount} found, ${failureCount} not found`);
+
+      res.json({ 
+        results,
+        total: results.length,
+        successCount,
+        failureCount,
+        sources: {
+          apollo: results.filter(r => r.source === 'apollo').length,
+          lusha: results.filter(r => r.source === 'lusha').length,
+          webSearch: results.filter(r => r.source === 'web_search').length,
+          existing: results.filter(r => r.source === 'existing').length,
+        }
+      });
+    } catch (error) {
+      console.error("Waterfall enrichment error:", error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Waterfall enrichment failed" 
+      });
+    }
+  });
+
   // Apollo bulk enrichment
   app.post("/api/apollo-bulk-enrich", authenticate, async (req, res) => {
     try {

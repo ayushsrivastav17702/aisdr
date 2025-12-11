@@ -278,6 +278,43 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
     },
   });
 
+  const waterfallEnrichMutation = useMutation({
+    mutationFn: api.waterfallEnrichProspects,
+    onSuccess: (result: any) => {
+      const successCount = result.successCount || 0;
+      const failureCount = result.failureCount || 0;
+      const sources = result.sources || {};
+      
+      if (successCount > 0) {
+        let sourceInfo = [];
+        if (sources.apollo > 0) sourceInfo.push(`${sources.apollo} from Apollo`);
+        if (sources.lusha > 0) sourceInfo.push(`${sources.lusha} from Lusha`);
+        if (sources.webSearch > 0) sourceInfo.push(`${sources.webSearch} guessed`);
+        if (sources.existing > 0) sourceInfo.push(`${sources.existing} already had emails`);
+        
+        toast({
+          title: "Waterfall Enrichment Complete",
+          description: `Found ${successCount} emails: ${sourceInfo.join(', ')}${failureCount > 0 ? `. ${failureCount} not found.` : ''}`,
+        });
+      } else {
+        toast({
+          title: "No Emails Found",
+          description: "Could not find emails from Apollo, Lusha, or web search",
+        });
+      }
+      
+      onSelectionChange([]);
+      queryClient.invalidateQueries({ queryKey: ["/api/prospects"] });
+    },
+    onError: (error) => {
+      toast({
+        variant: "destructive",
+        title: "Waterfall Enrichment Failed",
+        description: error.message,
+      });
+    },
+  });
+
   const bulkDeleteMutation = useMutation({
     mutationFn: api.bulkDeleteProspects,
     onSuccess: (result: any) => {
@@ -383,6 +420,19 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
     }
     
     apolloBulkEnrichMutation.mutate(selectedIds);
+  };
+
+  const handleWaterfallEnrich = () => {
+    if (selectedIds.length === 0) {
+      toast({
+        variant: "destructive",
+        title: "No Selection",
+        description: "Please select prospects to enrich",
+      });
+      return;
+    }
+    
+    waterfallEnrichMutation.mutate(selectedIds);
   };
 
   const handleExportSelected = async () => {
@@ -685,6 +735,16 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
                 >
                   <SparklesIcon className="w-4 h-4 mr-2" />
                   {lushaEnrichMutation.isPending ? "Finding Emails..." : "Get Emails (Lusha)"}
+                </Button>
+                <Button 
+                  size="sm"
+                  onClick={handleWaterfallEnrich}
+                  disabled={waterfallEnrichMutation.isPending}
+                  data-testid="button-waterfall-enrich"
+                  className="bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-700 hover:to-teal-700"
+                >
+                  <SparklesIcon className="w-4 h-4 mr-2" />
+                  {waterfallEnrichMutation.isPending ? "Finding Emails..." : "Find Emails (All Sources)"}
                 </Button>
                 <Button 
                   variant="outline"
