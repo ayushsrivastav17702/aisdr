@@ -826,8 +826,12 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
                             <p className="text-sm font-medium" data-testid={`prospect-name-${prospect.id}`}>
                               {prospect.fullName || `${prospect.firstName || ""} ${prospect.lastName || ""}`.trim() || "Unknown"}
                             </p>
-                            <p className="text-xs text-muted-foreground" data-testid={`prospect-email-${prospect.id}`}>
-                              {prospect.primaryEmail || "No email"}
+                            <p className={`text-xs ${prospect.primaryEmail ? 'text-muted-foreground' : 'text-orange-500'}`} data-testid={`prospect-email-${prospect.id}`}>
+                              {prospect.primaryEmail || (
+                                prospect.enrichmentData?.emailStatus === 'not_unlocked' 
+                                  ? "Email locked (needs credits)" 
+                                  : "Email not found"
+                              )}
                             </p>
                           </div>
                         </div>
@@ -1057,8 +1061,12 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
                     <MailIcon className="w-4 h-4 mt-0.5 text-muted-foreground" />
                     <div className="flex-1">
                       <p className="text-sm font-medium">Email</p>
-                      <p className="text-sm text-muted-foreground break-all" data-testid="prospect-detail-email">
-                        {selectedProspect.primaryEmail || "Not available"}
+                      <p className={`text-sm break-all ${selectedProspect.primaryEmail ? 'text-muted-foreground' : 'text-orange-500'}`} data-testid="prospect-detail-email">
+                        {selectedProspect.primaryEmail || (
+                          selectedProspect.enrichmentData?.emailStatus === 'not_unlocked' 
+                            ? "Email locked (needs Apollo credits)" 
+                            : "Email not found - try enriching"
+                        )}
                       </p>
                     </div>
                   </div>

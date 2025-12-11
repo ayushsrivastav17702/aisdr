@@ -2250,7 +2250,7 @@ Respond in JSON format:
   // Get email performance metrics
   app.get("/api/email-analytics/performance", authenticate, async (req, res) => {
     try {
-      const userId = req.userId!;
+      const userId = req.userContext!.userId;
       const days = parseInt(req.query.days as string) || 30;
       
       const metrics = await emailTrackingService.getPerformanceMetrics(userId, days);
@@ -2264,7 +2264,7 @@ Respond in JSON format:
   // Get sequence step performance
   app.get("/api/email-analytics/sequence/:sequenceId/steps", authenticate, async (req, res) => {
     try {
-      const userId = req.userId!;
+      const userId = req.userContext!.userId;
       const { sequenceId } = req.params;
       
       const stepPerformance = await emailTrackingService.getSequenceStepPerformance(sequenceId, userId);
@@ -2278,7 +2278,7 @@ Respond in JSON format:
   // Get domain health
   app.get("/api/email-analytics/domain-health", authenticate, async (req, res) => {
     try {
-      const userId = req.userId!;
+      const userId = req.userContext!.userId;
       
       const domainHealth = await emailTrackingService.getDomainHealth(userId);
       res.json(domainHealth);
@@ -2291,7 +2291,7 @@ Respond in JSON format:
   // Get top performing content
   app.get("/api/email-analytics/top-content", authenticate, async (req, res) => {
     try {
-      const userId = req.userId!;
+      const userId = req.userContext!.userId;
       const limit = parseInt(req.query.limit as string) || 5;
       
       const topContent = await emailTrackingService.getTopPerformingContent(userId, limit);
@@ -2305,7 +2305,7 @@ Respond in JSON format:
   // Get daily summary
   app.get("/api/email-analytics/daily-summary", authenticate, async (req, res) => {
     try {
-      const userId = req.userId!;
+      const userId = req.userContext!.userId;
       const date = req.query.date ? new Date(req.query.date as string) : new Date();
       
       const summary = await emailTrackingService.getDailySummary(userId, date);
@@ -2319,7 +2319,7 @@ Respond in JSON format:
   // Get weekly summary
   app.get("/api/email-analytics/weekly-summary", authenticate, async (req, res) => {
     try {
-      const userId = req.userId!;
+      const userId = req.userContext!.userId;
       
       const summary = await emailTrackingService.getWeeklySummary(userId);
       res.json(summary);

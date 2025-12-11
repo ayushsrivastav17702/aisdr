@@ -599,8 +599,9 @@ class AIService {
     }
 
     if (aiFilters.companyNames?.length) {
-      // Use first company name for organization search (Apollo supports single company filter)
-      apolloFilters.q_organization_name = aiFilters.companyNames[0];
+      // Join multiple company names with OR operator for broader matching
+      // Apollo API searches across company names using keyword-style matching
+      apolloFilters.q_organization_name = aiFilters.companyNames.join(' OR ');
     }
 
     if (aiFilters.keywords?.length) {
