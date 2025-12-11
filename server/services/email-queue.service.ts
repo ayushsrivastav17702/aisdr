@@ -340,13 +340,17 @@ export class EmailQueueService {
   }
 
   private async processEmail(email: EmailQueueItem): Promise<boolean> {
+    let prospect: typeof prospects.$inferSelect | undefined;
+    
     try {
       // Fetch prospect to get actual email address
-      const [prospect] = await db
+      const [fetchedProspect] = await db
         .select()
         .from(prospects)
         .where(eq(prospects.id, email.prospectId))
         .limit(1);
+      
+      prospect = fetchedProspect;
 
       if (!prospect || !prospect.primaryEmail) {
         throw new Error(`Prospect ${email.prospectId} not found or has no email`);
