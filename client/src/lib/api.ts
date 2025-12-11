@@ -100,6 +100,11 @@ export const api = {
     return response.json();
   },
 
+  async waterfallEnrichProspects(prospectIds: string[]) {
+    const response = await apiRequest("POST", "/api/waterfall-enrich", { prospectIds });
+    return response.json();
+  },
+
   // Import
   async uploadCSV(file: File, fieldMappings: Record<string, string>, options: {
     skipDuplicates?: boolean;
