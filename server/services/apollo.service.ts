@@ -118,6 +118,14 @@ class ApolloService {
 
     const data = await response.json();
     
+    // Log detailed search results for debugging
+    console.log('🔍 Apollo Search Response:', {
+      totalEntries: data.pagination?.total_entries || 0,
+      contactsReturned: (data.people || data.contacts || []).length,
+      firstContactEmail: (data.people || data.contacts || [])[0]?.email || 'no email',
+      revealPersonalEmails: requestBody.reveal_personal_emails,
+    });
+    
     // Track API usage
     await rateLimiterService.trackApiUsage('apollo', 1);
     
