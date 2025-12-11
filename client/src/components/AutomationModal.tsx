@@ -167,8 +167,8 @@ export function AutomationModal({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl" data-testid="modal-automation">
-        <DialogHeader>
+      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col" data-testid="modal-automation">
+        <DialogHeader className="flex-shrink-0">
           <DialogTitle className="text-2xl font-semibold">
             🤖 Run Sequence Automation
           </DialogTitle>
@@ -179,7 +179,8 @@ export function AutomationModal({
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="flex flex-col flex-1 min-h-0">
+            <div className="space-y-6 overflow-y-auto flex-1 pr-2">
             {/* Prospect Source Selection */}
             <FormField
               control={form.control}
@@ -357,8 +358,9 @@ export function AutomationModal({
               />
               </div>
             )}
+            </div>
 
-            <DialogFooter>
+            <DialogFooter className="flex-shrink-0 pt-4 border-t mt-4">
               <Button
                 type="button"
                 variant="ghost"
@@ -370,7 +372,7 @@ export function AutomationModal({
               <Button
                 type="submit"
                 disabled={startAutomationMutation.isPending}
-                data-testid="button-start-automation"
+                data-testid="button-modal-start-automation"
               >
                 {startAutomationMutation.isPending ? (
                   <>
