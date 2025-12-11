@@ -1,0 +1,100 @@
+Complete Apollo Prospect Workflow
+Step 1: User Configures ICP Filters (Frontend)
+File: client/src/components/icp-prospect-filters.tsx
+
+User selects job titles, industries, company sizes, locations
+Filters stored in React state
+Options include: SaaS, Technology, Healthcare, VP, Director, C-Suite, etc.
+Step 2: Frontend Sends Search Request
+// User clicks "Search Prospects" button
+apiRequest('POST', '/api/apollo/search-prospects', {
+  jobTitles: ['VP Sales', 'Sales Director'],
+  industries: ['SaaS', 'Technology'],
+  companySizes: ['51-200', '201-500'],
+  locations: ['United States'],
+  limit: 100
+});
+
+Step 3: Backend Applies Smart Defaults
+File: server/services/apollo.ts
+
+If user didn't specify certain filters, system applies ICP defaults
+Default job titles: CEO, CTO, VP Sales, Sales Director, etc.
+Default industries: Technology, SaaS, Healthcare, Retail
+Default locations: United States, Canada, UK
+Step 4: Backend Converts to Apollo API Format
+// User-friendly → Apollo API format
+{
+  person_titles: ['VP Sales', 'Sales Director'],      // ← jobTitles
+  organization_industries: ['SaaS', 'Technology'],    // ← industries
+  organization_num_employees_ranges: ['51-200'],      // ← companySizes
+  person_locations: 'United States',                  // ← locations
+  per_page: 100
+}
+
+Step 5: Apollo API Returns Verified Data
+// Apollo.io returns verified contact data
+{
+  "people": [{
+    "first_name": "John",
+    "last_name": "Smith",
+    "email": "john.smith@company.com",   // ← VERIFIED EMAIL
+    "title": "VP of Sales",
+    "phone_numbers": [{ "sanitized_number": "+1-555-123-4567" }],
+    "linkedin_url": "linkedin.com/in/johnsmith",
+    "organization": {
+      "name": "Tech Company Inc",
+      "industry": "Software",
+      "num_employees": 150
+    }
+  }]
+}
+
+Step 6: Backend Formats Prospect Data
+// Transform to app's data structure
+{
+  firstName: "John",
+  lastName: "Smith",
+  email: "john.smith@company.com",
+  phone: "+1-555-123-4567",
+  linkedinUrl: "linkedin.com/in/johnsmith",
+  jobTitle: "VP of Sales",
+  company: "Tech Company Inc",
+  location: "San Francisco, California",
+  leadSource: "Apollo.io",
+  leadScore: 85,
+  status: "new"
+}
+
+Step 7: Store in Database (Duplicate Check)
+// Check if email already exists
+const exists = existingProspects.some(p => 
+  p.email.toLowerCase() === prospect.email.toLowerCase()
+);
+if (!exists) {
+  await storage.createProspect(newProspect);  // Save to database
+  addedCount++;
+}
+
+Step 8: Display in Prospects Tab
+// Frontend fetches and displays
+const { data: prospects } = useQuery({ queryKey: ['/api/prospects'] });
+// Renders table with all prospects
+// Shows: Name, Email, Title, Company, Source (Apollo.io), Score
+
+Fallback Strategies (5 Auto-Retry Patterns)
+If the initial search returns 0 results, the system automatically tries:
+
+Core Terms: buyer, merchandiser, purchasing manager
+E-commerce Focus: ecommerce, digital commerce, online retail
+Retail Ops: retail manager, inventory manager, product manager
+Supply Chain: procurement, logistics, vendor manager
+Broader Terms: merchandising, retail, product, inventory
+Key Files in the Workflow
+Step	File
+ICP Configuration	client/src/components/icp-prospect-filters.tsx
+API Routes	server/routes.ts
+Apollo Service	server/services/apollo.ts
+Database Storage	server/storage.ts
+Prospects Display	client/src/pages/prospects.tsx
+The full detailed documentation is now saved at docs/apollo-prospect-workflow.md.
