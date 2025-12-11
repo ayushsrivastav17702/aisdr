@@ -102,12 +102,22 @@ export default function ImportWizard({ open, onClose }: ImportWizardProps) {
         queryClient.invalidateQueries({ queryKey: ["/api/jobs"] });
       } else if (data.success !== undefined) {
         // Direct/synchronous import (no Redis)
-        const { imported, failed, duplicates, message } = data;
+        const { imported, failed, duplicates, duplicateEmails, message } = data;
         
         if (imported > 0) {
           toast({
             title: "Import Complete",
             description: message || `Successfully imported ${imported} prospects${duplicates > 0 ? ` (${duplicates} duplicates skipped)` : ''}`,
+          });
+        } else if (duplicates > 0 && imported === 0) {
+          // All rows were duplicates - show which emails already exist
+          const emailList = duplicateEmails?.length > 0 
+            ? duplicateEmails.slice(0, 5).join(', ') + (duplicateEmails.length > 5 ? '...' : '')
+            : '';
+          toast({
+            variant: "destructive",
+            title: "No Prospects Imported",
+            description: `${duplicates} email(s) already exist in database${emailList ? `: ${emailList}` : ''}`,
           });
         } else if (failed > 0) {
           toast({
