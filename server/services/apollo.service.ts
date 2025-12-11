@@ -98,6 +98,7 @@ class ApolloService {
       ...params,
       per_page: params.per_page || 50,
       page: params.page || 1,
+      reveal_personal_emails: true,
     };
 
     const response = await fetch(url, {
