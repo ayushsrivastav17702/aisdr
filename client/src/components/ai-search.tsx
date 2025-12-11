@@ -174,11 +174,22 @@ export default function AISearch() {
       
       if (data.saved === 0) {
         console.log('  ⚠️ Showing "No Prospects Found" toast');
-        toast({
-          variant: "destructive",
-          title: "No Prospects Found",
-          description: data.searchStrategyMessage || `No prospects matched your search criteria. Apollo tried multiple search strategies but found no results. Try different search terms or check if Apollo has data for this query.`,
-        });
+        
+        // Check if Apollo has data but didn't return it (credits/access issue)
+        const totalAvailable = data.pagination?.total_entries || 0;
+        if (totalAvailable > 0) {
+          toast({
+            variant: "destructive",
+            title: "Apollo Credits Required",
+            description: `Apollo found ${totalAvailable.toLocaleString()} matching prospects but your account needs credits to access them. Check your Apollo.io subscription or add email credits.`,
+          });
+        } else {
+          toast({
+            variant: "destructive",
+            title: "No Prospects Found",
+            description: data.searchStrategyMessage || `No prospects matched your search criteria. Apollo tried multiple search strategies but found no results. Try different search terms or check if Apollo has data for this query.`,
+          });
+        }
         return;
       }
       
