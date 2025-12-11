@@ -1845,7 +1845,7 @@ Return ONLY the email body text, no subject line needed.`;
   // Content Library - Get all items
   app.get("/api/content-library", authenticate, async (req, res) => {
     try {
-      const items = await contentManagementService.getContentLibraryItems();
+      const items = await contentManagementService.getContentLibraryItems(req.userContext!);
       res.json(items);
     } catch (error) {
       console.error("Get content library error:", error);
@@ -1874,7 +1874,7 @@ Return ONLY the email body text, no subject line needed.`;
   // Content Library - Create item
   app.post("/api/content-library", authenticate, async (req, res) => {
     try {
-      const item = await contentManagementService.addContentItem(req.body);
+      const item = await contentManagementService.addContentItem(req.userContext!, req.body);
       res.json(item);
     } catch (error) {
       console.error("Create content item error:", error);
@@ -1888,7 +1888,7 @@ Return ONLY the email body text, no subject line needed.`;
   app.put("/api/content-library/:id", authenticate, async (req, res) => {
     try {
       const { id } = req.params;
-      const item = await contentManagementService.updateContentItem(id, req.body);
+      const item = await contentManagementService.updateContentItem(req.userContext!, id, req.body);
       res.json(item);
     } catch (error) {
       console.error("Update content item error:", error);
@@ -1902,7 +1902,7 @@ Return ONLY the email body text, no subject line needed.`;
   app.delete("/api/content-library/:id", authenticate, async (req, res) => {
     try {
       const { id } = req.params;
-      await contentManagementService.deleteContentItem(id);
+      await contentManagementService.deleteContentItem(req.userContext!, id);
       res.json({ success: true });
     } catch (error) {
       console.error("Delete content item error:", error);

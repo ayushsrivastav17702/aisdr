@@ -1,4 +1,4 @@
-import { storage } from "../storage";
+import { storage, RequestContext } from "../storage";
 
 interface EmailTemplate {
   id: string;
@@ -244,9 +244,9 @@ Best of luck with your {{industry}} initiatives!
     };
   }
 
-  async getContentLibraryItems() {
+  async getContentLibraryItems(ctx: RequestContext) {
     try {
-      const items = await storage.getContentLibraryItems();
+      const items = await storage.getContentLibraryItems(ctx);
       return items;
     } catch (error) {
       console.error('Error fetching content library:', error);
@@ -254,27 +254,27 @@ Best of luck with your {{industry}} initiatives!
     }
   }
 
-  async addContentItem(item: any) {
+  async addContentItem(ctx: RequestContext, item: any) {
     try {
-      return await storage.createContentLibraryItem(item);
+      return await storage.createContentLibraryItem(ctx, item);
     } catch (error) {
       console.error('Error adding content item:', error);
       throw error;
     }
   }
 
-  async updateContentItem(id: string, updates: any) {
+  async updateContentItem(ctx: RequestContext, id: string, updates: any) {
     try {
-      return await storage.updateContentLibraryItem(id, updates);
+      return await storage.updateContentLibraryItem(ctx, id, updates);
     } catch (error) {
       console.error('Error updating content item:', error);
       throw error;
     }
   }
 
-  async deleteContentItem(id: string) {
+  async deleteContentItem(ctx: RequestContext, id: string) {
     try {
-      return await storage.deleteContentLibraryItem(id);
+      return await storage.deleteContentLibraryItem(ctx, id);
     } catch (error) {
       console.error('Error deleting content item:', error);
       throw error;
