@@ -247,16 +247,31 @@ class ApolloService {
 
   // Convert Apollo contact to our prospect format
   async convertApolloContactToProspect(contact: ApolloContact) {
-    // Validate contact has minimum required fields
+    // Validate contact has minimum required fields - allow contacts without email if they have Apollo ID
     if (!contact.id && !contact.email) {
       throw new Error(`Invalid Apollo contact: missing both ID and email`);
     }
 
-    // Validate email if present
-    const email = contact.email || '';
-    if (email && (typeof email !== 'string' || email.length < 3 || !email.includes('@'))) {
-      throw new Error(`Invalid Apollo contact: email format invalid (type: ${typeof email})`);
+    // Handle missing or unlocked emails
+    let email = '';
+    let emailStatus = 'found';
+    
+    if (!contact.email) {
+      email = '';
+      emailStatus = 'not_found';
+    } else if (contact.email.includes('email_not_unlocked') || contact.email.includes('@domain.com')) {
+      // Apollo returns placeholder emails when email credits are needed
+      email = '';
+      emailStatus = 'not_unlocked';
+    } else if (typeof contact.email !== 'string' || contact.email.length < 3 || !contact.email.includes('@')) {
+      email = '';
+      emailStatus = 'invalid';
+    } else {
+      email = contact.email;
     }
+    
+    console.log(`  📧 Contact ${contact.first_name} ${contact.last_name}: email=${email || 'NONE'} (status: ${emailStatus})`);
+
 
     // Build full name with fallback logic
     const fullName = contact.name || 
@@ -274,6 +289,7 @@ class ApolloService {
       lastName: contact.last_name || '',
       fullName,
       primaryEmail: email,
+      emailStatus, // Track whether email was found, not_found, not_unlocked, or invalid
       jobTitle: contact.title || '',
       seniority: contact.seniority || '',
       department: contact.departments?.[0] || '',
@@ -284,10 +300,11 @@ class ApolloService {
       companyLocation: this.formatLocation(contact.organization?.headquarters_location),
       phoneNumber,
       linkedinUrl: contact.linkedin_url || '',
-      enrichmentStatus: 'enriched' as const,
+      enrichmentStatus: emailStatus === 'found' ? 'enriched' as const : 'pending' as const,
       enrichmentData: {
         apollo: contact,
         enrichedAt: new Date().toISOString(),
+        emailStatus,
       },
       leadScore: 0
     };
