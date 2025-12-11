@@ -157,7 +157,24 @@ Respond in JSON format with this exact structure:
               }
             }]
           } as any;
-        }
+        },
+        // OpenRouter fallback (uses OpenAI-compatible API)
+        (openRouterClient) =>
+          openRouterClient.chat.completions.create({
+            model: process.env.OPENROUTER_MODEL || "openai/gpt-4o",
+            messages: [
+              {
+                role: "system",
+                content: systemPrompt
+              },
+              {
+                role: "user",
+                content: analysisPrompt
+              }
+            ],
+            temperature: 0.7,
+            max_tokens: 2000
+          })
       );
 
       const content = response.choices[0]?.message?.content;
