@@ -1059,14 +1059,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log(`  Failed: ${failureCount}`);
         console.log('=========================================\n');
 
+        // Build duplicate details for response
+        const duplicateDetails = Array.from(duplicateEmails).slice(0, 20); // Return up to 20 duplicate emails
+        
         // Invalidate prospects cache
         res.json({
           success: true,
           imported: successCount,
           failed: failureCount,
           duplicates: duplicateCount,
+          duplicateEmails: duplicateDetails,
           errors: errors.slice(0, 10), // Return first 10 errors
-          message: `Imported ${successCount} prospects successfully${failureCount > 0 ? ` (${failureCount} failed)` : ''}`
+          message: successCount > 0 
+            ? `Imported ${successCount} prospects successfully${failureCount > 0 ? ` (${failureCount} failed)` : ''}${duplicateCount > 0 ? `. ${duplicateCount} skipped - emails already exist: ${duplicateDetails.join(', ')}` : ''}`
+            : duplicateCount > 0
+              ? `No prospects imported. ${duplicateCount} email(s) already exist in database: ${duplicateDetails.join(', ')}`
+              : 'No prospects imported'
         });
       }
     } catch (error) {
