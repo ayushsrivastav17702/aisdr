@@ -797,7 +797,7 @@ router.post("/sequences/analyze-response", authenticate, async (req, res) => {
 });
 
 // Generate Follow-up Preview
-router.post("/sequences/followup-preview", async (req, res) => {
+router.post("/sequences/followup-preview", authenticate, async (req, res) => {
   try {
     const { aiFollowUpScheduler } = await import("./services/ai-followup-scheduler.service");
     const { prospectId, emailHistory, followUpType, followUpNumber } = req.body;
@@ -865,7 +865,7 @@ router.post("/sequences/followup-preview", async (req, res) => {
 });
 
 // AI Email Generation - Main endpoint
-router.post("/sequences/ai-generate-email", async (req, res) => {
+router.post("/sequences/ai-generate-email", authenticate, async (req, res) => {
   try {
     const { generateEmail } = await import("./services/ai-email-generator.service");
     const { prospectId, emailType, sequenceStep, tone } = req.body;
@@ -893,7 +893,7 @@ router.post("/sequences/ai-generate-email", async (req, res) => {
 });
 
 // AI Email Variants - A/B testing
-router.post("/sequences/ai-generate-variants", async (req, res) => {
+router.post("/sequences/ai-generate-variants", authenticate, async (req, res) => {
   try {
     const { generateEmailVariants } = await import("./services/ai-email-generator.service");
     const { prospectId, emailType, sequenceStep, variantCount } = req.body;
@@ -921,7 +921,7 @@ router.post("/sequences/ai-generate-variants", async (req, res) => {
 });
 
 // Enhanced Personalization - Deep research
-router.post("/sequences/enhanced-personalization", async (req, res) => {
+router.post("/sequences/enhanced-personalization", authenticate, async (req, res) => {
   try {
     const { generateEnhancedPersonalizedEmail } = await import("./services/enhanced-personalization.service");
     const { prospectId } = req.body;
@@ -945,7 +945,7 @@ router.post("/sequences/enhanced-personalization", async (req, res) => {
 });
 
 // AI Follow-up Preview by Prospect ID
-router.get("/sequences/ai-followup-preview/:prospectId", async (req, res) => {
+router.get("/sequences/ai-followup-preview/:prospectId", authenticate, async (req, res) => {
   try {
     const { aiFollowUpScheduler } = await import("./services/ai-followup-scheduler.service");
     const { prospectId } = req.params;
@@ -999,7 +999,7 @@ router.get("/sequences/ai-followup-preview/:prospectId", async (req, res) => {
 });
 
 // Send reply to prospect
-router.post("/sequences/send-reply", async (req, res) => {
+router.post("/sequences/send-reply", authenticate, async (req, res) => {
   try {
     const { prospectId, sequenceId, subject, body } = req.body;
     
