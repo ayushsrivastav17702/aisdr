@@ -110,7 +110,9 @@ const csrfExcludedPaths = [
   '/api/auth/verify-email',
   '/api/auth/resend-verification',
   '/api/auth/invitations/accept',
-  '/api/csrf-token'
+  '/api/csrf-token',
+  '/api/import/csv',
+  '/api/import/validate-csv'
 ];
 
 app.use((req, res, next) => {
