@@ -474,6 +474,40 @@ router.delete("/sequences/:id/steps/:stepId", authenticate, async (req, res) => 
   }
 });
 
+// Update sequence step
+router.put("/sequences/:id/steps/:stepId", authenticate, async (req, res) => {
+  try {
+    const sequenceId = req.params.id;
+    const stepId = req.params.stepId;
+    const { subject, body, delayDays, stepOrder } = req.body;
+    
+    // Fetch all steps for this sequence to verify ownership
+    const steps = await storage.getSequenceSteps(req.userContext!, sequenceId);
+    
+    // Verify the step belongs to this sequence
+    const stepExists = steps.find(step => step.id === stepId);
+    
+    if (!stepExists) {
+      return res.status(404).json({ 
+        error: "Step not found or does not belong to this sequence" 
+      });
+    }
+    
+    // Build update object with only provided fields
+    const updates: any = {};
+    if (subject !== undefined) updates.subject = subject;
+    if (body !== undefined) updates.body = body;
+    if (delayDays !== undefined) updates.delayDays = delayDays;
+    if (stepOrder !== undefined) updates.stepOrder = stepOrder;
+    
+    const updated = await storage.updateSequenceStep(req.userContext!, stepId, updates);
+    res.json(updated);
+  } catch (error) {
+    console.error("Error updating step:", error);
+    res.status(500).json({ error: "Failed to update step" });
+  }
+});
+
 // Get prospects in sequence
 router.get("/sequences/:id/prospects", authenticate, async (req, res) => {
   try {

@@ -716,6 +716,25 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
+  async updateSequenceStep(ctx: RequestContext, stepId: string, updates: Partial<InsertSequenceStep>): Promise<SequenceStep> {
+    const [step] = await db.select().from(sequenceSteps).where(eq(sequenceSteps.id, stepId));
+    if (!step) {
+      throw new Error('Sequence step not found');
+    }
+    
+    const sequence = await this.getSequence(ctx, step.sequenceId);
+    if (!sequence) {
+      throw new Error('Sequence not found');
+    }
+    
+    const [updated] = await db
+      .update(sequenceSteps)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(sequenceSteps.id, stepId))
+      .returning();
+    return updated;
+  }
+
   async deleteSequenceStep(ctx: RequestContext, stepId: string): Promise<void> {
     const [step] = await db.select().from(sequenceSteps).where(eq(sequenceSteps.id, stepId));
     if (!step) {
