@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -24,10 +24,11 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { useToast } from "@/hooks/use-toast";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { Loader2, Sparkles, Users, Database } from "lucide-react";
+import { Loader2, Sparkles, Users, Database, FileText } from "lucide-react";
 import { ProspectSelector } from "./ProspectSelector";
 
 const automationSchema = z.object({
@@ -35,6 +36,7 @@ const automationSchema = z.object({
   prospectCount: z.coerce.number().int().min(1).max(500),
   selectedProspectIds: z.array(z.string()).optional(),
   aiPersonalizationEnabled: z.boolean(),
+  contentItemIds: z.array(z.string()).optional(),
   jobTitle: z.string().optional(),
   company: z.string().optional(),
   location: z.string().optional(),
@@ -72,6 +74,7 @@ export function AutomationModal({
       prospectCount: 50,
       selectedProspectIds: [],
       aiPersonalizationEnabled: true,
+      contentItemIds: [],
       jobTitle: "",
       company: "",
       location: "",
@@ -86,6 +89,23 @@ export function AutomationModal({
 
   const prospectSource = form.watch("prospectSource");
   const selectedProspectIds = form.watch("selectedProspectIds") || [];
+  const aiPersonalizationEnabled = form.watch("aiPersonalizationEnabled");
+  const contentItemIds = form.watch("contentItemIds") || [];
+
+  // Fetch content library items
+  const { data: contentLibrary } = useQuery({
+    queryKey: ["/api/content-library"],
+    enabled: open && aiPersonalizationEnabled,
+  });
+  const contentItems = (contentLibrary as any[]) || [];
+
+  // Auto-select all content items when AI personalization is enabled
+  useEffect(() => {
+    if (aiPersonalizationEnabled && contentItems.length > 0 && contentItemIds.length === 0) {
+      const allContentIds = contentItems.map((item: any) => item.id);
+      form.setValue("contentItemIds", allContentIds, { shouldDirty: true });
+    }
+  }, [aiPersonalizationEnabled, contentItems.length]);
 
   const handleProspectToggle = (id: string) => {
     const current = form.getValues("selectedProspectIds") || [];
@@ -119,6 +139,7 @@ export function AutomationModal({
           prospectCount: data.prospectCount,
           selectedProspectIds: data.selectedProspectIds,
           aiPersonalizationEnabled: data.aiPersonalizationEnabled,
+          contentItemIds: data.aiPersonalizationEnabled ? data.contentItemIds : undefined,
           scheduledFor: data.scheduledFor,
           timezone: data.timezone,
           exclusionRules: {
@@ -291,6 +312,47 @@ export function AutomationModal({
                 </FormItem>
               )}
             />
+
+            {/* Content Library Selection - Show when AI personalization is enabled */}
+            {aiPersonalizationEnabled && contentItems.length > 0 && (
+              <FormItem className="space-y-3 rounded-lg border p-4">
+                <FormLabel className="flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-purple-500" />
+                  Select Content Library Items
+                </FormLabel>
+                <FormDescription>
+                  Choose which content items AI should use for personalization. All items selected by default.
+                </FormDescription>
+                <ScrollArea className="h-40 border rounded-md p-2">
+                  {contentItems.map((item: any) => (
+                    <div key={item.id} className="flex items-center gap-2 py-2 px-1 hover:bg-muted/50 rounded">
+                      <Checkbox
+                        id={`content-${item.id}`}
+                        checked={contentItemIds.includes(item.id)}
+                        onCheckedChange={(checked) => {
+                          const current = form.getValues("contentItemIds") || [];
+                          if (checked) {
+                            form.setValue("contentItemIds", [...current, item.id], { shouldDirty: true });
+                          } else {
+                            form.setValue("contentItemIds", current.filter((id: string) => id !== item.id), { shouldDirty: true });
+                          }
+                        }}
+                        data-testid={`checkbox-content-${item.id}`}
+                      />
+                      <Label htmlFor={`content-${item.id}`} className="cursor-pointer flex-1">
+                        <div className="font-medium text-sm">{item.title}</div>
+                        <div className="text-xs text-muted-foreground">{item.type}</div>
+                      </Label>
+                    </div>
+                  ))}
+                </ScrollArea>
+                {contentItemIds.length > 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    {contentItemIds.length} of {contentItems.length} content items selected
+                  </p>
+                )}
+              </FormItem>
+            )}
 
             {/* Apollo Filters Section - Only show when Apollo is selected */}
             {prospectSource === "apollo" && (

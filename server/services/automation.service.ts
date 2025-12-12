@@ -301,12 +301,16 @@ class AutomationService {
           await this.addEnrolledProspect(automationRunId, prospectId);
 
           // 🔥 NEW: Schedule the first email step
+          // Extract contentItemIds from apolloFilters if available
+          const contentItemIds = apolloFilters?.contentItemIds as string[] | undefined;
+          
           await sequenceStepService.scheduleFirstEmail({
             sequenceProspectId: sequenceProspect.id,
             sequenceId,
             prospectId,
             automationRunId,
             aiPersonalizationEnabled,
+            contentItemIds,
             userId
           });
 
