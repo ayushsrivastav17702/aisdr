@@ -485,6 +485,38 @@ export function PersonalizationWizard({
   };
 
   const handleCompleteWizard = () => {
+    // Handle batch mode
+    if (batchMode && batchGeneratedEmails.size > 0) {
+      // Build array of emails with prospect info for batch mode
+      const emailsWithProspects = Array.from(batchGeneratedEmails.entries()).map(([prospectId, emailData]) => ({
+        ...emailData,
+        prospectId,
+        prospect: (prospects as any[]).find((p: any) => p.id.toString() === prospectId.toString())
+      }));
+      
+      if (onComplete) {
+        // Pass array of emails for batch mode
+        onComplete(emailsWithProspects);
+      } else {
+        toast({
+          title: "Emails Generated Successfully",
+          description: `${emailsWithProspects.length} personalized email${emailsWithProspects.length > 1 ? 's have' : ' has'} been generated and saved.`,
+        });
+      }
+      
+      onClose();
+      // Reset wizard state
+      setCurrentStep(0);
+      setSelectedProspectId('');
+      setPersonalizationData(null);
+      setGeneratedEmail(null);
+      setBatchGeneratedEmails(new Map());
+      setCustomPrompt('');
+      setAdvancedAnalysisData(null);
+      return;
+    }
+    
+    // Handle single prospect mode
     if (generatedEmail && selectedProspectId) {
       // Include prospect information with the generated email
       const emailWithProspect = {
@@ -512,15 +544,17 @@ export function PersonalizationWizard({
       setGeneratedEmail(null);
       setCustomPrompt('');
       setAdvancedAnalysisData(null);
-    } else if (!generatedEmail) {
-      toast({
-        title: "No Email Generated",
-        description: "Please go back to the email settings step and click 'Generate Personalized Email' first.",
-        variant: "destructive"
-      });
-      // Go back to email settings step where they can generate
-      setCurrentStep(3);
+      return;
     }
+    
+    // No email generated - show error
+    toast({
+      title: "No Email Generated",
+      description: "Please go back to the email settings step and click 'Generate Personalized Email' first.",
+      variant: "destructive"
+    });
+    // Go back to email settings step where they can generate
+    setCurrentStep(3);
   };
 
   const selectedProspect = selectedProspectId ? 
