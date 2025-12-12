@@ -119,12 +119,26 @@ class ApolloService {
     const data = await response.json();
     
     // Log detailed search results for debugging
+    const people = data.people || data.contacts || [];
     console.log('🔍 Apollo Search Response:', {
       totalEntries: data.pagination?.total_entries || 0,
-      contactsReturned: (data.people || data.contacts || []).length,
-      firstContactEmail: (data.people || data.contacts || [])[0]?.email || 'no email',
+      contactsReturned: people.length,
+      firstContact: people[0] ? {
+        name: people[0].name,
+        email: people[0].email,
+        title: people[0].title,
+        company: people[0].organization?.name
+      } : 'no contacts returned',
+      hasContactsKey: 'contacts' in data,
+      hasPeopleKey: 'people' in data,
+      allKeys: Object.keys(data),
       revealPersonalEmails: requestBody.reveal_personal_emails,
     });
+    
+    // If no people returned but total_entries > 0, log warning
+    if (people.length === 0 && data.pagination?.total_entries > 0) {
+      console.warn('⚠️ APOLLO CREDITS ISSUE: Apollo returned total_entries but no people data. This usually means your account needs email credits to access the data.');
+    }
     
     // Track API usage
     await rateLimiterService.trackApiUsage('apollo', 1);
