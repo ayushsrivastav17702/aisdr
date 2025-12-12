@@ -797,6 +797,57 @@ export class DatabaseStorage implements IStorage {
     
     const enrolled: SequenceProspect[] = [];
     for (const prospectId of prospectIds) {
+      // 🔥 CRITICAL: "Latest sequence takes priority" logic
+      // Before enrolling, cancel any pending emails from ALL previous sequences
+      // and mark previous enrollments as "superseded"
+      
+      // Step 1: Find all previous active enrollments for this prospect (in OTHER sequences)
+      const previousEnrollments = await db
+        .select()
+        .from(sequenceProspects)
+        .where(and(
+          eq(sequenceProspects.prospectId, prospectId),
+          sql`${sequenceProspects.sequenceId} != ${sequenceId}`,
+          eq(sequenceProspects.status, 'active')
+        ));
+      
+      if (previousEnrollments.length > 0) {
+        console.log(`[Enrollment] Found ${previousEnrollments.length} previous active enrollments for prospect ${prospectId} - superseding them`);
+        
+        // Step 2: Cancel ALL pending emails for this prospect from previous sequences
+        const cancelledEmails = await db
+          .update(emailQueue)
+          .set({ 
+            status: 'cancelled',
+            error: 'Superseded by new sequence enrollment'
+          })
+          .where(and(
+            eq(emailQueue.prospectId, prospectId),
+            eq(emailQueue.userId, ctx.userId),
+            sql`${emailQueue.sequenceId} != ${sequenceId}`,
+            sql`${emailQueue.status} IN ('pending', 'scheduled')`
+          ))
+          .returning({ id: emailQueue.id });
+        
+        if (cancelledEmails.length > 0) {
+          console.log(`[Enrollment] Cancelled ${cancelledEmails.length} pending emails from previous sequences`);
+        }
+        
+        // Step 3: Mark previous enrollments as "superseded"
+        for (const prevEnrollment of previousEnrollments) {
+          await db
+            .update(sequenceProspects)
+            .set({ 
+              status: 'superseded',
+              completedAt: new Date()
+            })
+            .where(eq(sequenceProspects.id, prevEnrollment.id));
+          
+          console.log(`[Enrollment] Marked previous enrollment ${prevEnrollment.id} (sequence ${prevEnrollment.sequenceId}) as superseded`);
+        }
+      }
+      
+      // Step 4: Now enroll in the new sequence
       const [result] = await db
         .insert(sequenceProspects)
         .values({
