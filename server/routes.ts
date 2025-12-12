@@ -1911,6 +1911,15 @@ Return ONLY the email body text, no subject line needed.`;
     try {
       const { emails, sequenceId } = req.body;
       
+      console.log(`📧 [save-batch] Received ${emails?.length || 0} emails for sequenceId: ${sequenceId}`);
+      console.log(`📧 [save-batch] First email sample:`, emails?.[0] ? { 
+        prospectId: emails[0].prospectId,
+        hasSubject: !!emails[0].subject,
+        hasBody: !!emails[0].body,
+        subjectLength: emails[0].subject?.length || 0,
+        bodyLength: emails[0].body?.length || 0
+      } : 'none');
+      
       if (!emails || !Array.isArray(emails) || emails.length === 0) {
         return res.status(400).json({ error: "Emails array is required" });
       }
