@@ -5,7 +5,7 @@ import {
   type AutomationRun,
   type InsertAutomationRun 
 } from "@shared/schema";
-import { eq, sql as drizzleSql } from "drizzle-orm";
+import { eq, and, sql as drizzleSql } from "drizzle-orm";
 import { sql } from "drizzle-orm/sql";
 import { apolloService } from "./apollo.service";
 import exclusionFilterService, { type ExclusionRules } from "./exclusion-filter.service";
@@ -401,6 +401,7 @@ class AutomationService {
 
   /**
    * Get all automation runs with sequence steps for timeline display
+   * Computes email/reply counts dynamically from actual data for accuracy
    */
   async getAutomationRuns(userId?: string, limit = 50): Promise<Array<AutomationRun & { sequenceName?: string; sequenceSteps?: any[] }>> {
     const runs = await db.query.automationRuns.findMany({
@@ -429,14 +430,79 @@ class AutomationService {
       }
     }) as any[];
 
-    return runs.map(run => ({
-      ...run,
-      sequenceName: run.sequence?.name,
-      sequenceSteps: (run.sequence?.steps || []).map((step: any) => ({
-        ...step,
-        delayHours: 0 // Default to 0 since schema only has delayDays
-      }))
+    // 🔥 DYNAMIC COUNTS: Compute emails/replies from actual data for accuracy
+    // This ensures dashboard shows correct stats even if counters weren't updated
+    const { emailQueue, emailReplies, sequenceProspects: spTable } = await import("@shared/schema");
+    
+    const enrichedRuns = await Promise.all(runs.map(async (run) => {
+      try {
+        // Get all sequence_prospects linked to this automation run
+        const enrolledProspects = await db.select({ prospectId: spTable.prospectId })
+          .from(spTable)
+          .where(eq(spTable.automationRunId, run.id));
+        
+        let prospectIds = enrolledProspects.map(p => p.prospectId);
+        
+        // 🔥 FALLBACK: If no sequence_prospects have automationRunId set,
+        // use the selectedProspectIds from apolloFilters (for existing prospect automations)
+        if (prospectIds.length === 0) {
+          const filters = run.apolloFilters as any;
+          if (filters?.selectedProspectIds && Array.isArray(filters.selectedProspectIds)) {
+            prospectIds = filters.selectedProspectIds;
+          }
+        }
+        
+        let computedEmailsSent = run.emailsSent || 0;
+        let computedRepliesReceived = run.repliesReceived || 0;
+        
+        // If we have prospect IDs, compute actual counts from email data
+        if (prospectIds.length > 0) {
+          // Count emails actually sent for these prospects in this sequence
+          const sentEmails = await db.select({ id: emailQueue.id })
+            .from(emailQueue)
+            .where(and(
+              eq(emailQueue.sequenceId, run.sequenceId),
+              eq(emailQueue.status, 'sent'),
+              sql`${emailQueue.prospectId} = ANY(ARRAY[${sql.raw(prospectIds.map(id => `'${id}'`).join(','))}]::uuid[])`
+            ));
+          
+          // Count replies received for these prospects
+          const replies = await db.select({ id: emailReplies.id })
+            .from(emailReplies)
+            .where(and(
+              eq(emailReplies.sequenceId, run.sequenceId),
+              sql`${emailReplies.prospectId} = ANY(ARRAY[${sql.raw(prospectIds.map(id => `'${id}'`).join(','))}]::uuid[])`
+            ));
+          
+          computedEmailsSent = Math.max(run.emailsSent || 0, sentEmails.length);
+          computedRepliesReceived = Math.max(run.repliesReceived || 0, replies.length);
+        }
+        
+        return {
+          ...run,
+          emailsSent: computedEmailsSent,
+          repliesReceived: computedRepliesReceived,
+          sequenceName: run.sequence?.name,
+          sequenceSteps: (run.sequence?.steps || []).map((step: any) => ({
+            ...step,
+            delayHours: 0 // Default to 0 since schema only has delayDays
+          }))
+        };
+      } catch (error) {
+        console.error(`[Automation ${run.id}] Error computing dynamic counts:`, error);
+        // Fallback to stored values if computation fails
+        return {
+          ...run,
+          sequenceName: run.sequence?.name,
+          sequenceSteps: (run.sequence?.steps || []).map((step: any) => ({
+            ...step,
+            delayHours: 0
+          }))
+        };
+      }
     }));
+
+    return enrichedRuns;
   }
 
   /**
