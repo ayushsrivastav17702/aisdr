@@ -5,7 +5,7 @@ import {
   type AutomationRun,
   type InsertAutomationRun 
 } from "@shared/schema";
-import { eq, and, sql as drizzleSql } from "drizzle-orm";
+import { eq, and, inArray, sql as drizzleSql } from "drizzle-orm";
 import { sql } from "drizzle-orm/sql";
 import { apolloService } from "./apollo.service";
 import exclusionFilterService, { type ExclusionRules } from "./exclusion-filter.service";
@@ -457,13 +457,15 @@ class AutomationService {
         
         // If we have prospect IDs, compute actual counts from email data
         if (prospectIds.length > 0) {
+          console.log(`[Automation ${run.id}] Computing dynamic counts for ${prospectIds.length} prospects`);
+          
           // Count emails actually sent for these prospects in this sequence
           const sentEmails = await db.select({ id: emailQueue.id })
             .from(emailQueue)
             .where(and(
               eq(emailQueue.sequenceId, run.sequenceId),
               eq(emailQueue.status, 'sent'),
-              sql`${emailQueue.prospectId} = ANY(ARRAY[${sql.raw(prospectIds.map(id => `'${id}'`).join(','))}]::uuid[])`
+              inArray(emailQueue.prospectId, prospectIds)
             ));
           
           // Count replies received for these prospects
@@ -471,8 +473,10 @@ class AutomationService {
             .from(emailReplies)
             .where(and(
               eq(emailReplies.sequenceId, run.sequenceId),
-              sql`${emailReplies.prospectId} = ANY(ARRAY[${sql.raw(prospectIds.map(id => `'${id}'`).join(','))}]::uuid[])`
+              inArray(emailReplies.prospectId, prospectIds)
             ));
+          
+          console.log(`[Automation ${run.id}] Found ${sentEmails.length} sent emails, ${replies.length} replies`);
           
           computedEmailsSent = Math.max(run.emailsSent || 0, sentEmails.length);
           computedRepliesReceived = Math.max(run.repliesReceived || 0, replies.length);
