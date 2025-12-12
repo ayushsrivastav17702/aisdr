@@ -30,7 +30,7 @@ export function ProspectSelector({
   const currentSelectedIds = Array.isArray(selectedIds) ? selectedIds : [];
 
   const filteredProspects = prospects.filter((prospect: any) =>
-    [prospect.firstName, prospect.lastName, prospect.email, prospect.company, prospect.jobTitle]
+    [prospect.firstName, prospect.lastName, prospect.fullName, prospect.primaryEmail, prospect.companyName, prospect.jobTitle]
       .filter(Boolean)
       .some(field => field.toLowerCase().includes(searchTerm.toLowerCase()))
   );
@@ -120,25 +120,25 @@ export function ProspectSelector({
                     <div className="flex items-center gap-2">
                       <User className="w-4 h-4 text-muted-foreground" />
                       <span className="font-medium">
-                        {prospect.firstName} {prospect.lastName}
+                        {prospect.fullName || `${prospect.firstName || ''} ${prospect.lastName || ''}`.trim() || 'Unknown'}
                       </span>
                     </div>
-                    {prospect.email && (
+                    {prospect.primaryEmail && (
                       <p className="text-sm text-muted-foreground">
-                        {prospect.email}
+                        {prospect.primaryEmail}
                       </p>
                     )}
-                    {prospect.jobTitle && (
+                    {(prospect.jobTitle || prospect.companyName) && (
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <Building2 className="w-3 h-3" />
-                        <span>{prospect.jobTitle}</span>
-                        {prospect.company && <span>at {prospect.company}</span>}
+                        {prospect.jobTitle && <span>{prospect.jobTitle}</span>}
+                        {prospect.companyName && <span>at {prospect.companyName}</span>}
                       </div>
                     )}
-                    {prospect.location && (
+                    {prospect.contactLocation && (
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                         <MapPin className="w-3 h-3" />
-                        <span>{prospect.location}</span>
+                        <span>{prospect.contactLocation}</span>
                       </div>
                     )}
                   </div>
