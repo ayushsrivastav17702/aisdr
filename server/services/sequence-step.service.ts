@@ -18,6 +18,7 @@ interface ScheduleFirstEmailParams {
   prospectId: string;
   automationRunId: string;
   aiPersonalizationEnabled: boolean;
+  contentItemIds?: string[]; // Content library items for AI personalization
   userId: string; // Required for multi-tenant security
 }
 
@@ -35,6 +36,7 @@ class SequenceStepService {
       prospectId,
       automationRunId,
       aiPersonalizationEnabled,
+      contentItemIds,
       userId
     } = params;
 
@@ -125,6 +127,7 @@ class SequenceStepService {
             emailType: 'cold_outreach',
             tone: insights.recommendations.tone as any,
             sequenceStep: 1,
+            contentItemIds, // Pass selected content library items
             customContext: {
               prospectCompany: prospect.companyName || undefined,
               prospectTitle: prospect.jobTitle || undefined,
