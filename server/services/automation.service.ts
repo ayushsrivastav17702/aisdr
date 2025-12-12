@@ -494,6 +494,17 @@ class AutomationService {
   }
 
   /**
+   * Delete an automation run and its related data
+   */
+  async deleteAutomationRun(id: string): Promise<void> {
+    // Delete the automation run (cascade will handle related sequence_prospects)
+    await db.delete(automationRuns)
+      .where(eq(automationRuns.id, id));
+    
+    console.log(`[Automation ${id}] Deleted successfully`);
+  }
+
+  /**
    * Log error for automation run
    */
   async logAutomationError(

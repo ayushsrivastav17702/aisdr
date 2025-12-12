@@ -55,6 +55,7 @@ import {
   Timer,
   Send,
   CalendarClock,
+  Trash2,
 } from "lucide-react";
 import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
@@ -206,6 +207,24 @@ export default function AutomationDashboard() {
     },
     onError: () => {
       toast({ title: "❌ Failed", description: "Could not retry prospects", variant: "destructive" });
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("DELETE", `/api/automation/${id}`, {});
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "✅ Automation Deleted", description: "Automation has been deleted successfully" });
+      queryClient.invalidateQueries({ queryKey: ["/api/automation/list"] });
+    },
+    onError: (error: any) => {
+      toast({ 
+        title: "❌ Failed", 
+        description: error?.message || "Could not delete automation", 
+        variant: "destructive" 
+      });
     },
   });
 
@@ -527,6 +546,23 @@ export default function AutomationDashboard() {
                                   View Replies ({automation.repliesReceived})
                                 </Link>
                               </DropdownMenuItem>
+                            )}
+                            {automation.status !== "running" && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem 
+                                  onClick={() => {
+                                    if (confirm("Are you sure you want to delete this automation? This action cannot be undone.")) {
+                                      deleteMutation.mutate(automation.id);
+                                    }
+                                  }}
+                                  className="text-destructive focus:text-destructive"
+                                  data-testid={`button-delete-automation-${automation.id}`}
+                                >
+                                  <Trash2 className="w-4 h-4 mr-2" />
+                                  Delete
+                                </DropdownMenuItem>
+                              </>
                             )}
                           </DropdownMenuContent>
                         </DropdownMenu>
