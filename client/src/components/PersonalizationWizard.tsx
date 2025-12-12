@@ -462,7 +462,16 @@ export function PersonalizationWizard({
     } else {
       // Single prospect mode
       const dataToUse = advancedAnalysisData || personalizationData;
-      if (!dataToUse) return;
+      if (!dataToUse) {
+        toast({
+          title: "Analysis Required",
+          description: "Please complete the prospect analysis step first before generating an email.",
+          variant: "destructive"
+        });
+        // Go back to analysis step
+        setCurrentStep(1);
+        return;
+      }
       
       generateEmailMutation.mutate({
         prospectId: selectedProspectId,
@@ -506,9 +515,11 @@ export function PersonalizationWizard({
     } else if (!generatedEmail) {
       toast({
         title: "No Email Generated",
-        description: "Please generate an email first before completing.",
+        description: "Please go back to the email settings step and click 'Generate Personalized Email' first.",
         variant: "destructive"
       });
+      // Go back to email settings step where they can generate
+      setCurrentStep(3);
     }
   };
 
