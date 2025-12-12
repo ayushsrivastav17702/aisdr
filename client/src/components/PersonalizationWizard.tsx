@@ -476,7 +476,7 @@ export function PersonalizationWizard({
   };
 
   const handleCompleteWizard = () => {
-    if (generatedEmail && selectedProspectId && onComplete) {
+    if (generatedEmail && selectedProspectId) {
       // Include prospect information with the generated email
       const emailWithProspect = {
         ...generatedEmail,
@@ -484,7 +484,17 @@ export function PersonalizationWizard({
         prospect: (prospects as any[]).find((p: any) => p.id.toString() === selectedProspectId.toString())
       };
       
-      onComplete(emailWithProspect);
+      // Call onComplete if provided (e.g., when used in sequences)
+      if (onComplete) {
+        onComplete(emailWithProspect);
+      } else {
+        // Show success toast when no onComplete handler (e.g., from prospects table)
+        toast({
+          title: "Email Generated Successfully",
+          description: "The personalized email has been generated and saved. You can use it when creating a sequence.",
+        });
+      }
+      
       onClose();
       // Reset wizard state
       setCurrentStep(0);
@@ -493,6 +503,12 @@ export function PersonalizationWizard({
       setGeneratedEmail(null);
       setCustomPrompt('');
       setAdvancedAnalysisData(null);
+    } else if (!generatedEmail) {
+      toast({
+        title: "No Email Generated",
+        description: "Please generate an email first before completing.",
+        variant: "destructive"
+      });
     }
   };
 
