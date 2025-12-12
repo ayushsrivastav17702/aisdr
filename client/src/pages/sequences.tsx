@@ -1297,6 +1297,11 @@ function SequenceTab({
   setDescription: (desc: string) => void;
 }) {
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingStep, setEditingStep] = useState<any>(null);
+  const [editSubject, setEditSubject] = useState("");
+  const [editBody, setEditBody] = useState("");
+  const [editDelayDays, setEditDelayDays] = useState("0");
   const [showAIPersonalization, setShowAIPersonalization] = useState(false);
   const [showAITemplate, setShowAITemplate] = useState(false);
   const [subject, setSubject] = useState("");
@@ -1334,6 +1339,27 @@ function SequenceTab({
       toast({ title: "Step deleted successfully" });
     },
   });
+
+  const updateStepMutation = useMutation({
+    mutationFn: async ({ stepId, data }: { stepId: string; data: any }) => {
+      const res = await apiRequest("PUT", `/api/sequences/${sequenceId}/steps/${stepId}`, data);
+      return await res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/sequences', sequenceId] });
+      setShowEditModal(false);
+      setEditingStep(null);
+      toast({ title: "Step updated successfully" });
+    },
+  });
+
+  const openEditModal = (step: any) => {
+    setEditingStep(step);
+    setEditSubject(step.subject);
+    setEditBody(step.body);
+    setEditDelayDays(String(step.delayDays || 0));
+    setShowEditModal(true);
+  };
 
   const handleUseAIEmail = (generatedEmail: { subject: string; body: string }) => {
     setSubject(generatedEmail.subject);
@@ -1456,14 +1482,24 @@ function SequenceTab({
                         <h4 className="font-semibold text-lg">{step.subject}</h4>
                         <p className="text-muted-foreground text-sm mt-2 line-clamp-2">{step.body}</p>
                       </div>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => deleteStepMutation.mutate(step.id)}
-                        data-testid={`button-delete-step-${step.id}`}
-                      >
-                        <Trash2 className="w-4 h-4 text-red-500" />
-                      </Button>
+                      <div className="flex gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => openEditModal(step)}
+                          data-testid={`button-edit-step-${step.id}`}
+                        >
+                          <Edit2 className="w-4 h-4 text-blue-500" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => deleteStepMutation.mutate(step.id)}
+                          data-testid={`button-delete-step-${step.id}`}
+                        >
+                          <Trash2 className="w-4 h-4 text-red-500" />
+                        </Button>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
@@ -1565,6 +1601,69 @@ function SequenceTab({
                 data-testid="button-save-step"
               >
                 {addStepMutation.isPending ? "Adding..." : "Add Step"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Step Modal */}
+      <Dialog open={showEditModal} onOpenChange={setShowEditModal}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Edit Email Step</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Subject Line</Label>
+              <Input
+                value={editSubject}
+                onChange={(e) => setEditSubject(e.target.value)}
+                placeholder="Enter email subject..."
+                data-testid="input-edit-step-subject"
+              />
+            </div>
+            <div>
+              <Label>Email Body</Label>
+              <Textarea
+                value={editBody}
+                onChange={(e) => setEditBody(e.target.value)}
+                placeholder="Enter email content..."
+                rows={10}
+                data-testid="input-edit-step-body"
+              />
+            </div>
+            <div>
+              <Label>Delay (days after previous step)</Label>
+              <Input
+                type="number"
+                value={editDelayDays}
+                onChange={(e) => setEditDelayDays(e.target.value)}
+                min="0"
+                data-testid="input-edit-step-delay"
+              />
+            </div>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => setShowEditModal(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  if (editingStep && editBody.trim() && editSubject.trim()) {
+                    updateStepMutation.mutate({
+                      stepId: editingStep.id,
+                      data: {
+                        subject: editSubject,
+                        body: editBody,
+                        delayDays: parseInt(editDelayDays) || 0
+                      }
+                    });
+                  }
+                }}
+                disabled={!editBody.trim() || !editSubject.trim() || updateStepMutation.isPending}
+                data-testid="button-update-step"
+              >
+                {updateStepMutation.isPending ? "Saving..." : "Save Changes"}
               </Button>
             </div>
           </div>
