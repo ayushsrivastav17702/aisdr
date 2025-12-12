@@ -528,17 +528,42 @@ router.post("/sequences/:id/prospects", authenticate, async (req, res) => {
       return res.status(400).json({ error: "prospectIds array is required" });
     }
     
-    const enrolled = await storage.enrollProspects(req.userContext!, req.params.id, prospectIds);
+    const sequenceId = req.params.id;
+    const userId = req.userContext!.userId;
     
-    const sequence = await storage.getSequence(req.userContext!, req.params.id);
+    const enrolled = await storage.enrollProspects(req.userContext!, sequenceId, prospectIds);
+    
+    const sequence = await storage.getSequence(req.userContext!, sequenceId);
     if (sequence) {
-      await storage.updateSequence(req.userContext!, req.params.id, {
+      await storage.updateSequence(req.userContext!, sequenceId, {
         totalProspects: (sequence.totalProspects || 0) + enrolled.length,
         activeProspects: (sequence.activeProspects || 0) + enrolled.length,
       });
     }
     
-    res.json({ message: `${enrolled.length} prospects enrolled`, enrolled });
+    // 🔥 CRITICAL: Schedule first email for each enrolled prospect (10-second SLA)
+    // Import the sequence step service
+    const sequenceStepServiceModule = await import("./services/sequence-step.service");
+    const sequenceStepService = sequenceStepServiceModule.sequenceStepService || sequenceStepServiceModule.default;
+    
+    for (const enrolledProspect of enrolled) {
+      try {
+        await sequenceStepService.scheduleFirstEmail({
+          sequenceProspectId: enrolledProspect.id,
+          sequenceId,
+          prospectId: enrolledProspect.prospectId,
+          automationRunId: '', // Manual enrollment, no automation run
+          aiPersonalizationEnabled: false, // Use template content for manual enrollment
+          userId
+        });
+        console.log(`[Manual Enrollment] Scheduled first email for prospect ${enrolledProspect.prospectId}`);
+      } catch (scheduleError) {
+        console.error(`[Manual Enrollment] Failed to schedule email for prospect ${enrolledProspect.prospectId}:`, scheduleError);
+        // Continue with other prospects even if one fails
+      }
+    }
+    
+    res.json({ message: `${enrolled.length} prospects enrolled and emails scheduled`, enrolled });
   } catch (error) {
     console.error("Error enrolling prospects:", error);
     res.status(500).json({ error: "Failed to enroll prospects" });
