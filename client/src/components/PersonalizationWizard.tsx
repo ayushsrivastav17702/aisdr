@@ -425,14 +425,17 @@ export function PersonalizationWizard({
             const emailData = await emailResponse.json();
             emailsMap.set(prospectId, emailData);
             successCount++;
+            console.log(`✅ Batch: Generated email for ${prospectName}`);
           } else {
+            const errorText = await emailResponse.text();
+            console.error(`❌ Batch: Email generation failed for ${prospectName}:`, errorText);
             failCount++;
             failedProspects.push(prospectName);
           }
         } catch (error: any) {
           failCount++;
           failedProspects.push(prospectName);
-          console.error(`Error processing ${prospectName}:`, error);
+          console.error(`❌ Batch: Error processing ${prospectName}:`, error?.message || error);
         }
       }
       
@@ -485,6 +488,13 @@ export function PersonalizationWizard({
   };
 
   const handleCompleteWizard = () => {
+    console.log('🔍 handleCompleteWizard called:', {
+      batchMode,
+      batchGeneratedEmailsSize: batchGeneratedEmails.size,
+      generatedEmail: !!generatedEmail,
+      selectedProspectId
+    });
+    
     // Handle batch mode
     if (batchMode && batchGeneratedEmails.size > 0) {
       // Build array of emails with prospect info for batch mode
