@@ -1596,7 +1596,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let hasContentLibrary = false;
       if (contentItemIds && contentItemIds.length > 0) {
         const allContentItems = await storage.getContentLibraryItems(req.userContext!);
-        const selectedContent = allContentItems.filter(item => contentItemIds.includes(item.id));
+        console.log(`📚 Content Library: Requested IDs: ${JSON.stringify(contentItemIds)}`);
+        console.log(`📚 Content Library: Available items: ${allContentItems.map(i => `${i.id}:${i.title}`).join(', ')}`);
+        
+        // Handle both string and number ID comparisons
+        const selectedContent = allContentItems.filter(item => 
+          contentItemIds.includes(item.id) || contentItemIds.includes(String(item.id))
+        );
+        console.log(`📚 Content Library: Selected ${selectedContent.length} items: ${selectedContent.map(i => i.title).join(', ')}`);
         
         if (selectedContent.length > 0) {
           hasContentLibrary = true;

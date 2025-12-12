@@ -34,6 +34,7 @@ export interface EmailGenerationRequest {
   previousEmails?: string[];
   customContext?: Partial<PromptContext>;
   tone?: 'professional' | 'casual' | 'urgent' | 'friendly';
+  contentItemIds?: string[]; // User-selected content library items
 }
 
 export interface GeneratedEmail {
@@ -107,11 +108,21 @@ export async function generateEmail(request: EmailGenerationRequest, prospectDat
       console.warn(`⚠️ Prospect ${prospect.id} has limited data. Consider enriching for better personalization.`);
     }
 
-    // Fetch content library items and filter by industry
+    // Fetch content library items - use selected IDs if provided, otherwise filter by industry
     const allContentLibraryItems = await storage.getContentLibraryItems(reqCtx);
-    const contentLibraryItems = filterContentByIndustry(allContentLibraryItems, prospect);
+    let contentLibraryItems;
     
-    console.log(`📚 Content Library: ${allContentLibraryItems.length} total items, ${contentLibraryItems.length} relevant to ${prospect.companyIndustry || 'all industries'}`);
+    if (request.contentItemIds && request.contentItemIds.length > 0) {
+      // Use specifically selected content items
+      contentLibraryItems = allContentLibraryItems.filter(item => 
+        request.contentItemIds!.includes(item.id.toString())
+      );
+      console.log(`📚 Content Library: Using ${contentLibraryItems.length} user-selected items: ${contentLibraryItems.map(i => i.title).join(', ')}`);
+    } else {
+      // Fall back to industry-based filtering
+      contentLibraryItems = filterContentByIndustry(allContentLibraryItems, prospect);
+      console.log(`📚 Content Library: ${allContentLibraryItems.length} total items, ${contentLibraryItems.length} relevant to ${prospect.companyIndustry || 'all industries'}`);
+    }
     
     const promptContext = buildPromptContext(prospect, request, contentLibraryItems);
     const template = getPromptTemplate(request.emailType);
