@@ -106,7 +106,7 @@ class SequenceStepService {
       // STEP 2: Conditional AI Personalization
       // =====================================
       if (aiPersonalizationEnabled) {
-        console.log(`[SequenceStep] AI personalization enabled - generating personalized email for prospect ${prospectId}`);
+        console.log(`[SequenceStep] AI personalization enabled - checking for pre-generated email for prospect ${prospectId}`);
         
         try {
           // Create request context for multi-tenant operations
@@ -115,47 +115,97 @@ class SequenceStepService {
             roles: [] // Empty roles array for automation context
           };
 
-          // Analyze prospect to get insights
-          const insights = await intelligentPersonalizationService.analyzeProspect(ctx, prospectId);
-          
-          console.log(`[SequenceStep] Analysis complete - recommended tone: ${insights.recommendations.tone}`);
-
-          // Generate personalized email using insights
-          // CRITICAL: Pass the already-fetched prospect to avoid "Prospect not found" errors
-          const generatedEmail = await generateEmail({
-            prospectId,
-            emailType: 'cold_outreach',
-            tone: insights.recommendations.tone as any,
-            sequenceStep: 1,
-            contentItemIds, // Pass selected content library items
-            customContext: {
-              prospectCompany: prospect.companyName || undefined,
-              prospectTitle: prospect.jobTitle || undefined,
-              prospectIndustry: prospect.companyIndustry || undefined
-            }
-          }, prospect);
-
-          // Use AI-generated content
-          subject = generatedEmail.subject;
-          body = generatedEmail.body;
-
-          console.log(`[SequenceStep] AI email generated - subject: "${subject.substring(0, 50)}..."`);
-
-          // Save personalization results for analytics (with userId for multi-tenant security)
-          await db.insert(personalizationResults).values({
-            prospectId,
-            userId, // CRITICAL: Multi-tenant security - required field
-            personalizationScore: generatedEmail.confidenceScore || 85,
-            insights: insights as any,
-            emailSuggestions: {
-              subject: generatedEmail.subject,
-              body: generatedEmail.body,
-              reasoning: generatedEmail.reasoning,
-              factors: generatedEmail.personalizationFactors
-            }
+          // FIRST: Check for pre-generated personalized email from PersonalizationWizard
+          // Query all recent personalization results for this prospect/user
+          const allPersonalizations = await db.query.personalizationResults.findMany({
+            where: and(
+              eq(personalizationResults.prospectId, prospectId),
+              eq(personalizationResults.userId, userId)
+            ),
+            orderBy: (pr, { desc }) => [desc(pr.createdAt)],
+            limit: 10 // Check recent ones
           });
 
-          console.log(`[SequenceStep] Personalization results saved for prospect ${prospectId}`);
+          // Find one that matches this sequence (or fall back to most recent if none match)
+          let matchingPersonalization = allPersonalizations.find(p => {
+            const emailSuggestions = p.emailSuggestions as { sequenceId?: string } | null;
+            return emailSuggestions?.sequenceId === sequenceId;
+          });
+          
+          // If no sequence-specific match, check if most recent has subject/body (for backward compat)
+          if (!matchingPersonalization && allPersonalizations.length > 0) {
+            const recent = allPersonalizations[0];
+            const emailSuggestions = recent.emailSuggestions as { subject?: string; body?: string; sequenceId?: string } | null;
+            // Only use if it has no sequenceId (legacy) or matches current sequence
+            if (emailSuggestions?.subject && emailSuggestions?.body && !emailSuggestions?.sequenceId) {
+              matchingPersonalization = recent;
+              console.log(`[SequenceStep] Using legacy personalization (no sequenceId) for prospect ${prospectId}`);
+            }
+          }
+
+          if (matchingPersonalization?.emailSuggestions) {
+            const savedEmail = matchingPersonalization.emailSuggestions as { subject?: string; body?: string; generatedAt?: string; sequenceId?: string };
+            
+            if (savedEmail.subject && savedEmail.body) {
+              // Use pre-generated email instead of generating new one
+              subject = savedEmail.subject;
+              body = savedEmail.body;
+              
+              console.log(`[SequenceStep] ✅ Using pre-generated personalized email for prospect ${prospectId} (sequence: ${savedEmail.sequenceId || 'any'}, generated: ${savedEmail.generatedAt || 'unknown'})`);
+              
+              // Skip AI generation, go directly to queue email
+            } else {
+              // Pre-generated email incomplete, fall through to generate new one
+              console.log(`[SequenceStep] Pre-generated email incomplete, generating new one for prospect ${prospectId}`);
+            }
+          }
+          
+          // Only generate new email if we didn't use a pre-generated one
+          if (subject === firstStep.subject && body === firstStep.body) {
+            console.log(`[SequenceStep] No pre-generated email found - generating new personalized email for prospect ${prospectId}`);
+            
+            // Analyze prospect to get insights
+            const insights = await intelligentPersonalizationService.analyzeProspect(ctx, prospectId);
+          
+            console.log(`[SequenceStep] Analysis complete - recommended tone: ${insights.recommendations.tone}`);
+
+            // Generate personalized email using insights
+            // CRITICAL: Pass the already-fetched prospect to avoid "Prospect not found" errors
+            const generatedEmail = await generateEmail({
+              prospectId,
+              emailType: 'cold_outreach',
+              tone: insights.recommendations.tone as any,
+              sequenceStep: 1,
+              contentItemIds, // Pass selected content library items
+              customContext: {
+                prospectCompany: prospect.companyName || undefined,
+                prospectTitle: prospect.jobTitle || undefined,
+                prospectIndustry: prospect.companyIndustry || undefined
+              }
+            }, prospect);
+
+            // Use AI-generated content
+            subject = generatedEmail.subject;
+            body = generatedEmail.body;
+
+            console.log(`[SequenceStep] AI email generated - subject: "${subject.substring(0, 50)}..."`);
+
+            // Save personalization results for analytics (with userId for multi-tenant security)
+            await db.insert(personalizationResults).values({
+              prospectId,
+              userId, // CRITICAL: Multi-tenant security - required field
+              personalizationScore: generatedEmail.confidenceScore || 85,
+              insights: insights as any,
+              emailSuggestions: {
+                subject: generatedEmail.subject,
+                body: generatedEmail.body,
+                reasoning: generatedEmail.reasoning,
+                factors: generatedEmail.personalizationFactors
+              }
+            });
+
+            console.log(`[SequenceStep] Personalization results saved for prospect ${prospectId}`);
+          }
 
         } catch (aiError) {
           // AI personalization failed - generate fallback content with prospect data

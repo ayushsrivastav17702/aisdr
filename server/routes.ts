@@ -1906,6 +1906,74 @@ Return ONLY the email body text, no subject line needed.`;
     }
   });
 
+  // Save batch personalized emails for prospects
+  app.post("/api/personalization/save-batch", authenticate, async (req, res) => {
+    try {
+      const { emails, sequenceId } = req.body;
+      
+      if (!emails || !Array.isArray(emails) || emails.length === 0) {
+        return res.status(400).json({ error: "Emails array is required" });
+      }
+
+      const savedResults = [];
+      const errors = [];
+
+      for (const email of emails) {
+        const { prospectId, subject, body, prospect } = email;
+        
+        if (!prospectId || !subject || !body) {
+          errors.push({ prospectId, error: "Missing required fields (prospectId, subject, body)" });
+          continue;
+        }
+
+        try {
+          // Verify prospect exists and belongs to user
+          const existingProspect = await storage.getProspect(req.userContext!, prospectId);
+          if (!existingProspect) {
+            errors.push({ prospectId, error: "Prospect not found" });
+            continue;
+          }
+
+          // Save personalization result with generated email in emailSuggestions
+          const result = await storage.createPersonalizationResult(req.userContext!, {
+            prospectId: prospectId.toString(),
+            userId: req.userContext!.userId,
+            personalizationScore: 85, // High score since it's manually generated
+            variables: null,
+            insights: null,
+            emailSuggestions: { subject, body, generatedAt: new Date().toISOString(), sequenceId },
+            contentRecommendations: null,
+            linkedinData: null
+          });
+
+          savedResults.push({
+            prospectId,
+            personalizationResultId: result.id,
+            prospectName: prospect ? `${prospect.firstName} ${prospect.lastName}` : existingProspect.fullName
+          });
+
+          console.log(`✅ Saved personalized email for prospect ${prospectId}`);
+        } catch (error: any) {
+          console.error(`❌ Failed to save personalized email for ${prospectId}:`, error);
+          errors.push({ prospectId, error: error.message || "Unknown error" });
+        }
+      }
+
+      res.json({
+        success: savedResults.length > 0,
+        savedCount: savedResults.length,
+        errorCount: errors.length,
+        savedResults,
+        errors: errors.length > 0 ? errors : undefined
+      });
+    } catch (error) {
+      console.error("Batch personalization save error:", error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Failed to save personalized emails" 
+      });
+    }
+  });
+
   // Apollo company search
   app.post("/api/apollo/company-search", authenticate, async (req, res) => {
     try {
