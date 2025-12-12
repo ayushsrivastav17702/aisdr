@@ -413,4 +413,46 @@ export function registerAutomationRoutes(app: Express) {
       });
     }
   });
+
+  /**
+   * DELETE /api/automation/:id
+   * Delete an automation run (PROTECTED: requires authentication)
+   */
+  app.delete("/api/automation/:id", authenticate, async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const userId = req.userContext?.userId;
+
+      if (!userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      // Verify the automation belongs to this user
+      const automation = await automationService.getAutomationRun(id);
+      if (!automation) {
+        return res.status(404).json({ error: "Automation not found" });
+      }
+
+      if (automation.userId !== userId) {
+        return res.status(403).json({ error: "Not authorized to delete this automation" });
+      }
+
+      // Don't allow deleting running automations
+      if (automation.status === "running") {
+        return res.status(400).json({ error: "Cannot delete a running automation. Stop it first." });
+      }
+
+      await automationService.deleteAutomationRun(id);
+
+      res.json({ 
+        success: true,
+        message: "Automation deleted successfully" 
+      });
+    } catch (error) {
+      console.error("Error deleting automation:", error);
+      res.status(500).json({ 
+        error: "Failed to delete automation" 
+      });
+    }
+  });
 }
