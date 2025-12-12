@@ -8,6 +8,23 @@ class OpenAIHelper {
   private anthropic: Anthropic | null = null;
   private useBackupKey: boolean = false;
 
+  /**
+   * Check if an error is a 429 quota exceeded error
+   * OpenAI SDK can return status in different places
+   */
+  private isQuotaError(error: any): boolean {
+    // Check direct status field
+    if (error?.status === 429) return true;
+    // Check response status
+    if (error?.response?.status === 429) return true;
+    // Check error code
+    if (error?.code === 'insufficient_quota' || error?.code === 'rate_limit_exceeded') return true;
+    // Check error message for 429 indicator
+    if (typeof error?.message === 'string' && error.message.includes('429')) return true;
+    if (typeof error?.message === 'string' && error.message.toLowerCase().includes('quota')) return true;
+    return false;
+  }
+
   constructor() {
     if (process.env.OPENAI_API_KEY) {
       this.primaryClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -56,8 +73,11 @@ class OpenAIHelper {
     try {
       return await apiCall(client);
     } catch (error: any) {
+      const isQuota = this.isQuotaError(error);
+      console.log(`🔍 AI error detected - isQuotaError: ${isQuota}, useBackupKey: ${this.useBackupKey}, status: ${error?.status}, message: ${error?.message?.substring(0, 100)}`);
+      
       // If backup key is already active and fails with 429, try OpenRouter then Anthropic
-      if (error?.status === 429 && this.useBackupKey) {
+      if (isQuota && this.useBackupKey) {
         console.error('⚠️ Backup OpenAI key quota exceeded:', error?.message || error);
         this.useBackupKey = false; // Reset for future requests
         
@@ -86,7 +106,7 @@ class OpenAIHelper {
       }
       
       // Check if it's a quota error (429) and we have a backup
-      if (error?.status === 429 && !this.useBackupKey && this.backupClient) {
+      if (isQuota && !this.useBackupKey && this.backupClient) {
         console.log('⚠️ Primary OpenAI API key quota exceeded, switching to backup key...');
         this.useBackupKey = true;
         
@@ -122,7 +142,7 @@ class OpenAIHelper {
       }
       
       // If primary fails with 429 and no backup, try OpenRouter then Anthropic
-      if (error?.status === 429 && !this.backupClient) {
+      if (isQuota && !this.backupClient) {
         // Try OpenRouter first if available
         if (this.openRouterClient && openRouterFallback) {
           console.log('⚠️ OpenAI quota exceeded, falling back to OpenRouter...');
