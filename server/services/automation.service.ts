@@ -297,6 +297,9 @@ class AutomationService {
 
           console.log(`[Automation ${automationRunId}] Enrolled prospect ${prospectId}`);
 
+          // 🔥 Track enrolled prospect in automation run
+          await this.addEnrolledProspect(automationRunId, prospectId);
+
           // 🔥 NEW: Schedule the first email step
           await sequenceStepService.scheduleFirstEmail({
             sequenceProspectId: sequenceProspect.id,
