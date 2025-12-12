@@ -1673,7 +1673,63 @@ function SequenceTab({
       <PersonalizationWizard 
         open={showAIPersonalization}
         onClose={() => setShowAIPersonalization(false)}
-        onComplete={async (email) => {
+        onComplete={async (emailData) => {
+          // Handle batch mode (array of emails)
+          if (Array.isArray(emailData)) {
+            try {
+              // Save all personalized emails to database
+              const saveResponse = await apiRequest("POST", "/api/personalization/save-batch", {
+                emails: emailData,
+                sequenceId
+              });
+              const saveResult = await saveResponse.json() as { savedCount: number; errorCount: number };
+              
+              setShowAIPersonalization(false);
+              
+              // Auto-enroll all prospects in the sequence
+              const prospectIds = emailData
+                .filter(e => e.prospectId)
+                .map(e => e.prospectId.toString());
+              
+              if (prospectIds.length > 0 && sequenceId) {
+                try {
+                  await apiRequest("POST", `/api/sequences/${sequenceId}/prospects`, { 
+                    prospectIds 
+                  });
+                  
+                  queryClient.invalidateQueries({ queryKey: ['/api/sequences', sequenceId, 'prospects'] });
+                  
+                  toast({
+                    title: "Batch Personalization Complete",
+                    description: `${saveResult.savedCount} personalized emails saved and ${prospectIds.length} prospects enrolled in sequence`
+                  });
+                } catch (enrollError) {
+                  console.error("Failed to auto-enroll prospects:", enrollError);
+                  toast({
+                    title: "Emails Saved",
+                    description: `${saveResult.savedCount} personalized emails saved. Auto-enrollment failed - please enroll prospects manually.`,
+                    variant: "default"
+                  });
+                }
+              } else {
+                toast({
+                  title: "Personalized Emails Saved",
+                  description: `${saveResult.savedCount} personalized emails have been saved for these prospects.`
+                });
+              }
+            } catch (error) {
+              console.error("Failed to save batch personalized emails:", error);
+              toast({
+                title: "Save Failed",
+                description: "Could not save personalized emails. Please try again.",
+                variant: "destructive"
+              });
+            }
+            return;
+          }
+          
+          // Handle single email mode (existing behavior)
+          const email = emailData;
           if (email && email.subject && email.body) {
             setSubject(email.subject);
             setBody(email.body);
