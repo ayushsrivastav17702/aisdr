@@ -951,6 +951,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
               await storage.updateProspect(req.userContext!, prospect.id, {
                 enrichmentStatus: 'partial',
                 enrichmentData: {
+                  ...(prospect.enrichmentData as object || {}),
                   error: 'Email is locked',
                   apollo: enrichmentResponse.contact,
                   enrichedAt: new Date().toISOString(),
@@ -960,8 +961,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
               failureCount++;
             } else {
               await storage.updateProspect(req.userContext!, prospect.id, {
-                ...enrichedProspect,
+                primaryEmail: enrichedProspect.primaryEmail || prospect.primaryEmail,
+                phoneNumber: enrichedProspect.phoneNumber || prospect.phoneNumber,
+                companyDomain: enrichedProspect.companyDomain || prospect.companyDomain,
+                companySize: enrichedProspect.companySize || prospect.companySize,
+                companyIndustry: enrichedProspect.companyIndustry || prospect.companyIndustry,
                 enrichmentStatus: 'enriched',
+                enrichmentData: {
+                  ...(prospect.enrichmentData as object || {}),
+                  apollo: enrichmentResponse.contact,
+                  enrichedAt: new Date().toISOString(),
+                },
               });
               results.push({ id: prospect.id, success: true, source: 'apollo', name: prospect.fullName, email: enrichedProspect.primaryEmail });
               successCount++;
@@ -970,6 +980,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             await storage.updateProspect(req.userContext!, prospect.id, {
               enrichmentStatus: 'partial',
               enrichmentData: {
+                ...(prospect.enrichmentData as object || {}),
                 error: 'No data found',
                 enrichedAt: new Date().toISOString(),
               },
@@ -985,6 +996,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           await storage.updateProspect(req.userContext!, prospect.id, {
             enrichmentStatus: 'failed',
             enrichmentData: {
+              ...(prospect.enrichmentData as object || {}),
               error: error instanceof Error ? error.message : 'Enrichment failed',
               enrichedAt: new Date().toISOString(),
             },
