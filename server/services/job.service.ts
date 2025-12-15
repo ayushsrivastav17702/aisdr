@@ -228,17 +228,18 @@ class JobService {
         }));
 
         try {
-          const enrichedContacts = await apolloService.bulkEnrichContacts(contactsToEnrich);
+          const enrichmentResult = await apolloService.bulkEnrichContacts(contactsToEnrich);
+          const enrichedMatches = enrichmentResult.matches || [];
           
           // Update prospects with enriched data
           for (let j = 0; j < batch.length; j++) {
             const prospect = batch[j];
-            const enrichedContact = enrichedContacts[j];
+            const enrichedContact = enrichedMatches[j];
             
             try {
-              if (enrichedContact?.contact) {
+              if (enrichedContact) {
                 // Full enrichment successful
-                const enrichedProspect = await apolloService.convertApolloContactToProspect(enrichedContact.contact);
+                const enrichedProspect = await apolloService.convertApolloContactToProspect(enrichedContact);
                 await storage.updateProspect(ctx, prospect.id, {
                   ...enrichedProspect,
                   enrichmentStatus: 'enriched',
@@ -420,10 +421,11 @@ class JobService {
           per_page: Math.min(perPage, maxResults - totalProcessed),
         });
 
-        if (!searchResponse.contacts.length) break;
+        const contacts = searchResponse.contacts || [];
+        if (!contacts.length) break;
 
         // Convert and save prospects
-        for (const contact of searchResponse.contacts) {
+        for (const contact of contacts) {
           try {
             const prospectData = await apolloService.convertApolloContactToProspect(contact);
             
@@ -441,7 +443,7 @@ class JobService {
           }
         }
 
-        totalProcessed += searchResponse.contacts.length;
+        totalProcessed += contacts.length;
         page++;
 
         // Update progress
@@ -451,7 +453,7 @@ class JobService {
         });
         await job.updateProgress(Math.floor((totalProcessed / maxResults) * 100));
 
-        if (searchResponse.contacts.length < perPage) break;
+        if (contacts.length < perPage) break;
       }
 
       // Complete the job
