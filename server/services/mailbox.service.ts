@@ -293,6 +293,139 @@ export class MailboxService {
     
     await this.setDefaultMailbox(mailbox.id);
   }
+
+  async checkMailboxHealth(mailboxId: string): Promise<{
+    healthy: boolean;
+    smtp: { connected: boolean; error?: string };
+    imap: { connected: boolean; error?: string };
+    lastChecked: string;
+  }> {
+    const mailbox = await this.getMailboxById(mailboxId);
+    if (!mailbox) {
+      throw new Error("Mailbox not found");
+    }
+
+    const result = {
+      healthy: false,
+      smtp: { connected: false, error: undefined as string | undefined },
+      imap: { connected: false, error: undefined as string | undefined },
+      lastChecked: new Date().toISOString()
+    };
+
+    const password = mailbox.smtpPassword ? this.decrypt(mailbox.smtpPassword) : "";
+
+    if (!password) {
+      result.smtp.error = "No SMTP password configured";
+      result.imap.error = "No IMAP password configured";
+      return result;
+    }
+
+    const nodemailer = await import("nodemailer");
+    try {
+      const smtpConfig = {
+        host: mailbox.smtpHost || "smtp.gmail.com",
+        port: mailbox.smtpPort || 587,
+        secure: mailbox.smtpSecure ?? false,
+        auth: {
+          user: mailbox.smtpUser || mailbox.email,
+          pass: password
+        }
+      };
+
+      const transporter = nodemailer.default.createTransport(smtpConfig);
+      await transporter.verify();
+      result.smtp.connected = true;
+    } catch (error) {
+      result.smtp.error = error instanceof Error ? error.message : "SMTP connection failed";
+    }
+
+    const Imap = (await import("imap")).default;
+    try {
+      // Determine IMAP host based on provider with sensible fallbacks
+      let imapHost = "imap.gmail.com"; // Default to Gmail
+      
+      // Provider-specific IMAP hosts
+      const providerImapHosts: Record<string, string> = {
+        gmail: "imap.gmail.com",
+        outlook: "outlook.office365.com",
+        sendgrid: "imap.gmail.com" // SendGrid doesn't have IMAP, default to Gmail
+      };
+      
+      if (mailbox.provider && providerImapHosts[mailbox.provider]) {
+        imapHost = providerImapHosts[mailbox.provider];
+      } else if (mailbox.provider === "smtp" && mailbox.smtpHost) {
+        // For custom SMTP, try to derive IMAP host intelligently
+        const smtpHost = mailbox.smtpHost.toLowerCase();
+        
+        // Common SMTP → IMAP host mappings
+        if (smtpHost.includes("gmail")) {
+          imapHost = "imap.gmail.com";
+        } else if (smtpHost.includes("outlook") || smtpHost.includes("office365")) {
+          imapHost = "outlook.office365.com";
+        } else if (smtpHost.includes("yahoo")) {
+          imapHost = "imap.mail.yahoo.com";
+        } else if (smtpHost.startsWith("smtp.")) {
+          // Generic smtp.domain.com → imap.domain.com transformation
+          imapHost = smtpHost.replace(/^smtp\./, "imap.");
+        } else {
+          // Fallback: prepend imap. to the domain
+          imapHost = `imap.${smtpHost.replace(/^mail\./, "")}`;
+        }
+      }
+      
+      const imapConnected = await new Promise<boolean>((resolve) => {
+        const imapConfig = {
+          user: mailbox.smtpUser || mailbox.email,
+          password: password,
+          host: imapHost,
+          port: 993,
+          tls: true,
+          tlsOptions: { rejectUnauthorized: false },
+          connTimeout: 10000,
+          authTimeout: 10000
+        };
+
+        const imap = new Imap(imapConfig);
+
+        const timeout = setTimeout(() => {
+          result.imap.error = "IMAP connection timeout";
+          try { imap.end(); } catch {}
+          resolve(false);
+        }, 15000);
+
+        imap.once("ready", () => {
+          // Test actual INBOX access to verify credentials fully work
+          imap.openBox("INBOX", true, (err: any) => {
+            clearTimeout(timeout);
+            if (err) {
+              result.imap.error = `INBOX access failed: ${err.message || err}`;
+              imap.end();
+              resolve(false);
+            } else {
+              imap.end();
+              resolve(true);
+            }
+          });
+        });
+
+        imap.once("error", (err: any) => {
+          clearTimeout(timeout);
+          result.imap.error = err?.message || "IMAP connection failed";
+          try { imap.end(); } catch {}
+          resolve(false);
+        });
+
+        imap.connect();
+      });
+
+      result.imap.connected = imapConnected;
+    } catch (error) {
+      result.imap.error = error instanceof Error ? error.message : "IMAP connection failed";
+    }
+
+    result.healthy = result.smtp.connected && result.imap.connected;
+    return result;
+  }
 }
 
 export const mailboxService = new MailboxService();

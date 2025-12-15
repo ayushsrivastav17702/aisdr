@@ -226,6 +226,64 @@ router.post("/mailboxes/:id/test", authenticate, async (req, res) => {
   }
 });
 
+router.get("/mailboxes/:id/health", authenticate, async (req, res) => {
+  try {
+    if (!req.userContext?.userId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    const mailbox = await mailboxService.getMailboxById(req.params.id);
+    if (!mailbox) {
+      return res.status(404).json({ error: "Mailbox not found" });
+    }
+    if (mailbox.userId !== req.userContext.userId) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
+    const health = await mailboxService.checkMailboxHealth(req.params.id);
+    res.json(health);
+  } catch (error) {
+    console.error("Mailbox health check error:", error);
+    res.status(500).json({ 
+      healthy: false,
+      error: error instanceof Error ? error.message : "Health check failed" 
+    });
+  }
+});
+
+router.get("/mailboxes/health/all", authenticate, async (req, res) => {
+  try {
+    if (!req.userContext?.userId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    const mailboxes = await mailboxService.getMailboxesByUserId(req.userContext.userId);
+    const healthResults = await Promise.all(
+      mailboxes.map(async (mailbox) => {
+        const health = await mailboxService.checkMailboxHealth(mailbox.id);
+        return {
+          id: mailbox.id,
+          email: mailbox.email,
+          name: mailbox.name,
+          ...health
+        };
+      })
+    );
+    
+    res.json({
+      mailboxes: healthResults,
+      summary: {
+        total: healthResults.length,
+        healthy: healthResults.filter(m => m.healthy).length,
+        unhealthy: healthResults.filter(m => !m.healthy).length
+      }
+    });
+  } catch (error) {
+    console.error("All mailboxes health check error:", error);
+    res.status(500).json({ error: error instanceof Error ? error.message : "Health check failed" });
+  }
+});
+
 router.post("/mailboxes/:id/set-default", authenticate, async (req, res) => {
   try {
     if (!req.userContext?.userId) {

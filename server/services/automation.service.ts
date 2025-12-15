@@ -283,7 +283,52 @@ class AutomationService {
           });
 
           if (existingEnrollment) {
-            console.log(`[Automation ${automationRunId}] Prospect ${prospectId} already enrolled`);
+            console.log(`[Automation ${automationRunId}] Prospect ${prospectId} already enrolled (status: ${existingEnrollment.status})`);
+            
+            // 🔥 FIX: Still track the existing enrollment in this run (await to ensure consistency)
+            try {
+              await this.addEnrolledProspect(automationRunId, prospectId);
+            } catch (enrollTrackError) {
+              console.warn(`[Automation ${automationRunId}] Failed to track existing enrollment:`, enrollTrackError);
+            }
+            
+            // Check if this enrollment needs to be reactivated
+            // Re-enroll if: status is 'failed' or no automationRunId set
+            const needsReactivation = existingEnrollment.status === 'failed' || 
+              !existingEnrollment.automationRunId;
+            
+            if (needsReactivation) {
+              console.log(`[Automation ${automationRunId}] Reactivating stale enrollment for prospect ${prospectId}`);
+              
+              // Update the enrollment with current automation run and re-fetch
+              const [updatedEnrollment] = await db.update(sequenceProspects)
+                .set({ 
+                  status: "active",
+                  automationRunId,
+                  currentStepNumber: 0,
+                  completedAt: null
+                })
+                .where(eq(sequenceProspects.id, existingEnrollment.id))
+                .returning();
+              
+              if (updatedEnrollment) {
+                // Schedule the first email using the updated enrollment data
+                const contentItemIds = apolloFilters?.contentItemIds as string[] | undefined;
+                
+                await sequenceStepService.scheduleFirstEmail({
+                  sequenceProspectId: updatedEnrollment.id,
+                  sequenceId,
+                  prospectId,
+                  automationRunId,
+                  aiPersonalizationEnabled,
+                  contentItemIds,
+                  userId
+                });
+                
+                console.log(`[Automation ${automationRunId}] Reactivated and scheduled first email for prospect ${prospectId}`);
+              }
+            }
+            
             continue;
           }
 
@@ -651,18 +696,28 @@ class AutomationService {
   }
 
   /**
-   * Add prospect to enrolled list
+   * Add prospect to enrolled list (atomic, idempotent operation)
+   * Uses SQL to avoid race conditions with concurrent enrollments
    */
   async addEnrolledProspect(automationRunId: string, prospectId: string): Promise<void> {
-    const run = await this.getAutomationRun(automationRunId);
-    if (!run) return;
-
-    const enrolled = (run.prospectsEnrolled as string[]) || [];
-    if (!enrolled.includes(prospectId)) {
-      enrolled.push(prospectId);
-      await db.update(automationRuns)
-        .set({ prospectsEnrolled: enrolled as any })
-        .where(eq(automationRuns.id, automationRunId));
+    try {
+      // Use atomic SQL update with JSONB array append + deduplication
+      // This prevents race conditions by doing the check-and-add in a single SQL statement
+      await db.execute(sql`
+        UPDATE automation_runs 
+        SET prospects_enrolled = (
+          SELECT jsonb_agg(DISTINCT value)
+          FROM (
+            SELECT value FROM jsonb_array_elements(COALESCE(prospects_enrolled, '[]'::jsonb))
+            UNION 
+            SELECT ${prospectId}::jsonb
+          ) AS combined
+        )
+        WHERE id = ${automationRunId}
+      `);
+    } catch (error) {
+      // Log but don't throw - enrollment tracking is non-critical
+      console.warn(`[Automation ${automationRunId}] Failed to track enrolled prospect ${prospectId}:`, error);
     }
   }
 
