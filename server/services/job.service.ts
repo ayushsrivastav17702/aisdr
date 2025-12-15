@@ -1,27 +1,21 @@
 import { Queue, Worker, Job as BullJob } from 'bullmq';
-import { Redis } from 'ioredis';
 import { storage, type RequestContext } from '../storage';
 import { apolloService } from './apollo.service';
 import { type Job, type Prospect, type InsertProspect } from '@shared/schema';
 import { parse } from 'csv-parse/sync';
 import { readFileSync } from 'fs';
+import { redisConnection, isRedisConfigured } from '../queue/redis-connection';
 
-// Check if Redis is configured
-const REDIS_ENABLED = !!process.env.REDIS_URL;
+// Use shared Redis connection
+const redis = redisConnection;
+const REDIS_ENABLED = isRedisConfigured && !!redis;
 
-// Redis connection (only if configured)
-let redis: Redis | null = null;
+// Job queues (only if Redis is configured)
 let enrichmentQueue: Queue | null = null;
 let importQueue: Queue | null = null;
 let searchQueue: Queue | null = null;
 
-if (REDIS_ENABLED) {
-  redis = new Redis(process.env.REDIS_URL!, {
-    enableReadyCheck: false,
-    maxRetriesPerRequest: null,
-  });
-
-  // Job queues
+if (REDIS_ENABLED && redis) {
   enrichmentQueue = new Queue('enrichment', { connection: redis });
   importQueue = new Queue('import', { connection: redis });
   searchQueue = new Queue('search', { connection: redis });
