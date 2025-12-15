@@ -68,34 +68,35 @@ async function initializeSequence(userContext: RequestContext, sequenceId: strin
       let emailSubject = firstStep.subject;
       let emailBody = firstStep.body;
       
-      // ONLY check for personalized emails if aiPersonalizationEnabled is true
-      if (usePersonalization) {
-        // Query personalization_results for pre-generated email matching this prospect + sequence
-        const allPersonalizations = await db.query.personalizationResults.findMany({
-          where: and(
-            eq(personalizationResults.prospectId, enrolledProspect.prospectId),
-            eq(personalizationResults.userId, userContext.userId)
-          ),
-          orderBy: (pr, { desc }) => [desc(pr.createdAt)],
-          limit: 10
-        });
+      // ALWAYS check for pre-generated personalized emails (from PersonalizationWizard)
+      // These are explicitly created by the user, so we should always use them
+      const allPersonalizations = await db.query.personalizationResults.findMany({
+        where: and(
+          eq(personalizationResults.prospectId, enrolledProspect.prospectId),
+          eq(personalizationResults.userId, userContext.userId)
+        ),
+        orderBy: (pr, { desc }) => [desc(pr.createdAt)],
+        limit: 10
+      });
+      
+      // STRICT: Only use personalization that matches THIS specific sequence
+      const matchingPersonalization = allPersonalizations.find(p => {
+        const emailSuggestions = p.emailSuggestions as { sequenceId?: string } | null;
+        return emailSuggestions?.sequenceId === sequenceId;
+      });
+      
+      if (matchingPersonalization?.emailSuggestions) {
+        const savedEmail = matchingPersonalization.emailSuggestions as { subject?: string; body?: string; generatedAt?: string; sequenceId?: string };
         
-        // STRICT: Only use personalization that matches THIS specific sequence
-        // No legacy fallback to prevent cross-sequence contamination
-        const matchingPersonalization = allPersonalizations.find(p => {
-          const emailSuggestions = p.emailSuggestions as { sequenceId?: string } | null;
-          return emailSuggestions?.sequenceId === sequenceId;
-        });
-        
-        if (matchingPersonalization?.emailSuggestions) {
-          const savedEmail = matchingPersonalization.emailSuggestions as { subject?: string; body?: string; generatedAt?: string; sequenceId?: string };
-          
-          if (savedEmail.subject && savedEmail.body) {
-            emailSubject = savedEmail.subject;
-            emailBody = savedEmail.body;
-            console.log(`  ✨ Using pre-generated personalized email for prospect ${enrolledProspect.prospectId} (generated: ${savedEmail.generatedAt || 'unknown'})`);
-          }
+        if (savedEmail.subject && savedEmail.body) {
+          emailSubject = savedEmail.subject;
+          emailBody = savedEmail.body;
+          console.log(`  ✨ Using pre-generated personalized email for prospect ${enrolledProspect.prospectId} (generated: ${savedEmail.generatedAt || 'unknown'})`);
         }
+      } else if (usePersonalization) {
+        // No pre-generated email found, and AI personalization is enabled
+        // The aiPersonalizationEnabled flag controls ON-THE-FLY generation (done elsewhere)
+        console.log(`  ℹ️ No pre-generated email found for prospect ${enrolledProspect.prospectId}, using template`);
       }
       
       // Add email to queue with personalized content (or template fallback)
