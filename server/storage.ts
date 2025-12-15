@@ -8,6 +8,7 @@ import {
   sequenceProspects,
   emails,
   emailReplies,
+  emailQueue,
   personalizationResults,
   contentLibrary,
   automationRuns,
@@ -40,7 +41,7 @@ import {
   type InsertUnsubscribe
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, inArray, and, or, ilike, count, SQL } from "drizzle-orm";
+import { eq, desc, inArray, and, or, ilike, count, sql, SQL } from "drizzle-orm";
 
 export type RequestContext = {
   userId: string;
@@ -819,7 +820,7 @@ export class DatabaseStorage implements IStorage {
           .update(emailQueue)
           .set({ 
             status: 'cancelled',
-            error: 'Superseded by new sequence enrollment'
+            lastError: 'Superseded by new sequence enrollment'
           })
           .where(and(
             eq(emailQueue.prospectId, prospectId),
