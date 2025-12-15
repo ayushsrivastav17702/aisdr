@@ -1,6 +1,6 @@
 import { Queue, Worker, Job as BullJob } from 'bullmq';
 import { Redis } from 'ioredis';
-import { storage } from '../storage';
+import { storage, type RequestContext } from '../storage';
 import { apolloService } from './apollo.service';
 import { type Job, type Prospect, type InsertProspect } from '@shared/schema';
 import { parse } from 'csv-parse/sync';
@@ -27,15 +27,17 @@ if (REDIS_ENABLED) {
   searchQueue = new Queue('search', { connection: redis });
 }
 
-// Job data interfaces
+// Job data interfaces - all include userId for multi-tenant context
 interface EnrichmentJobData {
   jobId: string;
+  userId: string;
   prospectIds: string[];
   batchSize?: number;
 }
 
 interface ImportJobData {
   jobId: string;
+  userId: string;
   filePath: string;
   fieldMappings: Record<string, string>;
   skipDuplicates: boolean;
@@ -44,9 +46,18 @@ interface ImportJobData {
 
 interface SearchJobData {
   jobId: string;
+  userId: string;
   query: string;
   apolloFilters: any;
   maxResults?: number;
+}
+
+// Helper to create a synthetic RequestContext for background jobs
+function createJobContext(userId: string): RequestContext {
+  return {
+    userId,
+    roles: [],
+  };
 }
 
 class JobService {
@@ -85,24 +96,26 @@ class JobService {
     });
   }
 
-  async createEnrichmentJob(prospectIds: string[]): Promise<Job> {
+  async createEnrichmentJob(ctx: RequestContext, prospectIds: string[]): Promise<Job> {
     if (!REDIS_ENABLED || !enrichmentQueue) {
       throw new Error('Job queue not available. Please configure Redis to enable background job processing.');
     }
 
     // Create job record in database
-    const job = await storage.createJob({
+    const job = await storage.createJob(ctx, {
       type: 'enrichment',
       title: 'Prospect Enrichment',
       description: `Enriching ${prospectIds.length} prospects`,
       totalItems: prospectIds.length,
       status: 'queued',
       jobData: { prospectIds },
+      userId: ctx.userId,
     });
 
-    // Add to queue
+    // Add to queue with userId for context
     await enrichmentQueue.add('enrichment', {
       jobId: job.id,
+      userId: ctx.userId,
       prospectIds,
       batchSize: 10,
     });
@@ -111,6 +124,7 @@ class JobService {
   }
 
   async createImportJob(
+    ctx: RequestContext,
     filePath: string, 
     fieldMappings: Record<string, string>,
     options: { skipDuplicates?: boolean; autoEnrich?: boolean } = {}
@@ -119,17 +133,19 @@ class JobService {
       throw new Error('Job queue not available. Please configure Redis to enable background job processing.');
     }
 
-    const job = await storage.createJob({
+    const job = await storage.createJob(ctx, {
       type: 'import',
       title: 'CSV Import',
       description: `Importing prospects from ${filePath}`,
-      totalItems: 0, // Will be updated when file is processed
+      totalItems: 0,
       status: 'queued',
       jobData: { filePath, fieldMappings, ...options },
+      userId: ctx.userId,
     });
 
     await importQueue.add('import', {
       jobId: job.id,
+      userId: ctx.userId,
       filePath,
       fieldMappings,
       skipDuplicates: options.skipDuplicates ?? true,
@@ -139,22 +155,24 @@ class JobService {
     return job;
   }
 
-  async createSearchJob(query: string, apolloFilters: any, maxResults = 1000): Promise<Job> {
+  async createSearchJob(ctx: RequestContext, query: string, apolloFilters: any, maxResults = 1000): Promise<Job> {
     if (!REDIS_ENABLED || !searchQueue) {
       throw new Error('Job queue not available. Please configure Redis to enable background job processing.');
     }
 
-    const job = await storage.createJob({
+    const job = await storage.createJob(ctx, {
       type: 'search',
       title: 'Apollo Search',
       description: `Searching: ${query}`,
       totalItems: maxResults,
       status: 'queued',
       jobData: { query, apolloFilters, maxResults },
+      userId: ctx.userId,
     });
 
     await searchQueue.add('search', {
       jobId: job.id,
+      userId: ctx.userId,
       query,
       apolloFilters,
       maxResults,
@@ -164,11 +182,12 @@ class JobService {
   }
 
   private async processEnrichmentJob(job: BullJob<EnrichmentJobData>) {
-    const { jobId, prospectIds, batchSize = 10 } = job.data;
+    const { jobId, userId, prospectIds, batchSize = 10 } = job.data;
+    const ctx = createJobContext(userId);
     
     try {
       // Update job status
-      await storage.updateJob(jobId, {
+      await storage.updateJob(ctx, jobId, {
         status: 'running',
         startedAt: new Date(),
       });
@@ -246,7 +265,7 @@ class JobService {
         }
 
         // Update job progress
-        await storage.updateJob(jobId, {
+        await storage.updateJob(ctx, jobId, {
           processedItems: Math.min(i + batchSize, prospects.length),
           successCount,
           failureCount,
@@ -258,7 +277,7 @@ class JobService {
       }
 
       // Complete the job
-      await storage.updateJob(jobId, {
+      await storage.updateJob(ctx, jobId, {
         status: 'completed',
         completedAt: new Date(),
         processedItems: prospects.length,
@@ -269,7 +288,7 @@ class JobService {
 
       return { success: true, successCount, failureCount, partialCount };
     } catch (error) {
-      await storage.updateJob(jobId, {
+      await storage.updateJob(ctx, jobId, {
         status: 'failed',
         completedAt: new Date(),
         error: error instanceof Error ? error.message : 'Unknown error',
@@ -279,19 +298,18 @@ class JobService {
   }
 
   private async processImportJob(job: BullJob<ImportJobData>) {
-    const { jobId, filePath, fieldMappings, skipDuplicates, autoEnrich } = job.data;
+    const { jobId, userId, filePath, fieldMappings, skipDuplicates, autoEnrich } = job.data;
+    const ctx = createJobContext(userId);
     
     try {
-      await storage.updateJob(jobId, {
+      await storage.updateJob(ctx, jobId, {
         status: 'running',
         startedAt: new Date(),
       });
 
-      // This would typically parse the uploaded CSV file
-      // For now, we'll simulate the process
       const csvData = await this.parseCSVFile(filePath);
       
-      await storage.updateJob(jobId, {
+      await storage.updateJob(ctx, jobId, {
         totalItems: csvData.length,
       });
 
@@ -303,12 +321,12 @@ class JobService {
         const row = csvData[i];
         
         try {
-          // Map CSV row to prospect format
-          const prospectData = this.mapCSVRowToProspect(row, fieldMappings);
+          // Map CSV row to prospect format, including userId
+          const prospectData = this.mapCSVRowToProspect(row, fieldMappings, userId);
           
           // Check for duplicates if enabled
           if (skipDuplicates && prospectData.primaryEmail) {
-            const duplicates = await storage.checkDuplicateProspects([prospectData.primaryEmail]);
+            const duplicates = await storage.checkDuplicateProspects(ctx, [prospectData.primaryEmail]);
             if (duplicates.length > 0) {
               duplicateCount++;
               continue;
@@ -316,12 +334,12 @@ class JobService {
           }
 
           // Create prospect
-          const prospect = await storage.createProspect(prospectData);
+          const prospect = await storage.createProspect(ctx, prospectData);
           successCount++;
 
           // Auto-enrich if enabled
           if (autoEnrich) {
-            await this.createEnrichmentJob([prospect.id]);
+            await this.createEnrichmentJob(ctx, [prospect.id]);
           }
         } catch (error) {
           failureCount++;
@@ -329,7 +347,7 @@ class JobService {
 
         // Update progress
         if (i % 10 === 0) {
-          await storage.updateJob(jobId, {
+          await storage.updateJob(ctx, jobId, {
             processedItems: i + 1,
             successCount,
             failureCount,
@@ -339,7 +357,7 @@ class JobService {
       }
 
       // Complete the job
-      await storage.updateJob(jobId, {
+      await storage.updateJob(ctx, jobId, {
         status: 'completed',
         completedAt: new Date(),
         processedItems: csvData.length,
@@ -354,7 +372,7 @@ class JobService {
 
       return { success: true, imported: successCount, failed: failureCount, duplicates: duplicateCount };
     } catch (error) {
-      await storage.updateJob(jobId, {
+      await storage.updateJob(ctx, jobId, {
         status: 'failed',
         completedAt: new Date(),
         error: error instanceof Error ? error.message : 'Unknown error',
@@ -364,10 +382,11 @@ class JobService {
   }
 
   private async processSearchJob(job: BullJob<SearchJobData>) {
-    const { jobId, query, apolloFilters, maxResults = 1000 } = job.data;
+    const { jobId, userId, query, apolloFilters, maxResults = 1000 } = job.data;
+    const ctx = createJobContext(userId);
     
     try {
-      await storage.updateJob(jobId, {
+      await storage.updateJob(ctx, jobId, {
         status: 'running',
         startedAt: new Date(),
       });
@@ -392,9 +411,12 @@ class JobService {
             const prospectData = await apolloService.convertApolloContactToProspect(contact);
             
             // Check for duplicates
-            const duplicates = await storage.checkDuplicateProspects([prospectData.primaryEmail!]);
+            const duplicates = await storage.checkDuplicateProspects(ctx, [prospectData.primaryEmail!]);
             if (duplicates.length === 0) {
-              const prospect = await storage.createProspect(prospectData);
+              const prospect = await storage.createProspect(ctx, {
+                ...prospectData,
+                userId,
+              });
               prospects.push(prospect);
             }
           } catch (error) {
@@ -406,7 +428,7 @@ class JobService {
         page++;
 
         // Update progress
-        await storage.updateJob(jobId, {
+        await storage.updateJob(ctx, jobId, {
           processedItems: totalProcessed,
           successCount: prospects.length,
         });
@@ -416,7 +438,7 @@ class JobService {
       }
 
       // Complete the job
-      await storage.updateJob(jobId, {
+      await storage.updateJob(ctx, jobId, {
         status: 'completed',
         completedAt: new Date(),
         processedItems: totalProcessed,
@@ -429,7 +451,7 @@ class JobService {
 
       return { success: true, imported: prospects.length, totalFound: totalProcessed };
     } catch (error) {
-      await storage.updateJob(jobId, {
+      await storage.updateJob(ctx, jobId, {
         status: 'failed',
         completedAt: new Date(),
         error: error instanceof Error ? error.message : 'Unknown error',
@@ -469,8 +491,10 @@ class JobService {
     }
   }
 
-  private mapCSVRowToProspect(row: any, fieldMappings: Record<string, string>): InsertProspect {
-    const prospect: InsertProspect = {};
+  private mapCSVRowToProspect(row: any, fieldMappings: Record<string, string>, userId: string): InsertProspect {
+    const prospect: InsertProspect = {
+      userId,
+    };
     
     for (const [csvField, prospectField] of Object.entries(fieldMappings)) {
       if (prospectField && row[csvField]) {
@@ -481,13 +505,12 @@ class JobService {
     return prospect;
   }
 
-  async getJobStatus(jobId: string): Promise<Job | undefined> {
-    return await storage.getJob(jobId);
+  async getJobStatus(ctx: RequestContext, jobId: string): Promise<Job | undefined> {
+    return await storage.getJob(ctx, jobId);
   }
 
-  async cancelJob(jobId: string): Promise<void> {
-    // Cancel the job in the queue (implementation depends on queue system)
-    await storage.updateJob(jobId, {
+  async cancelJob(ctx: RequestContext, jobId: string): Promise<void> {
+    await storage.updateJob(ctx, jobId, {
       status: 'cancelled',
       completedAt: new Date(),
     });
