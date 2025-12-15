@@ -1699,22 +1699,48 @@ function SequenceTab({
                   
                   queryClient.invalidateQueries({ queryKey: ['/api/sequences', sequenceId, 'prospects'] });
                   
+                  // Calculate estimated send time based on first step's delayDays
+                  const firstStepDelay = steps.length > 0 ? (steps[0].delayDays || 0) : 0;
+                  const estimatedSendTime = new Date();
+                  estimatedSendTime.setDate(estimatedSendTime.getDate() + firstStepDelay);
+                  
+                  const formatSendTime = () => {
+                    if (firstStepDelay === 0) {
+                      return "Emails will be sent immediately when sequence is activated.";
+                    }
+                    return `Emails will be sent on ${estimatedSendTime.toLocaleDateString('en-US', { 
+                      weekday: 'long', 
+                      month: 'short', 
+                      day: 'numeric',
+                      hour: 'numeric',
+                      minute: '2-digit'
+                    })} when sequence is activated.`;
+                  };
+                  
                   toast({
                     title: "Batch Personalization Complete",
-                    description: `${saveResult.savedCount} personalized emails saved and ${prospectIds.length} prospects enrolled in sequence`
+                    description: `${saveResult.savedCount} personalized emails saved and ${prospectIds.length} prospects enrolled. ${formatSendTime()}`
                   });
                 } catch (enrollError) {
                   console.error("Failed to auto-enroll prospects:", enrollError);
+                  const firstStepDelay = steps.length > 0 ? (steps[0].delayDays || 0) : 0;
+                  const sendNote = firstStepDelay === 0 
+                    ? "Emails will be sent immediately when sequence is activated."
+                    : `Emails scheduled for ${firstStepDelay} day(s) after activation.`;
                   toast({
                     title: "Emails Saved",
-                    description: `${saveResult.savedCount} personalized emails saved. Auto-enrollment failed - please enroll prospects manually.`,
+                    description: `${saveResult.savedCount} personalized emails saved. Auto-enrollment failed - please enroll prospects manually. ${sendNote}`,
                     variant: "default"
                   });
                 }
               } else {
+                const firstStepDelay = steps.length > 0 ? (steps[0].delayDays || 0) : 0;
+                const sendNote = firstStepDelay === 0 
+                  ? "Emails will be sent immediately when sequence is activated."
+                  : `Emails scheduled for ${firstStepDelay} day(s) after activation.`;
                 toast({
                   title: "Personalized Emails Saved",
-                  description: `${saveResult.savedCount} personalized emails have been saved for these prospects.`
+                  description: `${saveResult.savedCount} personalized emails have been saved for these prospects. ${sendNote}`
                 });
               }
             } catch (error) {
@@ -1756,9 +1782,15 @@ function SequenceTab({
                   `${email.prospect.firstName || ''} ${email.prospect.lastName || ''}`.trim() || 'Prospect' : 
                   'Prospect';
                 
+                // Calculate when email will be sent
+                const stepDelayDays = parseInt(delayDays) || 0;
+                const sendNote = stepDelayDays === 0 
+                  ? "Email will be sent immediately when sequence is activated."
+                  : `Email scheduled for ${stepDelayDays} day(s) after activation.`;
+                
                 toast({
                   title: "Prospect Auto-Enrolled",
-                  description: `${prospectName} has been enrolled in this sequence`
+                  description: `${prospectName} has been enrolled in this sequence. ${sendNote}`
                 });
               } catch (error) {
                 console.error("Failed to auto-enroll prospect:", error);
