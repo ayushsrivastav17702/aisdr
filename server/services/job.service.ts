@@ -27,17 +27,24 @@ if (REDIS_ENABLED) {
   searchQueue = new Queue('search', { connection: redis });
 }
 
-// Job data interfaces - all include userId for multi-tenant context
+// Serializable context for job data (stored in queue and DB)
+interface JobContext {
+  userId: string;
+  roles: string[];
+  actingAs?: string;
+}
+
+// Job data interfaces - all include full context for multi-tenant isolation
 interface EnrichmentJobData {
   jobId: string;
-  userId: string;
+  context: JobContext;
   prospectIds: string[];
   batchSize?: number;
 }
 
 interface ImportJobData {
   jobId: string;
-  userId: string;
+  context: JobContext;
   filePath: string;
   fieldMappings: Record<string, string>;
   skipDuplicates: boolean;
@@ -46,17 +53,27 @@ interface ImportJobData {
 
 interface SearchJobData {
   jobId: string;
-  userId: string;
+  context: JobContext;
   query: string;
   apolloFilters: any;
   maxResults?: number;
 }
 
-// Helper to create a synthetic RequestContext for background jobs
-function createJobContext(userId: string): RequestContext {
+// Helper to serialize RequestContext for job data
+function serializeContext(ctx: RequestContext): JobContext {
   return {
-    userId,
-    roles: [],
+    userId: ctx.userId,
+    roles: ctx.roles || [],
+    actingAs: ctx.actingAs,
+  };
+}
+
+// Helper to reconstruct RequestContext from job data
+function deserializeContext(jobCtx: JobContext): RequestContext {
+  return {
+    userId: jobCtx.userId,
+    roles: jobCtx.roles,
+    actingAs: jobCtx.actingAs,
   };
 }
 
@@ -101,21 +118,23 @@ class JobService {
       throw new Error('Job queue not available. Please configure Redis to enable background job processing.');
     }
 
-    // Create job record in database
+    const serializedCtx = serializeContext(ctx);
+    
+    // Create job record in database with full context
     const job = await storage.createJob(ctx, {
       type: 'enrichment',
       title: 'Prospect Enrichment',
       description: `Enriching ${prospectIds.length} prospects`,
       totalItems: prospectIds.length,
       status: 'queued',
-      jobData: { prospectIds },
+      jobData: { prospectIds, context: serializedCtx },
       userId: ctx.userId,
     });
 
-    // Add to queue with userId for context
+    // Add to queue with full context for multi-tenant isolation
     await enrichmentQueue.add('enrichment', {
       jobId: job.id,
-      userId: ctx.userId,
+      context: serializedCtx,
       prospectIds,
       batchSize: 10,
     });
@@ -133,19 +152,21 @@ class JobService {
       throw new Error('Job queue not available. Please configure Redis to enable background job processing.');
     }
 
+    const serializedCtx = serializeContext(ctx);
+    
     const job = await storage.createJob(ctx, {
       type: 'import',
       title: 'CSV Import',
       description: `Importing prospects from ${filePath}`,
       totalItems: 0,
       status: 'queued',
-      jobData: { filePath, fieldMappings, ...options },
+      jobData: { filePath, fieldMappings, ...options, context: serializedCtx },
       userId: ctx.userId,
     });
 
     await importQueue.add('import', {
       jobId: job.id,
-      userId: ctx.userId,
+      context: serializedCtx,
       filePath,
       fieldMappings,
       skipDuplicates: options.skipDuplicates ?? true,
@@ -160,19 +181,21 @@ class JobService {
       throw new Error('Job queue not available. Please configure Redis to enable background job processing.');
     }
 
+    const serializedCtx = serializeContext(ctx);
+    
     const job = await storage.createJob(ctx, {
       type: 'search',
       title: 'Apollo Search',
       description: `Searching: ${query}`,
       totalItems: maxResults,
       status: 'queued',
-      jobData: { query, apolloFilters, maxResults },
+      jobData: { query, apolloFilters, maxResults, context: serializedCtx },
       userId: ctx.userId,
     });
 
     await searchQueue.add('search', {
       jobId: job.id,
-      userId: ctx.userId,
+      context: serializedCtx,
       query,
       apolloFilters,
       maxResults,
@@ -182,8 +205,8 @@ class JobService {
   }
 
   private async processEnrichmentJob(job: BullJob<EnrichmentJobData>) {
-    const { jobId, userId, prospectIds, batchSize = 10 } = job.data;
-    const ctx = createJobContext(userId);
+    const { jobId, context, prospectIds, batchSize = 10 } = job.data;
+    const ctx = deserializeContext(context);
     
     try {
       // Update job status
@@ -192,7 +215,7 @@ class JobService {
         startedAt: new Date(),
       });
 
-      const prospects = await storage.getProspectsByIds(prospectIds);
+      const prospects = await storage.getProspectsByIds(ctx, prospectIds);
       let successCount = 0;
       let failureCount = 0;
       let partialCount = 0;
@@ -222,14 +245,14 @@ class JobService {
               if (enrichedContact?.contact) {
                 // Full enrichment successful
                 const enrichedProspect = await apolloService.convertApolloContactToProspect(enrichedContact.contact);
-                await storage.updateProspect(prospect.id, {
+                await storage.updateProspect(ctx, prospect.id, {
                   ...enrichedProspect,
                   enrichmentStatus: 'enriched',
                 });
                 successCount++;
               } else {
                 // Partial enrichment
-                await storage.updateProspect(prospect.id, {
+                await storage.updateProspect(ctx, prospect.id, {
                   enrichmentStatus: 'partial',
                   enrichmentData: {
                     error: 'No additional data found',
@@ -240,7 +263,7 @@ class JobService {
               }
             } catch (error) {
               // Individual prospect enrichment failed
-              await storage.updateProspect(prospect.id, {
+              await storage.updateProspect(ctx, prospect.id, {
                 enrichmentStatus: 'failed',
                 enrichmentData: {
                   error: error instanceof Error ? error.message : 'Unknown error',
@@ -253,7 +276,7 @@ class JobService {
         } catch (error) {
           // Entire batch failed
           for (const prospect of batch) {
-            await storage.updateProspect(prospect.id, {
+            await storage.updateProspect(ctx, prospect.id, {
               enrichmentStatus: 'failed',
               enrichmentData: {
                 error: error instanceof Error ? error.message : 'Batch enrichment failed',
@@ -298,8 +321,8 @@ class JobService {
   }
 
   private async processImportJob(job: BullJob<ImportJobData>) {
-    const { jobId, userId, filePath, fieldMappings, skipDuplicates, autoEnrich } = job.data;
-    const ctx = createJobContext(userId);
+    const { jobId, context, filePath, fieldMappings, skipDuplicates, autoEnrich } = job.data;
+    const ctx = deserializeContext(context);
     
     try {
       await storage.updateJob(ctx, jobId, {
@@ -322,7 +345,7 @@ class JobService {
         
         try {
           // Map CSV row to prospect format, including userId
-          const prospectData = this.mapCSVRowToProspect(row, fieldMappings, userId);
+          const prospectData = this.mapCSVRowToProspect(row, fieldMappings, ctx.userId);
           
           // Check for duplicates if enabled
           if (skipDuplicates && prospectData.primaryEmail) {
@@ -382,8 +405,8 @@ class JobService {
   }
 
   private async processSearchJob(job: BullJob<SearchJobData>) {
-    const { jobId, userId, query, apolloFilters, maxResults = 1000 } = job.data;
-    const ctx = createJobContext(userId);
+    const { jobId, context, query, apolloFilters, maxResults = 1000 } = job.data;
+    const ctx = deserializeContext(context);
     
     try {
       await storage.updateJob(ctx, jobId, {
@@ -415,7 +438,7 @@ class JobService {
             if (duplicates.length === 0) {
               const prospect = await storage.createProspect(ctx, {
                 ...prospectData,
-                userId,
+                userId: ctx.userId,
               });
               prospects.push(prospect);
             }
