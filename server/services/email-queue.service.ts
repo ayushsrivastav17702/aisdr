@@ -247,11 +247,13 @@ export class EmailQueueService {
 
         // Try to find the automation run for this email (if part of automation)
         if (email.sequenceId && email.prospectId) {
+          const seqId = email.sequenceId; // TypeScript narrowing
+          const prospId = email.prospectId;
           const sequenceProspect = await db.query.sequenceProspects.findFirst({
             where: (sp, { eq, and }) => 
               and(
-                eq(sp.sequenceId, email.sequenceId),
-                eq(sp.prospectId, email.prospectId)
+                eq(sp.sequenceId, seqId),
+                eq(sp.prospectId, prospId)
               )
           });
 
@@ -409,7 +411,6 @@ export class EmailQueueService {
               sentAt,
               status: "sent",
               messageId: result.messageId, // Store Message-ID for threading
-              stepOrder: email.stepOrder, // Track which step in the sequence
             })
             .where(eq(emails.id, email.emailId));
         } else {
@@ -423,7 +424,6 @@ export class EmailQueueService {
             sentAt,
             trackingId: email.id, // Use queue ID as tracking ID
             messageId: result.messageId, // Store Message-ID for threading
-            stepOrder: email.stepOrder, // Track which step in the sequence
             userId: email.userId, // CRITICAL: Include userId for multi-tenant data isolation
           });
         }
@@ -433,11 +433,13 @@ export class EmailQueueService {
         // =====================================
         if (email.sequenceId && email.prospectId) {
           // Find the automation run for this email
+          const seqIdForCounter = email.sequenceId; // TypeScript narrowing
+          const prospIdForCounter = email.prospectId;
           const sequenceProspect = await db.query.sequenceProspects.findFirst({
             where: (sp, { eq, and }) => 
               and(
-                eq(sp.sequenceId, email.sequenceId!),
-                eq(sp.prospectId, email.prospectId)
+                eq(sp.sequenceId, seqIdForCounter),
+                eq(sp.prospectId, prospIdForCounter)
               )
           });
 
