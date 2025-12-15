@@ -64,7 +64,7 @@ export default function ImportWizard({ open, onClose }: ImportWizardProps) {
   const [validation, setValidation] = useState<ValidationResult | null>(null);
   const [fieldMappings, setFieldMappings] = useState<Record<string, string>>({});
   const [skipDuplicates, setSkipDuplicates] = useState(true);
-  const [autoEnrich, setAutoEnrich] = useState(false);
+  const [autoEnrich, setAutoEnrich] = useState(true);
 
   const { toast } = useToast();
   const queryClient = useQueryClient();
