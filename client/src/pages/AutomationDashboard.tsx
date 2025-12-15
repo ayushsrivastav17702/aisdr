@@ -61,6 +61,7 @@ import { Link } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Breadcrumbs } from "@/components/breadcrumbs";
+import { HelpTooltip } from "@/components/HelpTooltip";
 
 interface SequenceStep {
   id: string;
@@ -318,7 +319,10 @@ export default function AutomationDashboard() {
             </Button>
           </Link>
           <div>
-            <h1 className="text-3xl font-bold">Automation Dashboard</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-3xl font-bold">Automation Dashboard</h1>
+              <HelpTooltip moduleId="automation" itemId="automation-runs" />
+            </div>
             <p className="text-muted-foreground mt-2">
               Monitor and manage your sequence automation runs
             </p>
