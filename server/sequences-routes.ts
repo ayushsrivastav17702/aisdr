@@ -3,7 +3,7 @@ import { storage, type RequestContext } from "./storage";
 import { generatePersonalizedEmail, type LinkedInData } from "./services/personalization.service";
 import { emailQueueService } from "./services/email-queue.service";
 import { db } from "./db";
-import { sequenceProspects, emailReplies, emailQueue, emails, prospects } from "@shared/schema";
+import { sequenceProspects, emailReplies, emailQueue, emails, prospects, personalizationResults } from "@shared/schema";
 import { eq, and, sql, desc } from "drizzle-orm";
 import { z } from "zod";
 import { authenticate } from "./middleware/auth.middleware";
@@ -14,6 +14,15 @@ const router = Router();
 async function initializeSequence(userContext: RequestContext, sequenceId: string): Promise<void> {
   try {
     console.log(`🚀 Initializing sequence ${sequenceId}...`);
+    
+    // Get sequence details to check aiPersonalizationEnabled flag
+    const sequence = await storage.getSequence(userContext, sequenceId);
+    if (!sequence) {
+      console.log(`  ❌ Sequence ${sequenceId} not found`);
+      return;
+    }
+    const usePersonalization = sequence.aiPersonalizationEnabled === true;
+    console.log(`  AI Personalization: ${usePersonalization ? 'enabled' : 'disabled'}`);
     
     // Get all enrolled prospects
     const enrolledProspects = await storage.getSequenceProspects(userContext, sequenceId);
@@ -55,15 +64,49 @@ async function initializeSequence(userContext: RequestContext, sequenceId: strin
         scheduledFor.setDate(scheduledFor.getDate() + firstStep.delayDays);
       }
       
-      // Always add email to queue (idempotent - won't duplicate if already exists)
+      // Start with template content
+      let emailSubject = firstStep.subject;
+      let emailBody = firstStep.body;
+      
+      // ONLY check for personalized emails if aiPersonalizationEnabled is true
+      if (usePersonalization) {
+        // Query personalization_results for pre-generated email matching this prospect + sequence
+        const allPersonalizations = await db.query.personalizationResults.findMany({
+          where: and(
+            eq(personalizationResults.prospectId, enrolledProspect.prospectId),
+            eq(personalizationResults.userId, userContext.userId)
+          ),
+          orderBy: (pr, { desc }) => [desc(pr.createdAt)],
+          limit: 10
+        });
+        
+        // STRICT: Only use personalization that matches THIS specific sequence
+        // No legacy fallback to prevent cross-sequence contamination
+        const matchingPersonalization = allPersonalizations.find(p => {
+          const emailSuggestions = p.emailSuggestions as { sequenceId?: string } | null;
+          return emailSuggestions?.sequenceId === sequenceId;
+        });
+        
+        if (matchingPersonalization?.emailSuggestions) {
+          const savedEmail = matchingPersonalization.emailSuggestions as { subject?: string; body?: string; generatedAt?: string; sequenceId?: string };
+          
+          if (savedEmail.subject && savedEmail.body) {
+            emailSubject = savedEmail.subject;
+            emailBody = savedEmail.body;
+            console.log(`  ✨ Using pre-generated personalized email for prospect ${enrolledProspect.prospectId} (generated: ${savedEmail.generatedAt || 'unknown'})`);
+          }
+        }
+      }
+      
+      // Add email to queue with personalized content (or template fallback)
       await emailQueueService.addToQueue({
         sequenceId,
         prospectId: enrolledProspect.prospectId,
-        subject: firstStep.subject,
-        body: firstStep.body,
+        subject: emailSubject,
+        body: emailBody,
         scheduledFor,
         priority: 5,
-        userId: userContext.userId, // Pass userId for user-scoped mailbox selection
+        userId: userContext.userId,
       });
       
       console.log(`  ✅ Added email to queue for prospect ${enrolledProspect.prospectId}`);
