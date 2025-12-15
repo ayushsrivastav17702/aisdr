@@ -100,6 +100,7 @@ async function initializeSequence(userContext: RequestContext, sequenceId: strin
       }
       
       // Add email to queue with personalized content (or template fallback)
+      // CRITICAL: Include stepOrder for deduplication to prevent duplicate emails
       await emailQueueService.addToQueue({
         sequenceId,
         prospectId: enrolledProspect.prospectId,
@@ -108,6 +109,7 @@ async function initializeSequence(userContext: RequestContext, sequenceId: strin
         scheduledFor,
         priority: 5,
         userId: userContext.userId,
+        stepOrder: firstStep.stepOrder, // Required for deduplication check
       });
       
       console.log(`  ✅ Added email to queue for prospect ${enrolledProspect.prospectId}`);
