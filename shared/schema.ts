@@ -326,6 +326,7 @@ export const personalizationResults = pgTable("personalization_results", {
   emailSuggestions: jsonb("email_suggestions"),
   contentRecommendations: jsonb("content_recommendations"),
   linkedinData: jsonb("linkedin_data"),
+  status: text("status").default("pending"), // pending, processing, completed, failed
   createdAt: timestamp("created_at").defaultNow(),
 });
 
