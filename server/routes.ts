@@ -93,7 +93,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       let job = null;
       let jobWarning = null;
       try {
-        job = await jobService.createSearchJob(query, apolloFilters);
+        job = await jobService.createSearchJob(req.userContext!, query, apolloFilters);
       } catch (jobError) {
         // Job queue not available - non-fatal, just log and continue
         console.warn("Search job creation skipped:", jobError instanceof Error ? jobError.message : "Unknown error");
@@ -568,7 +568,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       if (redisEnabled) {
         // Use job queue for background processing
-        const job = await jobService.createEnrichmentJob(prospectIds);
+        const job = await jobService.createEnrichmentJob(req.userContext!, prospectIds);
         res.json({ job });
       } else {
         // Direct enrichment without job queue
@@ -1171,6 +1171,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (REDIS_ENABLED) {
         // Use background job queue
         const job = await jobService.createImportJob(
+          req.userContext!,
           req.file.path,
           parsedFieldMappings,
           options
@@ -1462,10 +1463,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Cancel job
-  app.post("/api/jobs/:id/cancel", async (req, res) => {
+  app.post("/api/jobs/:id/cancel", authenticate, async (req, res) => {
     try {
       const { id } = req.params;
-      await jobService.cancelJob(id);
+      await jobService.cancelJob(req.userContext!, id);
       res.json({ success: true });
     } catch (error) {
       console.error("Cancel job error:", error);
