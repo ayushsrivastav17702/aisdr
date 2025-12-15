@@ -532,6 +532,70 @@ export class ReplyDetectionService {
     return { replyType: "human_reply", sentiment, intent, extractedInfo };
   }
 
+  /**
+   * Extract original Message-ID from DSN/bounce email body
+   * DSN emails contain the original Message-ID in various formats
+   */
+  private extractMessageIdFromDSN(body: string, references?: string): string | null {
+    // Check References header first (contains thread of Message-IDs)
+    if (references) {
+      const refMatch = references.match(/<[^>]+>/g);
+      if (refMatch && refMatch.length > 0) {
+        return refMatch[0]; // First reference is typically the original
+      }
+    }
+
+    // Common DSN patterns for original Message-ID
+    const dsnPatterns = [
+      /Original-Message-ID:\s*(<[^>]+>)/i,
+      /Message-ID:\s*(<[^>]+>)/im,
+      /Original message ID:\s*(<[^>]+>)/i,
+      /X-Original-Message-ID:\s*(<[^>]+>)/i,
+      /Original-Envelope-ID:\s*(<[^>]+>)/i,
+      /<([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})>/g, // Email-like Message-ID in angle brackets
+    ];
+
+    for (const pattern of dsnPatterns) {
+      const match = body.match(pattern);
+      if (match && match[1]) {
+        return match[1];
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Extract failed recipient email from DSN body
+   */
+  private extractFailedRecipient(body: string, headers: any): string | null {
+    // Check X-Failed-Recipients header first
+    if (headers?.['x-failed-recipients']) {
+      return headers['x-failed-recipients'];
+    }
+
+    // DSN patterns for failed recipient
+    const recipientPatterns = [
+      /Final-Recipient:\s*(?:rfc822;)?\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i,
+      /X-Failed-Recipients:\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i,
+      /Original-Recipient:\s*(?:rfc822;)?\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i,
+      /Remote-MTA:\s*dns;\s*([a-zA-Z0-9.-]+)/i,
+      /was not delivered to:\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i,
+      /could not be delivered to:\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i,
+      /The following address failed:\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i,
+      /Delivery to the following recipient failed permanently:\s*([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i,
+    ];
+
+    for (const pattern of recipientPatterns) {
+      const match = body.match(pattern);
+      if (match && match[1]) {
+        return match[1].toLowerCase();
+      }
+    }
+
+    return null;
+  }
+
   private async processReply(email: any, mailbox: any): Promise<boolean> {
     try {
       const fromEmail = email.from?.value?.[0]?.address || email.from?.text;
@@ -539,20 +603,84 @@ export class ReplyDetectionService {
       const rawBody = email.text || email.html || "";
       const body = this.cleanReplyContent(rawBody);
       const inReplyTo = email.inReplyTo;
+      const references = email.references;
+      const headers = email.headers;
 
       if (!fromEmail || !body) {
         return false;
       }
 
-      console.log(`📧 Processing reply from ${fromEmail} - Subject: "${subject.substring(0, 50)}..." - In-Reply-To: ${inReplyTo || 'none'}`);
+      // Early detection of bounce/DSN emails
+      const isBounce = this.detectBounce(rawBody, subject, fromEmail);
 
-      // First, try to match by Message-ID in the emails table (most reliable)
-      // The inReplyTo header contains the SMTP Message-ID of the original email
+      console.log(`📧 Processing ${isBounce ? 'BOUNCE' : 'reply'} from ${fromEmail} - Subject: "${subject.substring(0, 50)}..." - In-Reply-To: ${inReplyTo || 'none'}`);
+
       let matchedEmail = null;
       let matchedEmailRecord = null;
 
-      if (inReplyTo) {
-        // Look for the email with this Message-ID in the emails table
+      // For bounces, try enhanced matching strategies
+      if (isBounce) {
+        // Strategy 1: Extract failed recipient from DSN body and match to prospect
+        const failedRecipient = this.extractFailedRecipient(rawBody, headers);
+        if (failedRecipient) {
+          console.log(`📭 DSN: Failed recipient detected: ${failedRecipient}`);
+          
+          // Find prospect by email, then find their most recent sent email
+          const prospectByEmail = await db.query.prospects.findFirst({
+            where: (p, { or, eq }) => or(
+              eq(p.primaryEmail, failedRecipient),
+              eq(p.secondaryEmail, failedRecipient)
+            )
+          });
+
+          if (prospectByEmail) {
+            // Find the most recent email sent to this prospect
+            const [recentEmail] = await db
+              .select()
+              .from(emails)
+              .where(eq(emails.prospectId, prospectByEmail.id))
+              .orderBy(desc(emails.sentAt))
+              .limit(1);
+
+            if (recentEmail) {
+              console.log(`✅ Matched bounce by failed recipient: ${failedRecipient} -> prospect ${prospectByEmail.id}`);
+              matchedEmailRecord = recentEmail;
+              matchedEmail = {
+                prospectId: recentEmail.prospectId,
+                sequenceId: recentEmail.sequenceId,
+                subject: recentEmail.subject,
+              };
+            }
+          }
+        }
+
+        // Strategy 2: Extract original Message-ID from DSN body
+        if (!matchedEmail) {
+          const originalMessageId = this.extractMessageIdFromDSN(rawBody, references);
+          if (originalMessageId) {
+            console.log(`📭 DSN: Found original Message-ID: ${originalMessageId}`);
+            
+            const [emailRecord] = await db
+              .select()
+              .from(emails)
+              .where(eq(emails.messageId, originalMessageId))
+              .limit(1);
+
+            if (emailRecord) {
+              console.log(`✅ Matched bounce by extracted Message-ID: ${originalMessageId}`);
+              matchedEmailRecord = emailRecord;
+              matchedEmail = {
+                prospectId: emailRecord.prospectId,
+                sequenceId: emailRecord.sequenceId,
+                subject: emailRecord.subject,
+              };
+            }
+          }
+        }
+      }
+
+      // Standard matching: try In-Reply-To header
+      if (!matchedEmail && inReplyTo) {
         const [emailRecord] = await db
           .select()
           .from(emails)
@@ -563,7 +691,6 @@ export class ReplyDetectionService {
           console.log(`✅ Matched reply by Message-ID: ${inReplyTo}`);
           matchedEmailRecord = emailRecord;
           
-          // Find corresponding queue item for additional data
           const [queueItem] = await db
             .select()
             .from(emailQueue)
