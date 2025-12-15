@@ -30,7 +30,8 @@ import {
 } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
-import { UserPlus, Search, MoreVertical, Trash2, RotateCcw, Loader2, Unlock } from 'lucide-react';
+import { UserPlus, Search, MoreVertical, Trash2, RotateCcw, Loader2, Unlock, ArrowLeft } from 'lucide-react';
+import { Link } from 'wouter';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -184,8 +185,15 @@ export default function AdminPanel() {
   return (
     <div className="p-6">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold mb-2">User Management</h1>
-        <p className="text-muted-foreground">Manage users, roles, and invitations</p>
+        <div className="flex items-center gap-4 mb-2">
+          <Link href="/">
+            <Button variant="ghost" size="icon" data-testid="button-back">
+              <ArrowLeft className="w-4 h-4" />
+            </Button>
+          </Link>
+          <h1 className="text-3xl font-bold">User Management</h1>
+        </div>
+        <p className="text-muted-foreground ml-12">Manage users, roles, and invitations</p>
       </div>
 
       <div className="flex flex-col md:flex-row gap-4 mb-6">
