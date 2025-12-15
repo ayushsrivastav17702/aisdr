@@ -52,6 +52,18 @@ interface DomainHealth {
   status: "healthy" | "warning" | "critical";
 }
 
+interface DailySummary {
+  date: string;
+  sent: number;
+  opened: number;
+  clicked: number;
+  replied: number;
+  bounced: number;
+  positiveReplies: number;
+  meetingRequests: number;
+  unsubscribes: number;
+}
+
 export class EmailTrackingService {
   private baseUrl: string;
 
@@ -286,7 +298,7 @@ export class EmailTrackingService {
   async getSequenceStepPerformance(sequenceId: string, userId: string): Promise<SequenceStepPerformance[]> {
     const stepPerformance = await db
       .select({
-        stepOrder: emails.stepOrder,
+        stepOrder: emailQueue.stepOrder,
         subject: emails.subject,
         sent: count(),
         opened: sql<number>`count(*) filter (where ${emails.openedAt} is not null)`,
@@ -294,6 +306,7 @@ export class EmailTrackingService {
         replied: sql<number>`count(*) filter (where ${emails.repliedAt} is not null)`,
       })
       .from(emails)
+      .innerJoin(emailQueue, eq(emailQueue.emailId, emails.id))
       .innerJoin(prospects, eq(emails.prospectId, prospects.id))
       .where(
         and(
@@ -301,8 +314,8 @@ export class EmailTrackingService {
           eq(prospects.userId, userId)
         )
       )
-      .groupBy(emails.stepOrder, emails.subject)
-      .orderBy(emails.stepOrder);
+      .groupBy(emailQueue.stepOrder, emails.subject)
+      .orderBy(emailQueue.stepOrder);
 
     return stepPerformance.map(step => {
       const sent = Number(step.sent) || 0;
@@ -504,7 +517,7 @@ export class EmailTrackingService {
   async getWeeklySummary(userId: string): Promise<{
     weekStart: string;
     weekEnd: string;
-    dailySummaries: Awaited<ReturnType<typeof this.getDailySummary>>[];
+    dailySummaries: DailySummary[];
     totals: EmailPerformanceMetrics;
     trend: {
       sentChange: number;

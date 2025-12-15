@@ -948,10 +948,51 @@ export class ReplyDetectionService {
             )
           );
         
-        if (sequenceProspect?.automationRunId) {
+        let automationRunId: string | null | undefined = sequenceProspect?.automationRunId;
+        
+        // Fallback: If no automationRunId on sequence_prospect, find a run that was active when reply received
+        // CRITICAL: Only attribute to runs that started before or at reply time
+        if (!automationRunId && matchedEmail.sequenceId) {
+          const prospect = await db.query.prospects.findFirst({
+            where: eq(prospectsTable.id, matchedEmail.prospectId)
+          });
+          
+          if (prospect?.userId) {
+            const candidateRuns = await db.select()
+              .from(automationRuns)
+              .where(
+                and(
+                  eq(automationRuns.sequenceId, matchedEmail.sequenceId!),
+                  eq(automationRuns.userId, prospect.userId),
+                  // Run must have started before or at reply time
+                  sql`${automationRuns.startedAt} <= ${replyReceivedAt}`
+                )
+              )
+              .orderBy(sql`${automationRuns.startedAt} DESC`)
+              .limit(1);
+            
+            const activeRun = candidateRuns[0];
+            
+            // Only use if run was active (not completed before reply was received)
+            if (activeRun && (!activeRun.completedAt || new Date(activeRun.completedAt) >= replyReceivedAt)) {
+              automationRunId = activeRun.id;
+              
+              // Backfill automationRunId for future
+              if (sequenceProspect) {
+                await db.update(sequenceProspects)
+                  .set({ automationRunId })
+                  .where(eq(sequenceProspects.id, sequenceProspect.id));
+                console.log(`🔗 Backfilled automationRunId on sequence_prospect for replies`);
+              }
+            }
+          }
+        }
+        
+        if (automationRunId) {
           await db.update(automationRuns)
             .set({ repliesReceived: sql`${automationRuns.repliesReceived} + 1` })
-            .where(eq(automationRuns.id, sequenceProspect.automationRunId));
+            .where(eq(automationRuns.id, automationRunId));
+          console.log(`📊 Incremented repliesReceived for automation run ${automationRunId}`);
         }
         
         // Auto-pause sequence for human replies (not OOO or bounces)

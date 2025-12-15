@@ -532,9 +532,10 @@ export class EmailQueueService {
         // INCREMENT AUTOMATION RUN emailsSent COUNTER
         // =====================================
         if (email.sequenceId && email.prospectId) {
-          // Find the automation run for this email
-          const seqIdForCounter = email.sequenceId; // TypeScript narrowing
+          const seqIdForCounter = email.sequenceId;
           const prospIdForCounter = email.prospectId;
+          
+          // Find the automation run for this email
           const sequenceProspect = await db.query.sequenceProspects.findFirst({
             where: (sp, { eq, and }) => 
               and(
@@ -543,15 +544,48 @@ export class EmailQueueService {
               )
           });
 
-          if (sequenceProspect?.automationRunId) {
-            // Increment emailsSent counter on the automation run
+          let automationRunId = sequenceProspect?.automationRunId;
+          
+          // Fallback: If no automationRunId on sequence_prospect, find a run that was active when email was sent
+          // CRITICAL: Only attribute to runs that started before or at email send time
+          if (!automationRunId) {
+            const candidateRuns = await db.select()
+              .from(automationRuns)
+              .where(
+                and(
+                  eq(automationRuns.sequenceId, seqIdForCounter),
+                  eq(automationRuns.userId, email.userId),
+                  // Run must have started before or at email send time
+                  sql`${automationRuns.startedAt} <= ${sentAt}`
+                )
+              )
+              .orderBy(sql`${automationRuns.startedAt} DESC`)
+              .limit(1);
+            
+            const activeRun = candidateRuns[0];
+            
+            // Only use if run was active (not completed before email was sent)
+            if (activeRun && (!activeRun.completedAt || new Date(activeRun.completedAt) >= sentAt)) {
+              automationRunId = activeRun.id;
+              
+              // Backfill the automationRunId on the sequence_prospect for future
+              if (sequenceProspect) {
+                await db.update(sequenceProspects)
+                  .set({ automationRunId })
+                  .where(eq(sequenceProspects.id, sequenceProspect.id));
+                console.log(`🔗 Backfilled automationRunId on sequence_prospect ${sequenceProspect.id}`);
+              }
+            }
+          }
+
+          if (automationRunId) {
             await db.update(automationRuns)
               .set({ 
                 emailsSent: sql`COALESCE(${automationRuns.emailsSent}, 0) + 1`
               })
-              .where(eq(automationRuns.id, sequenceProspect.automationRunId));
+              .where(eq(automationRuns.id, automationRunId));
 
-            console.log(`📊 Incremented emailsSent for automation run ${sequenceProspect.automationRunId}`);
+            console.log(`📊 Incremented emailsSent for automation run ${automationRunId}`);
           }
         }
 
