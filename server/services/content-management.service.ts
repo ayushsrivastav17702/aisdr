@@ -131,9 +131,22 @@ Best of luck with your {{industry}} initiatives!
   };
 
   /**
+   * Helper to normalize field names (camelCase ↔ snake_case)
+   */
+  private normalizeKey(key: string): string[] {
+    const keys = [key];
+    // camelCase to snake_case: firstName -> first_name
+    keys.push(key.replace(/([A-Z])/g, '_$1').toLowerCase());
+    // snake_case to camelCase: first_name -> firstName
+    keys.push(key.replace(/_([a-z])/g, (_, c) => c.toUpperCase()));
+    return keys;
+  }
+
+  /**
    * Replace merge field variables with values, using fallbacks for missing data
    * Supports {{variable|fallback}} syntax for inline fallbacks
    * Uses default fallbacks for common fields when no inline fallback provided
+   * Normalizes key lookups to support both camelCase and snake_case variables
    */
   replaceVariables(
     content: string, 
@@ -143,10 +156,30 @@ Best of luck with your {{industry}} initiatives!
     let result = content;
     const fallbacks = { ...this.defaultFallbacks, ...customFallbacks };
     
+    // Helper to get value with normalized key lookup
+    const getValue = (key: string): string | undefined => {
+      for (const normalizedKey of this.normalizeKey(key)) {
+        if (variables[normalizedKey] && variables[normalizedKey].trim()) {
+          return variables[normalizedKey];
+        }
+      }
+      return undefined;
+    };
+    
+    // Helper to get fallback with normalized key lookup
+    const getFallback = (key: string): string | undefined => {
+      for (const normalizedKey of this.normalizeKey(key)) {
+        if (fallbacks[normalizedKey]) {
+          return fallbacks[normalizedKey];
+        }
+      }
+      return undefined;
+    };
+    
     // First handle inline fallback syntax: {{variable|fallback text}}
     const inlineFallbackPattern = /\{\{(\w+)\|([^}]+)\}\}/g;
     result = result.replace(inlineFallbackPattern, (match, key, fallback) => {
-      const value = variables[key];
+      const value = getValue(key);
       // Use the actual value if present and not empty, otherwise use inline fallback
       if (value && value.trim()) {
         return value;
@@ -161,8 +194,8 @@ Best of luck with your {{industry}} initiatives!
       if (value && value.trim()) {
         result = result.replace(regex, value);
       } else {
-        // Use default fallback if available
-        const fallbackValue = fallbacks[key] || '';
+        // Use default fallback if available (with normalized lookup)
+        const fallbackValue = getFallback(key) || '';
         result = result.replace(regex, fallbackValue);
       }
     });
@@ -173,16 +206,16 @@ Best of luck with your {{industry}} initiatives!
       result = result.replace(regex, value);
     });
     
-    // Clean up any remaining unreplaced variables with fallbacks
+    // Clean up any remaining unreplaced variables with fallbacks (normalized lookup)
     const remainingPattern = /\{\{(\w+)\}\}/g;
     result = result.replace(remainingPattern, (match, key) => {
-      const fallbackValue = fallbacks[key];
+      const fallbackValue = getFallback(key);
       if (fallbackValue) {
         console.warn(`⚠️ Merge field {{${key}}} was missing, used fallback: "${fallbackValue}"`);
         return fallbackValue;
       }
       console.warn(`⚠️ Merge field {{${key}}} was missing and has no fallback`);
-      return match; // Leave the placeholder if no fallback
+      return ''; // Remove unresolved placeholder rather than leaving it visible
     });
 
     return result;

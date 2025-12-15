@@ -10,58 +10,145 @@ import { notificationService } from "./notification.service";
 /**
  * Renders merge fields in email content, replacing {{fieldName}} with actual prospect data.
  * Supports fallback syntax: {{fieldName|fallback text}}
+ * Returns both the rendered content and validation info about unresolved fields.
  */
-function renderMergeFields(content: string, prospect: any): string {
-  if (!content || !prospect) return content;
+function renderMergeFields(content: string, prospect: any): { 
+  rendered: string; 
+  unresolvedFields: string[];
+  usedFallbacks: string[];
+} {
+  if (!content || !prospect) return { rendered: content, unresolvedFields: [], usedFallbacks: [] };
   
-  // Define available merge fields and their values
+  const unresolvedFields: string[] = [];
+  const usedFallbacks: string[] = [];
+  
+  // Define available merge fields and their values (both camelCase and snake_case)
   const mergeData: Record<string, string> = {
     firstName: prospect.firstName || '',
+    first_name: prospect.firstName || '',
     lastName: prospect.lastName || '',
+    last_name: prospect.lastName || '',
     fullName: [prospect.firstName, prospect.lastName].filter(Boolean).join(' ') || '',
+    full_name: [prospect.firstName, prospect.lastName].filter(Boolean).join(' ') || '',
+    prospectName: prospect.firstName || '',
+    prospect_name: prospect.firstName || '',
     email: prospect.primaryEmail || prospect.email || '',
     companyName: prospect.companyName || prospect.company || '',
+    company_name: prospect.companyName || prospect.company || '',
     company: prospect.companyName || prospect.company || '',
     title: prospect.title || prospect.jobTitle || '',
     jobTitle: prospect.title || prospect.jobTitle || '',
+    job_title: prospect.title || prospect.jobTitle || '',
+    position: prospect.title || prospect.jobTitle || '',
     industry: prospect.industry || '',
     city: prospect.city || '',
     state: prospect.state || '',
     country: prospect.country || '',
+    location: [prospect.city, prospect.state].filter(Boolean).join(', ') || '',
     linkedinUrl: prospect.linkedinUrl || '',
+    linkedin_url: prospect.linkedinUrl || '',
     website: prospect.websiteUrl || prospect.website || '',
+    seniority: prospect.seniority || '',
+  };
+  
+  // Default fallbacks for common fields (both camelCase and snake_case)
+  const defaultFallbacks: Record<string, string> = {
+    firstName: 'there',
+    first_name: 'there',
+    fullName: 'there',
+    full_name: 'there',
+    prospect_name: 'there',
+    prospectName: 'there',
+    companyName: 'your company',
+    company_name: 'your company',
+    company: 'your company',
+    title: 'your role',
+    jobTitle: 'your role',
+    job_title: 'your role',
+    industry: 'your industry',
+    location: 'your area',
+    seniority: 'leader',
+  };
+  
+  // Helper to normalize field names (camelCase ↔ snake_case)
+  const normalizeKey = (key: string): string[] => {
+    const keys = [key];
+    // camelCase to snake_case: firstName -> first_name
+    keys.push(key.replace(/([A-Z])/g, '_$1').toLowerCase());
+    // snake_case to camelCase: first_name -> firstName
+    keys.push(key.replace(/_([a-z])/g, (_, c) => c.toUpperCase()));
+    return keys;
+  };
+  
+  const getValue = (fieldName: string): string | undefined => {
+    for (const key of normalizeKey(fieldName)) {
+      if (mergeData[key] && mergeData[key].trim()) {
+        return mergeData[key];
+      }
+    }
+    return undefined;
+  };
+  
+  const getFallback = (fieldName: string): string | undefined => {
+    for (const key of normalizeKey(fieldName)) {
+      if (defaultFallbacks[key]) {
+        return defaultFallbacks[key];
+      }
+    }
+    return undefined;
   };
   
   // Replace merge fields with fallback support: {{fieldName|fallback}}
   let rendered = content.replace(/\{\{(\w+)(?:\|([^}]*))?\}\}/g, (match, fieldName, fallback) => {
-    const value = mergeData[fieldName];
-    if (value && value.trim()) {
+    const value = getValue(fieldName);
+    if (value) {
       return value;
     }
-    // Use fallback if provided, otherwise use a sensible default
+    // Use inline fallback if provided
     if (fallback !== undefined) {
+      usedFallbacks.push(`${fieldName}→"${fallback}"`);
       return fallback;
     }
-    // Default fallbacks for common fields
-    const defaultFallbacks: Record<string, string> = {
-      firstName: 'there',
-      fullName: 'there',
-      companyName: 'your company',
-      company: 'your company',
-      title: 'your role',
-      jobTitle: 'your role',
-      industry: 'your industry',
-    };
-    return defaultFallbacks[fieldName] || '';
+    // Use default fallback if available (check both camelCase and snake_case)
+    const defaultFallback = getFallback(fieldName);
+    if (defaultFallback) {
+      usedFallbacks.push(`${fieldName}→"${defaultFallback}"`);
+      return defaultFallback;
+    }
+    // No fallback available - track as unresolved but still replace with empty string
+    unresolvedFields.push(fieldName);
+    return ''; // Remove the placeholder rather than leaving it visible
   });
   
-  // Also replace [Product Name], [key benefit], etc. placeholder text
+  // CRITICAL: Also replace bracket placeholders from legacy templates
   // These indicate incomplete templates that should have been customized
-  rendered = rendered.replace(/\[Product Name\]/g, 'our solution');
-  rendered = rendered.replace(/\[key benefit\]/g, 'save time and increase efficiency');
-  rendered = rendered.replace(/\[common pain point\]/g, 'manual processes');
+  const bracketReplacements: Record<string, string> = {
+    '[Product Name]': 'our solution',
+    '[key benefit]': 'save time and increase efficiency',
+    '[common pain point]': 'manual processes',
+    '[specific problem]': 'key challenges',
+    '[specific result]': 'significant results',
+    '[specific results]': 'great results',
+    '[Company X]': 'similar companies',
+    '[new features/results]': 'new features',
+    '[solution]': 'our solution',
+    '[specific challenge]': 'your goals',
+    '[Attach relevant resources or links]': ''
+  };
   
-  return rendered;
+  Object.entries(bracketReplacements).forEach(([placeholder, replacement]) => {
+    if (rendered.includes(placeholder)) {
+      usedFallbacks.push(`${placeholder}→"${replacement}"`);
+      rendered = rendered.split(placeholder).join(replacement);
+    }
+  });
+  
+  // Log warnings for unresolved fields
+  if (unresolvedFields.length > 0) {
+    console.warn(`⚠️ PRE-SEND VALIDATION: Unresolved merge fields detected: ${unresolvedFields.join(', ')}`);
+  }
+  
+  return { rendered, unresolvedFields, usedFallbacks };
 }
 
 export class EmailQueueService {
@@ -365,14 +452,27 @@ export class EmailQueueService {
 
       // CRITICAL: Render merge fields before sending
       // Replace {{firstName}}, {{companyName}}, etc. with actual prospect data
-      const renderedSubject = renderMergeFields(email.subject, prospect);
-      const renderedBody = renderMergeFields(email.body, prospect);
+      const subjectResult = renderMergeFields(email.subject, prospect);
+      const bodyResult = renderMergeFields(email.body, prospect);
+      const renderedSubject = subjectResult.rendered;
+      const renderedBody = bodyResult.rendered;
+      
+      // Collect all unresolved fields and log validation results
+      const allUnresolvedFields = Array.from(new Set([...subjectResult.unresolvedFields, ...bodyResult.unresolvedFields]));
+      const allUsedFallbacks = Array.from(new Set([...subjectResult.usedFallbacks, ...bodyResult.usedFallbacks]));
       
       console.log(`📝 Rendered merge fields for ${prospect.primaryEmail}:`, {
         originalSubject: email.subject.substring(0, 50),
         renderedSubject: renderedSubject.substring(0, 50),
-        hadMergeFields: email.subject !== renderedSubject || email.body !== renderedBody
+        hadMergeFields: email.subject !== renderedSubject || email.body !== renderedBody,
+        usedFallbacks: allUsedFallbacks.length > 0 ? allUsedFallbacks : 'none',
+        unresolvedFields: allUnresolvedFields.length > 0 ? allUnresolvedFields : 'none'
       });
+      
+      // PRE-SEND VALIDATION: Warn about unresolved fields but still send
+      if (allUnresolvedFields.length > 0) {
+        console.warn(`⚠️ PRE-SEND VALIDATION WARNING: Email ${email.id} has ${allUnresolvedFields.length} unresolved fields: ${allUnresolvedFields.join(', ')}`);
+      }
 
       const result = await emailSendingService.sendEmail({
         mailboxId: email.mailboxId,
