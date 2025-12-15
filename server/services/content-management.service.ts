@@ -108,17 +108,26 @@ Best of luck with your {{industry}} initiatives!
 
   /**
    * Default fallback values for common merge fields when data is missing
+   * Includes both snake_case and camelCase variants for compatibility
    */
   private defaultFallbacks: Record<string, string> = {
     first_name: 'there',
+    firstName: 'there',
     prospect_name: 'there',
+    prospectName: 'there',
     company_name: 'your company',
+    companyName: 'your company',
     company: 'your company',
     position: 'professional',
     job_title: 'professional',
+    jobTitle: 'professional',
     industry: 'your industry',
     location: 'your area',
     seniority: 'leader',
+    last_name: '',
+    lastName: '',
+    title: 'professional',
+    email: '',
   };
 
   /**
