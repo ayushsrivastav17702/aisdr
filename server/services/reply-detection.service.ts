@@ -436,6 +436,58 @@ export class ReplyDetectionService {
       return "question";
     }
 
+    // Fallback pattern matching for common reply types
+    // Acknowledgment responses (likely positive engagement)
+    const acknowledgmentIndicators = [
+      "thanks for", "thank you for", "appreciate", "got it", "received",
+      "noted", "understood", "will review", "will look", "will check",
+      "let me get back", "i'll get back", "following up", "circling back",
+    ];
+
+    if (acknowledgmentIndicators.some(ind => lowerContent.includes(ind))) {
+      return "interested";
+    }
+
+    // Referral patterns (forwarding to someone else)
+    const referralIndicators = [
+      "forwarding to", "looping in", "cc'ing", "adding", "copied",
+      "right person", "better suited", "connect you with", "introduce you to",
+      "colleague", "team member", "pass this along", "share with",
+    ];
+
+    if (referralIndicators.some(ind => lowerContent.includes(ind))) {
+      return "interested";
+    }
+
+    // Hard decline patterns - these indicate prospect wants no further contact
+    const hardDeclineIndicators = [
+      "no thanks", "not interested", "pass on this", "please stop",
+      "no need", "not for us", "doesn't fit", "wrong fit", "not a fit",
+      "we're not looking", "we've decided", "no longer interested",
+    ];
+
+    if (hardDeclineIndicators.some(ind => lowerContent.includes(ind))) {
+      return "unsubscribe";
+    }
+
+    // Soft decline patterns - timing issue but may revisit
+    const softDeclineIndicators = [
+      "we're good for now", "all set for now", "maybe next year",
+      "not right now but", "possibly in the future", "keep me on file",
+    ];
+
+    if (softDeclineIndicators.some(ind => lowerContent.includes(ind))) {
+      return "not_now";
+    }
+
+    // Short positive response detection (check for standalone affirmatives)
+    // Uses word boundary matching to handle short replies like "Yes!" or "Sure, let's talk"
+    const shortPositiveWords = ["yes", "ok", "okay", "sure", "great", "absolutely", "definitely"];
+    const firstWord = lowerContent.trim().split(/[\s,!.]+/)[0];
+    if (shortPositiveWords.includes(firstWord) && lowerContent.length < 100) {
+      return "interested";
+    }
+
     return null;
   }
 
@@ -917,6 +969,12 @@ export class ReplyDetectionService {
           if (cancelledCount > 0) {
             console.log(`⏸️ Paused sequence: Cancelled ${cancelledCount} future emails`);
           }
+        } else if (classification.replyType === "ooo") {
+          // Explicit logging for OOO - sequence continues but emails are rescheduled
+          console.log(`📅 OOO Reply: Sequence for prospect ${matchedEmail.prospectId} will continue after return date. Emails rescheduled, not cancelled.`);
+        } else if (classification.replyType === "bounce") {
+          // Explicit logging for bounces - handled separately via handleBounce
+          console.log(`📭 Bounce: Future emails cancelled for prospect ${matchedEmail.prospectId} via bounce handler.`);
         }
       }
 

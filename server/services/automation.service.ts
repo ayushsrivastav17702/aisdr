@@ -305,7 +305,6 @@ class AutomationService {
                 .set({ 
                   status: "active",
                   automationRunId,
-                  currentStepNumber: 0,
                   completedAt: null
                 })
                 .where(eq(sequenceProspects.id, existingEnrollment.id))
