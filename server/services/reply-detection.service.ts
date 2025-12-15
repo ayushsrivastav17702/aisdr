@@ -536,12 +536,17 @@ export class ReplyDetectionService {
    * Extract original Message-ID from DSN/bounce email body
    * DSN emails contain the original Message-ID in various formats
    */
-  private extractMessageIdFromDSN(body: string, references?: string): string | null {
+  private extractMessageIdFromDSN(body: string, references?: string | string[]): string | null {
     // Check References header first (contains thread of Message-IDs)
     if (references) {
-      const refMatch = references.match(/<[^>]+>/g);
-      if (refMatch && refMatch.length > 0) {
-        return refMatch[0]; // First reference is typically the original
+      // Handle case where references is an array
+      const refString = Array.isArray(references) ? references.join(' ') : references;
+      // Ensure refString is actually a string before calling match
+      if (typeof refString === 'string') {
+        const refMatch = refString.match(/<[^>]+>/g);
+        if (refMatch && refMatch.length > 0) {
+          return refMatch[0]; // First reference is typically the original
+        }
       }
     }
 
