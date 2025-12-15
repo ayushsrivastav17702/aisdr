@@ -588,7 +588,7 @@ router.post("/sequences/:id/prospects", authenticate, async (req, res) => {
     // 🔥 CRITICAL: Schedule first email for each enrolled prospect (10-second SLA)
     // Import the sequence step service
     const sequenceStepServiceModule = await import("./services/sequence-step.service");
-    const sequenceStepService = sequenceStepServiceModule.sequenceStepService || sequenceStepServiceModule.default;
+    const sequenceStepService = sequenceStepServiceModule.default;
     
     for (const enrolledProspect of enrolled) {
       try {
