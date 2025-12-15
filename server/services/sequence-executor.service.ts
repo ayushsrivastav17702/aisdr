@@ -258,6 +258,29 @@ export class SequenceExecutorService {
         });
       }
       
+      // THREADING: Get the most recent sent email to this prospect in this sequence
+      // This allows follow-up emails to appear in the same thread as the original
+      let inReplyTo: string | undefined;
+      let references: string | undefined;
+      let originalSubject: string | undefined;
+      
+      const previousEmail = await db.query.emails.findFirst({
+        where: and(
+          eq(emails.prospectId, prospectId),
+          eq(emails.sequenceId, sequenceId),
+          eq(emails.status, 'sent'),
+          sql`${emails.messageId} IS NOT NULL`
+        ),
+        orderBy: desc(emails.sentAt)
+      });
+      
+      if (previousEmail?.messageId) {
+        inReplyTo = previousEmail.messageId;
+        references = previousEmail.messageId;
+        originalSubject = previousEmail.subject;
+        console.log(`[SequenceExecutor] 🔗 Threading follow-up to Message-ID: ${inReplyTo}`);
+      }
+      
       // Get email content - use step template or generate fallback
       let emailSubject = stepConfig.subject || '';
       let emailBody = stepConfig.body || '';
@@ -284,7 +307,15 @@ Best regards`;
         console.log(`[SequenceExecutor] Generated fallback content for step ${stepConfig.stepOrder}`);
       }
       
-      // Add follow-up email to queue
+      // THREADING: Prefix subject with "Re: " if this is a follow-up and subject doesn't already have it
+      // Use original subject from the thread if available for proper threading
+      if (inReplyTo && originalSubject) {
+        // Use the original subject with "Re: " prefix for proper threading
+        const baseSubject = originalSubject.replace(/^Re:\s*/i, '');
+        emailSubject = `Re: ${baseSubject}`;
+      }
+      
+      // Add follow-up email to queue with threading headers
       await emailQueueService.addToQueue({
         prospectId,
         sequenceId,
@@ -295,6 +326,8 @@ Best regards`;
         userId, // CRITICAL: Multi-tenant security (validated above)
         priority: 5,
         fromName: undefined, // Will use mailbox default
+        inReplyTo, // Threading: reference the previous email
+        references, // Threading: full thread history
       });
 
       // Update enrollment progress to track the new step
