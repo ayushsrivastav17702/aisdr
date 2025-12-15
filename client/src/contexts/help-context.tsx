@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useCallback, type ReactNode } from "react";
 import { HelpPanel } from "@/components/HelpPanel";
+import { GlobalHelpButton } from "@/components/GlobalHelpButton";
 
 interface HelpContextType {
   isOpen: boolean;
@@ -67,6 +68,7 @@ export function HelpProvider({ children }: HelpProviderProps) {
         initialModuleId={currentModuleId || undefined}
         initialItemId={currentItemId || undefined}
       />
+      <GlobalHelpButton />
     </HelpContext.Provider>
   );
 }

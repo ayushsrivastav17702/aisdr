@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { PersonalizationWizard } from "@/components/PersonalizationWizard";
 import { AutomationModal } from "@/components/AutomationModal";
+import { HelpTooltip } from "@/components/HelpTooltip";
 
 export default function SequencesPage() {
   const [match, params] = useRoute("/sequences/:id");
@@ -167,7 +168,10 @@ function SequencesList() {
               </Button>
             </Link>
             <div>
-              <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Sequences</h1>
+              <div className="flex items-center gap-2">
+                <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Sequences</h1>
+                <HelpTooltip moduleId="sequences" itemId="create-sequence" />
+              </div>
               <p className="text-gray-500 dark:text-gray-400">Create and manage email sequences</p>
             </div>
           </div>

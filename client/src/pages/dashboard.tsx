@@ -29,6 +29,7 @@ import {
   Shield,
   Code
 } from "lucide-react";
+import { HelpTooltip } from "@/components/HelpTooltip";
 
 export default function Dashboard() {
   const [selectedProspectIds, setSelectedProspectIds] = useState<string[]>([]);
@@ -235,7 +236,10 @@ export default function Dashboard() {
         {/* Top Header Bar */}
         <header className="h-16 border-b border-border bg-card px-8 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <h2 className="text-xl font-semibold" data-testid="page-title">AI Prospect Search</h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-xl font-semibold" data-testid="page-title">AI Prospect Search</h2>
+              <HelpTooltip moduleId="dashboard" itemId="ai-search" />
+            </div>
             <Badge variant="outline" className="bg-accent/10 text-accent border-accent/20">
               <SparklesIcon className="w-3 h-3 mr-1" />
               AI Powered
