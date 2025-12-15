@@ -55,7 +55,8 @@ export class AIFollowUpScheduler {
     prospectId: string,
     emailHistory: string | string[],
     followUpType: string,
-    followUpNumber: number
+    followUpNumber: number,
+    originalSubject?: string // NEW: Accept original subject for proper threading
   ): Promise<FollowUpEmail> {
     try {
       const prospect = await storage.getProspect(prospectId);
@@ -74,8 +75,18 @@ export class AIFollowUpScheduler {
       const scheduledFor = new Date();
       scheduledFor.setDate(scheduledFor.getDate() + 3);
 
+      // CRITICAL: Use original subject for proper email threading
+      // Email clients thread based on "Re: [original subject]", not AI-generated subjects
+      let threadedSubject = result.subject;
+      if (originalSubject) {
+        // Strip any existing "Re: " prefix and add it properly
+        const baseSubject = originalSubject.replace(/^Re:\s*/i, '').trim();
+        threadedSubject = `Re: ${baseSubject}`;
+        console.log(`🔗 Threading reply with subject: "${threadedSubject}"`);
+      }
+
       return {
-        subject: result.subject,
+        subject: threadedSubject,
         body: result.body,
         followUpNumber,
         reasoning: result.reasoning,

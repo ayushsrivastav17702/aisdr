@@ -1080,6 +1080,7 @@ router.get("/sequences/ai-followup-preview/:prospectId", authenticate, async (re
     
     // Build proper array with original email and reply
     const emailHistoryArray: string[] = [];
+    const originalSubject = sentEmail?.subject || undefined; // Capture for threading
     if (sentEmail?.subject && sentEmail?.body) {
       emailHistoryArray.push(`Subject: ${sentEmail.subject}\n\n${sentEmail.body}`);
     }
@@ -1087,11 +1088,13 @@ router.get("/sequences/ai-followup-preview/:prospectId", authenticate, async (re
       emailHistoryArray.push(`Prospect replied: ${replyContent}`);
     }
     
+    // CRITICAL: Pass original subject for proper email threading
     const preview = await aiFollowUpScheduler.generateFollowUpEmailPreview(
       prospectId,
       emailHistoryArray,
       "gentle_reminder",
-      1
+      1,
+      originalSubject // Use original subject for "Re: [subject]" threading
     );
     
     res.json(preview);
