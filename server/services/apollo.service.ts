@@ -314,7 +314,7 @@ class ApolloService {
       companyLocation: this.formatLocation(contact.organization?.headquarters_location),
       phoneNumber,
       linkedinUrl: contact.linkedin_url || '',
-      enrichmentStatus: emailStatus === 'found' ? 'enriched' as const : 'pending' as const,
+      enrichmentStatus: emailStatus === 'found' ? 'enriched' as const : 'new' as const,
       enrichmentData: {
         apollo: contact,
         enrichedAt: new Date().toISOString(),

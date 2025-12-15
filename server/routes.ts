@@ -892,6 +892,130 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Enrich all unenriched prospects (works without Redis)
+  app.post("/api/prospects/enrich-all-new", authenticate, async (req, res) => {
+    try {
+      const { limit = 50 } = req.body;
+      const maxLimit = Math.min(limit, 100);
+
+      console.log(`\n🔄 Starting batch enrichment for unenriched prospects (limit: ${maxLimit})`);
+
+      // Find all prospects with enrichmentStatus = 'new'
+      const { prospects: prospectsTable } = await import("@shared/schema");
+      const { eq, and } = await import("drizzle-orm");
+      const { db } = await import("./db");
+
+      const unenrichedProspects = await db.select()
+        .from(prospectsTable)
+        .where(and(
+          eq(prospectsTable.userId, req.userContext!.userId),
+          eq(prospectsTable.enrichmentStatus, 'new')
+        ))
+        .limit(maxLimit);
+
+      if (unenrichedProspects.length === 0) {
+        return res.json({
+          message: "No unenriched prospects found",
+          total: 0,
+          enriched: 0,
+          failed: 0,
+          results: []
+        });
+      }
+
+      console.log(`📋 Found ${unenrichedProspects.length} unenriched prospects`);
+
+      const results = [];
+      let successCount = 0;
+      let failureCount = 0;
+
+      for (const prospect of unenrichedProspects) {
+        try {
+          const contactData = {
+            email: prospect.primaryEmail || undefined,
+            first_name: prospect.firstName || undefined,
+            last_name: prospect.lastName || undefined,
+            organization_name: prospect.companyName || undefined,
+            linkedin_url: prospect.linkedinUrl || undefined,
+          };
+
+          const enrichmentResponse = await apolloService.enrichContact(contactData);
+          
+          if (enrichmentResponse?.contact) {
+            const enrichedProspect = await apolloService.convertApolloContactToProspect(enrichmentResponse.contact);
+            
+            const emailLocked = enrichedProspect.primaryEmail?.includes('email_not_unlocked') || 
+                               enrichedProspect.primaryEmail?.includes('locked');
+            
+            if (emailLocked) {
+              await storage.updateProspect(req.userContext!, prospect.id, {
+                enrichmentStatus: 'partial',
+                enrichmentData: {
+                  error: 'Email is locked',
+                  apollo: enrichmentResponse.contact,
+                  enrichedAt: new Date().toISOString(),
+                },
+              });
+              results.push({ id: prospect.id, success: false, error: 'Email locked', name: prospect.fullName });
+              failureCount++;
+            } else {
+              await storage.updateProspect(req.userContext!, prospect.id, {
+                ...enrichedProspect,
+                enrichmentStatus: 'enriched',
+              });
+              results.push({ id: prospect.id, success: true, source: 'apollo', name: prospect.fullName, email: enrichedProspect.primaryEmail });
+              successCount++;
+            }
+          } else {
+            await storage.updateProspect(req.userContext!, prospect.id, {
+              enrichmentStatus: 'partial',
+              enrichmentData: {
+                error: 'No data found',
+                enrichedAt: new Date().toISOString(),
+              },
+            });
+            results.push({ id: prospect.id, success: false, error: 'No data found', name: prospect.fullName });
+            failureCount++;
+          }
+
+          // Rate limiting - small delay between enrichments
+          await new Promise(resolve => setTimeout(resolve, 200));
+          
+        } catch (error) {
+          await storage.updateProspect(req.userContext!, prospect.id, {
+            enrichmentStatus: 'failed',
+            enrichmentData: {
+              error: error instanceof Error ? error.message : 'Enrichment failed',
+              enrichedAt: new Date().toISOString(),
+            },
+          });
+          results.push({ 
+            id: prospect.id, 
+            success: false, 
+            error: error instanceof Error ? error.message : 'Enrichment failed',
+            name: prospect.fullName 
+          });
+          failureCount++;
+        }
+      }
+
+      console.log(`✅ Batch enrichment complete: ${successCount}/${unenrichedProspects.length} successful`);
+
+      res.json({
+        message: `Enriched ${successCount} of ${unenrichedProspects.length} prospects`,
+        total: unenrichedProspects.length,
+        enriched: successCount,
+        failed: failureCount,
+        results
+      });
+    } catch (error) {
+      console.error("Batch enrichment error:", error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Batch enrichment failed" 
+      });
+    }
+  });
+
   // Apollo bulk enrichment
   app.post("/api/apollo-bulk-enrich", authenticate, async (req, res) => {
     try {
