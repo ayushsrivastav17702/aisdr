@@ -21,8 +21,16 @@ process.on('unhandledRejection', (reason, promise) => {
 console.log('🚀 Starting server...');
 console.log('📍 NODE_ENV:', process.env.NODE_ENV);
 console.log('📍 DATABASE_URL exists:', !!process.env.DATABASE_URL);
+console.log('📍 PORT:', process.env.PORT);
+console.log('📍 SESSION_SECRET exists:', !!process.env.SESSION_SECRET);
+console.log('📍 OPENAI_API_KEY exists:', !!process.env.OPENAI_API_KEY);
 
-initSentry();
+try {
+  initSentry();
+  console.log('✅ Sentry initialized');
+} catch (error) {
+  console.error('❌ Sentry init failed:', error);
+}
 
 const app = express();
 
@@ -171,7 +179,9 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  console.log('📋 Registering routes...');
   const server = await registerRoutes(app);
+  console.log('✅ Routes registered');
 
   // Sentry v8 error handling - expressIntegration handles it automatically
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
@@ -188,10 +198,14 @@ app.use((req, res, next) => {
   // importantly only setup vite in development and after
   // setting up all the other routes so the catch-all route
   // doesn't interfere with the other routes
+  console.log('📁 Setting up static/vite server, env:', app.get("env"));
   if (app.get("env") === "development") {
     await setupVite(app, server);
+    console.log('✅ Vite setup complete');
   } else {
+    console.log('📁 Serving static files from production build...');
     serveStatic(app);
+    console.log('✅ Static files setup complete');
   }
 
   // ALWAYS serve the app on the port specified in the environment variable PORT
@@ -251,4 +265,7 @@ app.use((req, res, next) => {
     await import("./queue/automation-worker");
     log(`✅ Automation worker started`);
   });
-})();
+})().catch((error) => {
+  console.error('❌ FATAL: Server startup failed:', error);
+  process.exit(1);
+});
