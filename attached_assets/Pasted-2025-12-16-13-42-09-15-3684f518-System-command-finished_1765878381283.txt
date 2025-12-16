@@ -1,0 +1,113 @@
+2025-12-16 13:42:09.15
+3684f518
+System
+command finished with error [npm run start]: signal: terminated
+
+2025-12-16 13:42:49.59
+a71122b6
+User
+dataType: undefined,
+2025-12-16 13:42:49.59
+a71122b6
+User
+code: '23502',
+2025-12-16 13:42:49.59
+a71122b6
+User
+hint: undefined,
+2025-12-16 13:42:49.59
+a71122b6
+User
+routine: 'ExecConstraints'
+2025-12-16 13:42:49.59
+a71122b6
+User
+file:///home/runner/workspace/node_modules/@neondatabase/serverless/index.mjs:1345
+2025-12-16 13:42:49.61
+a71122b6
+User
+npm notice
+2025-12-16 13:42:49.61
+a71122b6
+User
+npm notice New major version of npm available! 10.8.2 -> 11.7.0
+2025-12-16 13:42:49.61
+a71122b6
+User
+npm notice
+2025-12-16 13:42:49.61
+a71122b6
+User
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.7.0
+2025-12-16 13:42:49.61
+a71122b6
+System
+command finished with error [npm run start]: exit status 1
+2025-12-16 13:45:57.22
+e0ffa167
+User
+length: 467,
+2025-12-16 13:45:57.22
+e0ffa167
+User
+at async IcpTemplateService.initializeDefaultTemplates (file:///home/runner/workspace/dist/index.js:8123:13)
+2025-12-16 13:45:57.22
+e0ffa167
+User
+Node.js v20.19.3
+2025-12-16 13:45:57.22
+e0ffa167
+User
+file:///home/runner/workspace/node_modules/@neondatabase/serverless/index.mjs:1345
+2025-12-16 13:45:57.22
+e0ffa167
+User
+dataType: undefined,
+2025-12-16 13:45:57.22
+e0ffa167
+User
+schema: 'public',
+2025-12-16 13:45:57.22
+e0ffa167
+User
+code: '23502',
+2025-12-16 13:45:57.22
+e0ffa167
+User
+where: undefined,
+2025-12-16 13:45:57.22
+e0ffa167
+User
+at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+2025-12-16 13:45:57.22
+e0ffa167
+User
+table: 'icp_templates',
+2025-12-16 13:45:57.22
+e0ffa167
+User
+file: 'execMain.c',
+2025-12-16 13:45:57.22
+e0ffa167
+User
+}
+2025-12-16 13:45:57.22
+e0ffa167
+User
+hint: undefined,
+2025-12-16 13:45:57.22
+e0ffa167
+User
+severity: 'ERROR',
+2025-12-16 13:45:57.22
+e0ffa167
+User
+internalPosition: undefined,
+2025-12-16 13:45:57.22
+e0ffa167
+User
+at file:///home/runner/workspace/node_modules/@neondatabase/serverless/index.mjs:1345:74
+2025-12-16 13:45:57.22
+e0ffa167
+User
+detail: 'Failing row contains (e4feb74e-f57f-41ec-aaea-617c85e6b28e, SaaS Sales Leaders, Target sales leaders at SaaS companies for sales enablement tool..., t, {"keywords": ["SaaS", "sales", "revenue", "B2B"], "jobTitles": [..., 2025-12-16 08:15:57.185773, 2025-12-16 08:15:57.185773, null).',

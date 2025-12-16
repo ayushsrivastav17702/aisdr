@@ -100,7 +100,7 @@ export const importRecords = pgTable("import_records", {
 // ICP Templates table
 export const icpTemplates = pgTable("icp_templates", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").notNull(), // Multi-tenant owner - required
+  userId: varchar("user_id"), // Multi-tenant owner - nullable for system default templates
   name: text("name").notNull(),
   description: text("description"),
   isDefault: boolean("is_default").default(false),
