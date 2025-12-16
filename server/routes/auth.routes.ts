@@ -48,12 +48,15 @@ const resendVerificationSchema = z.object({
 });
 
 router.post('/api/auth/login', loginRateLimit, async (req, res) => {
+  console.log('🔐 Login request received');
   try {
     const validationResult = loginSchema.safeParse(req.body);
     if (!validationResult.success) {
+      console.log('❌ Login validation failed:', validationResult.error.issues);
       return res.status(400).json({ error: 'Invalid request data', details: validationResult.error.issues });
     }
     const { email, password } = validationResult.data;
+    console.log('✅ Login validation passed for:', email);
     
     // Extract client IP properly (trust proxy is configured)
     const ipAddress = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || 
@@ -119,6 +122,8 @@ router.post('/api/auth/login', loginRateLimit, async (req, res) => {
       userId: session.userId,
     });
   } catch (error) {
+    console.error('❌ Login error:', error);
+    console.error('❌ Login error stack:', error instanceof Error ? error.stack : 'No stack');
     if (error instanceof Error && error.message === 'Account is not active') {
       auditService.logFromRequest(req, 'LOGIN_FAILED', 'auth', { 
         email: req.body.email || 'unknown',
@@ -128,8 +133,7 @@ router.post('/api/auth/login', loginRateLimit, async (req, res) => {
       });
       return res.status(403).json({ error: 'Account is not active' });
     }
-    console.error('Login error:', error);
-    res.status(500).json({ error: 'Login failed' });
+    res.status(500).json({ error: 'Login failed', message: error instanceof Error ? error.message : 'Unknown error' });
   }
 });
 
