@@ -8,6 +8,20 @@ import { emailQueueService } from "./services/email-queue.service";
 import { mailboxService } from "./services/mailbox.service";
 import { initSentry, Sentry, isSentryEnabled } from "./sentry";
 
+// Global error handlers for production debugging
+process.on('uncaughtException', (error) => {
+  console.error('❌ UNCAUGHT EXCEPTION:', error);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ UNHANDLED REJECTION at:', promise, 'reason:', reason);
+});
+
+console.log('🚀 Starting server...');
+console.log('📍 NODE_ENV:', process.env.NODE_ENV);
+console.log('📍 DATABASE_URL exists:', !!process.env.DATABASE_URL);
+
 initSentry();
 
 const app = express();
