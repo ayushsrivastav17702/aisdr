@@ -1,0 +1,124 @@
+2025-12-16 15:11:04.48
+6295829a
+User
+where: undefined,
+2025-12-16 15:11:04.48
+6295829a
+User
+schema: 'public',
+2025-12-16 15:11:04.48
+6295829a
+User
+length: 465,
+2025-12-16 15:11:04.48
+6295829a
+User
+routine: 'ExecConstraints'
+2025-12-16 15:11:04.48
+6295829a
+User
+❌ UNHANDLED REJECTION at: Promise {
+2025-12-16 15:11:04.48
+6295829a
+User
+error: null value in column "user_id" of relation "icp_templates" violates not-null constraint
+2025-12-16 15:11:04.48
+6295829a
+User
+}
+2025-12-16 15:11:04.48
+6295829a
+User
+internalPosition: undefined,
+2025-12-16 15:11:04.48
+6295829a
+User
+dataType: undefined,
+2025-12-16 15:11:04.48
+6295829a
+User
+line: '2067',
+2025-12-16 15:11:04.48
+6295829a
+User
+table: 'icp_templates',
+2025-12-16 15:11:04.48
+6295829a
+User
+where: undefined,
+2025-12-16 15:11:04.48
+6295829a
+User
+constraint: undefined,
+2025-12-16 15:11:04.48
+6295829a
+User
+} reason: error: null value in column "user_id" of relation "icp_templates" violates not-null constraint
+2025-12-16 15:11:04.48
+6295829a
+User
+at file:///home/runner/workspace/node_modules/@neondatabase/serverless/index.mjs:1345:74
+2025-12-16 15:11:04.48
+6295829a
+User
+hint: undefined,
+2025-12-16 15:11:04.48
+6295829a
+User
+line: '2067',
+2025-12-16 15:11:04.48
+6295829a
+User
+at async Server. (file:///home/runner/workspace/dist/index.js:16903:5) {
+2025-12-16 15:11:04.48
+6295829a
+User
+position: undefined,
+2025-12-16 15:11:04.48
+6295829a
+User
+at async Server. (file:///home/runner/workspace/dist/index.js:16903:5) {
+2025-12-16 15:11:04.48
+6295829a
+User
+routine: 'ExecConstraints'
+2025-12-16 15:11:04.48
+6295829a
+User
+detail: 'Failing row contains (de6f6216-26f1-476f-97b7-a3dfe70a23d2, SaaS Sales Leaders, Target sales leaders at SaaS companies for sales enablement tool..., t, {"keywords": ["SaaS", "sales", "revenue", "B2B"], "jobTitles": [..., 2025-12-16 09:41:03.69972, 2025-12-16 09:41:03.69972, null).',
+2025-12-16 15:11:04.48
+6295829a
+User
+detail: 'Failing row contains (de6f6216-26f1-476f-97b7-a3dfe70a23d2, SaaS Sales Leaders, Target sales leaders at SaaS companies for sales enablement tool..., t, {"keywords": ["SaaS", "sales", "revenue", "B2B"], "jobTitles": [..., 2025-12-16 09:41:03.69972, 2025-12-16 09:41:03.69972, null).',
+2025-12-16 15:11:04.48
+6295829a
+User
+code: '23502',
+2025-12-16 15:11:04.48
+6295829a
+User
+table: 'icp_templates',
+2025-12-16 15:11:04.48
+6295829a
+User
+severity: 'ERROR',
+2025-12-16 15:11:04.48
+6295829a
+User
+at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+2025-12-16 15:11:04.48
+6295829a
+User
+file: 'execMain.c',
+2025-12-16 15:11:04.48
+6295829a
+User
+at file:///home/runner/workspace/node_modules/@neondatabase/serverless/index.mjs:1345:74
+2025-12-16 15:11:04.48
+6295829a
+User
+internalQuery: undefined,
+2025-12-16 15:11:04.48
+6295829a
+User
+at async IcpTemplateService.initializeDefaultTemplates (file:///home/runner/workspace/dist/index.js:8123:13)
