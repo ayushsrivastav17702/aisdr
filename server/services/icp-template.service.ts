@@ -140,15 +140,21 @@ const DEFAULT_TEMPLATES: Array<Omit<IcpTemplate, 'id' | 'createdAt' | 'updatedAt
 
 class IcpTemplateService {
   async initializeDefaultTemplates(): Promise<void> {
-    for (const template of DEFAULT_TEMPLATES) {
-      const existing = await db.query.icpTemplates.findFirst({
-        where: eq(icpTemplates.name, template.name)
-      });
+    try {
+      for (const template of DEFAULT_TEMPLATES) {
+        const existing = await db.query.icpTemplates.findFirst({
+          where: eq(icpTemplates.name, template.name)
+        });
 
-      if (!existing) {
-        await db.insert(icpTemplates).values(template);
-        console.log(`✅ Created default ICP template: ${template.name}`);
+        if (!existing) {
+          await db.insert(icpTemplates).values(template);
+          console.log(`✅ Created default ICP template: ${template.name}`);
+        }
       }
+    } catch (error) {
+      // Log but don't fail startup - templates can be created later
+      console.warn('⚠️ Could not initialize default ICP templates:', error instanceof Error ? error.message : error);
+      console.warn('⚠️ This may happen if the database schema needs to be updated. Templates will be created when schema is synced.');
     }
   }
 
