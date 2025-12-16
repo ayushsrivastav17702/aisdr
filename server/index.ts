@@ -220,10 +220,14 @@ app.use((req, res, next) => {
   }, async () => {
     log(`serving on port ${port}`);
     
-    // Initialize default ICP templates
-    const { icpTemplateService } = await import("./services/icp-template.service");
-    await icpTemplateService.initializeDefaultTemplates();
-    log(`✅ ICP templates initialized`);
+    // Initialize default ICP templates (with extra safety layer)
+    try {
+      const { icpTemplateService } = await import("./services/icp-template.service");
+      await icpTemplateService.initializeDefaultTemplates();
+      log(`✅ ICP templates initialized`);
+    } catch (error) {
+      console.warn('⚠️ ICP template initialization skipped:', error instanceof Error ? error.message : error);
+    }
     
     // Start email queue processor
     log(`📧 Starting email queue processor...`);

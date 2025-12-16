@@ -1,0 +1,149 @@
+2025-12-16 13:42:09.13
+3684f518
+User
+Node.js v20.19.3
+
+2025-12-16 13:42:09.13
+3684f518
+User
+file: 'execMain.c',
+2025-12-16 13:42:09.13
+3684f518
+User
+hint: undefined,
+2025-12-16 13:42:09.13
+3684f518
+User
+at async Server. (file:///home/runner/workspace/dist/index.js:16879:5) {
+2025-12-16 13:42:09.13
+3684f518
+User
+at async IcpTemplateService.initializeDefaultTemplates (file:///home/runner/workspace/dist/index.js:8123:13)
+2025-12-16 13:42:09.13
+3684f518
+User
+routine: 'ExecConstraints'
+2025-12-16 13:42:09.13
+3684f518
+User
+internalQuery: undefined,
+2025-12-16 13:42:09.13
+3684f518
+User
+column: 'user_id',
+2025-12-16 13:42:09.13
+3684f518
+User
+^
+2025-12-16 13:42:09.13
+3684f518
+User
+at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+2025-12-16 13:42:09.13
+3684f518
+User
+o?t(o):n(u)},"cb"),s=new r(function(o,u){n=o,t=u}).catch(o=>{throw Error.captureStackTrace(
+2025-12-16 13:42:09.13
+3684f518
+User
+schema: 'public',
+2025-12-16 13:42:09.13
+3684f518
+User
+severity: 'ERROR',
+2025-12-16 13:42:09.13
+3684f518
+User
+table: 'icp_templates',
+2025-12-16 13:42:09.13
+3684f518
+User
+internalPosition: undefined,
+2025-12-16 13:42:09.13
+3684f518
+User
+where: undefined,
+2025-12-16 13:42:09.13
+3684f518
+User
+constraint: undefined,
+2025-12-16 13:42:09.13
+3684f518
+User
+length: 465,
+2025-12-16 13:42:09.13
+3684f518
+User
+detail: 'Failing row contains (382a9b24-2ea4-4b01-9944-cfd6c5e5c2e4, SaaS Sales Leaders, Target sales leaders at SaaS companies for sales enablement tool..., t, {"keywords": ["SaaS", "sales", "revenue", "B2B"], "jobTitles": [..., 2025-12-16 08:12:09.11253, 2025-12-16 08:12:09.11253, null).',
+2025-12-16 13:42:09.15
+3684f518
+System
+command finished with error [npm run start]: signal: terminated
+2025-12-16 13:42:49.59
+a71122b6
+User
+constraint: undefined,
+2025-12-16 13:42:49.59
+a71122b6
+User
+detail: 'Failing row contains (94464fd4-0027-4c8b-80a6-f42c757c64ce, SaaS Sales Leaders, Target sales leaders at SaaS companies for sales enablement tool..., t, {"keywords": ["SaaS", "sales", "revenue", "B2B"], "jobTitles": [..., 2025-12-16 08:12:49.57545, 2025-12-16 08:12:49.57545, null).',
+2025-12-16 13:42:49.59
+a71122b6
+User
+where: undefined,
+2025-12-16 13:42:49.59
+a71122b6
+User
+at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+2025-12-16 13:42:49.59
+a71122b6
+User
+^
+2025-12-16 13:42:49.59
+a71122b6
+User
+at async IcpTemplateService.initializeDefaultTemplates (file:///home/runner/workspace/dist/index.js:8123:13)
+2025-12-16 13:42:49.59
+a71122b6
+User
+at file:///home/runner/workspace/node_modules/@neondatabase/serverless/index.mjs:1345:74
+2025-12-16 13:42:49.59
+a71122b6
+User
+error: null value in column "user_id" of relation "icp_templates" violates not-null constraint
+2025-12-16 13:42:49.59
+a71122b6
+User
+length: 465,
+2025-12-16 13:42:49.59
+a71122b6
+User
+position: undefined,
+2025-12-16 13:42:49.59
+a71122b6
+User
+table: 'icp_templates',
+2025-12-16 13:42:49.59
+a71122b6
+User
+column: 'user_id',
+2025-12-16 13:42:49.59
+a71122b6
+User
+at async Server. (file:///home/runner/workspace/dist/index.js:16879:5) {
+2025-12-16 13:42:49.59
+a71122b6
+User
+schema: 'public',
+2025-12-16 13:42:49.59
+a71122b6
+User
+severity: 'ERROR',
+2025-12-16 13:42:49.59
+a71122b6
+User
+}
+2025-12-16 13:42:49.59
+a71122b6
+User
+line: '2067',
