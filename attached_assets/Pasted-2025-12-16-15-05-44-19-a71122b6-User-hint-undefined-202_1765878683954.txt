@@ -1,0 +1,113 @@
+2025-12-16 15:05:44.19
+a71122b6
+User
+hint: undefined,
+2025-12-16 15:05:44.19
+a71122b6
+User
+}
+2025-12-16 15:05:44.19
+a71122b6
+User
+constraint: undefined,
+2025-12-16 15:05:44.19
+a71122b6
+User
+internalPosition: undefined,
+
+2025-12-16 15:05:44.19
+a71122b6
+User
+o?t(o):n(u)},"cb"),s=new r(function(o,u){n=o,t=u}).catch(o=>{throw Error.captureStackTrace(
+2025-12-16 15:05:44.19
+a71122b6
+User
+line: '2067',
+2025-12-16 15:05:44.19
+a71122b6
+User
+at async Server. (file:///home/runner/workspace/dist/index.js:16879:5) {
+2025-12-16 15:05:44.19
+a71122b6
+User
+file: 'execMain.c',
+2025-12-16 15:05:44.19
+a71122b6
+User
+where: undefined,
+2025-12-16 15:05:44.19
+a71122b6
+User
+Node.js v20.19.3
+2025-12-16 15:05:44.19
+a71122b6
+User
+at file:///home/runner/workspace/node_modules/@neondatabase/serverless/index.mjs:1345:74
+2025-12-16 15:05:44.19
+a71122b6
+User
+severity: 'ERROR',
+2025-12-16 15:05:44.19
+a71122b6
+User
+position: undefined,
+2025-12-16 15:05:44.19
+a71122b6
+User
+dataType: undefined,
+2025-12-16 15:05:44.19
+a71122b6
+User
+schema: 'public',
+2025-12-16 15:05:44.19
+a71122b6
+User
+file:///home/runner/workspace/node_modules/@neondatabase/serverless/index.mjs:1345
+2025-12-16 15:05:44.19
+a71122b6
+User
+code: '23502',
+2025-12-16 15:05:44.19
+a71122b6
+User
+error: null value in column "user_id" of relation "icp_templates" violates not-null constraint
+2025-12-16 15:05:44.19
+a71122b6
+User
+table: 'icp_templates',
+2025-12-16 15:05:44.19
+a71122b6
+User
+internalQuery: undefined,
+2025-12-16 15:05:44.19
+a71122b6
+User
+at async IcpTemplateService.initializeDefaultTemplates (file:///home/runner/workspace/dist/index.js:8123:13)
+2025-12-16 15:05:44.19
+a71122b6
+User
+^
+2025-12-16 15:05:44.19
+a71122b6
+User
+routine: 'ExecConstraints'
+2025-12-16 15:05:44.19
+a71122b6
+User
+length: 465,
+2025-12-16 15:05:44.19
+a71122b6
+User
+at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+2025-12-16 15:05:44.19
+a71122b6
+User
+detail: 'Failing row contains (c8dfaf44-cb15-4ccb-912b-e99483fa5202, SaaS Sales Leaders, Target sales leaders at SaaS companies for sales enablement tool..., t, {"keywords": ["SaaS", "sales", "revenue", "B2B"], "jobTitles": [..., 2025-12-16 09:35:43.30889, 2025-12-16 09:35:43.30889, null).',
+2025-12-16 15:05:44.19
+a71122b6
+User
+column: 'user_id',
+2025-12-16 15:05:48.69
+a71122b6
+System
+command finished with error [npm run start]: exit status 1
