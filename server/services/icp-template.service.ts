@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 
 const DEFAULT_TEMPLATES: Array<Omit<IcpTemplate, 'id' | 'createdAt' | 'updatedAt'>> = [
   {
+    userId: null,
     name: "SaaS Sales Leaders",
     description: "Target sales leaders at SaaS companies for sales enablement tools",
     isDefault: true,
@@ -24,6 +25,7 @@ const DEFAULT_TEMPLATES: Array<Omit<IcpTemplate, 'id' | 'createdAt' | 'updatedAt
     } as ICPConfig
   },
   {
+    userId: null,
     name: "Enterprise Tech Buyers",
     description: "Target technology decision-makers at enterprise companies",
     isDefault: true,
@@ -48,6 +50,7 @@ const DEFAULT_TEMPLATES: Array<Omit<IcpTemplate, 'id' | 'createdAt' | 'updatedAt
     } as ICPConfig
   },
   {
+    userId: null,
     name: "E-commerce Operations",
     description: "Target e-commerce operations leaders for logistics and fulfillment solutions",
     isDefault: true,
@@ -67,6 +70,7 @@ const DEFAULT_TEMPLATES: Array<Omit<IcpTemplate, 'id' | 'createdAt' | 'updatedAt
     } as ICPConfig
   },
   {
+    userId: null,
     name: "Retail Merchandising",
     description: "Target merchandising professionals at retail and fashion brands (Increff ICP)",
     isDefault: true,
@@ -93,6 +97,7 @@ const DEFAULT_TEMPLATES: Array<Omit<IcpTemplate, 'id' | 'createdAt' | 'updatedAt
     } as ICPConfig
   },
   {
+    userId: null,
     name: "Marketing Leaders",
     description: "Target marketing leaders for martech and analytics solutions",
     isDefault: true,
@@ -112,6 +117,7 @@ const DEFAULT_TEMPLATES: Array<Omit<IcpTemplate, 'id' | 'createdAt' | 'updatedAt
     } as ICPConfig
   },
   {
+    userId: null,
     name: "Financial Services",
     description: "Target financial decision-makers for fintech and finance solutions",
     isDefault: true,
