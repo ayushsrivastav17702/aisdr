@@ -132,6 +132,8 @@ const csrfExcludedPaths = [
   '/api/auth/verify-email',
   '/api/auth/resend-verification',
   '/api/auth/invitations/accept',
+  '/api/auth/magic-link',
+  '/api/auth/magic-link/verify',
   '/api/csrf-token',
   '/api/import/csv',
   '/api/import/validate-csv',
