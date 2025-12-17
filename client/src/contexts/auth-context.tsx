@@ -18,7 +18,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
-  refreshUser: () => Promise<void>;
+  refreshUser: (tokenOverride?: string) => Promise<void>;
   setAuthToken: (newToken: string) => void;
 }
 
@@ -31,8 +31,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setToken] = useState<string | null>(() => localStorage.getItem(TOKEN_KEY));
   const [isLoading, setIsLoading] = useState(true);
 
-  const refreshUser = async () => {
-    if (!token) {
+  const refreshUser = async (tokenOverride?: string) => {
+    const authToken = tokenOverride ?? token;
+    if (!authToken) {
       setUser(null);
       setIsLoading(false);
       return;
@@ -41,7 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const response = await fetch('/api/auth/me', {
         headers: {
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `Bearer ${authToken}`,
         },
       });
 
@@ -80,7 +81,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setToken(newToken);
     localStorage.setItem(TOKEN_KEY, newToken);
     
-    await refreshUser();
+    await refreshUser(newToken);
   };
 
   const logout = async () => {
