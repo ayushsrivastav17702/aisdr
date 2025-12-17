@@ -686,12 +686,17 @@ export const userStatusEnum = pgEnum("user_status", ["active", "inactive", "susp
 // User role enum
 export const userRoleEnum = pgEnum("user_role", ["admin", "user"]);
 
+// Auth provider enum for passwordless login
+export const authProviderEnum = pgEnum("auth_provider", ["google", "microsoft", "magic", "password"]);
+
 // Users table
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   username: text("username").unique(),
   email: text("email").notNull().unique(),
-  passwordHash: text("password_hash").notNull(),
+  passwordHash: text("password_hash"), // Nullable for OAuth users
+  authProvider: authProviderEnum("auth_provider").default("password"), // Primary auth method
+  passwordLoginEnabled: boolean("password_login_enabled").default(false), // Restricted password login
   firstName: text("first_name"),
   lastName: text("last_name"),
   role: userRoleEnum("role").notNull().default("user"),
@@ -750,6 +755,22 @@ export const passwordResetTokens = pgTable("password_reset_tokens", {
   usedAt: timestamp("used_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
+
+// Magic links table for passwordless login
+export const magicLinks = pgTable("magic_links", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  email: text("email").notNull(),
+  tokenHash: text("token_hash").notNull().unique(), // Store hashed token for security
+  expiresAt: timestamp("expires_at").notNull(),
+  used: boolean("used").notNull().default(false),
+  usedAt: timestamp("used_at"),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  emailIdx: index("magic_links_email_idx").on(table.email),
+  expiresAtIdx: index("magic_links_expires_at_idx").on(table.expiresAt),
+}));
 
 // Email verification tokens table
 export const emailVerificationTokens = pgTable("email_verification_tokens", {
@@ -822,6 +843,8 @@ export type UserInvitation = typeof userInvitations.$inferSelect;
 export type InsertUserInvitation = typeof userInvitations.$inferInsert;
 export type PasswordResetToken = typeof passwordResetTokens.$inferSelect;
 export type InsertPasswordResetToken = typeof passwordResetTokens.$inferInsert;
+export type MagicLink = typeof magicLinks.$inferSelect;
+export type InsertMagicLink = typeof magicLinks.$inferInsert;
 export type AuditLog = typeof auditLogs.$inferSelect;
 export type InsertAuditLog = typeof auditLogs.$inferInsert;
 export type AccountLockout = typeof accountLockouts.$inferSelect;
@@ -849,6 +872,12 @@ export const insertUserInvitationSchema = createInsertSchema(userInvitations).om
 });
 
 export const insertPasswordResetTokenSchema = createInsertSchema(passwordResetTokens).omit({
+  id: true,
+  createdAt: true,
+  usedAt: true,
+});
+
+export const insertMagicLinkSchema = createInsertSchema(magicLinks).omit({
   id: true,
   createdAt: true,
   usedAt: true,

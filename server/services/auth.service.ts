@@ -124,6 +124,32 @@ export class AuthService {
     }
   }
 
+  async createSessionForUser(
+    userId: string,
+    ipAddress?: string,
+    userAgent?: string
+  ): Promise<SessionData | null> {
+    const expiresAt = new Date(Date.now() + SESSION_MAX_AGE);
+
+    const [session] = await db.insert(userSessions).values({
+      userId,
+      token: crypto.randomBytes(32).toString('hex'),
+      expiresAt,
+      ipAddress,
+      userAgent,
+      lastActivity: new Date(),
+    }).returning();
+
+    const token = this.generateToken(userId, session.id);
+
+    return {
+      userId,
+      sessionId: session.id,
+      token,
+      expiresAt,
+    };
+  }
+
   async validateSession(token: string, checkIdleTimeout: boolean = true): Promise<AuthUser | null> {
     const decoded = this.verifyToken(token);
     if (!decoded) {
@@ -328,7 +354,7 @@ export class AuthService {
       lastName: user.lastName,
       role: user.role as 'admin' | 'user',
       status: user.status as 'active' | 'inactive' | 'suspended',
-      emailVerified: user.emailVerified,
+      emailVerified: user.emailVerified || false,
     };
   }
 
@@ -365,7 +391,7 @@ export class AuthService {
     await this.logAuditEvent(userId, 'sessions_revoked', { exceptSessionId });
   }
 
-  private async logAuditEvent(userId: string, action: string, metadata: any): Promise<void> {
+  async logAuditEvent(userId: string, action: string, metadata: any): Promise<void> {
     try {
       await db.insert(auditLogs).values({
         userId,

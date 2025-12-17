@@ -1,0 +1,236 @@
+Role
+You are a senior full-stack engineer building a secure authentication system for a B2B SaaS product called AiSDR, deployed and hosted on Replit.
+
+You must assume:
+
+Replit autoscale deployments
+
+Environment variables via Replit Secrets
+
+Node.js / Next.js app running on Replit
+
+No public user sign-ups
+
+🎯 Goal
+
+Build a password-light, enterprise-grade login system with:
+
+Google OAuth
+
+Microsoft OAuth
+
+Magic link login (email-based)
+
+Restricted email + password login
+
+Clean 401 unauthorized handling
+
+Production-ready security practices
+
+🧱 Platform Constraints (IMPORTANT)
+
+App runs inside Replit autoscale
+
+Secrets stored in Replit Secrets
+
+App URL may change between dev & prod
+
+Sessions must survive restarts
+
+Email delivery must be external (Resend / Postmark / SMTP)
+
+🧩 Functional Requirements
+1️⃣ User Model (Single Source of Truth)
+
+Each user:
+
+Is created only after subscription or admin approval
+
+Is identified only by email
+
+Can log in via multiple methods mapped to the same email
+
+Database schema:
+
+users
+- id
+- email (unique)
+- name
+- auth_provider (google | microsoft | magic | password)
+- password_hash (nullable)
+- is_active
+- created_at
+
+magic_links
+- id
+- email
+- token_hash
+- expires_at
+- used
+
+2️⃣ Login Methods
+A. Google OAuth (Primary)
+
+Use Google OAuth via NextAuth / Auth.js
+
+Read credentials from Replit Secrets
+
+Verify email
+
+If email exists → login
+
+If email does not exist → return 401
+
+B. Microsoft OAuth
+
+Use Azure AD OAuth
+
+Same rules as Google
+
+Match email against users table
+
+C. Magic Link Login
+
+UI option: Login with Magic Link
+
+User enters email
+
+Backend:
+
+Generate cryptographically secure token
+
+Hash token before storing
+
+Expiry: 15 minutes
+
+Send email:
+
+https://<replit-prod-url>/auth/magic?token=XYZ
+
+
+On click:
+
+Validate token
+
+Ensure not expired or reused
+
+Create session
+
+Mark token as used
+
+D. Email + Password (Restricted)
+
+Disabled by default
+
+Enabled only by support
+
+Password:
+
+Auto-generated
+
+Stored hashed
+
+No reset or change allowed
+
+Intended only for non-Google/Microsoft users
+
+🔐 Security Requirements (Mandatory)
+
+Hash passwords and magic tokens (bcrypt / crypto)
+
+Rate-limit login attempts (Upstash Redis preferred)
+
+Single-use magic links
+
+HTTP-only secure cookies
+
+CSRF protection
+
+HTTPS enforced
+
+Audit log login method
+
+🚫 401 Error Handling
+
+Return 401 Unauthorized when:
+
+Email does not exist
+
+OAuth email mismatch
+
+Magic link invalid / expired
+
+Frontend message:
+
+“This email is not linked to an AiSDR account. Please contact your admin or support@aisdr.com
+.”
+
+No technical error leakage.
+
+🎨 UI Requirements
+
+Login screen should include:
+
+Sign in with Google
+
+Sign in with Microsoft
+
+Login with Magic Link
+
+Disabled password login (hidden unless enabled)
+
+After magic link request:
+
+“Magic link sent. Please check your inbox.”
+
+⚙️ Replit-Specific Implementation Notes
+
+Use Replit Secrets for:
+
+OAuth credentials
+
+JWT / session secrets
+
+Email API keys
+
+Ensure callback URLs work in:
+
+Dev (repl.co)
+
+Production (autoscale URL)
+
+Avoid in-memory session storage
+
+Use database-backed sessions or JWTs
+
+📦 Deliverables
+
+Provide:
+
+Replit-compatible project structure
+
+NextAuth configuration
+
+OAuth setup instructions (Google + Microsoft)
+
+Magic link API routes
+
+Email template for magic link
+
+401 handling logic (backend + frontend)
+
+Security checklist for Replit deployments
+
+✅ Success Criteria
+
+The final system should:
+
+Work reliably on Replit autoscale
+
+Require no passwords for most users
+
+Prevent unauthorized access
+
+Match modern SaaS UX
+
+Be easy to maintain and extend
