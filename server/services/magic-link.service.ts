@@ -185,7 +185,7 @@ class MagicLinkService {
 
     console.log('📧 Sending magic link email to:', email);
     const result = await resend.emails.send({
-      from: 'AiSDR <noreply@increff.com>',
+      from: 'AiSDR <noreply@global.increff.com>',
       to: email,
       subject: 'Sign in to AiSDR',
       html: `
