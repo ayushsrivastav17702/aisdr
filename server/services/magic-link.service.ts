@@ -184,7 +184,7 @@ class MagicLinkService {
     const greeting = firstName ? `Hi ${firstName}` : 'Hi there';
 
     await resend.emails.send({
-      from: 'AiSDR <noreply@aisdr.com>',
+      from: 'AiSDR <noreply@increff.com>',
       to: email,
       subject: 'Sign in to AiSDR',
       html: `
