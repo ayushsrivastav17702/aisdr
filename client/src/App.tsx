@@ -16,6 +16,7 @@ import ContentManagement from "@/pages/content-management";
 import AutomationDashboard from "@/pages/AutomationDashboard";
 import AnalyticsPage from "@/pages/analytics";
 import LoginPage from "@/pages/login";
+import MagicAuthPage from "@/pages/magic-auth";
 import AcceptInvitationPage from "@/pages/accept-invitation";
 import ForgotPasswordPage from "@/pages/forgot-password";
 import ResetPasswordPage from "@/pages/reset-password";
@@ -34,6 +35,7 @@ function Router() {
   return (
     <Switch>
       <Route path="/login" component={LoginPage} />
+      <Route path="/auth/magic" component={MagicAuthPage} />
       <Route path="/accept-invitation" component={AcceptInvitationPage} />
       <Route path="/forgot-password" component={ForgotPasswordPage} />
       <Route path="/reset-password" component={ResetPasswordPage} />

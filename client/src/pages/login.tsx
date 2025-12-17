@@ -1,22 +1,58 @@
-import { useState } from 'react';
-import { useLocation, Link } from 'wouter';
+import { useState, useEffect } from 'react';
+import { useLocation, useSearch } from 'wouter';
 import { useAuth } from '@/contexts/auth-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, LogIn } from 'lucide-react';
+import { Separator } from '@/components/ui/separator';
+import { Loader2, Mail, KeyRound, ChevronDown, ChevronUp } from 'lucide-react';
+import { SiGoogle } from 'react-icons/si';
+import { BsMicrosoft } from 'react-icons/bs';
+import { useQuery } from '@tanstack/react-query';
+
+interface AuthConfig {
+  googleEnabled: boolean;
+  microsoftEnabled: boolean;
+  magicLinkEnabled: boolean;
+  passwordLoginEnabled: boolean;
+}
 
 export default function LoginPage() {
   const [, setLocation] = useLocation();
+  const searchString = useSearch();
   const { login, isLoading: authLoading } = useAuth();
+  
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showMagicLink, setShowMagicLink] = useState(false);
+  const [showPasswordLogin, setShowPasswordLogin] = useState(false);
+  const [magicLinkSent, setMagicLinkSent] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const { data: authConfig, isLoading: configLoading } = useQuery<AuthConfig>({
+    queryKey: ['/api/auth/config'],
+  });
+
+  useEffect(() => {
+    const params = new URLSearchParams(searchString);
+    const errorParam = params.get('error');
+    if (errorParam) {
+      const errorMessages: Record<string, string> = {
+        google_denied: 'Google login was cancelled',
+        microsoft_denied: 'Microsoft login was cancelled',
+        no_code: 'Authentication failed - no authorization code received',
+        google_failed: 'Google authentication failed',
+        microsoft_failed: 'Microsoft authentication failed',
+      };
+      setError(decodeURIComponent(errorMessages[errorParam] || errorParam));
+    }
+  }, [searchString]);
+
+  const handlePasswordLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setIsSubmitting(true);
@@ -31,7 +67,44 @@ export default function LoginPage() {
     }
   };
 
-  if (authLoading) {
+  const handleMagicLinkRequest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setSuccessMessage('');
+    setIsSubmitting(true);
+
+    try {
+      const response = await fetch('/api/auth/magic-link', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data.error || 'Failed to send magic link');
+        return;
+      }
+
+      setMagicLinkSent(true);
+      setSuccessMessage('Magic link sent! Please check your inbox.');
+    } catch (err) {
+      setError('Failed to send magic link. Please try again.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleGoogleLogin = () => {
+    window.location.href = '/api/auth/google';
+  };
+
+  const handleMicrosoftLogin = () => {
+    window.location.href = '/api/auth/microsoft';
+  };
+
+  if (authLoading || configLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
         <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
@@ -39,90 +112,267 @@ export default function LoginPage() {
     );
   }
 
+  const hasOAuthOptions = authConfig?.googleEnabled || authConfig?.microsoftEnabled;
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800 p-4">
       <Card className="w-full max-w-md">
         <CardHeader className="space-y-1">
           <div className="flex items-center justify-center mb-4">
-            <div className="w-12 h-12 bg-primary rounded-lg flex items-center justify-center">
-              <LogIn className="w-6 h-6 text-primary-foreground" />
+            <div className="w-16 h-16 bg-primary rounded-xl flex items-center justify-center">
+              <span className="text-2xl font-bold text-primary-foreground">AI</span>
             </div>
           </div>
-          <CardTitle className="text-2xl font-bold text-center">Welcome back</CardTitle>
+          <CardTitle className="text-2xl font-bold text-center">Welcome to AiSDR</CardTitle>
           <CardDescription className="text-center">
             Sign in to your account to continue
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {error && (
-              <Alert variant="destructive" data-testid="alert-login-error">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
+        <CardContent className="space-y-4">
+          {error && (
+            <Alert variant="destructive" data-testid="alert-login-error">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
 
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="admin@example.com"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                required
-                disabled={isSubmitting}
-                data-testid="input-email"
-              />
-            </div>
+          {successMessage && (
+            <Alert data-testid="alert-success">
+              <AlertDescription className="text-green-700 dark:text-green-400">
+                {successMessage}
+              </AlertDescription>
+            </Alert>
+          )}
 
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="password">Password</Label>
-                <Link href="/forgot-password">
-                  <button
-                    type="button"
-                    className="text-sm text-primary hover:underline"
-                    data-testid="link-forgot-password"
-                  >
-                    Forgot password?
-                  </button>
-                </Link>
-              </div>
-              <Input
-                id="password"
-                type="password"
-                placeholder="Enter your password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-                disabled={isSubmitting}
-                data-testid="input-password"
-              />
-            </div>
-
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={isSubmitting}
-              data-testid="button-login"
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Signing in...
-                </>
-              ) : (
-                <>
-                  <LogIn className="mr-2 h-4 w-4" />
-                  Sign in
-                </>
+          {hasOAuthOptions && (
+            <div className="space-y-3">
+              {authConfig?.googleEnabled && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full h-12"
+                  onClick={handleGoogleLogin}
+                  disabled={isSubmitting}
+                  data-testid="button-google-login"
+                >
+                  <SiGoogle className="mr-3 h-5 w-5 text-red-500" />
+                  Sign in with Google
+                </Button>
               )}
-            </Button>
-          </form>
 
-          <div className="mt-6 text-center text-sm text-muted-foreground">
-            <p>Default admin credentials:</p>
-            <p className="font-mono text-xs mt-1">admin@example.com / Admin123!</p>
+              {authConfig?.microsoftEnabled && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full h-12"
+                  onClick={handleMicrosoftLogin}
+                  disabled={isSubmitting}
+                  data-testid="button-microsoft-login"
+                >
+                  <BsMicrosoft className="mr-3 h-5 w-5 text-blue-500" />
+                  Sign in with Microsoft
+                </Button>
+              )}
+            </div>
+          )}
+
+          {authConfig?.magicLinkEnabled && (
+            <>
+              {hasOAuthOptions && (
+                <div className="relative my-4">
+                  <div className="absolute inset-0 flex items-center">
+                    <Separator className="w-full" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-card px-2 text-muted-foreground">or</span>
+                  </div>
+                </div>
+              )}
+
+              {!showMagicLink ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full h-12"
+                  onClick={() => setShowMagicLink(true)}
+                  disabled={isSubmitting}
+                  data-testid="button-show-magic-link"
+                >
+                  <Mail className="mr-3 h-5 w-5" />
+                  Login with Magic Link
+                </Button>
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-medium flex items-center gap-2">
+                      <Mail className="h-4 w-4" />
+                      Magic Link Login
+                    </h3>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setShowMagicLink(false);
+                        setMagicLinkSent(false);
+                        setSuccessMessage('');
+                      }}
+                    >
+                      <ChevronUp className="h-4 w-4" />
+                    </Button>
+                  </div>
+
+                  {!magicLinkSent ? (
+                    <form onSubmit={handleMagicLinkRequest} className="space-y-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="magic-email">Email address</Label>
+                        <Input
+                          id="magic-email"
+                          type="email"
+                          placeholder="you@company.com"
+                          value={email}
+                          onChange={(e) => setEmail(e.target.value)}
+                          required
+                          disabled={isSubmitting}
+                          data-testid="input-magic-email"
+                        />
+                      </div>
+                      <Button
+                        type="submit"
+                        className="w-full"
+                        disabled={isSubmitting || !email}
+                        data-testid="button-send-magic-link"
+                      >
+                        {isSubmitting ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Sending...
+                          </>
+                        ) : (
+                          'Send Magic Link'
+                        )}
+                      </Button>
+                    </form>
+                  ) : (
+                    <div className="text-center py-4">
+                      <p className="text-sm text-muted-foreground">
+                        Check your inbox for the magic link. It will expire in 15 minutes.
+                      </p>
+                      <Button
+                        type="button"
+                        variant="link"
+                        className="mt-2"
+                        onClick={() => {
+                          setMagicLinkSent(false);
+                          setSuccessMessage('');
+                        }}
+                        data-testid="button-resend-magic-link"
+                      >
+                        Send another link
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+
+          {authConfig?.passwordLoginEnabled && (
+            <>
+              <div className="relative my-4">
+                <div className="absolute inset-0 flex items-center">
+                  <Separator className="w-full" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-card px-2 text-muted-foreground">or</span>
+                </div>
+              </div>
+
+              {!showPasswordLogin ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="w-full text-muted-foreground"
+                  onClick={() => setShowPasswordLogin(true)}
+                  data-testid="button-show-password-login"
+                >
+                  <KeyRound className="mr-2 h-4 w-4" />
+                  Log in with email
+                  <ChevronDown className="ml-2 h-4 w-4" />
+                </Button>
+              ) : (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <h3 className="text-sm font-medium flex items-center gap-2">
+                      <KeyRound className="h-4 w-4" />
+                      Email & Password
+                    </h3>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setShowPasswordLogin(false)}
+                    >
+                      <ChevronUp className="h-4 w-4" />
+                    </Button>
+                  </div>
+
+                  <form onSubmit={handlePasswordLogin} className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="email">Email</Label>
+                      <Input
+                        id="email"
+                        type="email"
+                        placeholder="you@company.com"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        required
+                        disabled={isSubmitting}
+                        data-testid="input-email"
+                      />
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="password">Password</Label>
+                      <Input
+                        id="password"
+                        type="password"
+                        placeholder="Enter your password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        required
+                        disabled={isSubmitting}
+                        data-testid="input-password"
+                      />
+                    </div>
+
+                    <Button
+                      type="submit"
+                      className="w-full"
+                      disabled={isSubmitting}
+                      data-testid="button-login"
+                    >
+                      {isSubmitting ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Signing in...
+                        </>
+                      ) : (
+                        'Sign in'
+                      )}
+                    </Button>
+                  </form>
+                </div>
+              )}
+            </>
+          )}
+
+          <div className="mt-6 pt-4 border-t text-center text-sm text-muted-foreground">
+            <p>
+              Don't have an account?{' '}
+              <a href="mailto:support@aisdr.com" className="text-primary hover:underline">
+                Contact support
+              </a>
+            </p>
           </div>
         </CardContent>
       </Card>

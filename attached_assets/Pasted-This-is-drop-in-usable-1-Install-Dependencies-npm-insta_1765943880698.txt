@@ -1,0 +1,182 @@
+This is drop-in usable.
+
+1️⃣ Install Dependencies
+npm install next-auth @auth/core @auth/prisma-adapter prisma @prisma/client nodemailer
+
+
+(If you use Resend/Postmark, swap nodemailer later.)
+
+2️⃣ Environment Variables (Replit Secrets)
+
+Set these in Replit → Secrets:
+
+NEXTAUTH_URL=https://<your-replit-prod-url>
+NEXTAUTH_SECRET=super-secret-random-string
+
+GOOGLE_CLIENT_ID=xxx
+GOOGLE_CLIENT_SECRET=xxx
+
+AZURE_AD_CLIENT_ID=xxx
+AZURE_AD_CLIENT_SECRET=xxx
+AZURE_AD_TENANT_ID=common
+
+EMAIL_SERVER_HOST=smtp.resend.com
+EMAIL_SERVER_PORT=587
+EMAIL_SERVER_USER=resend
+EMAIL_SERVER_PASSWORD=xxx
+EMAIL_FROM=AiSDR <no-reply@aisdr.com>
+
+DATABASE_URL=postgresql://...
+
+3️⃣ Prisma Schema (Required)
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+model Account {
+  id                 String  @id @default(cuid())
+  userId             String
+  provider           String
+  providerAccountId  String
+  user               User    @relation(fields: [userId], references: [id])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+
+Run:
+
+npx prisma generate
+npx prisma migrate dev
+
+4️⃣ EXACT NextAuth Config
+
+📍 app/api/auth/[...nextauth]/route.ts
+
+import NextAuth from "next-auth";
+import GoogleProvider from "next-auth/providers/google";
+import AzureADProvider from "next-auth/providers/azure-ad";
+import EmailProvider from "next-auth/providers/email";
+import { PrismaAdapter } from "@next-auth/prisma-adapter";
+import { prisma } from "@/lib/prisma";
+
+export const authOptions = {
+  adapter: PrismaAdapter(prisma),
+
+  providers: [
+    GoogleProvider({
+      clientId: process.env.GOOGLE_CLIENT_ID!,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+    }),
+
+    AzureADProvider({
+      clientId: process.env.AZURE_AD_CLIENT_ID!,
+      clientSecret: process.env.AZURE_AD_CLIENT_SECRET!,
+      tenantId: process.env.AZURE_AD_TENANT_ID!,
+    }),
+
+    EmailProvider({
+      server: {
+        host: process.env.EMAIL_SERVER_HOST!,
+        port: Number(process.env.EMAIL_SERVER_PORT),
+        auth: {
+          user: process.env.EMAIL_SERVER_USER!,
+          pass: process.env.EMAIL_SERVER_PASSWORD!,
+        },
+      },
+      from: process.env.EMAIL_FROM!,
+      maxAge: 15 * 60, // 15 minutes magic link expiry
+    }),
+  ],
+
+  pages: {
+    signIn: "/login",
+    error: "/login",
+  },
+
+  session: {
+    strategy: "database",
+    maxAge: 7 * 24 * 60 * 60, // 7 days
+  },
+
+  callbacks: {
+    async signIn({ user }) {
+      // 🔐 BLOCK UNREGISTERED USERS
+      const existingUser = await prisma.user.findUnique({
+        where: { email: user.email! },
+      });
+
+      if (!existingUser || !existingUser.isActive) {
+        // This triggers a 401-style rejection
+        throw new Error("401_UNAUTHORIZED");
+      }
+
+      return true;
+    },
+
+    async session({ session, user }) {
+      session.user.id = user.id;
+      return session;
+    },
+  },
+
+  events: {
+    async signIn({ user, account }) {
+      console.log(
+        `User ${user.email} logged in via ${account?.provider}`
+      );
+    },
+  },
+
+  debug: process.env.NODE_ENV === "development",
+};
+
+const handler = NextAuth(authOptions);
+
+export { handler as GET, handler as POST };
+
+5️⃣ Frontend: Handle 401 Cleanly
+
+In your /login page:
+
+const error = searchParams.get("error");
+
+if (error === "401_UNAUTHORIZED") {
+  showToast(
+    "This email is not linked to an AiSDR account. Contact support@aisdr.com"
+  );
+}
+
+6️⃣ Login Buttons (Example)
+import { signIn } from "next-auth/react";
+
+<button onClick={() => signIn("google")}>Sign in with Google</button>
+<button onClick={() => signIn("azure-ad")}>Sign in with Microsoft</button>
+<button onClick={() => signIn("email")}>Login with Magic Link</button>
+
+7️⃣ What This Gives You
+
+✔ No public sign-ups
+✔ OAuth-first login
+✔ Magic link support
+✔ Proper 401 blocking
+✔ Replit autoscale safe
+✔ Enterprise-grade security

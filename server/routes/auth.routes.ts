@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { authService } from '../services/auth.service';
 import { auditService } from '../services/audit.service';
 import { invitationService } from '../services/invitation.service';
+import { oauthService } from '../services/oauth.service';
+import { magicLinkService } from '../services/magic-link.service';
 import { authenticate, requireAdmin } from '../middleware/auth.middleware';
 import { loginRateLimit, invitationRateLimit, passwordResetRateLimit } from '../middleware/rate-limit.middleware';
 import { db } from '../db';
@@ -47,6 +49,10 @@ const resendVerificationSchema = z.object({
   email: z.string().email(),
 });
 
+const magicLinkSchema = z.object({
+  email: z.string().email(),
+});
+
 router.post('/api/auth/login', loginRateLimit, async (req, res) => {
   console.log('🔐 Login request received');
   try {
@@ -64,6 +70,20 @@ router.post('/api/auth/login', loginRateLimit, async (req, res) => {
                      req.socket.remoteAddress || 
                      'unknown';
     const userAgent = req.headers['user-agent'];
+
+    // Check if password login is enabled for this user
+    const [user] = await db.select().from(users).where(eq(users.email, email.toLowerCase())).limit(1);
+    if (user && !user.passwordLoginEnabled) {
+      auditService.logFromRequest(req, 'LOGIN_FAILED', 'auth', { 
+        email,
+        reason: 'Password login not enabled',
+        ipAddress,
+        userAgent
+      });
+      return res.status(401).json({ 
+        error: 'Password login is not enabled for this account. Please use Google, Microsoft, or Magic Link to sign in.',
+      });
+    }
 
     // Check if account is locked
     const { accountLockoutService } = await import('../services/account-lockout.service');
@@ -216,6 +236,196 @@ router.get('/api/auth/me', authenticate, async (req, res) => {
   } catch (error) {
     console.error('Get user error:', error);
     res.status(500).json({ error: 'Failed to get user info' });
+  }
+});
+
+router.get('/api/auth/config', async (_req, res) => {
+  try {
+    const [passwordUser] = await db
+      .select({ count: users.id })
+      .from(users)
+      .where(eq(users.passwordLoginEnabled, true))
+      .limit(1);
+    
+    res.json({
+      googleEnabled: oauthService.isGoogleConfigured(),
+      microsoftEnabled: oauthService.isMicrosoftConfigured(),
+      magicLinkEnabled: !!process.env.RESEND_API_KEY,
+      passwordLoginEnabled: !!passwordUser,
+    });
+  } catch (error) {
+    console.error('Auth config error:', error);
+    res.status(500).json({ error: 'Failed to get auth config' });
+  }
+});
+
+router.post('/api/auth/magic-link', loginRateLimit, async (req, res) => {
+  try {
+    const validationResult = magicLinkSchema.safeParse(req.body);
+    if (!validationResult.success) {
+      return res.status(400).json({ error: 'Invalid email address' });
+    }
+
+    const { email } = validationResult.data;
+    const ipAddress = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || 'unknown';
+    const userAgent = req.headers['user-agent'];
+
+    const result = await magicLinkService.createMagicLink(email, ipAddress, userAgent);
+
+    if (!result.success) {
+      return res.status(401).json({ error: result.message });
+    }
+
+    res.json({ message: result.message });
+  } catch (error) {
+    console.error('Magic link error:', error);
+    res.status(500).json({ error: 'Failed to send magic link' });
+  }
+});
+
+router.get('/api/auth/magic/verify', async (req, res) => {
+  try {
+    const token = req.query.token as string;
+    if (!token) {
+      return res.status(400).json({ error: 'Token is required' });
+    }
+
+    const ipAddress = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || 'unknown';
+    const userAgent = req.headers['user-agent'];
+
+    const result = await magicLinkService.validateMagicLink(token, ipAddress, userAgent);
+
+    if (!result.success) {
+      return res.status(401).json({ error: result.message });
+    }
+
+    const isProduction = process.env.NODE_ENV === 'production';
+    const cookieMaxAge = 7 * 24 * 60 * 60 * 1000;
+
+    res.cookie('auth_token', result.sessionToken, {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: isProduction ? 'strict' : 'lax',
+      maxAge: cookieMaxAge,
+      path: '/',
+    });
+
+    res.json({
+      success: true,
+      token: result.sessionToken,
+      userId: result.userId,
+    });
+  } catch (error) {
+    console.error('Magic link verify error:', error);
+    res.status(500).json({ error: 'Failed to verify magic link' });
+  }
+});
+
+router.get('/api/auth/google', (_req, res) => {
+  try {
+    if (!oauthService.isGoogleConfigured()) {
+      return res.status(503).json({ error: 'Google login is not configured' });
+    }
+    const authUrl = oauthService.getGoogleAuthUrl();
+    res.redirect(authUrl);
+  } catch (error) {
+    console.error('Google auth error:', error);
+    res.status(500).json({ error: 'Failed to initiate Google login' });
+  }
+});
+
+router.get('/api/auth/google/callback', async (req, res) => {
+  try {
+    const code = req.query.code as string;
+    const error = req.query.error as string;
+
+    if (error) {
+      return res.redirect('/login?error=google_denied');
+    }
+
+    if (!code) {
+      return res.redirect('/login?error=no_code');
+    }
+
+    const ipAddress = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || 'unknown';
+    const userAgent = req.headers['user-agent'];
+
+    const result = await oauthService.handleGoogleCallback(code, ipAddress, userAgent);
+
+    if (!result.success) {
+      const encodedError = encodeURIComponent(result.error || 'Authentication failed');
+      return res.redirect(`/login?error=${encodedError}`);
+    }
+
+    const isProduction = process.env.NODE_ENV === 'production';
+    const cookieMaxAge = 7 * 24 * 60 * 60 * 1000;
+
+    res.cookie('auth_token', result.token, {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: isProduction ? 'strict' : 'lax',
+      maxAge: cookieMaxAge,
+      path: '/',
+    });
+
+    res.redirect('/');
+  } catch (error) {
+    console.error('Google callback error:', error);
+    res.redirect('/login?error=google_failed');
+  }
+});
+
+router.get('/api/auth/microsoft', (_req, res) => {
+  try {
+    if (!oauthService.isMicrosoftConfigured()) {
+      return res.status(503).json({ error: 'Microsoft login is not configured' });
+    }
+    const authUrl = oauthService.getMicrosoftAuthUrl();
+    res.redirect(authUrl);
+  } catch (error) {
+    console.error('Microsoft auth error:', error);
+    res.status(500).json({ error: 'Failed to initiate Microsoft login' });
+  }
+});
+
+router.get('/api/auth/microsoft/callback', async (req, res) => {
+  try {
+    const code = req.query.code as string;
+    const error = req.query.error as string;
+
+    if (error) {
+      return res.redirect('/login?error=microsoft_denied');
+    }
+
+    if (!code) {
+      return res.redirect('/login?error=no_code');
+    }
+
+    const ipAddress = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || 'unknown';
+    const userAgent = req.headers['user-agent'];
+
+    const result = await oauthService.handleMicrosoftCallback(code, ipAddress, userAgent);
+
+    if (!result.success) {
+      const encodedError = encodeURIComponent(result.error || 'Authentication failed');
+      return res.redirect(`/login?error=${encodedError}`);
+    }
+
+    const isProduction = process.env.NODE_ENV === 'production';
+    const cookieMaxAge = 7 * 24 * 60 * 60 * 1000;
+
+    res.cookie('auth_token', result.token, {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: isProduction ? 'strict' : 'lax',
+      maxAge: cookieMaxAge,
+      path: '/',
+    });
+
+    res.redirect('/');
+  } catch (error) {
+    console.error('Microsoft callback error:', error);
+    res.redirect('/login?error=microsoft_failed');
   }
 });
 
