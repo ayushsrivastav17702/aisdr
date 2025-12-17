@@ -225,6 +225,10 @@ class MagicLinkService {
       `,
     });
     console.log('📧 Resend response:', JSON.stringify(result, null, 2));
+    
+    if (result.error) {
+      throw new Error(result.error.message || 'Failed to send email');
+    }
   }
 
   async cleanupExpiredLinks(): Promise<number> {
