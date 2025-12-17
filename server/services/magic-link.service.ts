@@ -183,7 +183,8 @@ class MagicLinkService {
     const resend = this.getResend();
     const greeting = firstName ? `Hi ${firstName}` : 'Hi there';
 
-    await resend.emails.send({
+    console.log('📧 Sending magic link email to:', email);
+    const result = await resend.emails.send({
       from: 'AiSDR <noreply@increff.com>',
       to: email,
       subject: 'Sign in to AiSDR',
@@ -223,6 +224,7 @@ class MagicLinkService {
         </html>
       `,
     });
+    console.log('📧 Resend response:', JSON.stringify(result, null, 2));
   }
 
   async cleanupExpiredLinks(): Promise<number> {
