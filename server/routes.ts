@@ -26,6 +26,9 @@ import userRoutes from "./routes/user.routes";
 import analyticsRoutes from "./routes/analytics.routes";
 import dataExportRoutes from "./routes/data-export.routes";
 import organizationRoutes from "./routes/organization.routes";
+import userAdminRoutes from "./routes/user-admin.routes";
+import rbacRoutes from "./routes/rbac.routes";
+import teamRoutes from "./routes/team.routes";
 import { authenticate } from "./middleware/auth.middleware";
 import { emailVolumeConfig, getCapacityReport, getEstimatedTimeForEmails, EMAIL_VOLUME_PRESETS } from "./config/email-volume.config";
 
@@ -1556,6 +1559,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Organization and workspace management routes
   app.use("/api", organizationRoutes);
+
+  // User administration routes (admin only)
+  app.use(userAdminRoutes);
+
+  // RBAC routes (admin only)
+  app.use(rbacRoutes);
+
+  // Team management routes
+  app.use(teamRoutes);
 
   // Automation module routes
   registerAutomationRoutes(app);
