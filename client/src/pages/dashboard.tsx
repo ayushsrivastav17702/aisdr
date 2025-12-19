@@ -27,7 +27,9 @@ import {
   FileText,
   Zap,
   Shield,
-  Code
+  Code,
+  Building2,
+  FolderTree
 } from "lucide-react";
 import { HelpTooltip } from "@/components/HelpTooltip";
 
@@ -188,16 +190,38 @@ export default function Dashboard() {
           <Separator className="my-4" />
           
           {user?.role === 'admin' && (
-            <Link href="/users">
-              <Button
-                variant="ghost"
-                className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
-                data-testid="nav-users"
-              >
-                <Shield className="w-4 h-4" />
-                <span>User Management</span>
-              </Button>
-            </Link>
+            <>
+              <Link href="/users">
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
+                  data-testid="nav-users"
+                >
+                  <Shield className="w-4 h-4" />
+                  <span>User Management</span>
+                </Button>
+              </Link>
+              <Link href="/organization-settings">
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
+                  data-testid="nav-org-settings"
+                >
+                  <Building2 className="w-4 h-4" />
+                  <span>Organization</span>
+                </Button>
+              </Link>
+              <Link href="/workspace-management">
+                <Button
+                  variant="ghost"
+                  className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
+                  data-testid="nav-workspaces"
+                >
+                  <FolderTree className="w-4 h-4" />
+                  <span>Workspaces</span>
+                </Button>
+              </Link>
+            </>
           )}
           
           <Link href="/settings">
