@@ -26,6 +26,8 @@ The platform is built on a modern web stack, featuring a multi-tenant architectu
 - **Job Queue**: BullMQ (requires Redis/Upstash) for background tasks.
 - **Authentication & Security**: Enterprise-grade passwordless authentication (Google/Microsoft OAuth, Magic Link), JWT sessions, bcrypt hashing, CSRF protection, and role-based access. Includes comprehensive audit logging.
 - **Multi-Tenancy**: RequestContext-based data isolation, user invitation system, and admin impersonation.
+- **Organization Management**: Full organization settings with branding, regional preferences, fiscal year configuration, and organization-wide preferences.
+- **Workspace Management**: Hierarchical workspace structure with resource limits, workspace-specific settings, archiving/restoration, and ownership transfer capabilities.
 - **Natural Language Processing**: Converts user queries into structured Apollo.io filters with AI and intelligent fallback.
 - **Email Sequence Management**: Multi-step sequences, prospect enrollment, tracking, AI personalization, multi-mailbox sending with round-robin rotation and encryption.
 - **AI Personalization Wizard**: Batch email personalization (up to 25 prospects) with intelligent analysis.

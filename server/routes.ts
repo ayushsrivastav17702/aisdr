@@ -25,6 +25,7 @@ import authRoutes from "./routes/auth.routes";
 import userRoutes from "./routes/user.routes";
 import analyticsRoutes from "./routes/analytics.routes";
 import dataExportRoutes from "./routes/data-export.routes";
+import organizationRoutes from "./routes/organization.routes";
 import { authenticate } from "./middleware/auth.middleware";
 import { emailVolumeConfig, getCapacityReport, getEstimatedTimeForEmails, EMAIL_VOLUME_PRESETS } from "./config/email-volume.config";
 
@@ -1552,6 +1553,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Mailbox module routes
   app.use("/api", mailboxRoutes);
+
+  // Organization and workspace management routes
+  app.use("/api", organizationRoutes);
 
   // Automation module routes
   registerAutomationRoutes(app);
