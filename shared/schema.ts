@@ -711,12 +711,16 @@ export const users = pgTable("users", {
     prospectsAdded?: boolean;
     firstCampaignLaunched?: boolean;
   }>(),
+  organizationId: varchar("organization_id"), // Organization membership (nullable for existing users)
+  defaultWorkspaceId: varchar("default_workspace_id"), // Default workspace for user
   lastLogin: timestamp("last_login"),
   createdBy: varchar("created_by"), // References users.id (self-referential)
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
   deletedAt: timestamp("deleted_at"),
-});
+}, (table) => ({
+  orgIdIdx: index("users_organization_id_idx").on(table.organizationId),
+}));
 
 // User sessions table
 export const userSessions = pgTable("user_sessions", {
@@ -740,6 +744,8 @@ export const userInvitations = pgTable("user_invitations", {
   token: text("token").notNull().unique(),
   role: userRoleEnum("role").notNull().default("user"),
   invitedBy: varchar("invited_by").notNull().references(() => users.id),
+  organizationId: varchar("organization_id"), // Organization to join upon acceptance
+  workspaceId: varchar("workspace_id"), // Workspace to join upon acceptance
   status: text("status").notNull().default("pending"), // pending, accepted, expired, cancelled
   expiresAt: timestamp("expires_at").notNull(),
   acceptedAt: timestamp("accepted_at"),
@@ -886,4 +892,186 @@ export const insertMagicLinkSchema = createInsertSchema(magicLinks).omit({
 export const insertAuditLogSchema = createInsertSchema(auditLogs).omit({
   id: true,
   createdAt: true,
+});
+
+// ============================================
+// ORGANIZATION & WORKSPACE MANAGEMENT MODULE
+// ============================================
+
+// Organization status enum
+export const organizationStatusEnum = pgEnum("organization_status", ["active", "suspended", "archived"]);
+
+// Workspace status enum
+export const workspaceStatusEnum = pgEnum("workspace_status", ["active", "archived", "deleted"]);
+
+// Organizations table
+export const organizations = pgTable("organizations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  slug: text("slug").notNull().unique(),
+  logo: text("logo"),
+  brandingColors: jsonb("branding_colors").$type<{
+    primary?: string;
+    secondary?: string;
+    accent?: string;
+  }>(),
+  address: text("address"),
+  city: text("city"),
+  state: text("state"),
+  country: text("country"),
+  postalCode: text("postal_code"),
+  industry: text("industry"),
+  companySize: text("company_size"),
+  website: text("website"),
+  phone: text("phone"),
+  timezone: text("timezone").default("UTC"),
+  language: text("language").default("en"),
+  fiscalYearStart: integer("fiscal_year_start").default(1),
+  reportingPeriod: text("reporting_period").default("monthly"),
+  preferences: jsonb("preferences").$type<{
+    emailSignature?: string;
+    defaultSenderName?: string;
+    notificationsEnabled?: boolean;
+    weeklyReports?: boolean;
+    dataRetentionDays?: number;
+  }>(),
+  status: organizationStatusEnum("status").default("active"),
+  ownerId: varchar("owner_id").references(() => users.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  slugIdx: index("organizations_slug_idx").on(table.slug),
+  ownerIdIdx: index("organizations_owner_id_idx").on(table.ownerId),
+}));
+
+// Workspaces table
+export const workspaces = pgTable("workspaces", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  slug: text("slug").notNull(),
+  description: text("description"),
+  type: text("type").default("default"),
+  parentId: varchar("parent_id"),
+  settings: jsonb("settings").$type<{
+    dailyEmailLimit?: number;
+    aiPersonalizationEnabled?: boolean;
+    defaultSequenceSettings?: object;
+    allowedDomains?: string[];
+    customFields?: object;
+  }>(),
+  resourceLimits: jsonb("resource_limits").$type<{
+    maxProspects?: number;
+    maxSequences?: number;
+    maxMailboxes?: number;
+    maxDailyEmails?: number;
+  }>(),
+  status: workspaceStatusEnum("status").default("active"),
+  ownerId: varchar("owner_id").references(() => users.id),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  archivedAt: timestamp("archived_at"),
+}, (table) => ({
+  orgIdIdx: index("workspaces_organization_id_idx").on(table.organizationId),
+  slugIdx: index("workspaces_slug_idx").on(table.slug),
+  parentIdIdx: index("workspaces_parent_id_idx").on(table.parentId),
+}));
+
+// User-Workspace membership table (many-to-many)
+export const workspaceMemberships = pgTable("workspace_memberships", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  workspaceId: varchar("workspace_id").notNull().references(() => workspaces.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  role: text("role").notNull().default("member"),
+  permissions: jsonb("permissions").$type<string[]>(),
+  joinedAt: timestamp("joined_at").notNull().defaultNow(),
+  invitedBy: varchar("invited_by").references(() => users.id),
+}, (table) => ({
+  workspaceUserIdx: index("workspace_memberships_workspace_user_idx").on(table.workspaceId, table.userId),
+}));
+
+// Organization relations
+export const organizationsRelations = relations(organizations, ({ one, many }) => ({
+  owner: one(users, {
+    fields: [organizations.ownerId],
+    references: [users.id],
+  }),
+  workspaces: many(workspaces),
+}));
+
+// Workspace relations
+export const workspacesRelations = relations(workspaces, ({ one, many }) => ({
+  organization: one(organizations, {
+    fields: [workspaces.organizationId],
+    references: [organizations.id],
+  }),
+  owner: one(users, {
+    fields: [workspaces.ownerId],
+    references: [users.id],
+  }),
+  parent: one(workspaces, {
+    fields: [workspaces.parentId],
+    references: [workspaces.id],
+    relationName: "workspaceHierarchy",
+  }),
+  children: many(workspaces, { relationName: "workspaceHierarchy" }),
+  memberships: many(workspaceMemberships),
+}));
+
+// Workspace membership relations
+export const workspaceMembershipsRelations = relations(workspaceMemberships, ({ one }) => ({
+  workspace: one(workspaces, {
+    fields: [workspaceMemberships.workspaceId],
+    references: [workspaces.id],
+  }),
+  user: one(users, {
+    fields: [workspaceMemberships.userId],
+    references: [users.id],
+  }),
+  inviter: one(users, {
+    fields: [workspaceMemberships.invitedBy],
+    references: [users.id],
+  }),
+}));
+
+// Organization types
+export type Organization = typeof organizations.$inferSelect;
+export type InsertOrganization = typeof organizations.$inferInsert;
+export type Workspace = typeof workspaces.$inferSelect;
+export type InsertWorkspace = typeof workspaces.$inferInsert;
+export type WorkspaceMembership = typeof workspaceMemberships.$inferSelect;
+export type InsertWorkspaceMembership = typeof workspaceMemberships.$inferInsert;
+
+// Organization schemas
+export const insertOrganizationSchema = createInsertSchema(organizations).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateOrganizationSchema = createInsertSchema(organizations).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  ownerId: true,
+}).partial();
+
+export const insertWorkspaceSchema = createInsertSchema(workspaces).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  archivedAt: true,
+});
+
+export const updateWorkspaceSchema = createInsertSchema(workspaces).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  archivedAt: true,
+  organizationId: true,
+}).partial();
+
+export const insertWorkspaceMembershipSchema = createInsertSchema(workspaceMemberships).omit({
+  id: true,
+  joinedAt: true,
 });
