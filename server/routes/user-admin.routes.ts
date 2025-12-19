@@ -18,6 +18,11 @@ const router = Router();
 
 router.get("/api/admin/users", authenticate, requireAdmin, async (req, res) => {
   try {
+    const userContext = req.userContext;
+    if (!userContext?.organizationId) {
+      return res.status(403).json({ error: "Organization context required" });
+    }
+
     const { 
       search, 
       role, 
@@ -32,17 +37,10 @@ router.get("/api/admin/users", authenticate, requireAdmin, async (req, res) => {
     const limitNum = parseInt(limit as string, 10);
     const offset = (pageNum - 1) * limitNum;
 
-    let query = db.select({
-      user: users,
-      profile: userProfiles,
-      license: userLicenses,
-    })
-    .from(users)
-    .leftJoin(userProfiles, eq(users.id, userProfiles.userId))
-    .leftJoin(userLicenses, eq(users.id, userLicenses.userId))
-    .where(isNull(users.deletedAt));
-
-    const conditions = [isNull(users.deletedAt)];
+    const conditions = [
+      isNull(users.deletedAt),
+      eq(users.organizationId, userContext.organizationId)
+    ];
     
     if (search) {
       conditions.push(
@@ -86,12 +84,10 @@ router.get("/api/admin/users", authenticate, requireAdmin, async (req, res) => {
         profile,
         license,
       })),
-      pagination: {
-        page: pageNum,
-        limit: limitNum,
-        total,
-        totalPages: Math.ceil(total / limitNum),
-      },
+      total,
+      page: pageNum,
+      limit: limitNum,
+      pages: Math.ceil(total / limitNum),
     });
   } catch (error) {
     console.error("Error fetching users:", error);
@@ -101,6 +97,11 @@ router.get("/api/admin/users", authenticate, requireAdmin, async (req, res) => {
 
 router.get("/api/admin/users/:userId", authenticate, requireAdmin, async (req, res) => {
   try {
+    const userContext = req.userContext;
+    if (!userContext?.organizationId) {
+      return res.status(403).json({ error: "Organization context required" });
+    }
+
     const { userId } = req.params;
 
     const [result] = await db.select({
@@ -111,7 +112,7 @@ router.get("/api/admin/users/:userId", authenticate, requireAdmin, async (req, r
     .from(users)
     .leftJoin(userProfiles, eq(users.id, userProfiles.userId))
     .leftJoin(userLicenses, eq(users.id, userLicenses.userId))
-    .where(eq(users.id, userId))
+    .where(and(eq(users.id, userId), eq(users.organizationId, userContext.organizationId)))
     .limit(1);
 
     if (!result) {
@@ -132,6 +133,11 @@ router.get("/api/admin/users/:userId", authenticate, requireAdmin, async (req, r
 
 router.patch("/api/admin/users/:userId", authenticate, requireAdmin, async (req, res) => {
   try {
+    const userContext = req.userContext;
+    if (!userContext?.organizationId) {
+      return res.status(403).json({ error: "Organization context required" });
+    }
+
     const { userId } = req.params;
     const { 
       firstName, 
@@ -141,7 +147,6 @@ router.patch("/api/admin/users/:userId", authenticate, requireAdmin, async (req,
       isActive,
       passwordLoginEnabled,
       forcePasswordReset,
-      organizationId,
       defaultWorkspaceId
     } = req.body;
 
@@ -153,16 +158,15 @@ router.patch("/api/admin/users/:userId", authenticate, requireAdmin, async (req,
     if (isActive !== undefined) updateData.isActive = isActive;
     if (passwordLoginEnabled !== undefined) updateData.passwordLoginEnabled = passwordLoginEnabled;
     if (forcePasswordReset !== undefined) updateData.forcePasswordReset = forcePasswordReset;
-    if (organizationId !== undefined) updateData.organizationId = organizationId;
     if (defaultWorkspaceId !== undefined) updateData.defaultWorkspaceId = defaultWorkspaceId;
 
     const [updatedUser] = await db.update(users)
       .set(updateData)
-      .where(eq(users.id, userId))
+      .where(and(eq(users.id, userId), eq(users.organizationId, userContext.organizationId)))
       .returning();
 
     if (!updatedUser) {
-      return res.status(404).json({ error: "User not found" });
+      return res.status(404).json({ error: "User not found in your organization" });
     }
 
     auditService.logFromRequest(req, 'USER_UPDATED', 'user_admin', {
@@ -179,11 +183,18 @@ router.patch("/api/admin/users/:userId", authenticate, requireAdmin, async (req,
 
 router.post("/api/admin/users/:userId/toggle-status", authenticate, requireAdmin, async (req, res) => {
   try {
+    const userContext = req.userContext;
+    if (!userContext?.organizationId) {
+      return res.status(403).json({ error: "Organization context required" });
+    }
+
     const { userId } = req.params;
     
-    const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+    const [user] = await db.select().from(users)
+      .where(and(eq(users.id, userId), eq(users.organizationId, userContext.organizationId)))
+      .limit(1);
     if (!user) {
-      return res.status(404).json({ error: "User not found" });
+      return res.status(404).json({ error: "User not found in your organization" });
     }
 
     const newStatus = user.isActive ? false : true;
@@ -209,12 +220,19 @@ router.post("/api/admin/users/:userId/toggle-status", authenticate, requireAdmin
 
 router.post("/api/admin/users/:userId/reset-password", authenticate, requireAdmin, async (req, res) => {
   try {
+    const userContext = req.userContext;
+    if (!userContext?.organizationId) {
+      return res.status(403).json({ error: "Organization context required" });
+    }
+
     const { userId } = req.params;
     const { newPassword, forceChange = true } = req.body;
 
-    const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+    const [user] = await db.select().from(users)
+      .where(and(eq(users.id, userId), eq(users.organizationId, userContext.organizationId)))
+      .limit(1);
     if (!user) {
-      return res.status(404).json({ error: "User not found" });
+      return res.status(404).json({ error: "User not found in your organization" });
     }
 
     const passwordHash = await bcrypt.hash(newPassword, 10);
@@ -242,6 +260,11 @@ router.post("/api/admin/users/:userId/reset-password", authenticate, requireAdmi
 
 router.post("/api/admin/users/:userId/force-password-change", authenticate, requireAdmin, async (req, res) => {
   try {
+    const userContext = req.userContext;
+    if (!userContext?.organizationId) {
+      return res.status(403).json({ error: "Organization context required" });
+    }
+
     const { userId } = req.params;
     const { force = true } = req.body;
 
@@ -250,11 +273,11 @@ router.post("/api/admin/users/:userId/force-password-change", authenticate, requ
         forcePasswordReset: force,
         updatedAt: new Date() 
       })
-      .where(eq(users.id, userId))
+      .where(and(eq(users.id, userId), eq(users.organizationId, userContext.organizationId)))
       .returning();
 
     if (!updatedUser) {
-      return res.status(404).json({ error: "User not found" });
+      return res.status(404).json({ error: "User not found in your organization" });
     }
 
     auditService.logFromRequest(req, force ? 'FORCE_PASSWORD_CHANGE_SET' : 'FORCE_PASSWORD_CHANGE_CLEARED', 'user_admin', {
@@ -270,6 +293,11 @@ router.post("/api/admin/users/:userId/force-password-change", authenticate, requ
 
 router.delete("/api/admin/users/:userId", authenticate, requireAdmin, async (req, res) => {
   try {
+    const userContext = req.userContext;
+    if (!userContext?.organizationId) {
+      return res.status(403).json({ error: "Organization context required" });
+    }
+
     const { userId } = req.params;
     const adminUser = (req as any).user;
 
@@ -284,11 +312,11 @@ router.delete("/api/admin/users/:userId", authenticate, requireAdmin, async (req
         status: 'inactive',
         updatedAt: new Date()
       })
-      .where(eq(users.id, userId))
+      .where(and(eq(users.id, userId), eq(users.organizationId, userContext.organizationId)))
       .returning();
 
     if (!deletedUser) {
-      return res.status(404).json({ error: "User not found" });
+      return res.status(404).json({ error: "User not found in your organization" });
     }
 
     auditService.logFromRequest(req, 'USER_DELETED', 'user_admin', {
@@ -305,8 +333,14 @@ router.delete("/api/admin/users/:userId", authenticate, requireAdmin, async (req
 
 router.post("/api/admin/users/bulk-invite", authenticate, requireAdmin, async (req, res) => {
   try {
-    const { emails, role = 'user', organizationId, workspaceId } = req.body;
+    const userContext = req.userContext;
+    if (!userContext?.organizationId) {
+      return res.status(403).json({ error: "Organization context required" });
+    }
+
+    const { emails, role = 'user', workspaceId } = req.body;
     const adminUser = (req as any).user;
+    const organizationId = userContext.organizationId;
 
     if (!emails || !Array.isArray(emails) || emails.length === 0) {
       return res.status(400).json({ error: "No emails provided" });
@@ -557,14 +591,20 @@ router.put("/api/admin/users/:userId/license", authenticate, requireAdmin, async
 
 router.get("/api/admin/stats", authenticate, requireAdmin, async (req, res) => {
   try {
+    const userContext = req.userContext;
+    if (!userContext?.organizationId) {
+      return res.status(403).json({ error: "Organization context required" });
+    }
+
     const [{ totalUsers }] = await db.select({ totalUsers: count() })
       .from(users)
-      .where(isNull(users.deletedAt));
+      .where(and(isNull(users.deletedAt), eq(users.organizationId, userContext.organizationId)));
 
     const [{ activeUsers }] = await db.select({ activeUsers: count() })
       .from(users)
       .where(and(
         isNull(users.deletedAt),
+        eq(users.organizationId, userContext.organizationId),
         eq(users.isActive, true)
       ));
 
@@ -572,12 +612,16 @@ router.get("/api/admin/stats", authenticate, requireAdmin, async (req, res) => {
       .from(users)
       .where(and(
         isNull(users.deletedAt),
+        eq(users.organizationId, userContext.organizationId),
         eq(users.role, 'admin')
       ));
 
     const [{ pendingInvites }] = await db.select({ pendingInvites: count() })
       .from(userInvitations)
-      .where(eq(userInvitations.status, 'pending'));
+      .where(and(
+        eq(userInvitations.organizationId, userContext.organizationId),
+        eq(userInvitations.status, 'pending')
+      ));
 
     res.json({
       totalUsers,
@@ -589,6 +633,50 @@ router.get("/api/admin/stats", authenticate, requireAdmin, async (req, res) => {
   } catch (error) {
     console.error("Error fetching admin stats:", error);
     res.status(500).json({ error: "Failed to fetch admin stats" });
+  }
+});
+
+router.get("/api/admin/users/activity-logs", authenticate, requireAdmin, async (req, res) => {
+  try {
+    const userContext = req.userContext;
+    if (!userContext?.organizationId) {
+      return res.status(403).json({ error: "Organization context required" });
+    }
+
+    const { page = "1", limit = "20" } = req.query;
+    const pageNum = parseInt(page as string, 10);
+    const limitNum = parseInt(limit as string, 10);
+    const offset = (pageNum - 1) * limitNum;
+
+    const logs = await db.select({
+      log: userActivityLogs,
+      user: {
+        email: users.email,
+        firstName: users.firstName,
+        lastName: users.lastName,
+      }
+    })
+    .from(userActivityLogs)
+    .innerJoin(users, eq(userActivityLogs.userId, users.id))
+    .where(eq(users.organizationId, userContext.organizationId))
+    .orderBy(desc(userActivityLogs.createdAt))
+    .limit(limitNum)
+    .offset(offset);
+
+    const [{ total }] = await db.select({ total: count() })
+      .from(userActivityLogs)
+      .innerJoin(users, eq(userActivityLogs.userId, users.id))
+      .where(eq(users.organizationId, userContext.organizationId));
+
+    res.json({
+      logs: logs.map(({ log, user }) => ({ ...log, user })),
+      total,
+      page: pageNum,
+      pages: Math.ceil(total / limitNum),
+    });
+  } catch (error) {
+    console.error("Error fetching activity logs:", error);
+    res.status(500).json({ error: "Failed to fetch activity logs" });
   }
 });
 

@@ -8,7 +8,7 @@ import {
   userPermissionOverrides,
   users
 } from "@shared/schema";
-import { eq, and, isNull } from "drizzle-orm";
+import { eq, and, isNull, or } from "drizzle-orm";
 import { authenticate, requireAdmin } from "../middleware/auth.middleware";
 import { permissionService } from "../services/permission.service";
 import { auditService } from "../services/audit.service";
@@ -17,8 +17,12 @@ const router = Router();
 
 router.get("/api/admin/permissions", authenticate, requireAdmin, async (req, res) => {
   try {
+    const userContext = req.userContext;
+    if (!userContext?.organizationId) {
+      return res.status(403).json({ error: "Organization context required" });
+    }
     const allPermissions = await permissionService.getAllPermissions();
-    res.json(allPermissions);
+    res.json({ permissions: allPermissions });
   } catch (error) {
     console.error("Error fetching permissions:", error);
     res.status(500).json({ error: "Failed to fetch permissions" });
@@ -27,6 +31,10 @@ router.get("/api/admin/permissions", authenticate, requireAdmin, async (req, res
 
 router.get("/api/admin/permissions/categories", authenticate, requireAdmin, async (req, res) => {
   try {
+    const userContext = req.userContext;
+    if (!userContext?.organizationId) {
+      return res.status(403).json({ error: "Organization context required" });
+    }
     const categories = [
       { id: 'campaign', name: 'Campaign Management', description: 'Create, edit, delete, and view campaigns' },
       { id: 'prospect', name: 'Prospect Data', description: 'View, export, and delete prospects' },
@@ -45,6 +53,11 @@ router.get("/api/admin/permissions/categories", authenticate, requireAdmin, asyn
 
 router.post("/api/admin/permissions", authenticate, requireAdmin, async (req, res) => {
   try {
+    const userContext = req.userContext;
+    if (!userContext?.organizationId) {
+      return res.status(403).json({ error: "Organization context required" });
+    }
+
     const { key, name, description, category } = req.body;
     
     if (!key || !name || !category) {
@@ -64,16 +77,21 @@ router.post("/api/admin/permissions", authenticate, requireAdmin, async (req, re
 
 router.get("/api/admin/roles", authenticate, requireAdmin, async (req, res) => {
   try {
-    const { organizationId } = req.query;
-    
-    let query = db.select().from(roles);
-    
-    if (organizationId) {
-      query = query.where(eq(roles.organizationId, organizationId as string)) as any;
+    const userContext = req.userContext;
+    if (!userContext?.organizationId) {
+      return res.status(403).json({ error: "Organization context required" });
     }
     
-    const allRoles = await query.orderBy(roles.name);
-    res.json(allRoles);
+    const allRoles = await db.select().from(roles)
+      .where(
+        or(
+          eq(roles.organizationId, userContext.organizationId),
+          isNull(roles.organizationId)
+        )
+      )
+      .orderBy(roles.name);
+    
+    res.json({ roles: allRoles });
   } catch (error) {
     console.error("Error fetching roles:", error);
     res.status(500).json({ error: "Failed to fetch roles" });
@@ -82,9 +100,19 @@ router.get("/api/admin/roles", authenticate, requireAdmin, async (req, res) => {
 
 router.get("/api/admin/roles/:roleId", authenticate, requireAdmin, async (req, res) => {
   try {
+    const userContext = req.userContext;
+    if (!userContext?.organizationId) {
+      return res.status(403).json({ error: "Organization context required" });
+    }
+
     const { roleId } = req.params;
     
-    const [role] = await db.select().from(roles).where(eq(roles.id, roleId)).limit(1);
+    const [role] = await db.select().from(roles)
+      .where(and(
+        eq(roles.id, roleId),
+        or(eq(roles.organizationId, userContext.organizationId), isNull(roles.organizationId))
+      ))
+      .limit(1);
     
     if (!role) {
       return res.status(404).json({ error: "Role not found" });
@@ -101,7 +129,12 @@ router.get("/api/admin/roles/:roleId", authenticate, requireAdmin, async (req, r
 
 router.post("/api/admin/roles", authenticate, requireAdmin, async (req, res) => {
   try {
-    const { name, description, organizationId, scope, isDefault, inheritsFromRoleId, color } = req.body;
+    const userContext = req.userContext;
+    if (!userContext?.organizationId) {
+      return res.status(403).json({ error: "Organization context required" });
+    }
+
+    const { name, description, scope, isDefault, inheritsFromRoleId, color } = req.body;
     
     if (!name) {
       return res.status(400).json({ error: "Name is required" });
@@ -110,7 +143,7 @@ router.post("/api/admin/roles", authenticate, requireAdmin, async (req, res) => 
     const [role] = await db.insert(roles).values({
       name,
       description,
-      organizationId,
+      organizationId: userContext.organizationId,
       scope: scope || 'organization',
       isSystem: false,
       isDefault: isDefault || false,
@@ -129,12 +162,19 @@ router.post("/api/admin/roles", authenticate, requireAdmin, async (req, res) => 
 
 router.patch("/api/admin/roles/:roleId", authenticate, requireAdmin, async (req, res) => {
   try {
+    const userContext = req.userContext;
+    if (!userContext?.organizationId) {
+      return res.status(403).json({ error: "Organization context required" });
+    }
+
     const { roleId } = req.params;
     const { name, description, scope, isDefault, inheritsFromRoleId, color } = req.body;
 
-    const [existingRole] = await db.select().from(roles).where(eq(roles.id, roleId)).limit(1);
+    const [existingRole] = await db.select().from(roles)
+      .where(and(eq(roles.id, roleId), eq(roles.organizationId, userContext.organizationId)))
+      .limit(1);
     if (!existingRole) {
-      return res.status(404).json({ error: "Role not found" });
+      return res.status(404).json({ error: "Role not found in your organization" });
     }
 
     if (existingRole.isSystem) {
@@ -165,11 +205,18 @@ router.patch("/api/admin/roles/:roleId", authenticate, requireAdmin, async (req,
 
 router.delete("/api/admin/roles/:roleId", authenticate, requireAdmin, async (req, res) => {
   try {
+    const userContext = req.userContext;
+    if (!userContext?.organizationId) {
+      return res.status(403).json({ error: "Organization context required" });
+    }
+
     const { roleId } = req.params;
 
-    const [existingRole] = await db.select().from(roles).where(eq(roles.id, roleId)).limit(1);
+    const [existingRole] = await db.select().from(roles)
+      .where(and(eq(roles.id, roleId), eq(roles.organizationId, userContext.organizationId)))
+      .limit(1);
     if (!existingRole) {
-      return res.status(404).json({ error: "Role not found" });
+      return res.status(404).json({ error: "Role not found in your organization" });
     }
 
     if (existingRole.isSystem) {
@@ -189,8 +236,20 @@ router.delete("/api/admin/roles/:roleId", authenticate, requireAdmin, async (req
 
 router.put("/api/admin/roles/:roleId/permissions", authenticate, requireAdmin, async (req, res) => {
   try {
+    const userContext = req.userContext;
+    if (!userContext?.organizationId) {
+      return res.status(403).json({ error: "Organization context required" });
+    }
+
     const { roleId } = req.params;
     const { permissionIds } = req.body;
+
+    const [existingRole] = await db.select().from(roles)
+      .where(and(eq(roles.id, roleId), eq(roles.organizationId, userContext.organizationId)))
+      .limit(1);
+    if (!existingRole) {
+      return res.status(404).json({ error: "Role not found in your organization" });
+    }
 
     if (!Array.isArray(permissionIds)) {
       return res.status(400).json({ error: "permissionIds must be an array" });
@@ -221,7 +280,20 @@ router.put("/api/admin/roles/:roleId/permissions", authenticate, requireAdmin, a
 
 router.get("/api/admin/users/:userId/roles", authenticate, requireAdmin, async (req, res) => {
   try {
+    const userContext = req.userContext;
+    if (!userContext?.organizationId) {
+      return res.status(403).json({ error: "Organization context required" });
+    }
+
     const { userId } = req.params;
+    
+    const [targetUser] = await db.select().from(users)
+      .where(and(eq(users.id, userId), eq(users.organizationId, userContext.organizationId)))
+      .limit(1);
+    if (!targetUser) {
+      return res.status(404).json({ error: "User not found in your organization" });
+    }
+    
     const userRoles = await permissionService.getUserRoles(userId);
     res.json(userRoles);
   } catch (error) {
@@ -232,12 +304,35 @@ router.get("/api/admin/users/:userId/roles", authenticate, requireAdmin, async (
 
 router.post("/api/admin/users/:userId/roles", authenticate, requireAdmin, async (req, res) => {
   try {
+    const userContext = req.userContext;
+    if (!userContext?.organizationId) {
+      return res.status(403).json({ error: "Organization context required" });
+    }
+
     const { userId } = req.params;
+    
+    const [targetUser] = await db.select().from(users)
+      .where(and(eq(users.id, userId), eq(users.organizationId, userContext.organizationId)))
+      .limit(1);
+    if (!targetUser) {
+      return res.status(404).json({ error: "User not found in your organization" });
+    }
+
     const { roleId, scopeType, scopeId, expiresAt } = req.body;
     const adminUser = (req as any).user;
 
     if (!roleId) {
       return res.status(400).json({ error: "roleId is required" });
+    }
+
+    const [targetRole] = await db.select().from(roles)
+      .where(and(
+        eq(roles.id, roleId),
+        or(eq(roles.organizationId, userContext.organizationId), isNull(roles.organizationId))
+      ))
+      .limit(1);
+    if (!targetRole) {
+      return res.status(404).json({ error: "Role not found or not accessible in your organization" });
     }
 
     const assignment = await permissionService.assignRoleToUser(
@@ -265,7 +360,30 @@ router.post("/api/admin/users/:userId/roles", authenticate, requireAdmin, async 
 
 router.delete("/api/admin/users/:userId/roles/:roleId", authenticate, requireAdmin, async (req, res) => {
   try {
+    const userContext = req.userContext;
+    if (!userContext?.organizationId) {
+      return res.status(403).json({ error: "Organization context required" });
+    }
+
     const { userId, roleId } = req.params;
+    
+    const [targetUser] = await db.select().from(users)
+      .where(and(eq(users.id, userId), eq(users.organizationId, userContext.organizationId)))
+      .limit(1);
+    if (!targetUser) {
+      return res.status(404).json({ error: "User not found in your organization" });
+    }
+
+    const [targetRole] = await db.select().from(roles)
+      .where(and(
+        eq(roles.id, roleId),
+        or(eq(roles.organizationId, userContext.organizationId), isNull(roles.organizationId))
+      ))
+      .limit(1);
+    if (!targetRole) {
+      return res.status(404).json({ error: "Role not found or not accessible in your organization" });
+    }
+
     const { scopeType, scopeId } = req.query;
 
     await permissionService.removeRoleFromUser(
@@ -289,7 +407,20 @@ router.delete("/api/admin/users/:userId/roles/:roleId", authenticate, requireAdm
 
 router.get("/api/admin/users/:userId/permissions", authenticate, requireAdmin, async (req, res) => {
   try {
+    const userContext = req.userContext;
+    if (!userContext?.organizationId) {
+      return res.status(403).json({ error: "Organization context required" });
+    }
+
     const { userId } = req.params;
+    
+    const [targetUser] = await db.select().from(users)
+      .where(and(eq(users.id, userId), eq(users.organizationId, userContext.organizationId)))
+      .limit(1);
+    if (!targetUser) {
+      return res.status(404).json({ error: "User not found in your organization" });
+    }
+
     const { scopeType, scopeId } = req.query;
     
     const effectivePermissions = await permissionService.getEffectivePermissions(
@@ -307,7 +438,20 @@ router.get("/api/admin/users/:userId/permissions", authenticate, requireAdmin, a
 
 router.get("/api/admin/users/:userId/overrides", authenticate, requireAdmin, async (req, res) => {
   try {
+    const userContext = req.userContext;
+    if (!userContext?.organizationId) {
+      return res.status(403).json({ error: "Organization context required" });
+    }
+
     const { userId } = req.params;
+    
+    const [targetUser] = await db.select().from(users)
+      .where(and(eq(users.id, userId), eq(users.organizationId, userContext.organizationId)))
+      .limit(1);
+    if (!targetUser) {
+      return res.status(404).json({ error: "User not found in your organization" });
+    }
+
     const overrides = await permissionService.getUserPermissionOverrides(userId);
     res.json(overrides);
   } catch (error) {
@@ -318,7 +462,20 @@ router.get("/api/admin/users/:userId/overrides", authenticate, requireAdmin, asy
 
 router.post("/api/admin/users/:userId/overrides", authenticate, requireAdmin, async (req, res) => {
   try {
+    const userContext = req.userContext;
+    if (!userContext?.organizationId) {
+      return res.status(403).json({ error: "Organization context required" });
+    }
+
     const { userId } = req.params;
+    
+    const [targetUser] = await db.select().from(users)
+      .where(and(eq(users.id, userId), eq(users.organizationId, userContext.organizationId)))
+      .limit(1);
+    if (!targetUser) {
+      return res.status(404).json({ error: "User not found in your organization" });
+    }
+
     const { permissionKey, allowed, scopeType, scopeId, reason, expiresAt } = req.body;
     const adminUser = (req as any).user;
 
@@ -352,7 +509,20 @@ router.post("/api/admin/users/:userId/overrides", authenticate, requireAdmin, as
 
 router.delete("/api/admin/users/:userId/overrides/:permissionKey", authenticate, requireAdmin, async (req, res) => {
   try {
+    const userContext = req.userContext;
+    if (!userContext?.organizationId) {
+      return res.status(403).json({ error: "Organization context required" });
+    }
+
     const { userId, permissionKey } = req.params;
+    
+    const [targetUser] = await db.select().from(users)
+      .where(and(eq(users.id, userId), eq(users.organizationId, userContext.organizationId)))
+      .limit(1);
+    if (!targetUser) {
+      return res.status(404).json({ error: "User not found in your organization" });
+    }
+
     const { scopeType, scopeId } = req.query;
 
     await permissionService.removePermissionOverride(
