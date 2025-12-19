@@ -683,8 +683,8 @@ export const insertEmailQueueSchema = createInsertSchema(emailQueue).omit({
 // User status enum
 export const userStatusEnum = pgEnum("user_status", ["active", "inactive", "suspended", "invited", "pending"]);
 
-// User role enum
-export const userRoleEnum = pgEnum("user_role", ["admin", "user"]);
+// User role enum - extended with manager and read-only roles
+export const userRoleEnum = pgEnum("user_role", ["admin", "manager", "user", "read_only"]);
 
 // Auth provider enum for passwordless login
 export const authProviderEnum = pgEnum("auth_provider", ["google", "microsoft", "magic", "password"]);
@@ -697,6 +697,7 @@ export const users = pgTable("users", {
   passwordHash: text("password_hash"), // Nullable for OAuth users
   authProvider: authProviderEnum("auth_provider").default("password"), // Primary auth method
   passwordLoginEnabled: boolean("password_login_enabled").default(false), // Restricted password login
+  forcePasswordReset: boolean("force_password_reset").default(false), // Force password change on next login
   firstName: text("first_name"),
   lastName: text("last_name"),
   role: userRoleEnum("role").notNull().default("user"),
@@ -1074,4 +1075,523 @@ export const updateWorkspaceSchema = createInsertSchema(workspaces).omit({
 export const insertWorkspaceMembershipSchema = createInsertSchema(workspaceMemberships).omit({
   id: true,
   joinedAt: true,
+});
+
+// ============================================
+// ROLE-BASED ACCESS CONTROL (RBAC) MODULE
+// ============================================
+
+// Permission category enum
+export const permissionCategoryEnum = pgEnum("permission_category", [
+  "campaign", "prospect", "analytics", "settings", "user_management", "workspace", "team"
+]);
+
+// Permission scope enum
+export const permissionScopeEnum = pgEnum("permission_scope", [
+  "organization", "workspace", "team"
+]);
+
+// Team role enum
+export const teamRoleEnum = pgEnum("team_role", ["lead", "manager", "member"]);
+
+// Team visibility enum
+export const teamVisibilityEnum = pgEnum("team_visibility", ["private", "team_only", "organization"]);
+
+// License tier enum
+export const licenseTierEnum = pgEnum("license_tier", ["free", "basic", "professional", "enterprise"]);
+
+// Permissions table - defines all available permissions
+export const permissions = pgTable("permissions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  key: text("key").notNull().unique(), // e.g., "campaign.create", "prospect.export"
+  name: text("name").notNull(),
+  description: text("description"),
+  category: permissionCategoryEnum("category").notNull(),
+  isSystem: boolean("is_system").default(true), // System permissions cannot be deleted
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  categoryIdx: index("permissions_category_idx").on(table.category),
+}));
+
+// Roles table - custom roles with permissions
+export const roles = pgTable("roles", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  description: text("description"),
+  scope: permissionScopeEnum("scope").default("organization"), // Where this role applies
+  isSystem: boolean("is_system").default(false), // System roles: Admin, Manager, User, Read-Only
+  isDefault: boolean("is_default").default(false), // Default role for new users
+  inheritsFromRoleId: varchar("inherits_from_role_id"), // Role inheritance
+  color: text("color"), // UI color for role badge
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  orgIdIdx: index("roles_organization_id_idx").on(table.organizationId),
+}));
+
+// Role permissions join table
+export const rolePermissions = pgTable("role_permissions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  roleId: varchar("role_id").notNull().references(() => roles.id, { onDelete: "cascade" }),
+  permissionId: varchar("permission_id").notNull().references(() => permissions.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  roleIdIdx: index("role_permissions_role_id_idx").on(table.roleId),
+  permissionIdIdx: index("role_permissions_permission_id_idx").on(table.permissionId),
+}));
+
+// User role assignments - assigns roles to users with optional scope
+export const userRoleAssignments = pgTable("user_role_assignments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  roleId: varchar("role_id").notNull().references(() => roles.id, { onDelete: "cascade" }),
+  scopeType: permissionScopeEnum("scope_type").default("organization"), // organization, workspace, team
+  scopeId: varchar("scope_id"), // ID of the org/workspace/team
+  assignedBy: varchar("assigned_by").references(() => users.id, { onDelete: "set null" }),
+  expiresAt: timestamp("expires_at"), // Optional expiration
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  userIdIdx: index("user_role_assignments_user_id_idx").on(table.userId),
+  roleIdIdx: index("user_role_assignments_role_id_idx").on(table.roleId),
+}));
+
+// User permission overrides - override permissions for specific users
+export const userPermissionOverrides = pgTable("user_permission_overrides", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  permissionId: varchar("permission_id").notNull().references(() => permissions.id, { onDelete: "cascade" }),
+  allowed: boolean("allowed").notNull(), // true = grant, false = deny
+  scopeType: permissionScopeEnum("scope_type").default("organization"),
+  scopeId: varchar("scope_id"),
+  reason: text("reason"), // Why this override was created
+  grantedBy: varchar("granted_by").references(() => users.id, { onDelete: "set null" }),
+  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  userIdIdx: index("user_permission_overrides_user_id_idx").on(table.userId),
+  permissionIdIdx: index("user_permission_overrides_permission_id_idx").on(table.permissionId),
+}));
+
+// ============================================
+// TEAM STRUCTURE MODULE
+// ============================================
+
+// Teams table
+export const teams = pgTable("teams", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  workspaceId: varchar("workspace_id").references(() => workspaces.id, { onDelete: "set null" }), // Optional workspace association
+  parentTeamId: varchar("parent_team_id"), // Self-reference for sub-teams
+  name: text("name").notNull(),
+  description: text("description"),
+  territory: text("territory"), // Territory or segment this team handles
+  visibility: teamVisibilityEnum("visibility").default("team_only"),
+  quotas: jsonb("quotas").$type<{
+    monthlyProspects?: number;
+    monthlyEmails?: number;
+    monthlyMeetings?: number;
+    revenueTarget?: number;
+  }>(),
+  goals: jsonb("goals").$type<{
+    q1?: { target: number; achieved: number };
+    q2?: { target: number; achieved: number };
+    q3?: { target: number; achieved: number };
+    q4?: { target: number; achieved: number };
+    annual?: { target: number; achieved: number };
+  }>(),
+  settings: jsonb("settings").$type<{
+    allowCrossTeamView?: boolean;
+    requireApprovalForOutreach?: boolean;
+    shareProspectsWithinTeam?: boolean;
+    notifyLeadOnNewMembers?: boolean;
+  }>(),
+  color: text("color"), // UI color for team
+  icon: text("icon"), // Icon identifier
+  isActive: boolean("is_active").default(true),
+  createdBy: varchar("created_by").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  archivedAt: timestamp("archived_at"),
+}, (table) => ({
+  orgIdIdx: index("teams_organization_id_idx").on(table.organizationId),
+  workspaceIdIdx: index("teams_workspace_id_idx").on(table.workspaceId),
+  parentTeamIdIdx: index("teams_parent_team_id_idx").on(table.parentTeamId),
+}));
+
+// Team members table
+export const teamMembers = pgTable("team_members", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  teamId: varchar("team_id").notNull().references(() => teams.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  role: teamRoleEnum("role").default("member"),
+  joinedAt: timestamp("joined_at").notNull().defaultNow(),
+  leftAt: timestamp("left_at"),
+  addedBy: varchar("added_by").references(() => users.id, { onDelete: "set null" }),
+}, (table) => ({
+  teamIdIdx: index("team_members_team_id_idx").on(table.teamId),
+  userIdIdx: index("team_members_user_id_idx").on(table.userId),
+}));
+
+// ============================================
+// EXTENDED USER PROFILE & LICENSE MANAGEMENT
+// ============================================
+
+// User profiles table - extended profile data
+export const userProfiles = pgTable("user_profiles", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().unique().references(() => users.id, { onDelete: "cascade" }),
+  jobTitle: text("job_title"),
+  department: text("department"),
+  phone: text("phone"),
+  timezone: text("timezone"),
+  language: text("language").default("en"),
+  avatarUrl: text("avatar_url"),
+  bio: text("bio"),
+  linkedinUrl: text("linkedin_url"),
+  territory: text("territory"), // Assigned territory
+  manager: varchar("manager").references(() => users.id, { onDelete: "set null" }),
+  metadata: jsonb("metadata").$type<Record<string, any>>(),
+  preferences: jsonb("preferences").$type<{
+    emailNotifications?: boolean;
+    slackNotifications?: boolean;
+    weeklyDigest?: boolean;
+    theme?: string;
+  }>(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// User license allocations - track license usage
+export const userLicenses = pgTable("user_licenses", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().unique().references(() => users.id, { onDelete: "cascade" }),
+  organizationId: varchar("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  tier: licenseTierEnum("tier").default("basic"),
+  allocatedAt: timestamp("allocated_at").notNull().defaultNow(),
+  expiresAt: timestamp("expires_at"),
+  allocatedBy: varchar("allocated_by").references(() => users.id, { onDelete: "set null" }),
+  features: jsonb("features").$type<{
+    maxProspects?: number;
+    maxSequences?: number;
+    maxEmailsPerDay?: number;
+    aiPersonalization?: boolean;
+    advancedAnalytics?: boolean;
+    apiAccess?: boolean;
+  }>(),
+});
+
+// Organization license summary - aggregate license tracking
+export const organizationLicenses = pgTable("organization_licenses", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").notNull().unique().references(() => organizations.id, { onDelete: "cascade" }),
+  totalSeats: jsonb("total_seats").$type<{
+    free?: number;
+    basic?: number;
+    professional?: number;
+    enterprise?: number;
+  }>(),
+  usedSeats: jsonb("used_seats").$type<{
+    free?: number;
+    basic?: number;
+    professional?: number;
+    enterprise?: number;
+  }>(),
+  billingCycle: text("billing_cycle").default("monthly"),
+  renewsAt: timestamp("renews_at"),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// User activity logs - detailed activity tracking
+export const userActivityLogs = pgTable("user_activity_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  action: text("action").notNull(), // e.g., "prospect.create", "sequence.send", "login"
+  targetType: text("target_type"), // e.g., "prospect", "sequence", "campaign"
+  targetId: varchar("target_id"),
+  metadata: jsonb("metadata").$type<Record<string, any>>(),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  duration: integer("duration"), // Duration in milliseconds for timed actions
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  userIdIdx: index("user_activity_logs_user_id_idx").on(table.userId),
+  actionIdx: index("user_activity_logs_action_idx").on(table.action),
+  createdAtIdx: index("user_activity_logs_created_at_idx").on(table.createdAt),
+}));
+
+// ============================================
+// RBAC RELATIONS
+// ============================================
+
+export const permissionsRelations = relations(permissions, ({ many }) => ({
+  rolePermissions: many(rolePermissions),
+  userOverrides: many(userPermissionOverrides),
+}));
+
+export const rolesRelations = relations(roles, ({ one, many }) => ({
+  organization: one(organizations, {
+    fields: [roles.organizationId],
+    references: [organizations.id],
+  }),
+  inheritsFrom: one(roles, {
+    fields: [roles.inheritsFromRoleId],
+    references: [roles.id],
+    relationName: "roleInheritance",
+  }),
+  children: many(roles, { relationName: "roleInheritance" }),
+  rolePermissions: many(rolePermissions),
+  userAssignments: many(userRoleAssignments),
+}));
+
+export const rolePermissionsRelations = relations(rolePermissions, ({ one }) => ({
+  role: one(roles, {
+    fields: [rolePermissions.roleId],
+    references: [roles.id],
+  }),
+  permission: one(permissions, {
+    fields: [rolePermissions.permissionId],
+    references: [permissions.id],
+  }),
+}));
+
+export const userRoleAssignmentsRelations = relations(userRoleAssignments, ({ one }) => ({
+  user: one(users, {
+    fields: [userRoleAssignments.userId],
+    references: [users.id],
+  }),
+  role: one(roles, {
+    fields: [userRoleAssignments.roleId],
+    references: [roles.id],
+  }),
+  assignedByUser: one(users, {
+    fields: [userRoleAssignments.assignedBy],
+    references: [users.id],
+  }),
+}));
+
+export const userPermissionOverridesRelations = relations(userPermissionOverrides, ({ one }) => ({
+  user: one(users, {
+    fields: [userPermissionOverrides.userId],
+    references: [users.id],
+  }),
+  permission: one(permissions, {
+    fields: [userPermissionOverrides.permissionId],
+    references: [permissions.id],
+  }),
+  grantedByUser: one(users, {
+    fields: [userPermissionOverrides.grantedBy],
+    references: [users.id],
+  }),
+}));
+
+// ============================================
+// TEAM RELATIONS
+// ============================================
+
+export const teamsRelations = relations(teams, ({ one, many }) => ({
+  organization: one(organizations, {
+    fields: [teams.organizationId],
+    references: [organizations.id],
+  }),
+  workspace: one(workspaces, {
+    fields: [teams.workspaceId],
+    references: [workspaces.id],
+  }),
+  parent: one(teams, {
+    fields: [teams.parentTeamId],
+    references: [teams.id],
+    relationName: "teamHierarchy",
+  }),
+  children: many(teams, { relationName: "teamHierarchy" }),
+  members: many(teamMembers),
+  creator: one(users, {
+    fields: [teams.createdBy],
+    references: [users.id],
+  }),
+}));
+
+export const teamMembersRelations = relations(teamMembers, ({ one }) => ({
+  team: one(teams, {
+    fields: [teamMembers.teamId],
+    references: [teams.id],
+  }),
+  user: one(users, {
+    fields: [teamMembers.userId],
+    references: [users.id],
+  }),
+  addedByUser: one(users, {
+    fields: [teamMembers.addedBy],
+    references: [users.id],
+  }),
+}));
+
+// ============================================
+// USER PROFILE & LICENSE RELATIONS
+// ============================================
+
+export const userProfilesRelations = relations(userProfiles, ({ one }) => ({
+  user: one(users, {
+    fields: [userProfiles.userId],
+    references: [users.id],
+  }),
+  managerUser: one(users, {
+    fields: [userProfiles.manager],
+    references: [users.id],
+  }),
+}));
+
+export const userLicensesRelations = relations(userLicenses, ({ one }) => ({
+  user: one(users, {
+    fields: [userLicenses.userId],
+    references: [users.id],
+  }),
+  organization: one(organizations, {
+    fields: [userLicenses.organizationId],
+    references: [organizations.id],
+  }),
+  allocatedByUser: one(users, {
+    fields: [userLicenses.allocatedBy],
+    references: [users.id],
+  }),
+}));
+
+export const organizationLicensesRelations = relations(organizationLicenses, ({ one }) => ({
+  organization: one(organizations, {
+    fields: [organizationLicenses.organizationId],
+    references: [organizations.id],
+  }),
+}));
+
+export const userActivityLogsRelations = relations(userActivityLogs, ({ one }) => ({
+  user: one(users, {
+    fields: [userActivityLogs.userId],
+    references: [users.id],
+  }),
+}));
+
+// ============================================
+// RBAC TYPES
+// ============================================
+
+export type Permission = typeof permissions.$inferSelect;
+export type InsertPermission = typeof permissions.$inferInsert;
+export type Role = typeof roles.$inferSelect;
+export type InsertRole = typeof roles.$inferInsert;
+export type RolePermission = typeof rolePermissions.$inferSelect;
+export type InsertRolePermission = typeof rolePermissions.$inferInsert;
+export type UserRoleAssignment = typeof userRoleAssignments.$inferSelect;
+export type InsertUserRoleAssignment = typeof userRoleAssignments.$inferInsert;
+export type UserPermissionOverride = typeof userPermissionOverrides.$inferSelect;
+export type InsertUserPermissionOverride = typeof userPermissionOverrides.$inferInsert;
+
+// ============================================
+// TEAM TYPES
+// ============================================
+
+export type Team = typeof teams.$inferSelect;
+export type InsertTeam = typeof teams.$inferInsert;
+export type TeamMember = typeof teamMembers.$inferSelect;
+export type InsertTeamMember = typeof teamMembers.$inferInsert;
+
+// ============================================
+// USER PROFILE & LICENSE TYPES
+// ============================================
+
+export type UserProfile = typeof userProfiles.$inferSelect;
+export type InsertUserProfile = typeof userProfiles.$inferInsert;
+export type UserLicense = typeof userLicenses.$inferSelect;
+export type InsertUserLicense = typeof userLicenses.$inferInsert;
+export type OrganizationLicense = typeof organizationLicenses.$inferSelect;
+export type InsertOrganizationLicense = typeof organizationLicenses.$inferInsert;
+export type UserActivityLog = typeof userActivityLogs.$inferSelect;
+export type InsertUserActivityLog = typeof userActivityLogs.$inferInsert;
+
+// ============================================
+// RBAC SCHEMAS
+// ============================================
+
+export const insertPermissionSchema = createInsertSchema(permissions).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertRoleSchema = createInsertSchema(roles).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateRoleSchema = createInsertSchema(roles).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  organizationId: true,
+}).partial();
+
+export const insertRolePermissionSchema = createInsertSchema(rolePermissions).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertUserRoleAssignmentSchema = createInsertSchema(userRoleAssignments).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertUserPermissionOverrideSchema = createInsertSchema(userPermissionOverrides).omit({
+  id: true,
+  createdAt: true,
+});
+
+// ============================================
+// TEAM SCHEMAS
+// ============================================
+
+export const insertTeamSchema = createInsertSchema(teams).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  archivedAt: true,
+});
+
+export const updateTeamSchema = createInsertSchema(teams).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  archivedAt: true,
+  organizationId: true,
+}).partial();
+
+export const insertTeamMemberSchema = createInsertSchema(teamMembers).omit({
+  id: true,
+  joinedAt: true,
+  leftAt: true,
+});
+
+// ============================================
+// USER PROFILE & LICENSE SCHEMAS
+// ============================================
+
+export const insertUserProfileSchema = createInsertSchema(userProfiles).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const updateUserProfileSchema = createInsertSchema(userProfiles).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  userId: true,
+}).partial();
+
+export const insertUserLicenseSchema = createInsertSchema(userLicenses).omit({
+  id: true,
+  allocatedAt: true,
+});
+
+export const insertUserActivityLogSchema = createInsertSchema(userActivityLogs).omit({
+  id: true,
+  createdAt: true,
 });
