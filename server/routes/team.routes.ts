@@ -10,19 +10,20 @@ const router = Router();
 
 router.get("/api/admin/teams", authenticate, requireAdmin, async (req, res) => {
   try {
-    const { organizationId, hierarchy } = req.query;
-    
-    if (!organizationId) {
-      return res.status(400).json({ error: "organizationId is required" });
+    const userContext = req.userContext;
+    if (!userContext?.organizationId) {
+      return res.status(403).json({ error: "Organization context required" });
     }
+    
+    const { hierarchy } = req.query;
 
     if (hierarchy === 'true') {
-      const teamHierarchy = await teamService.getTeamHierarchy(organizationId as string);
-      return res.json(teamHierarchy);
+      const teamHierarchy = await teamService.getTeamHierarchy(userContext.organizationId);
+      return res.json({ teams: teamHierarchy });
     }
 
-    const allTeams = await teamService.getTeamsByOrganization(organizationId as string);
-    res.json(allTeams);
+    const allTeams = await teamService.getTeamsByOrganization(userContext.organizationId);
+    res.json({ teams: allTeams });
   } catch (error) {
     console.error("Error fetching teams:", error);
     res.status(500).json({ error: "Failed to fetch teams" });
@@ -31,10 +32,15 @@ router.get("/api/admin/teams", authenticate, requireAdmin, async (req, res) => {
 
 router.get("/api/admin/teams/:teamId", authenticate, requireAdmin, async (req, res) => {
   try {
+    const userContext = req.userContext;
+    if (!userContext?.organizationId) {
+      return res.status(403).json({ error: "Organization context required" });
+    }
+
     const { teamId } = req.params;
     
     const team = await teamService.getTeamById(teamId);
-    if (!team) {
+    if (!team || team.organizationId !== userContext.organizationId) {
       return res.status(404).json({ error: "Team not found" });
     }
 
@@ -50,8 +56,12 @@ router.get("/api/admin/teams/:teamId", authenticate, requireAdmin, async (req, r
 
 router.post("/api/admin/teams", authenticate, requireAdmin, async (req, res) => {
   try {
+    const userContext = req.userContext;
+    if (!userContext?.organizationId) {
+      return res.status(403).json({ error: "Organization context required" });
+    }
+
     const { 
-      organizationId, 
       workspaceId, 
       parentTeamId, 
       name, 
@@ -65,12 +75,12 @@ router.post("/api/admin/teams", authenticate, requireAdmin, async (req, res) => 
     } = req.body;
     const adminUser = (req as any).user;
 
-    if (!organizationId || !name) {
-      return res.status(400).json({ error: "organizationId and name are required" });
+    if (!name) {
+      return res.status(400).json({ error: "Team name is required" });
     }
 
     const team = await teamService.createTeam({
-      organizationId,
+      organizationId: userContext.organizationId,
       workspaceId,
       parentTeamId,
       name,
@@ -87,7 +97,7 @@ router.post("/api/admin/teams", authenticate, requireAdmin, async (req, res) => 
     auditService.logFromRequest(req, 'TEAM_CREATED', 'team', { 
       teamId: team.id, 
       teamName: name,
-      organizationId 
+      organizationId: userContext.organizationId 
     });
     
     res.status(201).json(team);
@@ -99,7 +109,18 @@ router.post("/api/admin/teams", authenticate, requireAdmin, async (req, res) => 
 
 router.patch("/api/admin/teams/:teamId", authenticate, requireAdmin, async (req, res) => {
   try {
+    const userContext = req.userContext;
+    if (!userContext?.organizationId) {
+      return res.status(403).json({ error: "Organization context required" });
+    }
+
     const { teamId } = req.params;
+    
+    const existingTeam = await teamService.getTeamById(teamId);
+    if (!existingTeam || existingTeam.organizationId !== userContext.organizationId) {
+      return res.status(404).json({ error: "Team not found in your organization" });
+    }
+
     const { 
       name, 
       description, 
@@ -122,9 +143,6 @@ router.patch("/api/admin/teams/:teamId", authenticate, requireAdmin, async (req,
     if (icon !== undefined) updateData.icon = icon;
 
     const team = await teamService.updateTeam(teamId, updateData);
-    if (!team) {
-      return res.status(404).json({ error: "Team not found" });
-    }
     
     auditService.logFromRequest(req, 'TEAM_UPDATED', 'team', { 
       teamId, 
@@ -140,12 +158,19 @@ router.patch("/api/admin/teams/:teamId", authenticate, requireAdmin, async (req,
 
 router.post("/api/admin/teams/:teamId/archive", authenticate, requireAdmin, async (req, res) => {
   try {
+    const userContext = req.userContext;
+    if (!userContext?.organizationId) {
+      return res.status(403).json({ error: "Organization context required" });
+    }
+
     const { teamId } = req.params;
     
-    const team = await teamService.archiveTeam(teamId);
-    if (!team) {
-      return res.status(404).json({ error: "Team not found" });
+    const existingTeam = await teamService.getTeamById(teamId);
+    if (!existingTeam || existingTeam.organizationId !== userContext.organizationId) {
+      return res.status(404).json({ error: "Team not found in your organization" });
     }
+    
+    const team = await teamService.archiveTeam(teamId);
     
     auditService.logFromRequest(req, 'TEAM_ARCHIVED', 'team', { teamId });
     
@@ -158,12 +183,19 @@ router.post("/api/admin/teams/:teamId/archive", authenticate, requireAdmin, asyn
 
 router.post("/api/admin/teams/:teamId/restore", authenticate, requireAdmin, async (req, res) => {
   try {
+    const userContext = req.userContext;
+    if (!userContext?.organizationId) {
+      return res.status(403).json({ error: "Organization context required" });
+    }
+
     const { teamId } = req.params;
     
-    const team = await teamService.restoreTeam(teamId);
-    if (!team) {
-      return res.status(404).json({ error: "Team not found" });
+    const existingTeam = await teamService.getTeamById(teamId);
+    if (!existingTeam || existingTeam.organizationId !== userContext.organizationId) {
+      return res.status(404).json({ error: "Team not found in your organization" });
     }
+    
+    const team = await teamService.restoreTeam(teamId);
     
     auditService.logFromRequest(req, 'TEAM_RESTORED', 'team', { teamId });
     
@@ -176,11 +208,16 @@ router.post("/api/admin/teams/:teamId/restore", authenticate, requireAdmin, asyn
 
 router.delete("/api/admin/teams/:teamId", authenticate, requireAdmin, async (req, res) => {
   try {
+    const userContext = req.userContext;
+    if (!userContext?.organizationId) {
+      return res.status(403).json({ error: "Organization context required" });
+    }
+
     const { teamId } = req.params;
     
     const team = await teamService.getTeamById(teamId);
-    if (!team) {
-      return res.status(404).json({ error: "Team not found" });
+    if (!team || team.organizationId !== userContext.organizationId) {
+      return res.status(404).json({ error: "Team not found in your organization" });
     }
 
     await teamService.deleteTeam(teamId);
@@ -196,7 +233,18 @@ router.delete("/api/admin/teams/:teamId", authenticate, requireAdmin, async (req
 
 router.get("/api/admin/teams/:teamId/members", authenticate, requireAdmin, async (req, res) => {
   try {
+    const userContext = req.userContext;
+    if (!userContext?.organizationId) {
+      return res.status(403).json({ error: "Organization context required" });
+    }
+
     const { teamId } = req.params;
+    
+    const team = await teamService.getTeamById(teamId);
+    if (!team || team.organizationId !== userContext.organizationId) {
+      return res.status(404).json({ error: "Team not found in your organization" });
+    }
+    
     const members = await teamService.getTeamMembers(teamId);
     res.json(members);
   } catch (error) {
@@ -207,7 +255,18 @@ router.get("/api/admin/teams/:teamId/members", authenticate, requireAdmin, async
 
 router.post("/api/admin/teams/:teamId/members", authenticate, requireAdmin, async (req, res) => {
   try {
+    const userContext = req.userContext;
+    if (!userContext?.organizationId) {
+      return res.status(403).json({ error: "Organization context required" });
+    }
+
     const { teamId } = req.params;
+    
+    const team = await teamService.getTeamById(teamId);
+    if (!team || team.organizationId !== userContext.organizationId) {
+      return res.status(404).json({ error: "Team not found in your organization" });
+    }
+
     const { userId, role = 'member' } = req.body;
     const adminUser = (req as any).user;
 
@@ -235,7 +294,18 @@ router.post("/api/admin/teams/:teamId/members", authenticate, requireAdmin, asyn
 
 router.patch("/api/admin/teams/:teamId/members/:userId", authenticate, requireAdmin, async (req, res) => {
   try {
+    const userContext = req.userContext;
+    if (!userContext?.organizationId) {
+      return res.status(403).json({ error: "Organization context required" });
+    }
+
     const { teamId, userId } = req.params;
+    
+    const team = await teamService.getTeamById(teamId);
+    if (!team || team.organizationId !== userContext.organizationId) {
+      return res.status(404).json({ error: "Team not found in your organization" });
+    }
+
     const { role } = req.body;
 
     if (!role || !['lead', 'manager', 'member'].includes(role)) {
@@ -262,7 +332,17 @@ router.patch("/api/admin/teams/:teamId/members/:userId", authenticate, requireAd
 
 router.delete("/api/admin/teams/:teamId/members/:userId", authenticate, requireAdmin, async (req, res) => {
   try {
+    const userContext = req.userContext;
+    if (!userContext?.organizationId) {
+      return res.status(403).json({ error: "Organization context required" });
+    }
+
     const { teamId, userId } = req.params;
+    
+    const team = await teamService.getTeamById(teamId);
+    if (!team || team.organizationId !== userContext.organizationId) {
+      return res.status(404).json({ error: "Team not found in your organization" });
+    }
     
     const member = await teamService.removeTeamMember(teamId, userId);
     if (!member) {
@@ -283,13 +363,21 @@ router.delete("/api/admin/teams/:teamId/members/:userId", authenticate, requireA
 
 router.put("/api/admin/teams/:teamId/quotas", authenticate, requireAdmin, async (req, res) => {
   try {
+    const userContext = req.userContext;
+    if (!userContext?.organizationId) {
+      return res.status(403).json({ error: "Organization context required" });
+    }
+
     const { teamId } = req.params;
+    
+    const existingTeam = await teamService.getTeamById(teamId);
+    if (!existingTeam || existingTeam.organizationId !== userContext.organizationId) {
+      return res.status(404).json({ error: "Team not found in your organization" });
+    }
+    
     const quotas = req.body;
 
     const team = await teamService.updateTeamQuotas(teamId, quotas);
-    if (!team) {
-      return res.status(404).json({ error: "Team not found" });
-    }
     
     auditService.logFromRequest(req, 'TEAM_QUOTAS_UPDATED', 'team', { teamId, quotas });
     
@@ -302,13 +390,21 @@ router.put("/api/admin/teams/:teamId/quotas", authenticate, requireAdmin, async 
 
 router.put("/api/admin/teams/:teamId/goals", authenticate, requireAdmin, async (req, res) => {
   try {
+    const userContext = req.userContext;
+    if (!userContext?.organizationId) {
+      return res.status(403).json({ error: "Organization context required" });
+    }
+
     const { teamId } = req.params;
+    
+    const existingTeam = await teamService.getTeamById(teamId);
+    if (!existingTeam || existingTeam.organizationId !== userContext.organizationId) {
+      return res.status(404).json({ error: "Team not found in your organization" });
+    }
+    
     const goals = req.body;
 
     const team = await teamService.updateTeamGoals(teamId, goals);
-    if (!team) {
-      return res.status(404).json({ error: "Team not found" });
-    }
     
     auditService.logFromRequest(req, 'TEAM_GOALS_UPDATED', 'team', { teamId });
     
@@ -321,13 +417,21 @@ router.put("/api/admin/teams/:teamId/goals", authenticate, requireAdmin, async (
 
 router.put("/api/admin/teams/:teamId/settings", authenticate, requireAdmin, async (req, res) => {
   try {
+    const userContext = req.userContext;
+    if (!userContext?.organizationId) {
+      return res.status(403).json({ error: "Organization context required" });
+    }
+
     const { teamId } = req.params;
+    
+    const existingTeam = await teamService.getTeamById(teamId);
+    if (!existingTeam || existingTeam.organizationId !== userContext.organizationId) {
+      return res.status(404).json({ error: "Team not found in your organization" });
+    }
+    
     const settings = req.body;
 
     const team = await teamService.updateTeamSettings(teamId, settings);
-    if (!team) {
-      return res.status(404).json({ error: "Team not found" });
-    }
     
     auditService.logFromRequest(req, 'TEAM_SETTINGS_UPDATED', 'team', { teamId });
     
