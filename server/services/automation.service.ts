@@ -10,6 +10,7 @@ import { sql } from "drizzle-orm/sql";
 import { apolloService } from "./apollo.service";
 import exclusionFilterService, { type ExclusionRules } from "./exclusion-filter.service";
 import sequenceStepService from "./sequence-step.service";
+import { emailVolumeConfig } from "../config/email-volume.config";
 
 class AutomationService {
   /**
@@ -739,9 +740,9 @@ class AutomationService {
     if (!run) return false;
 
     const rateLimitConfig = (run.rateLimitConfig as any) || {
-      dailyLimit: 500,
+      dailyLimit: emailVolumeConfig.automationDailyLimit,
       currentDailyCount: 0,
-      delayBetweenEmails: 30000,
+      delayBetweenEmails: emailVolumeConfig.delayBetweenEmailsMs,
       lastResetDate: new Date().toISOString().split('T')[0],
       lastEmailSentAt: null
     };
@@ -775,6 +776,10 @@ class AutomationService {
     const now = new Date();
     const nowISO = now.toISOString();
     const today = now.toISOString().split('T')[0];
+    
+    // Use config values for defaults
+    const defaultDailyLimit = emailVolumeConfig.automationDailyLimit;
+    const defaultDelayMs = emailVolumeConfig.delayBetweenEmailsMs;
 
     // ATOMIC UPDATE with WHERE clause that checks:
     // 1. Daily limit not reached  
@@ -788,9 +793,9 @@ class AutomationService {
         -- Handle NULL config (fresh automation) - initialize with defaults
         WHEN rate_limit_config IS NULL THEN
           jsonb_build_object(
-            'dailyLimit', 500,
+            'dailyLimit', ${defaultDailyLimit},
             'currentDailyCount', 1,
-            'delayBetweenEmails', 30000,
+            'delayBetweenEmails', ${defaultDelayMs},
             'lastResetDate', ${today}::text,
             'lastEmailSentAt', ${nowISO}::text
           )
@@ -815,7 +820,7 @@ class AutomationService {
         -- Check if config is NULL (fresh) OR resetting (new day) OR within limit on same day
         rate_limit_config IS NULL
         OR COALESCE(rate_limit_config->>'lastResetDate', ${today}) != ${today}
-        OR COALESCE((rate_limit_config->>'currentDailyCount')::int, 0) < COALESCE((rate_limit_config->>'dailyLimit')::int, 500)
+        OR COALESCE((rate_limit_config->>'currentDailyCount')::int, 0) < COALESCE((rate_limit_config->>'dailyLimit')::int, ${defaultDailyLimit})
       )
       AND (
         -- Check delay: config NULL OR no last send OR enough time has elapsed
@@ -836,9 +841,9 @@ class AutomationService {
       if (!run) return { success: false, delayMs: 0, nextSendAfter: null };
 
       const config = (run.rateLimitConfig as any) || {
-        dailyLimit: 500,
+        dailyLimit: emailVolumeConfig.automationDailyLimit,
         currentDailyCount: 0,
-        delayBetweenEmails: 30000,
+        delayBetweenEmails: emailVolumeConfig.delayBetweenEmailsMs,
         lastEmailSentAt: null
       };
 
@@ -905,9 +910,9 @@ class AutomationService {
     if (!run) return;
 
     const rateLimitConfig = (run.rateLimitConfig as any) || {
-      dailyLimit: 500,
+      dailyLimit: emailVolumeConfig.automationDailyLimit,
       currentDailyCount: 0,
-      delayBetweenEmails: 30000,
+      delayBetweenEmails: emailVolumeConfig.delayBetweenEmailsMs,
       lastResetDate: new Date().toISOString().split('T')[0],
       lastEmailSentAt: null
     };

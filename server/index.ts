@@ -140,7 +140,8 @@ const csrfExcludedPaths = [
   '/api/personalization/analyze',
   '/api/personalization/advanced-analyze',
   '/api/personalization/generate-email',
-  '/api/personalization/batch-analyze'
+  '/api/personalization/batch-analyze',
+  '/api/test/email-queue-simulation'
 ];
 
 app.use((req, res, next) => {

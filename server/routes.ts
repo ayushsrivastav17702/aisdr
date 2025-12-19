@@ -26,6 +26,7 @@ import userRoutes from "./routes/user.routes";
 import analyticsRoutes from "./routes/analytics.routes";
 import dataExportRoutes from "./routes/data-export.routes";
 import { authenticate } from "./middleware/auth.middleware";
+import { emailVolumeConfig, getCapacityReport, getEstimatedTimeForEmails, EMAIL_VOLUME_PRESETS } from "./config/email-volume.config";
 
 const upload = multer({ 
   dest: 'uploads/',
@@ -53,6 +54,50 @@ export async function registerRoutes(app: Express): Promise<Server> {
         timestamp: new Date().toISOString()
       });
     }
+  });
+  
+  // Email volume configuration endpoint
+  app.get("/api/email-volume-config", authenticate, async (req, res) => {
+    try {
+      const activePreset = process.env.EMAIL_VOLUME_PRESET || 'medium';
+      const dailyLimit = Math.min(
+        emailVolumeConfig.dailyEmailLimit,
+        emailVolumeConfig.automationDailyLimit
+      );
+      
+      res.json({
+        activePreset,
+        config: emailVolumeConfig,
+        availablePresets: Object.keys(EMAIL_VOLUME_PRESETS),
+        capacity: {
+          dailyLimit,
+          hourlyLimit: Math.floor(dailyLimit / 24),
+          estimatedTimeFor1000: getEstimatedTimeForEmails(1000),
+          estimatedTimeFor5000: getEstimatedTimeForEmails(5000),
+          estimatedTimeFor10000: getEstimatedTimeForEmails(10000),
+        }
+      });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to get email volume config" });
+    }
+  });
+  
+  // Email queue simulation endpoint for load testing
+  app.post("/api/test/email-queue-simulation", async (req, res) => {
+    // This endpoint simulates email queuing for load testing
+    // It doesn't actually send emails
+    const { to, subject, body } = req.body;
+    
+    // Simulate processing time
+    await new Promise(r => setTimeout(r, Math.random() * 5));
+    
+    res.json({
+      success: true,
+      simulated: true,
+      queuedAt: new Date().toISOString(),
+      to,
+      subject: subject?.substring(0, 50)
+    });
   });
   
   // AI Search endpoint
