@@ -113,7 +113,7 @@ async function superAdminFetch(url: string, options: RequestInit = {}) {
   if (!response.ok) {
     if (response.status === 401) {
       sessionStorage.removeItem("super_admin");
-      window.location.href = "/super-admin/login";
+      window.location.href = "/login";
       throw new Error("Session expired");
     }
     const error = await response.json();
@@ -144,7 +144,7 @@ export default function SuperAdminDashboard() {
     if (storedAdmin) {
       setSuperAdmin(JSON.parse(storedAdmin));
     } else {
-      setLocation("/super-admin/login");
+      setLocation("/login");
     }
   }, [setLocation]);
 
@@ -222,7 +222,7 @@ export default function SuperAdminDashboard() {
       // Ignore errors
     }
     sessionStorage.removeItem("super_admin");
-    setLocation("/super-admin/login");
+    setLocation("/login");
   };
 
   const getStatusBadge = (status: string) => {
