@@ -34,6 +34,7 @@ import apiAccessRoutes from "./routes/api-access.routes";
 import emailSettingsRoutes from "./routes/email-settings.routes";
 import notificationSettingsRoutes from "./routes/notification-settings.routes";
 import aiConfigRoutes from "./routes/ai-config.routes";
+import superAdminRoutes from "./routes/super-admin.routes";
 import { authenticate } from "./middleware/auth.middleware";
 import { emailVolumeConfig, getCapacityReport, getEstimatedTimeForEmails, EMAIL_VOLUME_PRESETS } from "./config/email-volume.config";
 
@@ -1588,6 +1589,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // AI configuration routes
   app.use("/api/admin", aiConfigRoutes);
+  
+  // Super Admin routes (platform-level administration)
+  app.use("/api/super-admin", superAdminRoutes);
 
   // Automation module routes
   registerAutomationRoutes(app);

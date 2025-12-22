@@ -2244,3 +2244,183 @@ export const insertAIPromptTemplateSchema = createInsertSchema(aiPromptTemplates
   createdAt: true,
   updatedAt: true,
 });
+
+// ============================================
+// SUPER ADMIN / PLATFORM MANAGEMENT MODULE
+// ============================================
+
+// Tenant plan enum
+export const tenantPlanEnum = pgEnum("tenant_plan", ["trial", "starter", "growth", "enterprise"]);
+
+// Tenant status enum (extended for platform management)
+export const tenantStatusEnum = pgEnum("tenant_status", ["active", "trial", "suspended", "churned", "pending_approval"]);
+
+// Super Admin status enum
+export const superAdminStatusEnum = pgEnum("super_admin_status", ["active", "inactive", "suspended"]);
+
+// Super Admins table - Platform-level administrators (AiSDR company employees)
+export const superAdmins = pgTable("super_admins", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  email: text("email").notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
+  firstName: text("first_name"),
+  lastName: text("last_name"),
+  status: superAdminStatusEnum("status").default("active"),
+  isMasterAdmin: boolean("is_master_admin").default(false), // Can manage other super admins
+  permissions: jsonb("permissions").$type<{
+    canProvisionTenants?: boolean;
+    canManageBilling?: boolean;
+    canImpersonateManagers?: boolean;
+    canSuspendTenants?: boolean;
+    canDeleteTenants?: boolean;
+    canViewAllData?: boolean;
+  }>(),
+  lastLogin: timestamp("last_login"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  emailIdx: index("super_admins_email_idx").on(table.email),
+}));
+
+// Super Admin sessions table
+export const superAdminSessions = pgTable("super_admin_sessions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  superAdminId: varchar("super_admin_id").notNull().references(() => superAdmins.id, { onDelete: "cascade" }),
+  token: text("token").notNull().unique(),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  isActive: boolean("is_active").notNull().default(true),
+  expiresAt: timestamp("expires_at").notNull(),
+  lastActivity: timestamp("last_activity").notNull().defaultNow(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  superAdminIdIdx: index("super_admin_sessions_admin_id_idx").on(table.superAdminId),
+  tokenIdx: index("super_admin_sessions_token_idx").on(table.token),
+}));
+
+// Super Admin audit logs table - Platform-level actions
+export const superAdminAuditLogs = pgTable("super_admin_audit_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  superAdminId: varchar("super_admin_id").references(() => superAdmins.id, { onDelete: "set null" }),
+  action: text("action").notNull(),
+  targetType: text("target_type"), // tenant, manager, super_admin, billing, etc.
+  targetId: varchar("target_id"), // ID of the affected entity
+  details: jsonb("details"),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  superAdminIdIdx: index("super_admin_audit_logs_admin_id_idx").on(table.superAdminId),
+  actionIdx: index("super_admin_audit_logs_action_idx").on(table.action),
+  createdAtIdx: index("super_admin_audit_logs_created_at_idx").on(table.createdAt),
+}));
+
+// Tenant settings table - Extended organization management
+export const tenantSettings = pgTable("tenant_settings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }).unique(),
+  
+  // Plan and billing
+  plan: tenantPlanEnum("plan").default("trial"),
+  tenantStatus: tenantStatusEnum("tenant_status").default("trial"),
+  trialEndsAt: timestamp("trial_ends_at"),
+  subscriptionStartedAt: timestamp("subscription_started_at"),
+  subscriptionEndsAt: timestamp("subscription_ends_at"),
+  billingEmail: text("billing_email"),
+  billingAddress: text("billing_address"),
+  
+  // Resource limits based on plan
+  maxUsers: integer("max_users").default(5),
+  maxProspects: integer("max_prospects").default(1000),
+  maxSequences: integer("max_sequences").default(10),
+  maxMailboxes: integer("max_mailboxes").default(3),
+  maxDailyEmails: integer("max_daily_emails").default(100),
+  
+  // Usage tracking
+  currentUserCount: integer("current_user_count").default(0),
+  currentProspectCount: integer("current_prospect_count").default(0),
+  currentSequenceCount: integer("current_sequence_count").default(0),
+  
+  // Health and metrics
+  healthScore: integer("health_score").default(100), // 0-100
+  lastActivityAt: timestamp("last_activity_at"),
+  totalEmailsSent: integer("total_emails_sent").default(0),
+  totalProspectsEnriched: integer("total_prospects_enriched").default(0),
+  
+  // Provisioning info
+  provisionedBy: varchar("provisioned_by").references(() => superAdmins.id),
+  provisionedAt: timestamp("provisioned_at"),
+  suspendedBy: varchar("suspended_by").references(() => superAdmins.id),
+  suspendedAt: timestamp("suspended_at"),
+  suspendReason: text("suspend_reason"),
+  
+  // Contact info (for AiSDR support)
+  primaryContactName: text("primary_contact_name"),
+  primaryContactEmail: text("primary_contact_email"),
+  primaryContactPhone: text("primary_contact_phone"),
+  
+  // Notes (internal use by super admins)
+  internalNotes: text("internal_notes"),
+  
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  orgIdIdx: index("tenant_settings_org_id_idx").on(table.organizationId),
+  planIdx: index("tenant_settings_plan_idx").on(table.plan),
+  statusIdx: index("tenant_settings_status_idx").on(table.tenantStatus),
+}));
+
+// Super Admin impersonation logs - Track when super admins access tenant accounts
+export const impersonationLogs = pgTable("impersonation_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  superAdminId: varchar("super_admin_id").notNull().references(() => superAdmins.id, { onDelete: "cascade" }),
+  organizationId: varchar("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  targetUserId: varchar("target_user_id").references(() => users.id, { onDelete: "set null" }), // Manager being impersonated
+  reason: text("reason"),
+  startedAt: timestamp("started_at").notNull().defaultNow(),
+  endedAt: timestamp("ended_at"),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+}, (table) => ({
+  superAdminIdIdx: index("impersonation_logs_super_admin_id_idx").on(table.superAdminId),
+  orgIdIdx: index("impersonation_logs_org_id_idx").on(table.organizationId),
+  startedAtIdx: index("impersonation_logs_started_at_idx").on(table.startedAt),
+}));
+
+// ============================================
+// SUPER ADMIN TYPES
+// ============================================
+
+export type SuperAdmin = typeof superAdmins.$inferSelect;
+export type InsertSuperAdmin = typeof superAdmins.$inferInsert;
+export type SuperAdminSession = typeof superAdminSessions.$inferSelect;
+export type InsertSuperAdminSession = typeof superAdminSessions.$inferInsert;
+export type SuperAdminAuditLog = typeof superAdminAuditLogs.$inferSelect;
+export type InsertSuperAdminAuditLog = typeof superAdminAuditLogs.$inferInsert;
+export type TenantSettings = typeof tenantSettings.$inferSelect;
+export type InsertTenantSettings = typeof tenantSettings.$inferInsert;
+export type ImpersonationLog = typeof impersonationLogs.$inferSelect;
+export type InsertImpersonationLog = typeof impersonationLogs.$inferInsert;
+
+// ============================================
+// SUPER ADMIN SCHEMAS
+// ============================================
+
+export const insertSuperAdminSchema = createInsertSchema(superAdmins).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  lastLogin: true,
+});
+
+export const insertTenantSettingsSchema = createInsertSchema(tenantSettings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertImpersonationLogSchema = createInsertSchema(impersonationLogs).omit({
+  id: true,
+  startedAt: true,
+  endedAt: true,
+});
