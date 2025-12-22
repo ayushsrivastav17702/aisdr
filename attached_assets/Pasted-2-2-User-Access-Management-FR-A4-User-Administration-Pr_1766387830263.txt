@@ -1,0 +1,97 @@
+2.2 User & Access Management
+FR-A4: User Administration
+
+Priority: P0
+Add/remove users (individual or bulk upload)
+Assign user roles: Admin, Manager, User, Read-Only
+Reset user passwords
+Enable/disable user accounts
+Force password changes on next login
+View user activity logs
+Set user license allocation
+Manage user profiles and metadata
+
+FR-A5: Role-Based Access Control (RBAC)
+
+Priority: P0
+Define custom roles with granular permissions
+Permission categories:
+
+Campaign management (create, edit, delete, view)
+Prospect data (view, export, delete)
+Analytics (view, export)
+Settings (view, edit)
+Billing (view, manage)
+User management (view, manage)
+
+
+Assign permissions at role level
+Override permissions for specific users
+Permission inheritance in workspace hierarchy
+
+FR-A6: Team Structure
+
+Priority: P0
+Create teams and sub-teams
+Assign team leads/managers
+Define team territories or segments
+Set team-level quotas and goals
+Configure team collaboration settings
+Manage cross-team visibility
+
+FR-A7: Single Sign-On (SSO)
+
+Priority: P1
+Configure SAML 2.0 SSO
+Support for Okta, Azure AD, Google Workspace
+Just-in-time (JIT) user provisioning
+SSO-enforced login (optional)
+SSO connection testing and troubleshooting
+Fallback authentication methods
+
+FR-A8: Multi-Factor Authentication (MFA)
+
+Priority: P0
+Enable/disable MFA organization-wide
+MFA enforcement for specific roles
+Support for authenticator apps (Google Authenticator, Authy)
+SMS-based MFA option
+Backup codes for MFA recovery
+MFA bypass for trusted IP ranges
+
+2.3 Security & Compliance
+FR-A9: Security Settings
+
+Priority: P0
+Configure password policies:
+
+Minimum length (8-20 characters)
+Complexity requirements
+Password expiration (30-90 days)
+Password history (prevent reuse)
+
+
+Session timeout settings (15min - 24hrs)
+IP whitelisting/blacklisting
+Login attempt limits and lockout policies
+Two-person authorization for sensitive actions
+Security question requirements
+
+FR-A10: Audit Logs
+
+Priority: P0
+Comprehensive activity logging:
+
+User login/logout
+User additions/deletions
+Permission changes
+Settings modifications
+Data exports
+Campaign launches
+Integration changes
+
+
+Filter logs by user, action type, date range
+Export logs to CSV or SIEM integration
+Retention period: 2 years minimum
+Real-time log streaming for security tools
