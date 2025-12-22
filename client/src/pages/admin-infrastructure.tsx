@@ -825,7 +825,7 @@ function EmailSettingsSection() {
   const [newDncReason, setNewDncReason] = useState('');
 
   const { data: settingsData, isLoading: settingsLoading } = useQuery<DeliverabilitySettings>({
-    queryKey: ['/api/admin/email-deliverability'],
+    queryKey: ['/api/admin/deliverability-settings'],
   });
 
   const { data: dncData, isLoading: dncLoading } = useQuery<{ entries: DoNotContactEntry[]; total: number }>({
@@ -834,11 +834,11 @@ function EmailSettingsSection() {
 
   const updateSettingsMutation = useMutation({
     mutationFn: async (settings: Partial<DeliverabilitySettings>) => {
-      const res = await apiRequest('PUT', '/api/admin/email-deliverability', settings);
+      const res = await apiRequest('PATCH', '/api/admin/deliverability-settings', settings);
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['/api/admin/email-deliverability'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/admin/deliverability-settings'] });
       toast({ title: 'Settings updated' });
     },
   });
@@ -1123,7 +1123,7 @@ function AiConfigSection() {
 
   const updateConfigMutation = useMutation({
     mutationFn: async (config: Partial<AiConfiguration>) => {
-      const res = await apiRequest('PUT', '/api/admin/ai-config', config);
+      const res = await apiRequest('PATCH', '/api/admin/ai-config', config);
       return res.json();
     },
     onSuccess: () => {
