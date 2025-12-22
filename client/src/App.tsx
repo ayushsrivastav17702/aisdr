@@ -32,6 +32,8 @@ import TermsOfServicePage from "@/pages/terms-of-service";
 import PrivacyPolicyPage from "@/pages/privacy-policy";
 import CookiePolicyPage from "@/pages/cookie-policy";
 import DataProcessingAgreementPage from "@/pages/data-processing-agreement";
+import SuperAdminLogin from "@/pages/super-admin-login";
+import SuperAdminDashboard from "@/pages/super-admin-dashboard";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -132,6 +134,9 @@ function Router() {
           <APIDocumentationPage />
         </ProtectedRoute>
       </Route>
+      {/* Super Admin Routes - Separate from main app */}
+      <Route path="/super-admin/login" component={SuperAdminLogin} />
+      <Route path="/super-admin" component={SuperAdminDashboard} />
       <Route component={NotFound} />
     </Switch>
   );
