@@ -29,6 +29,11 @@ import organizationRoutes from "./routes/organization.routes";
 import userAdminRoutes from "./routes/user-admin.routes";
 import rbacRoutes from "./routes/rbac.routes";
 import teamRoutes from "./routes/team.routes";
+import emailInfrastructureRoutes from "./routes/email-infrastructure.routes";
+import apiAccessRoutes from "./routes/api-access.routes";
+import emailSettingsRoutes from "./routes/email-settings.routes";
+import notificationSettingsRoutes from "./routes/notification-settings.routes";
+import aiConfigRoutes from "./routes/ai-config.routes";
 import { authenticate } from "./middleware/auth.middleware";
 import { emailVolumeConfig, getCapacityReport, getEstimatedTimeForEmails, EMAIL_VOLUME_PRESETS } from "./config/email-volume.config";
 
@@ -1568,6 +1573,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Team management routes
   app.use(teamRoutes);
+
+  // Email infrastructure routes (domains, mailbox allocations, warmup)
+  app.use("/api/admin", emailInfrastructureRoutes);
+
+  // API access management routes (API keys, webhooks)
+  app.use("/api/admin", apiAccessRoutes);
+
+  // Email settings routes (deliverability, compliance, footer)
+  app.use("/api/admin", emailSettingsRoutes);
+
+  // Notification settings routes
+  app.use("/api/admin", notificationSettingsRoutes);
+
+  // AI configuration routes
+  app.use("/api/admin", aiConfigRoutes);
 
   // Automation module routes
   registerAutomationRoutes(app);
