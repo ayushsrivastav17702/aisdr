@@ -2428,6 +2428,15 @@ export const tenantConfiguration = pgTable("tenant_configuration", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   organizationId: varchar("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }).unique(),
   
+  // Core Resource Limits (overrides tenantSettings when set)
+  maxUsers: integer("max_users"),
+  maxProspects: integer("max_prospects"),
+  maxSequences: integer("max_sequences"),
+  maxMailboxes: integer("max_mailboxes"),
+  maxDailyEmails: integer("max_daily_emails"),
+  maxHourlyEmails: integer("max_hourly_emails"),
+  apiRateLimitPerMinute: integer("api_rate_limit_per_minute"),
+  
   // Storage Limits
   storageQuotaMb: integer("storage_quota_mb").default(1000), // MB
   currentStorageUsedMb: integer("current_storage_used_mb").default(0),

@@ -789,17 +789,17 @@ class SuperAdminService {
       configuration: configResult || null,
       usageStats: {
         currentUsers: userCount?.count || 0,
-        maxUsers: result.settings?.maxUsers || 5,
+        maxUsers: configResult?.maxUsers ?? result.settings?.maxUsers ?? 5,
         currentProspects: prospectCount,
-        maxProspects: result.settings?.maxProspects || 1000,
+        maxProspects: configResult?.maxProspects ?? result.settings?.maxProspects ?? 1000,
         currentSequences: sequenceCount,
-        maxSequences: result.settings?.maxSequences || 10,
+        maxSequences: configResult?.maxSequences ?? result.settings?.maxSequences ?? 10,
         currentMailboxes: result.settings?.currentUserCount || 0, // Approximate from settings
-        maxMailboxes: result.settings?.maxMailboxes || 3,
+        maxMailboxes: configResult?.maxMailboxes ?? result.settings?.maxMailboxes ?? 3,
         emailsSentToday: 0, // Would need to track daily in production
         emailsSentTotal: result.settings?.totalEmailsSent || 0,
         storageUsedMb: configResult?.currentStorageUsedMb || 0,
-        storageQuotaMb: configResult?.storageQuotaMb || 1000,
+        storageQuotaMb: configResult?.storageQuotaMb ?? 1000,
       },
       healthMetrics: {
         healthScore: result.settings?.healthScore || 100,

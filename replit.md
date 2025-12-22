@@ -64,3 +64,33 @@ The platform is built on a modern web stack, featuring a multi-tenant architectu
 - **Redis/Upstash**: Required for BullMQ job queue.
 - **Resend**: Email service for sending HTML invitation emails.
 - **Sentry**: Error monitoring and performance tracking service (optional).
+
+## Super Admin System (Phase 2)
+Comprehensive Super Admin functionality for managing tenants at a platform level:
+
+### Authentication
+- Separate cookie-based authentication (super_admin_token cookie)
+- JWT session tokens with 8-hour expiry
+- Master admin role with full permissions
+
+### Tenant Management Features
+- **FR-SA3**: Detailed tenant profile views with organization info, usage stats, and health metrics
+- **FR-SA4**: Configuration controls for resource limits (maxUsers, maxProspects, maxSequences, maxMailboxes) and feature flags
+- **FR-SA7/FR-SA8**: Manager account creation with temporary passwords and role assignment
+- **FR-SA10**: Multi-manager support with role hierarchy (primary, secondary, readonly)
+
+### Feature Flag Keys (aligned with database schema)
+Frontend and backend use these consistent camelCase keys matching Drizzle schema columns:
+- aiProspecting, aiEmailGeneration, aiSentimentAnalysis
+- advancedAnalytics, customReports, exportCapabilities
+- whiteLabel, customBranding, customDomain
+- crmIntegration, webhookAccess, apiAccess
+- multiMailbox, emailSequences, bulkOperations
+
+### Database Tables
+- super_admins, super_admin_sessions, super_admin_audit_log
+- tenant_feature_flags, tenant_configuration, manager_accounts
+
+### Test Super Admin Account
+- Email: admin@increff.com
+- Password: SuperAdmin123!

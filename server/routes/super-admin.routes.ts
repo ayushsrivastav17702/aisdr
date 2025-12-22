@@ -425,27 +425,23 @@ router.patch('/tenants/:id/configuration', authenticateSuperAdmin, requireSuperA
 });
 
 // Phase 2: Update tenant feature flags (FR-SA4)
+// Keys match database schema column names (camelCase from Drizzle)
 const updateFeatureFlagsSchema = z.object({
-  aiPoweredSearch: z.boolean().optional(),
-  emailSequencing: z.boolean().optional(),
-  linkedinEnrichment: z.boolean().optional(),
-  apolloIntegration: z.boolean().optional(),
-  lushaIntegration: z.boolean().optional(),
+  aiProspecting: z.boolean().optional(),
+  aiEmailGeneration: z.boolean().optional(),
+  aiSentimentAnalysis: z.boolean().optional(),
   advancedAnalytics: z.boolean().optional(),
-  teamCollaboration: z.boolean().optional(),
-  apiAccess: z.boolean().optional(),
-  webhooks: z.boolean().optional(),
-  customFields: z.boolean().optional(),
-  multiMailbox: z.boolean().optional(),
-  abTesting: z.boolean().optional(),
-  sentimentAnalysis: z.boolean().optional(),
-  replyDetection: z.boolean().optional(),
-  autoOooHandling: z.boolean().optional(),
+  customReports: z.boolean().optional(),
+  exportCapabilities: z.boolean().optional(),
+  whiteLabel: z.boolean().optional(),
   customBranding: z.boolean().optional(),
-  ssoIntegration: z.boolean().optional(),
-  auditLogs: z.boolean().optional(),
-  dataExport: z.boolean().optional(),
-  prioritySupport: z.boolean().optional(),
+  customDomain: z.boolean().optional(),
+  crmIntegration: z.boolean().optional(),
+  webhookAccess: z.boolean().optional(),
+  apiAccess: z.boolean().optional(),
+  multiMailbox: z.boolean().optional(),
+  emailSequences: z.boolean().optional(),
+  bulkOperations: z.boolean().optional(),
 });
 
 router.patch('/tenants/:id/features', authenticateSuperAdmin, requireSuperAdminPermission('canManageBilling'), async (req, res) => {
