@@ -145,7 +145,9 @@ const csrfExcludedPaths = [
 ];
 
 app.use((req, res, next) => {
-  if (csrfExcludedPaths.includes(req.path) || req.path.startsWith('/api/csrf-token')) {
+  if (csrfExcludedPaths.includes(req.path) || 
+      req.path.startsWith('/api/csrf-token') ||
+      req.path.startsWith('/api/super-admin')) {
     return next();
   }
   return doubleCsrfProtection(req, res, next);
