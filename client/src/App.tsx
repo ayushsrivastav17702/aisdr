@@ -34,6 +34,7 @@ import CookiePolicyPage from "@/pages/cookie-policy";
 import DataProcessingAgreementPage from "@/pages/data-processing-agreement";
 import SuperAdminLogin from "@/pages/super-admin-login";
 import SuperAdminDashboard from "@/pages/super-admin-dashboard";
+import SuperAdminTenantDetail from "@/pages/super-admin-tenant-detail";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -136,6 +137,7 @@ function Router() {
       </Route>
       {/* Super Admin Routes - Separate from main app */}
       <Route path="/super-admin/login" component={SuperAdminLogin} />
+      <Route path="/super-admin/tenants/:id" component={SuperAdminTenantDetail} />
       <Route path="/super-admin" component={SuperAdminDashboard} />
       <Route component={NotFound} />
     </Switch>

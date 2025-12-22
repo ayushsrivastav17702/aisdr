@@ -1,0 +1,364 @@
+You are a Senior QA Engineer + Platform Auditor reviewing an outbound email & AI-driven SDR platform.
+Your task is to verify implementation completeness, functional correctness, edge cases, security, and failure handling for all features listed below.
+Assume this is a production-grade SaaS used by multiple organizations.
+
+🎯 Objectives
+
+For each feature, you must confirm:
+
+Is it implemented? (Yes / Partial / No)
+
+Is it configurable via UI? API? Both?
+
+Does it actually work end-to-end?
+
+Are validations, limits, and error states handled?
+
+Are logs, alerts, and audit trails present?
+
+Any gaps, risks, or missing safeguards
+
+🧪 Testing Methodology (MANDATORY)
+
+For every item:
+
+Test happy path
+
+Test failure scenarios
+
+Test edge cases
+
+Test permissions & role access
+
+Test rate limits / abuse scenarios
+
+Verify backend enforcement, not just UI toggles
+
+1️⃣ Email Infrastructure (Priority: P0)
+A. Domain Management
+
+Features to Verify
+
+Add sending domain
+
+Remove sending domain
+
+Automated DNS record configuration
+
+Domain verification status
+
+Domain health monitoring
+
+Test Checklist
+
+Add a fresh domain → verify DNS records auto-generated
+
+Incorrect DNS → verify failure state + guidance shown
+
+Correct DNS → confirm verification auto-updates
+
+Remove domain → ensure sending is blocked immediately
+
+Health monitoring:
+
+SPF/DKIM/DMARC validation
+
+Reputation indicators
+
+Alerts for degraded health
+
+Check background re-verification frequency
+
+Confirm domain cannot be deleted if actively assigned to mailboxes
+
+B. Mailbox Management
+
+Features
+
+Add/remove mailboxes
+
+Allocate mailboxes to teams
+
+Daily send limits per mailbox
+
+Mailbox health score
+
+Automatic mailbox rotation
+
+Warm-up schedule configuration
+
+Test Checklist
+
+Add mailbox → verify SMTP/OAuth validation
+
+Remove mailbox → ensure queued emails are reassigned
+
+Assign mailbox to multiple teams → validate permission rules
+
+Set daily send limit → confirm backend enforcement
+
+Exceed limit → verify emails pause, not fail silently
+
+Mailbox health score:
+
+Open rate, bounce rate, spam complaints
+
+Score decay over time
+
+Automatic rotation:
+
+Confirm load balancing works
+
+Verify unhealthy mailbox is excluded
+
+Warm-up:
+
+Gradual ramp-up enforced
+
+Manual override protection
+
+Warm-up pause on negative signals
+
+2️⃣ API Access Management (Priority: P1)
+A. API Keys
+
+Features
+
+Generate API keys
+
+Rate limits
+
+Permission scopes
+
+Usage statistics
+
+Revoke keys
+
+Test Checklist
+
+Generate key → confirm secret shown once
+
+Assign permissions → verify scope enforcement
+
+Exceed rate limit → confirm throttling & error codes
+
+Usage stats:
+
+Per endpoint
+
+Per key
+
+Revoke key → confirm immediate invalidation
+
+Test compromised key scenario
+
+B. Webhooks
+
+Features
+
+Event subscriptions
+
+Endpoint URLs
+
+Authentication
+
+Retry policies
+
+Test Checklist
+
+Subscribe to events (sent, bounce, reply, unsubscribe)
+
+Invalid endpoint → verify retries
+
+Authentication:
+
+Secret validation
+
+Signature verification
+
+Retry logic:
+
+Exponential backoff
+
+Max retry cap
+
+Event delivery logs available
+
+3️⃣ System Configuration – Email Deliverability (FR-A19, P0)
+
+Features
+
+Global send limits
+
+Bounce handling rules
+
+Unsubscribe page customization
+
+Email signature templates
+
+Tracking pixel configuration
+
+Link tracking
+
+Spam complaint thresholds
+
+Blacklist monitoring
+
+Test Checklist
+
+Global send limit overrides mailbox limits?
+
+Hard vs soft bounce rules:
+
+Auto-suppress?
+
+Retry?
+
+Unsubscribe:
+
+One-click compliance
+
+Brand customization
+
+Signature templates:
+
+Enforced across org?
+
+User override allowed?
+
+Tracking pixel:
+
+Disable option available?
+
+GDPR-safe mode?
+
+Spam complaints:
+
+Threshold breach alerts
+
+Auto-pausing campaigns
+
+Blacklist:
+
+Real-time checks?
+
+Alerting mechanism?
+
+4️⃣ AI Configuration (Priority: P1)
+
+Features
+
+Model selection
+
+Temperature & creativity
+
+Token limits
+
+Safety filters
+
+Prompt templates
+
+Training data upload
+
+Fine-tuning jobs
+
+AI cost tracking
+
+Test Checklist
+
+Model switch affects output?
+
+Temperature changes measurable?
+
+Token cap enforced per campaign
+
+Safety filters:
+
+Block unsafe content
+
+Log violations
+
+Prompt templates:
+
+Org-wide enforcement
+
+Version control
+
+Training data:
+
+File validation
+
+Privacy isolation per org
+
+Fine-tuning:
+
+Job lifecycle (queued, running, failed)
+
+Cost tracking:
+
+Per campaign
+
+Per team
+
+Per user
+
+5️⃣ Compliance Automation (Priority: P0)
+A. Suppression & DNC
+
+Features
+
+Auto-unsubscribe
+
+Suppression list upload
+
+Bounce-based suppression
+
+Competitor domain blocking
+
+Test Checklist
+
+Unsubscribe once → ensure global suppression
+
+Upload list → deduplication check
+
+Bounce suppression timing
+
+Competitor domain:
+
+Exact match
+
+Subdomain handling
+
+B. Email Footer Compliance
+
+Features
+
+Physical address
+
+Unsubscribe link
+
+Company info
+
+Test Checklist
+
+Footer cannot be removed?
+
+Mandatory fields enforced?
+
+Different region compliance (CAN-SPAM / GDPR)
+
+6️⃣ Notifications (FR-A22, Priority: P1)
+
+Features
+
+System-wide preferences
+
+Alert types
+
+Notification channels
+
+Escalation policies
+
+Schedules
+
+Test C...
