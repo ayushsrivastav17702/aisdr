@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, jsonb, timestamp, boolean, integer, pgEnum, index } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, jsonb, timestamp, boolean, integer, pgEnum, index, real } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations } from "drizzle-orm";
@@ -1594,4 +1594,653 @@ export const insertUserLicenseSchema = createInsertSchema(userLicenses).omit({
 export const insertUserActivityLogSchema = createInsertSchema(userActivityLogs).omit({
   id: true,
   createdAt: true,
+});
+
+// ============================================
+// EMAIL INFRASTRUCTURE MODULE
+// ============================================
+
+// Domain verification status enum
+export const domainVerificationStatusEnum = pgEnum("domain_verification_status", ["pending", "verified", "failed", "expired"]);
+
+// Sending Domains table
+export const sendingDomains = pgTable("sending_domains", {
+  id: varchar("id").primaryKey().$defaultFn(() => `dom_${Date.now()}`),
+  organizationId: varchar("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  domain: varchar("domain", { length: 255 }).notNull(),
+  
+  // DNS Records
+  dkimSelector: varchar("dkim_selector", { length: 255 }),
+  dkimPublicKey: text("dkim_public_key"),
+  dkimPrivateKey: text("dkim_private_key"), // Encrypted
+  spfRecord: text("spf_record"),
+  dmarcRecord: text("dmarc_record"),
+  returnPath: varchar("return_path", { length: 255 }),
+  
+  // Verification
+  verificationStatus: domainVerificationStatusEnum("verification_status").default("pending"),
+  verificationToken: varchar("verification_token", { length: 255 }),
+  verifiedAt: timestamp("verified_at"),
+  lastVerifiedAt: timestamp("last_verified_at"),
+  
+  // Health
+  healthScore: integer("health_score").default(100),
+  lastHealthCheck: timestamp("last_health_check"),
+  healthIssues: jsonb("health_issues").$type<string[]>(),
+  
+  // Status
+  isActive: boolean("is_active").default(true),
+  isPrimary: boolean("is_primary").default(false),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  orgDomainIdx: index("sending_domains_org_domain_idx").on(table.organizationId, table.domain),
+}));
+
+// Mailbox-Team allocation table
+export const mailboxTeamAllocations = pgTable("mailbox_team_allocations", {
+  id: varchar("id").primaryKey().$defaultFn(() => `mta_${Date.now()}`),
+  mailboxId: varchar("mailbox_id").notNull().references(() => emailMailboxes.id, { onDelete: "cascade" }),
+  teamId: varchar("team_id").notNull().references(() => teams.id, { onDelete: "cascade" }),
+  priority: integer("priority").default(1),
+  allocatedAt: timestamp("allocated_at").defaultNow(),
+  allocatedBy: varchar("allocated_by").references(() => users.id),
+}, (table) => ({
+  mailboxTeamIdx: index("mailbox_team_allocations_idx").on(table.mailboxId, table.teamId),
+}));
+
+// Mailbox warmup schedules
+export const mailboxWarmupSchedules = pgTable("mailbox_warmup_schedules", {
+  id: varchar("id").primaryKey().$defaultFn(() => `mws_${Date.now()}`),
+  mailboxId: varchar("mailbox_id").notNull().references(() => emailMailboxes.id, { onDelete: "cascade" }),
+  startDate: timestamp("start_date").notNull(),
+  endDate: timestamp("end_date"),
+  
+  // Warmup configuration
+  initialDailyLimit: integer("initial_daily_limit").default(5),
+  targetDailyLimit: integer("target_daily_limit").default(100),
+  incrementPerDay: integer("increment_per_day").default(5),
+  currentStage: integer("current_stage").default(1),
+  totalStages: integer("total_stages").default(20),
+  
+  // Schedule
+  sendWindowStart: integer("send_window_start").default(9), // Hour (0-23)
+  sendWindowEnd: integer("send_window_end").default(17),
+  timezone: varchar("timezone", { length: 50 }).default("UTC"),
+  excludeWeekends: boolean("exclude_weekends").default(true),
+  
+  isActive: boolean("is_active").default(true),
+  pausedAt: timestamp("paused_at"),
+  completedAt: timestamp("completed_at"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// ============================================
+// API ACCESS MANAGEMENT MODULE
+// ============================================
+
+// API Key status enum
+export const apiKeyStatusEnum = pgEnum("api_key_status", ["active", "revoked", "expired"]);
+
+// API Keys table
+export const apiKeys = pgTable("api_keys", {
+  id: varchar("id").primaryKey().$defaultFn(() => `apikey_${Date.now()}`),
+  organizationId: varchar("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  keyPrefix: varchar("key_prefix", { length: 12 }).notNull(), // First 8 chars shown to user
+  keyHash: varchar("key_hash", { length: 255 }).notNull(), // Hashed full key
+  
+  // Permissions
+  permissions: jsonb("permissions").$type<string[]>().default([]),
+  scopes: jsonb("scopes").$type<{
+    prospects?: boolean;
+    campaigns?: boolean;
+    sequences?: boolean;
+    analytics?: boolean;
+    settings?: boolean;
+  }>(),
+  
+  // Rate limits
+  rateLimitPerMinute: integer("rate_limit_per_minute").default(60),
+  rateLimitPerDay: integer("rate_limit_per_day").default(10000),
+  
+  // Usage tracking
+  lastUsedAt: timestamp("last_used_at"),
+  usageCount: integer("usage_count").default(0),
+  
+  // Lifecycle
+  status: apiKeyStatusEnum("status").default("active"),
+  expiresAt: timestamp("expires_at"),
+  revokedAt: timestamp("revoked_at"),
+  revokedBy: varchar("revoked_by").references(() => users.id),
+  revokeReason: text("revoke_reason"),
+  
+  // IP restrictions (optional)
+  allowedIps: jsonb("allowed_ips").$type<string[]>(),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  orgIdx: index("api_keys_organization_id_idx").on(table.organizationId),
+  userIdx: index("api_keys_user_id_idx").on(table.userId),
+  prefixIdx: index("api_keys_key_prefix_idx").on(table.keyPrefix),
+}));
+
+// API Usage logs
+export const apiUsageLogs = pgTable("api_usage_logs", {
+  id: varchar("id").primaryKey().$defaultFn(() => `apiul_${Date.now()}`),
+  apiKeyId: varchar("api_key_id").notNull().references(() => apiKeys.id, { onDelete: "cascade" }),
+  
+  endpoint: varchar("endpoint", { length: 255 }).notNull(),
+  method: varchar("method", { length: 10 }).notNull(),
+  statusCode: integer("status_code"),
+  responseTimeMs: integer("response_time_ms"),
+  requestSize: integer("request_size"),
+  responseSize: integer("response_size"),
+  
+  ipAddress: varchar("ip_address", { length: 45 }),
+  userAgent: text("user_agent"),
+  
+  errorMessage: text("error_message"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  apiKeyIdx: index("api_usage_logs_api_key_id_idx").on(table.apiKeyId),
+  createdAtIdx: index("api_usage_logs_created_at_idx").on(table.createdAt),
+}));
+
+// Webhook event types enum
+export const webhookEventTypeEnum = pgEnum("webhook_event_type", [
+  "email.sent", "email.delivered", "email.opened", "email.clicked", "email.bounced", "email.replied",
+  "prospect.created", "prospect.updated", "prospect.enriched",
+  "sequence.started", "sequence.completed", "sequence.paused",
+  "campaign.created", "campaign.completed"
+]);
+
+// Webhooks table
+export const webhooks = pgTable("webhooks", {
+  id: varchar("id").primaryKey().$defaultFn(() => `webhook_${Date.now()}`),
+  organizationId: varchar("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  url: text("url").notNull(),
+  
+  // Events
+  events: jsonb("events").$type<string[]>().notNull(),
+  
+  // Authentication
+  authType: varchar("auth_type", { length: 50 }).default("none"), // none, bearer, basic, hmac
+  authToken: text("auth_token"), // Encrypted
+  authHeader: varchar("auth_header", { length: 100 }),
+  hmacSecret: text("hmac_secret"), // Encrypted
+  
+  // Retry policy
+  maxRetries: integer("max_retries").default(3),
+  retryDelaySeconds: integer("retry_delay_seconds").default(60),
+  timeoutSeconds: integer("timeout_seconds").default(30),
+  
+  // Status
+  isActive: boolean("is_active").default(true),
+  lastTriggeredAt: timestamp("last_triggered_at"),
+  lastSuccessAt: timestamp("last_success_at"),
+  lastFailureAt: timestamp("last_failure_at"),
+  consecutiveFailures: integer("consecutive_failures").default(0),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  orgIdx: index("webhooks_organization_id_idx").on(table.organizationId),
+}));
+
+// Webhook delivery logs
+export const webhookDeliveryLogs = pgTable("webhook_delivery_logs", {
+  id: varchar("id").primaryKey().$defaultFn(() => `whdl_${Date.now()}`),
+  webhookId: varchar("webhook_id").notNull().references(() => webhooks.id, { onDelete: "cascade" }),
+  
+  eventType: varchar("event_type", { length: 50 }).notNull(),
+  payload: jsonb("payload"),
+  
+  // Response
+  statusCode: integer("status_code"),
+  responseBody: text("response_body"),
+  responseTimeMs: integer("response_time_ms"),
+  
+  // Retry info
+  attemptNumber: integer("attempt_number").default(1),
+  nextRetryAt: timestamp("next_retry_at"),
+  
+  success: boolean("success").default(false),
+  errorMessage: text("error_message"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  webhookIdx: index("webhook_delivery_logs_webhook_id_idx").on(table.webhookId),
+}));
+
+// ============================================
+// EMAIL DELIVERABILITY SETTINGS (FR-A19)
+// ============================================
+
+// Organization email settings
+export const emailDeliverabilitySettings = pgTable("email_deliverability_settings", {
+  id: varchar("id").primaryKey().$defaultFn(() => `eds_${Date.now()}`),
+  organizationId: varchar("organization_id").notNull().unique().references(() => organizations.id, { onDelete: "cascade" }),
+  
+  // Global send limits
+  globalDailyLimit: integer("global_daily_limit").default(1000),
+  globalHourlyLimit: integer("global_hourly_limit").default(100),
+  perProspectMaxEmails: integer("per_prospect_max_emails").default(5),
+  minTimeBetweenEmailsHours: integer("min_time_between_emails_hours").default(24),
+  
+  // Bounce handling
+  hardBounceAction: varchar("hard_bounce_action", { length: 50 }).default("remove"), // remove, pause, mark
+  softBounceRetries: integer("soft_bounce_retries").default(3),
+  softBounceAction: varchar("soft_bounce_action", { length: 50 }).default("pause"),
+  bounceThresholdPercent: integer("bounce_threshold_percent").default(5),
+  
+  // Unsubscribe settings
+  unsubscribePageUrl: text("unsubscribe_page_url"),
+  unsubscribePageLogo: text("unsubscribe_page_logo"),
+  unsubscribePageMessage: text("unsubscribe_page_message"),
+  unsubscribeConfirmationEmail: boolean("unsubscribe_confirmation_email").default(true),
+  
+  // Email signature templates
+  companySignature: text("company_signature"),
+  signatureIncludeAddress: boolean("signature_include_address").default(true),
+  signatureIncludePhone: boolean("signature_include_phone").default(false),
+  signatureIncludeWebsite: boolean("signature_include_website").default(true),
+  signatureIncludeSocial: boolean("signature_include_social").default(false),
+  
+  // Tracking
+  trackOpens: boolean("track_opens").default(true),
+  trackClicks: boolean("track_clicks").default(true),
+  customTrackingDomain: varchar("custom_tracking_domain", { length: 255 }),
+  pixelPlacement: varchar("pixel_placement", { length: 50 }).default("bottom"), // top, bottom, hidden
+  
+  // Link tracking
+  linkTrackingEnabled: boolean("link_tracking_enabled").default(true),
+  excludeLinksFromTracking: jsonb("exclude_links_from_tracking").$type<string[]>(),
+  
+  // Spam alerts
+  spamComplaintThreshold: integer("spam_complaint_threshold").default(1), // per 1000
+  spamAlertEmails: jsonb("spam_alert_emails").$type<string[]>(),
+  
+  // Blacklist monitoring
+  blacklistMonitoringEnabled: boolean("blacklist_monitoring_enabled").default(true),
+  blacklistAlertEmails: jsonb("blacklist_alert_emails").$type<string[]>(),
+  monitoredBlacklists: jsonb("monitored_blacklists").$type<string[]>(),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// ============================================
+// COMPLIANCE AUTOMATION MODULE
+// ============================================
+
+// Do Not Contact list
+export const doNotContactList = pgTable("do_not_contact_list", {
+  id: varchar("id").primaryKey().$defaultFn(() => `dnc_${Date.now()}`),
+  organizationId: varchar("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  
+  // Contact info (one or more)
+  email: varchar("email", { length: 255 }),
+  domain: varchar("domain", { length: 255 }),
+  phone: varchar("phone", { length: 50 }),
+  
+  // Reason
+  reason: varchar("reason", { length: 100 }).notNull(), // bounce, unsubscribe, complaint, manual, competitor
+  source: varchar("source", { length: 100 }), // import, api, automatic, manual
+  notes: text("notes"),
+  
+  // Metadata
+  addedBy: varchar("added_by").references(() => users.id),
+  expiresAt: timestamp("expires_at"), // For temporary blocks
+  
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  orgEmailIdx: index("dnc_org_email_idx").on(table.organizationId, table.email),
+  orgDomainIdx: index("dnc_org_domain_idx").on(table.organizationId, table.domain),
+}));
+
+// Suppression list imports
+export const suppressionListImports = pgTable("suppression_list_imports", {
+  id: varchar("id").primaryKey().$defaultFn(() => `sli_${Date.now()}`),
+  organizationId: varchar("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  
+  fileName: varchar("file_name", { length: 255 }),
+  fileSize: integer("file_size"),
+  recordCount: integer("record_count"),
+  importedCount: integer("imported_count"),
+  duplicateCount: integer("duplicate_count"),
+  errorCount: integer("error_count"),
+  
+  importedBy: varchar("imported_by").references(() => users.id),
+  status: varchar("status", { length: 50 }).default("pending"), // pending, processing, completed, failed
+  errorMessage: text("error_message"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+});
+
+// Email footer compliance settings
+export const emailFooterCompliance = pgTable("email_footer_compliance", {
+  id: varchar("id").primaryKey().$defaultFn(() => `efc_${Date.now()}`),
+  organizationId: varchar("organization_id").notNull().unique().references(() => organizations.id, { onDelete: "cascade" }),
+  
+  // Required elements
+  physicalAddressRequired: boolean("physical_address_required").default(true),
+  physicalAddress: text("physical_address"),
+  
+  unsubscribeLinkRequired: boolean("unsubscribe_link_required").default(true),
+  unsubscribeLinkText: varchar("unsubscribe_link_text", { length: 255 }).default("Unsubscribe"),
+  unsubscribeLinkPlacement: varchar("unsubscribe_link_placement", { length: 50 }).default("footer"), // footer, header, both
+  
+  companyNameRequired: boolean("company_name_required").default(true),
+  companyName: varchar("company_name", { length: 255 }),
+  
+  // Optional elements
+  includePrivacyLink: boolean("include_privacy_link").default(false),
+  privacyPolicyUrl: text("privacy_policy_url"),
+  
+  includeTermsLink: boolean("include_terms_link").default(false),
+  termsUrl: text("terms_url"),
+  
+  // Custom footer HTML
+  customFooterHtml: text("custom_footer_html"),
+  customFooterEnabled: boolean("custom_footer_enabled").default(false),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// ============================================
+// NOTIFICATION SETTINGS MODULE (FR-A22)
+// ============================================
+
+// Notification type enum
+export const notificationTypeEnum = pgEnum("notification_type", [
+  "system_downtime", "integration_failure", "security_incident", "usage_limit_warning",
+  "bounce_threshold", "spam_complaint", "blacklist_alert", "api_rate_limit",
+  "campaign_complete", "sequence_complete", "daily_digest"
+]);
+
+// Notification channel enum
+export const notificationChannelEnum = pgEnum("notification_channel", ["email", "in_app", "slack", "webhook"]);
+
+// Organization notification settings
+export const notificationSettings = pgTable("notification_settings", {
+  id: varchar("id").primaryKey().$defaultFn(() => `ns_${Date.now()}`),
+  organizationId: varchar("organization_id").notNull().unique().references(() => organizations.id, { onDelete: "cascade" }),
+  
+  // Default channels
+  defaultChannels: jsonb("default_channels").$type<string[]>().default(["email", "in_app"]),
+  
+  // Schedule
+  businessHoursOnly: boolean("business_hours_only").default(false),
+  businessHoursStart: integer("business_hours_start").default(9),
+  businessHoursEnd: integer("business_hours_end").default(17),
+  businessTimezone: varchar("business_timezone", { length: 50 }).default("UTC"),
+  
+  // Escalation
+  escalationEnabled: boolean("escalation_enabled").default(false),
+  escalationDelayMinutes: integer("escalation_delay_minutes").default(30),
+  escalationEmails: jsonb("escalation_emails").$type<string[]>(),
+  
+  // Digest settings
+  dailyDigestEnabled: boolean("daily_digest_enabled").default(true),
+  dailyDigestTime: integer("daily_digest_time").default(9), // Hour
+  weeklyDigestEnabled: boolean("weekly_digest_enabled").default(true),
+  weeklyDigestDay: integer("weekly_digest_day").default(1), // Monday
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Notification preferences per type
+export const notificationPreferences = pgTable("notification_preferences", {
+  id: varchar("id").primaryKey().$defaultFn(() => `np_${Date.now()}`),
+  organizationId: varchar("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  
+  notificationType: varchar("notification_type", { length: 50 }).notNull(),
+  enabled: boolean("enabled").default(true),
+  channels: jsonb("channels").$type<string[]>().default(["email"]),
+  
+  // Recipients
+  recipientEmails: jsonb("recipient_emails").$type<string[]>(),
+  recipientUserIds: jsonb("recipient_user_ids").$type<string[]>(),
+  
+  // Thresholds (where applicable)
+  threshold: integer("threshold"),
+  thresholdUnit: varchar("threshold_unit", { length: 50 }),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  orgTypeIdx: index("notification_preferences_org_type_idx").on(table.organizationId, table.notificationType),
+}));
+
+// Notification log
+export const notificationLogs = pgTable("notification_logs", {
+  id: varchar("id").primaryKey().$defaultFn(() => `nl_${Date.now()}`),
+  organizationId: varchar("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  
+  notificationType: varchar("notification_type", { length: 50 }).notNull(),
+  channel: varchar("channel", { length: 50 }).notNull(),
+  recipient: varchar("recipient", { length: 255 }).notNull(),
+  
+  subject: varchar("subject", { length: 255 }),
+  content: text("content"),
+  
+  sentAt: timestamp("sent_at"),
+  deliveredAt: timestamp("delivered_at"),
+  readAt: timestamp("read_at"),
+  
+  status: varchar("status", { length: 50 }).default("pending"), // pending, sent, delivered, failed
+  errorMessage: text("error_message"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  orgIdx: index("notification_logs_org_idx").on(table.organizationId),
+}));
+
+// ============================================
+// AI CONFIGURATION MODULE
+// ============================================
+
+// AI provider enum
+export const aiProviderEnum = pgEnum("ai_provider", ["openai", "anthropic", "openrouter", "azure", "custom"]);
+
+// AI model enum
+export const aiModelEnum = pgEnum("ai_model", [
+  "gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo",
+  "claude-3-5-sonnet", "claude-3-opus", "claude-3-sonnet", "claude-3-haiku",
+  "custom"
+]);
+
+// Organization AI settings
+export const aiConfiguration = pgTable("ai_configuration", {
+  id: varchar("id").primaryKey().$defaultFn(() => `aic_${Date.now()}`),
+  organizationId: varchar("organization_id").notNull().unique().references(() => organizations.id, { onDelete: "cascade" }),
+  
+  // Model selection
+  defaultProvider: aiProviderEnum("default_provider").default("openai"),
+  defaultModel: aiModelEnum("default_model").default("gpt-4o-mini"),
+  fallbackProvider: aiProviderEnum("fallback_provider"),
+  fallbackModel: aiModelEnum("fallback_model"),
+  
+  // Generation settings
+  defaultTemperature: real("default_temperature").default(0.7),
+  defaultMaxTokens: integer("default_max_tokens").default(1000),
+  
+  // Usage limits
+  dailyTokenLimit: integer("daily_token_limit").default(100000),
+  monthlyTokenLimit: integer("monthly_token_limit").default(3000000),
+  perCampaignTokenLimit: integer("per_campaign_token_limit").default(50000),
+  
+  // Safety filters
+  contentFilterEnabled: boolean("content_filter_enabled").default(true),
+  blockedTopics: jsonb("blocked_topics").$type<string[]>(),
+  requiredDisclosures: jsonb("required_disclosures").$type<string[]>(),
+  
+  // Cost tracking
+  monthlyBudgetUsd: real("monthly_budget_usd"),
+  budgetAlertThreshold: integer("budget_alert_threshold").default(80), // Percentage
+  
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Custom prompt templates
+export const aiPromptTemplates = pgTable("ai_prompt_templates", {
+  id: varchar("id").primaryKey().$defaultFn(() => `aipt_${Date.now()}`),
+  organizationId: varchar("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  
+  name: varchar("name", { length: 255 }).notNull(),
+  description: text("description"),
+  category: varchar("category", { length: 100 }).notNull(), // email, personalization, analysis, other
+  
+  systemPrompt: text("system_prompt"),
+  userPromptTemplate: text("user_prompt_template").notNull(),
+  
+  // Variables
+  requiredVariables: jsonb("required_variables").$type<string[]>(),
+  optionalVariables: jsonb("optional_variables").$type<string[]>(),
+  
+  // Settings override
+  temperature: real("temperature"),
+  maxTokens: integer("max_tokens"),
+  
+  isDefault: boolean("is_default").default(false),
+  isActive: boolean("is_active").default(true),
+  
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  orgCategoryIdx: index("ai_prompt_templates_org_category_idx").on(table.organizationId, table.category),
+}));
+
+// AI usage tracking
+export const aiUsageLogs = pgTable("ai_usage_logs", {
+  id: varchar("id").primaryKey().$defaultFn(() => `aiul_${Date.now()}`),
+  organizationId: varchar("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").references(() => users.id),
+  
+  provider: varchar("provider", { length: 50 }).notNull(),
+  model: varchar("model", { length: 100 }).notNull(),
+  
+  feature: varchar("feature", { length: 100 }), // personalization, analysis, generation
+  campaignId: varchar("campaign_id"),
+  
+  promptTokens: integer("prompt_tokens"),
+  completionTokens: integer("completion_tokens"),
+  totalTokens: integer("total_tokens"),
+  estimatedCostUsd: real("estimated_cost_usd"),
+  
+  latencyMs: integer("latency_ms"),
+  success: boolean("success").default(true),
+  errorMessage: text("error_message"),
+  
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  orgIdx: index("ai_usage_logs_org_idx").on(table.organizationId),
+  createdAtIdx: index("ai_usage_logs_created_at_idx").on(table.createdAt),
+}));
+
+// ============================================
+// INFRASTRUCTURE TYPES
+// ============================================
+
+export type SendingDomain = typeof sendingDomains.$inferSelect;
+export type InsertSendingDomain = typeof sendingDomains.$inferInsert;
+export type MailboxTeamAllocation = typeof mailboxTeamAllocations.$inferSelect;
+export type InsertMailboxTeamAllocation = typeof mailboxTeamAllocations.$inferInsert;
+export type MailboxWarmupSchedule = typeof mailboxWarmupSchedules.$inferSelect;
+export type InsertMailboxWarmupSchedule = typeof mailboxWarmupSchedules.$inferInsert;
+
+export type ApiKey = typeof apiKeys.$inferSelect;
+export type InsertApiKey = typeof apiKeys.$inferInsert;
+export type ApiUsageLog = typeof apiUsageLogs.$inferSelect;
+export type InsertApiUsageLog = typeof apiUsageLogs.$inferInsert;
+export type Webhook = typeof webhooks.$inferSelect;
+export type InsertWebhook = typeof webhooks.$inferInsert;
+export type WebhookDeliveryLog = typeof webhookDeliveryLogs.$inferSelect;
+export type InsertWebhookDeliveryLog = typeof webhookDeliveryLogs.$inferInsert;
+
+export type EmailDeliverabilitySettings = typeof emailDeliverabilitySettings.$inferSelect;
+export type InsertEmailDeliverabilitySettings = typeof emailDeliverabilitySettings.$inferInsert;
+
+export type DoNotContactEntry = typeof doNotContactList.$inferSelect;
+export type InsertDoNotContactEntry = typeof doNotContactList.$inferInsert;
+export type SuppressionListImport = typeof suppressionListImports.$inferSelect;
+export type InsertSuppressionListImport = typeof suppressionListImports.$inferInsert;
+export type EmailFooterCompliance = typeof emailFooterCompliance.$inferSelect;
+export type InsertEmailFooterCompliance = typeof emailFooterCompliance.$inferInsert;
+
+export type NotificationSettings = typeof notificationSettings.$inferSelect;
+export type InsertNotificationSettings = typeof notificationSettings.$inferInsert;
+export type NotificationPreference = typeof notificationPreferences.$inferSelect;
+export type InsertNotificationPreference = typeof notificationPreferences.$inferInsert;
+export type NotificationLog = typeof notificationLogs.$inferSelect;
+export type InsertNotificationLog = typeof notificationLogs.$inferInsert;
+
+export type AIConfiguration = typeof aiConfiguration.$inferSelect;
+export type InsertAIConfiguration = typeof aiConfiguration.$inferInsert;
+export type AIPromptTemplate = typeof aiPromptTemplates.$inferSelect;
+export type InsertAIPromptTemplate = typeof aiPromptTemplates.$inferInsert;
+export type AIUsageLog = typeof aiUsageLogs.$inferSelect;
+export type InsertAIUsageLog = typeof aiUsageLogs.$inferInsert;
+
+// ============================================
+// INFRASTRUCTURE SCHEMAS
+// ============================================
+
+export const insertSendingDomainSchema = createInsertSchema(sendingDomains).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertApiKeySchema = createInsertSchema(apiKeys).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  lastUsedAt: true,
+  usageCount: true,
+  revokedAt: true,
+});
+
+export const insertWebhookSchema = createInsertSchema(webhooks).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  lastTriggeredAt: true,
+  lastSuccessAt: true,
+  lastFailureAt: true,
+  consecutiveFailures: true,
+});
+
+export const insertDoNotContactSchema = createInsertSchema(doNotContactList).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertNotificationPreferenceSchema = createInsertSchema(notificationPreferences).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertAIPromptTemplateSchema = createInsertSchema(aiPromptTemplates).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
 });
