@@ -47,6 +47,7 @@ export type RequestContext = {
   userId: string;
   roles: string[];
   actingAs?: string;
+  organizationId?: string;
 };
 
 export function isAdmin(ctx: RequestContext): boolean {

@@ -1,0 +1,299 @@
+MASTER TESTING PROMPT: User, RBAC & Team Management (P0)
+ROLE
+
+You are a Senior QA Engineer + Security Auditor testing a SaaS application deployed on Replit.
+Your job is to verify whether User Administration (FR-A4), Role-Based Access Control (FR-A5), and Team Structure (FR-A6) are:
+
+Fully implemented
+
+Partially implemented
+
+Missing
+
+Or insecure (frontend-only enforcement)
+
+You must validate UI, API, database, and security enforcement.
+
+🔹 SYSTEM CONTEXT
+
+Environment: Replit (development + production build)
+
+App type: Multi-tenant SaaS
+
+Auth: Email/password or magic link
+
+Roles: Admin, Manager, User, Read-Only
+
+Workspace hierarchy: Workspace → Teams → Sub-teams → Users
+
+🔹 TEST OBJECTIVES
+
+Confirm feature completeness
+
+Detect RBAC bypass vulnerabilities
+
+Validate permission inheritance
+
+Confirm auditability & compliance
+
+Identify P0 blockers
+
+🔹 PRE-TEST SETUP (MANDATORY)
+Create Test Users
+
+Create or confirm existence of:
+
+admin@test.com → Admin
+
+manager@test.com → Manager
+
+user@test.com → User
+
+readonly@test.com → Read-Only
+
+Ensure each user can log in.
+
+🔹 FR-A4: USER ADMINISTRATION TESTING
+A. User Lifecycle Management
+
+Perform the following as Admin:
+
+Add a new user (single user)
+
+Verify successful login
+
+Bulk upload users via CSV (5+ users)
+
+Verify partial failure handling
+
+Remove a user
+
+Verify immediate access revocation
+
+❌ Flag if bulk upload is missing or fails silently.
+
+B. Role Assignment
+
+Change a user role (User → Manager)
+
+Log in as that user
+
+Verify permission change reflects immediately
+
+❌ Flag if refresh or re-login is required.
+
+C. Password & Access Control
+
+Reset user password
+
+Force password change on next login
+
+Disable user account
+
+Attempt login → must fail
+
+Re-enable → login must succeed
+
+D. Activity Logging
+
+Verify logs exist for:
+
+Login
+
+Logout
+
+Role change
+
+Password reset
+
+Account disable/enable
+
+Check:
+
+UI visibility
+
+Backend log persistence
+
+❌ Flag if logs exist only on frontend or are incomplete.
+
+E. License Allocation
+
+Assign license to user
+
+Attempt over-allocation
+
+Disable user → verify license released
+
+F. Profile & Metadata
+
+Edit:
+
+Name
+
+Team
+
+Territory
+
+Custom metadata fields
+
+Refresh → confirm persistence.
+
+🔹 FR-A5: ROLE-BASED ACCESS CONTROL (RBAC)
+A. Custom Role Creation
+
+Create role: Campaign Analyst
+Permissions:
+
+Campaign: View only
+
+Prospect: View only
+
+Analytics: View + Export
+
+Settings: None
+
+User management: None
+
+B. Permission Enforcement Matrix
+
+Log in as Campaign Analyst and test:
+
+Action	Expected
+Create campaign	❌
+Edit campaign	❌
+Delete campaign	❌
+View campaign	✅
+Export analytics	✅
+Delete prospect	❌
+Access settings	❌
+
+❌ Flag if UI blocks but API allows.
+
+C. User-Level Overrides
+
+Override permission: allow “Create Campaign”
+
+Log in → verify only that permission is added
+
+Remove override → permission revoked
+
+D. Permission Inheritance
+
+Deny permission at workspace level
+
+Allow at team level
+
+Validate effective permission
+
+Repeat inverse test.
+
+E. Security Validation (CRITICAL)
+
+Using DevTools or API client:
+
+Call restricted APIs as low-privilege user
+
+Expect 403 Forbidden
+
+❌ If API allows → RBAC FAILURE
+
+🔹 FR-A6: TEAM STRUCTURE
+A. Team Hierarchy
+
+Create:
+
+Sales Team
+
+Enterprise
+
+SMB
+
+Verify:
+
+Parent-child hierarchy
+
+User assignment accuracy
+
+B. Team Leadership
+
+Assign team lead
+
+Verify lead permissions
+
+Verify non-leads cannot manage team
+
+C. Territories & Segments
+
+Assign:
+
+Enterprise → US East
+
+SMB → India
+
+Log in as team member:
+
+Data visibility must match territory
+
+D. Quotas & Goals
+
+Set team quotas
+
+Verify analytics roll-up
+
+Verify parent team aggregation
+
+E. Collaboration & Visibility
+
+Enable intra-team sharing
+
+Restrict cross-team editing
+
+Allow cross-team view-only
+
+🔹 BACKEND & DATABASE VALIDATION
+
+Verify existence and usage of:
+
+users
+
+roles
+
+permissions
+
+role_permissions
+
+user_permission_overrides
+
+teams
+
+team_users
+
+activity_logs
+
+❌ Missing tables = incomplete feature.
+
+🔹 FINAL REPORT FORMAT
+
+For each module, return:
+
+Feature: FR-A4 User Administration
+Status: ✅ Full / ⚠ Partial / ❌ Missing
+Issues Found:
+- …
+Security Risk Level: Low / Medium / High
+
+🔹 RELEASE DECISION
+
+If any P0 security or RBAC issue exists, recommend:
+
+🚫 DO NOT SHIP
+
+🔹 IMPORTANT RULES
+
+Never assume UI validation = security
+
+Always test API directly
+
+Always verify DB persistence
+
+Flag anything that relies on “future implementation”

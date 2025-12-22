@@ -28,6 +28,7 @@ export interface AuthUser {
   lastName: string | null;
   role: 'admin' | 'user';
   status: 'active' | 'inactive' | 'suspended';
+  organizationId: string | null;
 }
 
 export interface SessionData {
@@ -201,6 +202,7 @@ export class AuthService {
       lastName: user.lastName,
       role: user.role as 'admin' | 'user',
       status: user.status as 'active' | 'inactive' | 'suspended',
+      organizationId: user.organizationId,
     };
   }
 
@@ -355,6 +357,7 @@ export class AuthService {
       role: user.role as 'admin' | 'user',
       status: user.status as 'active' | 'inactive' | 'suspended',
       emailVerified: user.emailVerified || false,
+      organizationId: user.organizationId,
     };
   }
 
