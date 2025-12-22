@@ -4,6 +4,7 @@ import { auditService } from '../services/audit.service';
 import { invitationService } from '../services/invitation.service';
 import { oauthService } from '../services/oauth.service';
 import { magicLinkService } from '../services/magic-link.service';
+import { superAdminService } from '../services/super-admin.service';
 import { authenticate, requireAdmin } from '../middleware/auth.middleware';
 import { loginRateLimit, invitationRateLimit, passwordResetRateLimit } from '../middleware/rate-limit.middleware';
 import { db } from '../db';
@@ -71,6 +72,33 @@ router.post('/api/auth/login', loginRateLimit, async (req, res) => {
                      'unknown';
     const userAgent = req.headers['user-agent'];
 
+    // First, check if this is a super admin login
+    try {
+      const superAdminResult = await superAdminService.login(email, password, ipAddress, userAgent);
+      if (superAdminResult) {
+        console.log('✅ Super Admin login successful for:', email);
+        
+        // Set super admin cookie
+        res.cookie('super_admin_token', superAdminResult.token, {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'lax',
+          maxAge: 8 * 60 * 60 * 1000, // 8 hours
+          path: '/api/super-admin',
+        });
+
+        return res.json({
+          userType: 'super_admin',
+          superAdmin: superAdminResult.superAdmin,
+          expiresAt: superAdminResult.expiresAt,
+          redirectTo: '/super-admin',
+        });
+      }
+    } catch (superAdminError) {
+      // Not a super admin or invalid super admin credentials - continue to regular user login
+      console.log('Not a super admin, checking regular user login');
+    }
+
     // Check if password login is enabled for this user
     const [user] = await db.select().from(users).where(eq(users.email, email.toLowerCase())).limit(1);
     if (user && !user.passwordLoginEnabled) {
@@ -137,9 +165,11 @@ router.post('/api/auth/login', loginRateLimit, async (req, res) => {
     });
 
     res.json({
+      userType: 'user',
       token: session.token,
       expiresAt: session.expiresAt,
       userId: session.userId,
+      redirectTo: '/',
     });
   } catch (error) {
     console.error('❌ Login error:', error);

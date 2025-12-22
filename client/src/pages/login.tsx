@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { useLocation, useSearch } from 'wouter';
-import { useAuth } from '@/contexts/auth-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -22,7 +21,6 @@ interface AuthConfig {
 export default function LoginPage() {
   const [, setLocation] = useLocation();
   const searchString = useSearch();
-  const { login, isLoading: authLoading } = useAuth();
   
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -58,8 +56,34 @@ export default function LoginPage() {
     setIsSubmitting(true);
 
     try {
-      await login(email, password);
-      setLocation('/');
+      // Make direct API call to handle both super admin and regular user login
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Login failed');
+      }
+
+      // Check if this is a super admin login
+      if (data.userType === 'super_admin') {
+        // Store super admin info in session storage for the super admin dashboard
+        sessionStorage.setItem('super_admin', JSON.stringify(data.superAdmin));
+        setLocation(data.redirectTo || '/super-admin');
+        return;
+      }
+
+      // Regular user login - store token and let auth context refresh
+      if (data.token) {
+        localStorage.setItem('auth_token', data.token);
+        // Force page reload to let auth context pick up the new token
+        window.location.href = data.redirectTo || '/';
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
     } finally {
@@ -104,7 +128,7 @@ export default function LoginPage() {
     window.location.href = '/api/auth/microsoft';
   };
 
-  if (authLoading || configLoading) {
+  if (configLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-800">
         <Loader2 className="w-8 h-8 animate-spin text-gray-400" />
