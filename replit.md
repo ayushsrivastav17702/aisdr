@@ -47,6 +47,12 @@ The platform is built on a modern web stack, featuring a multi-tenant architectu
 - **Error Monitoring (Sentry)**: Comprehensive error tracking and monitoring for both frontend and backend (optional).
 - **Uptime Monitoring**: `/healthz` endpoint for external monitoring.
 - **Email Deliverability**: DKIM/SPF/DMARC configuration for optimal email delivery.
+- **Admin Infrastructure**: Comprehensive admin settings page (`/admin-infrastructure`) with 5 tabs:
+  - **Email Infrastructure**: Sending domain management with DNS verification status tracking
+  - **API Access**: API key generation with scopes (read/write/admin) and webhook configuration with event subscriptions
+  - **Email Settings**: Deliverability settings (daily/hourly limits, warmup mode, tracking) and Do Not Contact list with CSV import
+  - **AI Configuration**: Model selection (default/fallback), temperature control, token limits, and budget tracking
+  - **Notifications**: Multi-channel preferences (email/in-app) for system notifications (daily summary, bounce alerts, reply notifications, etc.)
 
 ## External Dependencies
 - **Apollo.io**: Prospect search, data enrichment, and bulk matching API.
