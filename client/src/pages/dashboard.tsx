@@ -29,7 +29,9 @@ import {
   Shield,
   Code,
   Building2,
-  FolderTree
+  FolderTree,
+  LogOut,
+  User as UserIcon
 } from "lucide-react";
 import { HelpTooltip } from "@/components/HelpTooltip";
 
@@ -38,7 +40,7 @@ export default function Dashboard() {
   const [isImportWizardOpen, setIsImportWizardOpen] = useState(false);
   const [isJobDrawerOpen, setIsJobDrawerOpen] = useState(false);
   const { toast } = useToast();
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
 
   // Get active jobs for the jobs button badge
   const { data: activeJobs = [] } = useQuery<any[]>({
@@ -237,16 +239,31 @@ export default function Dashboard() {
         </nav>
 
         {/* User Profile */}
-        <div className="p-4 border-t border-border">
-          <div className="flex items-center gap-3 px-3 py-2.5 rounded-md hover:bg-muted cursor-pointer transition-colors">
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-medium">
-              U
+        <div className="p-4 border-t border-border space-y-2">
+          <Link href="/profile">
+            <div className="flex items-center gap-3 px-3 py-2.5 rounded-md hover:bg-muted cursor-pointer transition-colors" data-testid="link-user-profile">
+              <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-medium">
+                {user?.firstName?.[0] || user?.email?.[0]?.toUpperCase() || 'U'}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate" data-testid="text-user-name">
+                  {user?.firstName || 'User'}
+                </p>
+                <p className="text-xs text-muted-foreground truncate" data-testid="text-user-email">
+                  {user?.email || 'user@company.com'}
+                </p>
+              </div>
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium truncate">User</p>
-              <p className="text-xs text-muted-foreground truncate">user@company.com</p>
-            </div>
-          </div>
+          </Link>
+          <Button
+            variant="ghost"
+            className="w-full justify-start gap-3 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+            onClick={logout}
+            data-testid="button-logout"
+          >
+            <LogOut className="w-4 h-4" />
+            <span>Sign Out</span>
+          </Button>
         </div>
       </aside>
 
