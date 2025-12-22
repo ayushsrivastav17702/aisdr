@@ -26,6 +26,7 @@ import ProfilePage from "@/pages/profile";
 import SettingsPage from "@/pages/settings";
 import OrganizationSettings from "@/pages/organization-settings";
 import WorkspaceManagement from "@/pages/workspace-management";
+import AdminInfrastructure from "@/pages/admin-infrastructure";
 import APIDocumentationPage from "@/pages/api-docs";
 import TermsOfServicePage from "@/pages/terms-of-service";
 import PrivacyPolicyPage from "@/pages/privacy-policy";
@@ -74,6 +75,11 @@ function Router() {
       <Route path="/workspace-management">
         <ProtectedRoute requireAdmin>
           <WorkspaceManagement />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/admin-infrastructure">
+        <ProtectedRoute requireAdmin>
+          <AdminInfrastructure />
         </ProtectedRoute>
       </Route>
       <Route path="/">
