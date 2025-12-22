@@ -198,6 +198,23 @@ export default function SuperAdminDashboard() {
     },
   });
 
+  const deleteTenantMutation = useMutation({
+    mutationFn: (id: string) =>
+      superAdminFetch(`/api/super-admin/tenants/${id}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/tenants"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/stats"] });
+      setDeleteDialogOpen(false);
+      setSelectedTenant(null);
+      toast({ title: "Tenant deleted successfully" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed to delete tenant", description: error.message, variant: "destructive" });
+    },
+  });
+
   const handleLogout = async () => {
     try {
       await superAdminFetch("/api/super-admin/logout", { method: "POST" });
@@ -657,16 +674,19 @@ export default function SuperAdminDashboard() {
               <Trash2 className="h-5 w-5" />
               Delete Tenant
             </DialogTitle>
-            <DialogDescription>
-              <strong className="text-red-600">Warning: This action cannot be undone.</strong>
-              <br /><br />
-              Deleting <strong>{selectedTenant?.organization.name}</strong> will permanently remove:
-              <ul className="list-disc ml-4 mt-2 space-y-1">
-                <li>All user accounts and data</li>
-                <li>All prospects and sequences</li>
-                <li>All email history and analytics</li>
-                <li>All mailbox configurations</li>
-              </ul>
+            <DialogDescription asChild>
+              <div>
+                <p className="text-red-600 font-semibold">Warning: This action cannot be undone.</p>
+                <p className="mt-2">
+                  Deleting <strong>{selectedTenant?.organization.name}</strong> will permanently remove:
+                </p>
+                <ul className="list-disc ml-4 mt-2 space-y-1">
+                  <li>All user accounts and data</li>
+                  <li>All prospects and sequences</li>
+                  <li>All email history and analytics</li>
+                  <li>All mailbox configurations</li>
+                </ul>
+              </div>
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -676,16 +696,14 @@ export default function SuperAdminDashboard() {
             <Button 
               variant="destructive"
               onClick={() => {
-                toast({
-                  title: "Delete Not Implemented",
-                  description: "Tenant deletion requires additional confirmation. Please contact support.",
-                  variant: "destructive"
-                });
-                setDeleteDialogOpen(false);
+                if (selectedTenant) {
+                  deleteTenantMutation.mutate(selectedTenant.organization.id);
+                }
               }}
+              disabled={deleteTenantMutation.isPending}
               data-testid="button-confirm-delete"
             >
-              Delete Permanently
+              {deleteTenantMutation.isPending ? "Deleting..." : "Delete Permanently"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -369,10 +369,10 @@ router.get('/tenants/:id/users', authenticateSuperAdmin, async (req, res) => {
 // Phase 2: Tenant activity timeline (FR-SA3)
 router.get('/tenants/:id/activity', authenticateSuperAdmin, async (req, res) => {
   try {
-    const { limit, offset, eventType } = req.query;
+    const { limit, page, eventType } = req.query;
     const result = await superAdminService.getTenantActivityTimeline(req.params.id, {
       limit: limit ? parseInt(limit as string) : 50,
-      offset: offset ? parseInt(offset as string) : 0,
+      page: page ? parseInt(page as string) : 1,
       eventType: eventType as string,
     });
     res.json(result);
