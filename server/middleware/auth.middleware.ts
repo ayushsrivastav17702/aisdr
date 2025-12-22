@@ -53,7 +53,8 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
     req.userContext = {
       userId: user.id,
       roles: [user.role],
-      actingAs: actingAs
+      actingAs: actingAs,
+      organizationId: user.organizationId || undefined
     };
     
     next();
@@ -91,7 +92,8 @@ export function optionalAuth(req: Request, res: Response, next: NextFunction) {
           console.warn(`⚠️ Non-admin user ${user.email} attempted to use actingAs`);
           req.userContext = {
             userId: user.id,
-            roles: [user.role]
+            roles: [user.role],
+            organizationId: user.organizationId || undefined
           };
         } else {
           if (actingAs) {
@@ -101,7 +103,8 @@ export function optionalAuth(req: Request, res: Response, next: NextFunction) {
           req.userContext = {
             userId: user.id,
             roles: [user.role],
-            actingAs: actingAs
+            actingAs: actingAs,
+            organizationId: user.organizationId || undefined
           };
         }
       }
