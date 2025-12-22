@@ -184,6 +184,16 @@ export default function SuperAdminTenantDetail() {
     lastName: "",
     managerRole: "secondary" as "primary" | "secondary" | "readonly",
   });
+  const [limitFormData, setLimitFormData] = useState<{
+    maxUsers?: number;
+    maxProspects?: number;
+    maxSequences?: number;
+    maxMailboxes?: number;
+    maxDailyEmails?: number;
+    maxHourlyEmails?: number;
+    storageQuotaMb?: number;
+    apiRateLimitPerMinute?: number;
+  }>({});
 
   const { data: tenantDetails, isLoading, error } = useQuery<TenantDetails>({
     queryKey: ["/api/super-admin/tenants", tenantId, "details"],
@@ -579,13 +589,13 @@ export default function SuperAdminTenantDetail() {
                   <CardDescription>Adjust resource limits for this tenant</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
                     <div>
                       <Label>Max Users</Label>
                       <Input
                         type="number"
-                        defaultValue={tenantDetails.usageStats.maxUsers}
-                        onBlur={(e) => updateConfigMutation.mutate({ maxUsers: parseInt(e.target.value) })}
+                        value={limitFormData.maxUsers ?? tenantDetails.usageStats.maxUsers}
+                        onChange={(e) => setLimitFormData(prev => ({ ...prev, maxUsers: parseInt(e.target.value) || 0 }))}
                         data-testid="input-max-users"
                       />
                     </div>
@@ -593,8 +603,8 @@ export default function SuperAdminTenantDetail() {
                       <Label>Max Prospects</Label>
                       <Input
                         type="number"
-                        defaultValue={tenantDetails.usageStats.maxProspects}
-                        onBlur={(e) => updateConfigMutation.mutate({ maxProspects: parseInt(e.target.value) })}
+                        value={limitFormData.maxProspects ?? tenantDetails.usageStats.maxProspects}
+                        onChange={(e) => setLimitFormData(prev => ({ ...prev, maxProspects: parseInt(e.target.value) || 0 }))}
                         data-testid="input-max-prospects"
                       />
                     </div>
@@ -602,8 +612,8 @@ export default function SuperAdminTenantDetail() {
                       <Label>Max Sequences</Label>
                       <Input
                         type="number"
-                        defaultValue={tenantDetails.usageStats.maxSequences}
-                        onBlur={(e) => updateConfigMutation.mutate({ maxSequences: parseInt(e.target.value) })}
+                        value={limitFormData.maxSequences ?? tenantDetails.usageStats.maxSequences}
+                        onChange={(e) => setLimitFormData(prev => ({ ...prev, maxSequences: parseInt(e.target.value) || 0 }))}
                         data-testid="input-max-sequences"
                       />
                     </div>
@@ -611,8 +621,8 @@ export default function SuperAdminTenantDetail() {
                       <Label>Max Mailboxes</Label>
                       <Input
                         type="number"
-                        defaultValue={tenantDetails.usageStats.maxMailboxes}
-                        onBlur={(e) => updateConfigMutation.mutate({ maxMailboxes: parseInt(e.target.value) })}
+                        value={limitFormData.maxMailboxes ?? tenantDetails.usageStats.maxMailboxes}
+                        onChange={(e) => setLimitFormData(prev => ({ ...prev, maxMailboxes: parseInt(e.target.value) || 0 }))}
                         data-testid="input-max-mailboxes"
                       />
                     </div>
@@ -620,8 +630,8 @@ export default function SuperAdminTenantDetail() {
                       <Label>Daily Email Limit</Label>
                       <Input
                         type="number"
-                        defaultValue={tenantDetails.configuration?.maxDailyEmails || 100}
-                        onBlur={(e) => updateConfigMutation.mutate({ maxDailyEmails: parseInt(e.target.value) })}
+                        value={limitFormData.maxDailyEmails ?? tenantDetails.configuration?.maxDailyEmails ?? 100}
+                        onChange={(e) => setLimitFormData(prev => ({ ...prev, maxDailyEmails: parseInt(e.target.value) || 0 }))}
                         data-testid="input-max-daily-emails"
                       />
                     </div>
@@ -629,8 +639,8 @@ export default function SuperAdminTenantDetail() {
                       <Label>Hourly Email Limit</Label>
                       <Input
                         type="number"
-                        defaultValue={tenantDetails.configuration?.maxHourlyEmails || 20}
-                        onBlur={(e) => updateConfigMutation.mutate({ maxHourlyEmails: parseInt(e.target.value) })}
+                        value={limitFormData.maxHourlyEmails ?? tenantDetails.configuration?.maxHourlyEmails ?? 20}
+                        onChange={(e) => setLimitFormData(prev => ({ ...prev, maxHourlyEmails: parseInt(e.target.value) || 0 }))}
                         data-testid="input-max-hourly-emails"
                       />
                     </div>
@@ -638,8 +648,8 @@ export default function SuperAdminTenantDetail() {
                       <Label>Storage Quota (MB)</Label>
                       <Input
                         type="number"
-                        defaultValue={tenantDetails.usageStats.storageQuotaMb}
-                        onBlur={(e) => updateConfigMutation.mutate({ storageQuotaMb: parseInt(e.target.value) })}
+                        value={limitFormData.storageQuotaMb ?? tenantDetails.usageStats.storageQuotaMb}
+                        onChange={(e) => setLimitFormData(prev => ({ ...prev, storageQuotaMb: parseInt(e.target.value) || 0 }))}
                         data-testid="input-storage-quota"
                       />
                     </div>
@@ -647,12 +657,26 @@ export default function SuperAdminTenantDetail() {
                       <Label>API Rate Limit/min</Label>
                       <Input
                         type="number"
-                        defaultValue={tenantDetails.configuration?.apiRateLimitPerMinute || 60}
-                        onBlur={(e) => updateConfigMutation.mutate({ apiRateLimitPerMinute: parseInt(e.target.value) })}
+                        value={limitFormData.apiRateLimitPerMinute ?? tenantDetails.configuration?.apiRateLimitPerMinute ?? 60}
+                        onChange={(e) => setLimitFormData(prev => ({ ...prev, apiRateLimitPerMinute: parseInt(e.target.value) || 0 }))}
                         data-testid="input-api-rate-limit"
                       />
                     </div>
                   </div>
+                  <Button
+                    onClick={() => {
+                      if (Object.keys(limitFormData).length > 0) {
+                        updateConfigMutation.mutate(limitFormData);
+                        setLimitFormData({});
+                      } else {
+                        toast({ title: "No changes to save", variant: "default" });
+                      }
+                    }}
+                    disabled={updateConfigMutation.isPending || Object.keys(limitFormData).length === 0}
+                    data-testid="button-save-limits"
+                  >
+                    {updateConfigMutation.isPending ? "Saving..." : "Save Limits"}
+                  </Button>
                 </CardContent>
               </Card>
             </div>
@@ -670,25 +694,21 @@ export default function SuperAdminTenantDetail() {
               <CardContent>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {[
-                    { key: "aiPoweredSearch", label: "AI-Powered Search", description: "Natural language prospect search" },
-                    { key: "emailSequencing", label: "Email Sequencing", description: "Multi-step email campaigns" },
-                    { key: "linkedinEnrichment", label: "LinkedIn Enrichment", description: "Enrich data from LinkedIn" },
-                    { key: "apolloIntegration", label: "Apollo Integration", description: "Apollo.io data enrichment" },
+                    { key: "aiProspecting", label: "AI-Powered Search", description: "Natural language prospect search" },
+                    { key: "emailSequences", label: "Email Sequencing", description: "Multi-step email campaigns" },
+                    { key: "aiEmailGeneration", label: "AI Email Generation", description: "AI-powered email content" },
+                    { key: "aiSentimentAnalysis", label: "Sentiment Analysis", description: "Reply sentiment detection" },
                     { key: "advancedAnalytics", label: "Advanced Analytics", description: "Detailed reporting & insights" },
-                    { key: "teamCollaboration", label: "Team Collaboration", description: "Share resources across team" },
+                    { key: "customReports", label: "Custom Reports", description: "Create custom report templates" },
                     { key: "apiAccess", label: "API Access", description: "Programmatic API access" },
-                    { key: "webhooks", label: "Webhooks", description: "Real-time event notifications" },
-                    { key: "customFields", label: "Custom Fields", description: "Custom prospect fields" },
+                    { key: "webhookAccess", label: "Webhooks", description: "Real-time event notifications" },
                     { key: "multiMailbox", label: "Multi-Mailbox", description: "Multiple sending mailboxes" },
-                    { key: "abTesting", label: "A/B Testing", description: "Email content testing" },
-                    { key: "sentimentAnalysis", label: "Sentiment Analysis", description: "Reply sentiment detection" },
-                    { key: "replyDetection", label: "Reply Detection", description: "Automatic reply tracking" },
-                    { key: "autoOooHandling", label: "Auto OOO Handling", description: "Out-of-office detection" },
+                    { key: "bulkOperations", label: "Bulk Operations", description: "Bulk prospect operations" },
+                    { key: "exportCapabilities", label: "Data Export", description: "Export data to CSV/JSON" },
                     { key: "customBranding", label: "Custom Branding", description: "White-label options" },
-                    { key: "ssoIntegration", label: "SSO Integration", description: "Single sign-on support" },
-                    { key: "auditLogs", label: "Audit Logs", description: "Activity audit trail" },
-                    { key: "dataExport", label: "Data Export", description: "Export data to CSV/JSON" },
-                    { key: "prioritySupport", label: "Priority Support", description: "Priority customer support" },
+                    { key: "customDomain", label: "Custom Domain", description: "Use your own domain" },
+                    { key: "whiteLabel", label: "White Label", description: "Full white-label mode" },
+                    { key: "crmIntegration", label: "CRM Integration", description: "Connect to CRM systems" },
                   ].map((feature) => (
                     <div
                       key={feature.key}

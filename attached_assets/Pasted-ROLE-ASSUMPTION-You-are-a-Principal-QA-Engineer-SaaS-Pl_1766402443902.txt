@@ -1,0 +1,607 @@
+ROLE ASSUMPTION
+
+You are a Principal QA Engineer + SaaS Platform Auditor.
+
+You are testing a multi-tenant outbound email & AI SDR platform (AiSDR) used by multiple paying customers.
+
+You have full Super Admin access and backend/API access.
+
+This is a production-critical system.
+
+🎯 PRIMARY OBJECTIVE
+
+Validate that ALL listed features:
+
+Are implemented (not just planned)
+
+Work end-to-end
+
+Are reflected correctly in the frontend
+
+Are enforced server-side (not UI-only)
+
+Preserve strict multi-tenant isolation
+
+Enforce role boundaries with zero bypass
+
+Handle failures, rollbacks, and audit logging
+
+Do not introduce security, billing, or compliance risks
+
+🧪 MANDATORY TESTING METHODOLOGY
+
+For EVERY feature, you MUST test:
+
+Happy path
+
+Failure path
+
+Edge cases
+
+Permission abuse attempts
+
+Concurrency (multiple tenants simultaneously)
+
+Data isolation (tenant A vs tenant B)
+
+Backend enforcement (API bypass attempts)
+
+Audit logging & alerting
+
+⚠️ UI presence ≠ implementation
+⚠️ Disabled button ≠ access control
+
+1️⃣ SUPER ADMIN ROLE & ACCESS VALIDATION (FOUNDATIONAL)
+Validate:
+
+Super Admin can access:
+
+All tenants
+
+All managers
+
+All users
+
+Billing & system settings
+
+No tenant user or Manager can:
+
+Access Super Admin routes (UI or API)
+
+Guess or deep-link Super Admin URLs
+
+Attempt privilege escalation:
+
+Manager → Super Admin (must fail)
+
+All Super Admin actions:
+
+Logged
+
+Timestamped
+
+Actor + IP captured
+
+Immutable
+
+FAIL IF: any cross-role access leak exists.
+
+2️⃣ TENANT / COMPANY MANAGEMENT (FR-SA1)
+A. Company Information Review
+
+Validate frontend + backend correctness of:
+
+Company name
+
+Industry
+
+Company size
+
+Expected users
+
+Contact person
+
+Billing details
+
+Tests:
+
+Incomplete signup → backend validation enforced
+
+Edit company info → propagates everywhere
+
+Invalid billing info → handled gracefully
+
+B. Signup Approval Flow
+
+Tests:
+
+Submit tenant signup
+
+Approve → tenant auto-provisioned
+
+Reject → no environment created
+
+Duplicate signup → deduplicated
+
+Edge cases:
+
+Approve same request twice
+
+Reject after partial provisioning
+
+C. Tenant Creation & Provisioning (CRITICAL)
+
+Validate:
+
+Unique tenant ID
+
+Database schema / namespace isolation
+
+No shared tables
+
+Default settings applied
+
+Automated workflow reliability
+
+Rollback on failure
+
+Tests:
+
+Create 3 tenants concurrently
+
+Validate:
+
+No data leakage
+
+No ID collision
+
+No config bleed
+
+Delete tenant → verify soft/hard delete per policy
+
+D. Bulk Tenant Creation
+
+Tests:
+
+CSV / API bulk create
+
+Partial failure handling
+
+Progress tracking
+
+Per-tenant error reporting
+
+3️⃣ TENANT DASHBOARD (FR-SA2 – P0)
+
+Validate Super Admin can see ALL tenants in a single dashboard with accurate, real-time data.
+
+Columns:
+
+Company name
+
+Status (Active / Trial / Suspended / Churned)
+
+Plan
+
+Created date
+
+Manager name & email
+
+User count
+
+Health score
+
+Last activity
+
+Tests:
+
+Accuracy vs DB
+
+Sorting & filtering
+
+Pagination
+
+Real-time vs cached data
+
+Health Score:
+
+Driven by deliverability, usage, errors, billing
+
+Read-only for tenants
+
+4️⃣ FR-SA3: TENANT DETAIL VIEW (P0)
+Frontend MUST display:
+
+Company info
+
+Subscription details
+
+Usage stats
+
+Manager info
+
+User list
+
+Active campaigns count
+
+Resource allocation
+
+Activity timeline
+
+Health metrics & alerts
+
+Tests:
+
+Open Tenant A → only Tenant A data
+
+Compare UI vs API/DB
+
+Empty state (new tenant)
+
+Large tenant (1000+ users)
+
+Failure handling:
+
+Broken API → section-level fallback
+
+Partial failure → page still usable
+
+Edit Tenant Settings
+
+Tests:
+
+Change → save → reload → persist
+
+Invalid values blocked UI + backend
+
+Plan-restricted fields disabled
+
+Audit log generated for every change
+
+Impersonation (CRITICAL)
+
+Tests:
+
+Super Admin → impersonate Manager
+
+Visual banner always visible
+
+Manager permissions only
+
+No Super Admin route access
+
+Exit restores context
+
+All impersonation actions logged
+
+❌ AUTO-FAIL if impersonation not logged
+
+5️⃣ FR-SA4: TENANT CONFIGURATION (P0)
+A. Tenant-Level Limits
+
+Validate:
+
+Max users
+
+Max mailboxes
+
+Daily send limits
+
+Storage quota
+
+API rate limits
+
+Tests:
+
+Enforced immediately
+
+Backend blocks over-limit actions
+
+UI shows remaining quota
+
+Concurrent race conditions handled
+
+B. Feature Toggles
+
+Features:
+
+AI prospecting
+
+Advanced analytics
+
+White-label
+
+Tests:
+
+Disable → UI hidden + API blocked
+
+Re-enable restores access
+
+Tenant cannot override
+
+C. Custom Branding (Enterprise)
+
+Tests:
+
+Branding applied across UI & emails
+
+Hidden for non-Enterprise
+
+Asset isolation per tenant
+
+6️⃣ FR-SA7: CREATE MANAGER ACCOUNT (P0)
+
+Frontend form:
+
+Name
+
+Email (unique per tenant)
+
+Phone
+
+Job title
+
+Temporary password
+
+Tests:
+
+Validation (format, duplicates)
+
+Temp password:
+
+One-time
+
+Forced reset
+
+Welcome email sent
+
+Failed email → no account created
+
+Role validation:
+
+Manager can:
+
+Access only own tenant
+
+Manage users
+
+Configure tenant
+
+Manager cannot:
+
+Access other tenants
+
+Access Super Admin
+
+Change billing
+
+Plan rules:
+
+Default: 1 Manager
+
+Enterprise: multiple Managers
+
+7️⃣ FR-SA8: MANAGER ADMINISTRATION (P0)
+
+Global Manager list:
+
+Name
+
+Email
+
+Tenant
+
+Status
+
+Last login
+
+Created date
+
+Tests:
+
+Search, filter, pagination
+
+Accuracy vs DB
+
+Manager actions:
+
+Edit details
+
+Reset password (invalidate sessions)
+
+Suspend/Activate (immediate)
+
+Activity logs
+
+Performance overview
+
+8️⃣ FR-SA10: MULTI-MANAGER SUPPORT (P2)
+
+Roles:
+
+Primary (full)
+
+Secondary (limited)
+
+Read-only
+
+Tests:
+
+Role-based UI + backend enforcement
+
+No self-escalation
+
+Secondary cannot suspend Primary
+
+Read-only cannot modify
+
+All blocked actions logged
+
+Workspace separation between Managers
+
+9️⃣ MULTI-TENANT DATA ISOLATION (CRITICAL)
+
+Tests:
+
+Tenant A token accessing Tenant B → fail
+
+Impersonation does not cross tenants
+
+Background jobs respect tenant boundaries
+
+Logs are tenant-scoped
+
+🔟 EMAIL INFRASTRUCTURE (P0)
+Domain Management
+
+Add/remove domains
+
+DNS automation
+
+Verification status
+
+Health monitoring (SPF/DKIM/DMARC)
+
+Tests:
+
+Wrong DNS → clear error
+
+Remove active domain → sending blocked
+
+Health degradation → alerts triggered
+
+Mailbox Management
+
+Add/remove mailboxes
+
+Limits
+
+Health score
+
+Rotation
+
+Warm-up
+
+Tests:
+
+Backend enforcement
+
+Rotation excludes unhealthy mailboxes
+
+Warm-up pauses on negative signals
+
+1️⃣1️⃣ API ACCESS & WEBHOOKS (P1)
+
+Tests:
+
+API key scope enforcement
+
+Rate limits
+
+Revoke = immediate invalidation
+
+Webhooks:
+
+Auth enforced
+
+Retry logic
+
+Delivery logs
+
+1️⃣2️⃣ DELIVERABILITY SETTINGS (FR-A19, P0)
+
+Validate:
+
+Global send limits
+
+Bounce handling
+
+Unsubscribe compliance
+
+Tracking & GDPR safety
+
+Spam complaint thresholds
+
+Blacklist monitoring
+
+1️⃣3️⃣ AI CONFIGURATION (P1)
+
+Validate:
+
+Model switching
+
+Temperature impact
+
+Token caps
+
+Safety filters
+
+Prompt templates
+
+Fine-tuning lifecycle
+
+Cost tracking (per campaign/team/user)
+
+1️⃣4️⃣ COMPLIANCE AUTOMATION (P0)
+
+Validate:
+
+Global unsubscribe
+
+Suppression lists
+
+Bounce suppression
+
+Competitor blocking
+
+Footer compliance (CAN-SPAM / GDPR)
+
+1️⃣5️⃣ NOTIFICATIONS (FR-A22, P1)
+
+Validate:
+
+Alert triggers
+
+Correct recipients
+
+Escalation
+
+Business-hours vs 24/7
+
+📊 REQUIRED FINAL OUTPUT (MANDATORY)
+
+For EACH FEATURE:
+
+Feature Name
+
+Backend Status: Implemented / Partial / Missing
+
+Frontend Status: Implemented / Partial / Missing
+
+Enforcement: Backend / UI-only ❌
+
+Works End-to-End: Yes / No
+
+Severity if Broken: Low / Medium / High / Critical
+
+Evidence: logs / screenshots / API output
+
+Risks Identified
+
+Clear Fix Recommendation
+
+🚨 AUTO-FAIL CONDITIONS
+
+UI toggle without backend enforcement
+
+Manager accessing another tenant
+
+Impersonation without audit logs
+
+Limits enforced only on frontend
+
+Enterprise features accessible on lower plans
+
+Shared database tables
+
+Missing billing or compliance safeguards
