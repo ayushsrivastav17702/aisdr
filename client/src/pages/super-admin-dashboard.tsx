@@ -54,7 +54,8 @@ import {
   LogOut,
   ChevronDown,
   RefreshCw,
-  ClipboardList
+  ClipboardList,
+  AlertTriangle
 } from "lucide-react";
 
 interface SuperAdmin {
@@ -132,6 +133,10 @@ export default function SuperAdminDashboard() {
   const [planFilter, setPlanFilter] = useState<string>("all");
   const [provisionDialogOpen, setProvisionDialogOpen] = useState(false);
   const [impersonateDialogOpen, setImpersonateDialogOpen] = useState(false);
+  const [suspendDialogOpen, setSuspendDialogOpen] = useState(false);
+  const [activateDialogOpen, setActivateDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [suspendReason, setSuspendReason] = useState("");
   const [selectedTenant, setSelectedTenant] = useState<TenantWithSettings | null>(null);
 
   useEffect(() => {
@@ -487,10 +492,11 @@ export default function SuperAdminDashboard() {
                               <DropdownMenuSeparator />
                               {tenant.settings?.tenantStatus === "suspended" ? (
                                 <DropdownMenuItem 
-                                  onClick={() => updateStatusMutation.mutate({ 
-                                    id: tenant.organization.id, 
-                                    status: "active" 
-                                  })}
+                                  onClick={() => {
+                                    setSelectedTenant(tenant);
+                                    setActivateDialogOpen(true);
+                                  }}
+                                  data-testid={`button-activate-tenant-${tenant.organization.id}`}
                                 >
                                   <Play className="h-4 w-4 mr-2" />
                                   Activate
@@ -498,17 +504,25 @@ export default function SuperAdminDashboard() {
                               ) : (
                                 <DropdownMenuItem 
                                   className="text-orange-600"
-                                  onClick={() => updateStatusMutation.mutate({ 
-                                    id: tenant.organization.id, 
-                                    status: "suspended",
-                                    reason: "Suspended by super admin"
-                                  })}
+                                  onClick={() => {
+                                    setSelectedTenant(tenant);
+                                    setSuspendReason("");
+                                    setSuspendDialogOpen(true);
+                                  }}
+                                  data-testid={`button-suspend-tenant-${tenant.organization.id}`}
                                 >
                                   <Pause className="h-4 w-4 mr-2" />
                                   Suspend
                                 </DropdownMenuItem>
                               )}
-                              <DropdownMenuItem className="text-red-600">
+                              <DropdownMenuItem 
+                                className="text-red-600"
+                                onClick={() => {
+                                  setSelectedTenant(tenant);
+                                  setDeleteDialogOpen(true);
+                                }}
+                                data-testid={`button-delete-tenant-${tenant.organization.id}`}
+                              >
                                 <Trash2 className="h-4 w-4 mr-2" />
                                 Delete Tenant
                               </DropdownMenuItem>
@@ -546,6 +560,134 @@ export default function SuperAdminDashboard() {
             tenant={selectedTenant}
             onClose={() => setImpersonateDialogOpen(false)}
           />
+        </DialogContent>
+      </Dialog>
+
+      {/* Suspend Tenant Confirmation Dialog */}
+      <Dialog open={suspendDialogOpen} onOpenChange={setSuspendDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-orange-600">
+              <AlertTriangle className="h-5 w-5" />
+              Suspend Tenant
+            </DialogTitle>
+            <DialogDescription>
+              Are you sure you want to suspend <strong>{selectedTenant?.organization.name}</strong>? 
+              This will immediately block all users from accessing the platform.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <Label htmlFor="suspendReason">Reason for suspension (optional)</Label>
+              <Textarea
+                id="suspendReason"
+                value={suspendReason}
+                onChange={(e) => setSuspendReason(e.target.value)}
+                placeholder="Enter reason for suspension..."
+                data-testid="input-suspend-reason"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setSuspendDialogOpen(false)} data-testid="button-cancel-suspend">
+              Cancel
+            </Button>
+            <Button 
+              variant="destructive"
+              onClick={() => {
+                if (selectedTenant) {
+                  updateStatusMutation.mutate({
+                    id: selectedTenant.organization.id,
+                    status: "suspended",
+                    reason: suspendReason || "Suspended by super admin"
+                  });
+                  setSuspendDialogOpen(false);
+                }
+              }}
+              disabled={updateStatusMutation.isPending}
+              data-testid="button-confirm-suspend"
+            >
+              {updateStatusMutation.isPending ? "Suspending..." : "Confirm Suspend"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Activate Tenant Confirmation Dialog */}
+      <Dialog open={activateDialogOpen} onOpenChange={setActivateDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-green-600">
+              <Play className="h-5 w-5" />
+              Activate Tenant
+            </DialogTitle>
+            <DialogDescription>
+              Are you sure you want to activate <strong>{selectedTenant?.organization.name}</strong>? 
+              This will restore access for all users immediately.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setActivateDialogOpen(false)} data-testid="button-cancel-activate">
+              Cancel
+            </Button>
+            <Button 
+              onClick={() => {
+                if (selectedTenant) {
+                  updateStatusMutation.mutate({
+                    id: selectedTenant.organization.id,
+                    status: "active"
+                  });
+                  setActivateDialogOpen(false);
+                }
+              }}
+              disabled={updateStatusMutation.isPending}
+              data-testid="button-confirm-activate"
+            >
+              {updateStatusMutation.isPending ? "Activating..." : "Confirm Activate"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Tenant Confirmation Dialog */}
+      <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-red-600">
+              <Trash2 className="h-5 w-5" />
+              Delete Tenant
+            </DialogTitle>
+            <DialogDescription>
+              <strong className="text-red-600">Warning: This action cannot be undone.</strong>
+              <br /><br />
+              Deleting <strong>{selectedTenant?.organization.name}</strong> will permanently remove:
+              <ul className="list-disc ml-4 mt-2 space-y-1">
+                <li>All user accounts and data</li>
+                <li>All prospects and sequences</li>
+                <li>All email history and analytics</li>
+                <li>All mailbox configurations</li>
+              </ul>
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} data-testid="button-cancel-delete">
+              Cancel
+            </Button>
+            <Button 
+              variant="destructive"
+              onClick={() => {
+                toast({
+                  title: "Delete Not Implemented",
+                  description: "Tenant deletion requires additional confirmation. Please contact support.",
+                  variant: "destructive"
+                });
+                setDeleteDialogOpen(false);
+              }}
+              data-testid="button-confirm-delete"
+            >
+              Delete Permanently
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>
