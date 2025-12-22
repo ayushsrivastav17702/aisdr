@@ -120,6 +120,21 @@ interface TenantDetails {
   };
 }
 
+interface ActivityEvent {
+  id: string;
+  eventType: string;
+  eventData: Record<string, any>;
+  actorType: string;
+  actorId: string | null;
+  actorEmail: string | null;
+  createdAt: string;
+}
+
+interface ActivityResponse {
+  activities: ActivityEvent[];
+  total: number;
+}
+
 async function superAdminFetch(url: string, options: RequestInit = {}) {
   const response = await fetch(url, {
     ...options,
@@ -167,6 +182,55 @@ function getHealthIndicator(score: number) {
   if (score >= 80) return { color: "text-green-500", icon: CheckCircle, label: "Healthy" };
   if (score >= 50) return { color: "text-yellow-500", icon: AlertTriangle, label: "Warning" };
   return { color: "text-red-500", icon: XCircle, label: "Critical" };
+}
+
+function getEventTypeColor(eventType: string): string {
+  const colors: Record<string, string> = {
+    'TENANT_CREATED': 'bg-green-100 text-green-600',
+    'TENANT_STATUS_UPDATED': 'bg-yellow-100 text-yellow-600',
+    'TENANT_SUSPENDED': 'bg-red-100 text-red-600',
+    'TENANT_ACTIVATED': 'bg-green-100 text-green-600',
+    'MANAGER_CREATED': 'bg-blue-100 text-blue-600',
+    'MANAGER_UPDATED': 'bg-blue-100 text-blue-600',
+    'CONFIG_UPDATED': 'bg-purple-100 text-purple-600',
+    'FEATURES_UPDATED': 'bg-purple-100 text-purple-600',
+    'USER_CREATED': 'bg-blue-100 text-blue-600',
+    'LOGIN': 'bg-gray-100 text-gray-600',
+    'IMPERSONATION_STARTED': 'bg-orange-100 text-orange-600',
+    'IMPERSONATION_ENDED': 'bg-orange-100 text-orange-600',
+  };
+  return colors[eventType] || 'bg-gray-100 text-gray-600';
+}
+
+function getEventTypeIcon(eventType: string) {
+  switch (eventType) {
+    case 'TENANT_CREATED':
+      return <Building2 className="h-4 w-4" />;
+    case 'TENANT_SUSPENDED':
+    case 'TENANT_ACTIVATED':
+    case 'TENANT_STATUS_UPDATED':
+      return <Shield className="h-4 w-4" />;
+    case 'MANAGER_CREATED':
+    case 'USER_CREATED':
+      return <UserPlus className="h-4 w-4" />;
+    case 'CONFIG_UPDATED':
+    case 'FEATURES_UPDATED':
+      return <Settings className="h-4 w-4" />;
+    case 'LOGIN':
+      return <Activity className="h-4 w-4" />;
+    case 'IMPERSONATION_STARTED':
+    case 'IMPERSONATION_ENDED':
+      return <Users className="h-4 w-4" />;
+    default:
+      return <Clock className="h-4 w-4" />;
+  }
+}
+
+function formatEventType(eventType: string): string {
+  return eventType
+    .replace(/_/g, ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, c => c.toUpperCase());
 }
 
 export default function SuperAdminTenantDetail() {
@@ -251,6 +315,13 @@ export default function SuperAdminTenantDetail() {
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     },
+  });
+
+  // Fetch activity timeline
+  const { data: activityData, isLoading: activityLoading } = useQuery<ActivityResponse>({
+    queryKey: ["/api/super-admin/tenants", tenantId, "activity"],
+    queryFn: () => superAdminFetch(`/api/super-admin/tenants/${tenantId}/activity?limit=20`),
+    enabled: activeTab === "activity",
   });
 
   if (isLoading) {
@@ -815,11 +886,57 @@ export default function SuperAdminTenantDetail() {
                 <CardDescription>Recent events and activities for this tenant</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="text-center py-8 text-slate-500">
-                  <Clock className="h-12 w-12 mx-auto mb-4 text-slate-300" />
-                  <p>Activity timeline coming soon</p>
-                  <p className="text-sm">This feature will show tenant lifecycle events, manager actions, and system alerts.</p>
-                </div>
+                {activityLoading ? (
+                  <div className="text-center py-8">
+                    <RefreshCw className="h-8 w-8 animate-spin mx-auto text-slate-400" />
+                    <p className="mt-2 text-slate-500">Loading activity...</p>
+                  </div>
+                ) : !activityData?.activities || activityData.activities.length === 0 ? (
+                  <div className="text-center py-8 text-slate-500">
+                    <Clock className="h-12 w-12 mx-auto mb-4 text-slate-300" />
+                    <p>No activity recorded yet</p>
+                    <p className="text-sm">Events will appear here as actions occur on this tenant.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {activityData.activities.map((event) => (
+                      <div 
+                        key={event.id} 
+                        className="flex items-start gap-4 p-4 border rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800"
+                        data-testid={`activity-event-${event.id}`}
+                      >
+                        <div className={`p-2 rounded-full ${getEventTypeColor(event.eventType)}`}>
+                          {getEventTypeIcon(event.eventType)}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium text-sm">{formatEventType(event.eventType)}</span>
+                            <Badge variant="outline" className="text-xs">
+                              {event.actorType}
+                            </Badge>
+                          </div>
+                          <p className="text-sm text-slate-500 mt-1">
+                            {event.actorEmail || 'System'}
+                          </p>
+                          {event.eventData && Object.keys(event.eventData).length > 0 && (
+                            <div className="mt-2 text-xs text-slate-500 bg-slate-100 dark:bg-slate-800 rounded p-2">
+                              {JSON.stringify(event.eventData, null, 2).slice(0, 200)}
+                              {JSON.stringify(event.eventData).length > 200 && '...'}
+                            </div>
+                          )}
+                        </div>
+                        <div className="text-xs text-slate-400 whitespace-nowrap">
+                          {new Date(event.createdAt).toLocaleString()}
+                        </div>
+                      </div>
+                    ))}
+                    {activityData.total > activityData.activities.length && (
+                      <p className="text-center text-sm text-slate-500 pt-4">
+                        Showing {activityData.activities.length} of {activityData.total} events
+                      </p>
+                    )}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
