@@ -197,7 +197,18 @@ router.post('/tenants', authenticateSuperAdmin, requireSuperAdminPermission('can
       });
     }
 
-    const result = await superAdminService.provisionTenant(req.superAdmin!.id, validation.data);
+    // Transform null values to undefined for service compatibility
+    const data = {
+      ...validation.data,
+      industry: validation.data.industry ?? undefined,
+      companySize: validation.data.companySize ?? undefined,
+      managerFirstName: validation.data.managerFirstName ?? undefined,
+      managerLastName: validation.data.managerLastName ?? undefined,
+      primaryContactName: validation.data.primaryContactName ?? undefined,
+      primaryContactEmail: validation.data.primaryContactEmail ?? undefined,
+      primaryContactPhone: validation.data.primaryContactPhone ?? undefined,
+    };
+    const result = await superAdminService.provisionTenant(req.superAdmin!.id, data);
 
     res.status(201).json({
       message: 'Tenant provisioned successfully',
@@ -325,6 +336,254 @@ router.delete('/tenants/:id', authenticateSuperAdmin, requireSuperAdminPermissio
   }
 });
 
+// Phase 2: Detailed tenant profile (FR-SA3)
+router.get('/tenants/:id/details', authenticateSuperAdmin, async (req, res) => {
+  try {
+    const details = await superAdminService.getTenantDetailedProfile(req.params.id);
+    res.json(details);
+  } catch (error: any) {
+    console.error('Error fetching tenant details:', error);
+    res.status(error.message === 'Tenant not found' ? 404 : 500).json({ 
+      error: error.message || 'Failed to fetch tenant details' 
+    });
+  }
+});
+
+// Phase 2: Tenant users list (FR-SA3)
+router.get('/tenants/:id/users', authenticateSuperAdmin, async (req, res) => {
+  try {
+    const { page, limit, role, search } = req.query;
+    const result = await superAdminService.getTenantUsers(req.params.id, {
+      page: page ? parseInt(page as string) : 1,
+      limit: limit ? parseInt(limit as string) : 20,
+      role: role as string,
+      search: search as string,
+    });
+    res.json(result);
+  } catch (error) {
+    console.error('Error fetching tenant users:', error);
+    res.status(500).json({ error: 'Failed to fetch tenant users' });
+  }
+});
+
+// Phase 2: Tenant activity timeline (FR-SA3)
+router.get('/tenants/:id/activity', authenticateSuperAdmin, async (req, res) => {
+  try {
+    const { limit, offset, eventType } = req.query;
+    const result = await superAdminService.getTenantActivityTimeline(req.params.id, {
+      limit: limit ? parseInt(limit as string) : 50,
+      offset: offset ? parseInt(offset as string) : 0,
+      eventType: eventType as string,
+    });
+    res.json(result);
+  } catch (error) {
+    console.error('Error fetching tenant activity:', error);
+    res.status(500).json({ error: 'Failed to fetch tenant activity' });
+  }
+});
+
+// Phase 2: Update tenant configuration (FR-SA4)
+const updateConfigurationSchema = z.object({
+  maxUsers: z.number().min(1).optional(),
+  maxProspects: z.number().min(100).optional(),
+  maxSequences: z.number().min(1).optional(),
+  maxMailboxes: z.number().min(1).optional(),
+  maxDailyEmails: z.number().min(10).optional(),
+  maxHourlyEmails: z.number().min(1).optional(),
+  storageQuotaMb: z.number().min(100).optional(),
+  apiRateLimitPerMinute: z.number().min(10).optional(),
+  retentionDays: z.number().min(30).optional(),
+  customDomainEnabled: z.boolean().optional(),
+  whitelabelEnabled: z.boolean().optional(),
+  customBranding: z.object({
+    primaryColor: z.string().optional(),
+    logoUrl: z.string().optional(),
+    faviconUrl: z.string().optional(),
+  }).optional(),
+});
+
+router.patch('/tenants/:id/configuration', authenticateSuperAdmin, requireSuperAdminPermission('canManageBilling'), async (req, res) => {
+  try {
+    const validation = updateConfigurationSchema.safeParse(req.body);
+    if (!validation.success) {
+      return res.status(400).json({ 
+        error: 'Validation failed', 
+        details: validation.error.errors.map(e => `${e.path.join('.')}: ${e.message}`) 
+      });
+    }
+
+    const config = await superAdminService.updateTenantConfiguration(
+      req.superAdmin!.id,
+      req.params.id,
+      validation.data
+    );
+    res.json(config);
+  } catch (error: any) {
+    console.error('Error updating tenant configuration:', error);
+    res.status(500).json({ error: error.message || 'Failed to update tenant configuration' });
+  }
+});
+
+// Phase 2: Update tenant feature flags (FR-SA4)
+const updateFeatureFlagsSchema = z.object({
+  aiPoweredSearch: z.boolean().optional(),
+  emailSequencing: z.boolean().optional(),
+  linkedinEnrichment: z.boolean().optional(),
+  apolloIntegration: z.boolean().optional(),
+  lushaIntegration: z.boolean().optional(),
+  advancedAnalytics: z.boolean().optional(),
+  teamCollaboration: z.boolean().optional(),
+  apiAccess: z.boolean().optional(),
+  webhooks: z.boolean().optional(),
+  customFields: z.boolean().optional(),
+  multiMailbox: z.boolean().optional(),
+  abTesting: z.boolean().optional(),
+  sentimentAnalysis: z.boolean().optional(),
+  replyDetection: z.boolean().optional(),
+  autoOooHandling: z.boolean().optional(),
+  customBranding: z.boolean().optional(),
+  ssoIntegration: z.boolean().optional(),
+  auditLogs: z.boolean().optional(),
+  dataExport: z.boolean().optional(),
+  prioritySupport: z.boolean().optional(),
+});
+
+router.patch('/tenants/:id/features', authenticateSuperAdmin, requireSuperAdminPermission('canManageBilling'), async (req, res) => {
+  try {
+    const validation = updateFeatureFlagsSchema.safeParse(req.body);
+    if (!validation.success) {
+      return res.status(400).json({ 
+        error: 'Validation failed', 
+        details: validation.error.errors.map(e => `${e.path.join('.')}: ${e.message}`) 
+      });
+    }
+
+    const features = await superAdminService.updateTenantFeatureFlags(
+      req.superAdmin!.id,
+      req.params.id,
+      validation.data
+    );
+    res.json(features);
+  } catch (error: any) {
+    console.error('Error updating tenant features:', error);
+    res.status(500).json({ error: error.message || 'Failed to update tenant features' });
+  }
+});
+
+// Phase 2: Create manager for tenant (FR-SA7, FR-SA8)
+const createManagerSchema = z.object({
+  email: z.string().email('Invalid email format'),
+  firstName: z.string().max(100).optional(),
+  lastName: z.string().max(100).optional(),
+  managerRole: z.enum(['primary', 'secondary', 'readonly']).default('secondary'),
+  sendInviteEmail: z.boolean().default(true),
+});
+
+router.post('/tenants/:id/managers', authenticateSuperAdmin, requireSuperAdminPermission('canProvisionTenants'), async (req, res) => {
+  try {
+    const validation = createManagerSchema.safeParse(req.body);
+    if (!validation.success) {
+      return res.status(400).json({ 
+        error: 'Validation failed', 
+        details: validation.error.errors.map(e => `${e.path.join('.')}: ${e.message}`) 
+      });
+    }
+
+    const result = await superAdminService.createManagerForTenant(
+      req.superAdmin!.id,
+      req.params.id,
+      validation.data
+    );
+
+    res.status(201).json({
+      message: 'Manager created successfully',
+      ...result,
+    });
+  } catch (error: any) {
+    console.error('Error creating manager:', error);
+    res.status(400).json({ error: error.message || 'Failed to create manager' });
+  }
+});
+
+// Phase 2: List all managers across tenants (FR-SA10)
+router.get('/managers', authenticateSuperAdmin, async (req, res) => {
+  try {
+    const { search, status, organizationId, page, limit } = req.query;
+
+    const result = await superAdminService.getAllManagers({
+      search: search as string,
+      status: status as string,
+      organizationId: organizationId as string,
+      page: page ? parseInt(page as string) : 1,
+      limit: limit ? parseInt(limit as string) : 20,
+    });
+
+    res.json(result);
+  } catch (error) {
+    console.error('Error fetching managers:', error);
+    res.status(500).json({ error: 'Failed to fetch managers' });
+  }
+});
+
+// Phase 2: Update manager (FR-SA8)
+router.patch('/managers/:userId', authenticateSuperAdmin, async (req, res) => {
+  try {
+    const { status, managerRole, firstName, lastName } = req.body;
+    
+    const result = await superAdminService.updateManager(
+      req.superAdmin!.id,
+      req.params.userId,
+      { status, managerRole, firstName, lastName }
+    );
+
+    res.json(result);
+  } catch (error: any) {
+    console.error('Error updating manager:', error);
+    res.status(400).json({ error: error.message || 'Failed to update manager' });
+  }
+});
+
+// Phase 2: Reset manager password (FR-SA8)
+router.post('/managers/:userId/reset-password', authenticateSuperAdmin, async (req, res) => {
+  try {
+    const result = await superAdminService.resetManagerPassword(
+      req.superAdmin!.id,
+      req.params.userId
+    );
+
+    res.json({
+      message: 'Password reset successfully',
+      tempPassword: result.tempPassword,
+    });
+  } catch (error: any) {
+    console.error('Error resetting manager password:', error);
+    res.status(400).json({ error: error.message || 'Failed to reset password' });
+  }
+});
+
+// Phase 2: Log manager activity (internal use)
+router.post('/tenants/:id/activity', authenticateSuperAdmin, async (req, res) => {
+  try {
+    const { eventType, title, description, importance } = req.body;
+    
+    await superAdminService.logTenantActivity(
+      req.params.id,
+      eventType,
+      title,
+      description,
+      req.superAdmin!.id,
+      'super_admin',
+      {},
+      importance || 'normal'
+    );
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error logging activity:', error);
+    res.status(500).json({ error: 'Failed to log activity' });
+  }
+});
+
 router.post('/tenants/:id/impersonate', authenticateSuperAdmin, requireSuperAdminPermission('canImpersonateManagers'), async (req, res) => {
   try {
     const validation = impersonateSchema.safeParse(req.body);
@@ -421,8 +680,14 @@ router.post('/super-admins', authenticateSuperAdmin, requireMasterAdmin, async (
       });
     }
 
+    // Transform null values to undefined for service compatibility
+    const data = {
+      ...validation.data,
+      firstName: validation.data.firstName ?? undefined,
+      lastName: validation.data.lastName ?? undefined,
+    };
     const superAdmin = await superAdminService.createSuperAdmin(
-      validation.data,
+      data,
       req.superAdmin!.id
     );
 
@@ -505,8 +770,8 @@ router.post('/bootstrap', async (req, res) => {
     const superAdmin = await superAdminService.createSuperAdmin({
       email,
       password,
-      firstName,
-      lastName,
+      firstName: firstName ?? undefined,
+      lastName: lastName ?? undefined,
       isMasterAdmin: true,
       permissions: {
         canProvisionTenants: true,

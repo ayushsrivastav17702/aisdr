@@ -1,0 +1,349 @@
+OBJECTIVE
+
+Validate that:
+
+All listed features are implemented
+
+They work end-to-end
+
+Frontend reflects real backend state
+
+Controls are enforced server-side
+
+Multi-tenant isolation is preserved
+
+Role boundaries are not bypassable
+
+1️⃣ FR-SA3: Tenant Detail View (P0)
+A. Complete Tenant Profile — Backend + Frontend
+Frontend MUST Display (Single Tenant Page)
+
+Sections required (check visibility + correctness):
+
+Company Information
+
+Subscription Details
+
+Usage Statistics
+
+Manager Information
+
+User List
+
+Active Campaign Count
+
+Resource Allocation
+
+Activity Timeline
+
+Health Metrics & Alerts
+
+Test Cases
+
+Open Tenant A → verify only Tenant A data
+
+Compare displayed values vs DB/API
+
+Real-time updates (usage, campaigns)
+
+Empty state handling (new tenant)
+
+Large tenant (1000+ users)
+
+Failure Tests
+
+Broken data source → graceful UI fallback
+
+Partial API failure → section-level error, not full page crash
+
+B. Edit Tenant Settings
+Tests
+
+Change limits/settings → save → reload → persist
+
+Invalid values → blocked at UI + backend
+
+Plan-restricted fields → disabled or hidden
+
+Audit log entry created for every edit
+
+C. Impersonation (Access Tenant View)
+
+CRITICAL FEATURE
+
+Tests
+
+Super Admin → impersonate Manager
+
+Visual banner clearly visible
+
+Actions limited to Manager permissions
+
+No access to Super Admin routes
+
+Exit impersonation restores context
+
+All impersonation actions logged
+
+❌ Fail if: impersonation not logged or context leaks across tenants
+
+2️⃣ FR-SA4: Tenant Configuration (P0)
+A. Tenant-Level Limits
+Limits to Validate
+
+Max users
+
+Max mailboxes
+
+Daily send limits
+
+Storage quota
+
+API rate limits
+
+Tests
+
+Set limit → enforce immediately
+
+Attempt over-limit action → blocked backend-side
+
+UI reflects remaining quota accurately
+
+Concurrent actions (race conditions)
+
+B. Feature Toggles per Tenant
+Features
+
+AI prospecting
+
+Advanced analytics
+
+White-label
+
+Tests
+
+Disable feature → UI hides it for tenant users
+
+API access blocked even if endpoint called directly
+
+Feature re-enable restores data access
+
+Tenant cannot override toggle
+
+C. Custom Branding (Enterprise)
+Tests
+
+Upload logo/colors → applied across tenant UI
+
+Email templates reflect branding
+
+Non-Enterprise tenant → branding controls hidden
+
+Asset isolation between tenants
+
+3️⃣ FR-SA7: Create Manager Account (P0)
+Frontend: Manager Creation Form
+Required Fields
+
+Full name
+
+Email (unique per tenant)
+
+Phone
+
+Job title
+
+Temporary password
+
+Tests
+
+Form validation (email format, duplicates)
+
+Temporary password:
+
+One-time use
+
+Force reset on first login
+
+Welcome email sent
+
+Incorrect email → no account created
+
+Role & Scope Validation
+Tests
+
+Manager can:
+
+Access only their tenant
+
+Create/manage users
+
+Configure tenant settings
+
+Manager cannot:
+
+Access other tenants
+
+Access Super Admin views
+
+Change subscription/billing
+
+One vs Multiple Managers
+
+Default: 1 Manager enforced
+
+Enterprise:
+
+Multiple Managers allowed
+
+UI reflects plan restriction
+
+4️⃣ FR-SA8: Manager Account Administration (P0)
+A. Manager List (Global View)
+Columns Required
+
+Name
+
+Email
+
+Tenant
+
+Status
+
+Last login
+
+Created date
+
+Tests
+
+Search & filter accuracy
+
+Pagination & performance
+
+Data correctness vs DB
+
+B. Manager Actions
+Actions to Validate
+
+Edit Manager details
+
+Reset password
+
+Suspend / Activate
+
+View activity logs
+
+Performance overview
+
+Tests
+
+Suspend Manager → login blocked immediately
+
+Reset password → invalidates old sessions
+
+Activity logs:
+
+Timestamped
+
+Action-level detail
+
+Performance metrics reflect tenant usage
+
+5️⃣ FR-SA10: Multi-Manager Support (P2)
+A. Multiple Managers per Tenant
+Tests
+
+Enable Enterprise → add multiple Managers
+
+Disable Enterprise → restrict to one
+
+Attempt bypass via API → blocked
+
+B. Manager Roles
+Roles
+
+Primary Manager (full)
+
+Secondary Manager (limited)
+
+Read-only Manager
+
+Tests
+
+Role-based UI visibility
+
+Backend permission enforcement
+
+Cannot self-escalate role
+
+Primary Manager override logic
+
+C. Manager-to-Manager Permissions
+Tests
+
+Secondary Manager cannot:
+
+Suspend Primary
+
+Change billing
+
+Read-only cannot modify anything
+
+Action attempts logged + blocked
+
+D. Manager Workspace Separation
+Tests
+
+One Manager → cannot view another Manager’s private settings
+
+Session isolation between Managers
+
+No shared drafts / private data
+
+6️⃣ FRONTEND-SPECIFIC VALIDATION (MANDATORY)
+
+For each page:
+
+Route protected (RBAC)
+
+Deep-link access blocked if unauthorized
+
+Disabled buttons ≠ only protection
+
+Loading states & error states implemented
+
+No sensitive data in frontend payloads
+
+📊 REQUIRED FINAL OUTPUT FORMAT
+
+For each FR (SA3, SA4, SA7, SA8, SA10):
+
+Feature
+
+Backend Status: Implemented / Partial / Missing
+
+Frontend Status: Implemented / Partial / Missing
+
+Enforcement: Backend / UI-only ❌
+
+Works End-to-End: Yes / No
+
+Severity if Broken: High / Critical
+
+Evidence: Logs / Screenshots / API output
+
+Risk Identified
+
+Fix Recommendation
+
+🚨 AUTO-FAIL CONDITIONS
+
+UI toggle without backend enforcement
+
+Manager accessing another tenant
+
+Impersonation without audit trail
+
+Limits enforced only on frontend
+
+Enterprise features accessible on lower plans

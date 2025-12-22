@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, jsonb, timestamp, boolean, integer, pgEnum, index, real } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, jsonb, timestamp, boolean, integer, pgEnum, index, real, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations } from "drizzle-orm";
@@ -2387,6 +2387,191 @@ export const impersonationLogs = pgTable("impersonation_logs", {
   startedAtIdx: index("impersonation_logs_started_at_idx").on(table.startedAt),
 }));
 
+// Tenant Feature Flags - FR-SA4: Enable/disable features per tenant
+export const tenantFeatureFlags = pgTable("tenant_feature_flags", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }).unique(),
+  
+  // AI Features
+  aiProspecting: boolean("ai_prospecting").default(true),
+  aiEmailGeneration: boolean("ai_email_generation").default(true),
+  aiSentimentAnalysis: boolean("ai_sentiment_analysis").default(true),
+  
+  // Analytics Features
+  advancedAnalytics: boolean("advanced_analytics").default(false),
+  customReports: boolean("custom_reports").default(false),
+  exportCapabilities: boolean("export_capabilities").default(true),
+  
+  // White-label Options (Enterprise)
+  whiteLabel: boolean("white_label").default(false),
+  customBranding: boolean("custom_branding").default(false),
+  customDomain: boolean("custom_domain").default(false),
+  
+  // Integration Features
+  crmIntegration: boolean("crm_integration").default(false),
+  webhookAccess: boolean("webhook_access").default(false),
+  apiAccess: boolean("api_access").default(true),
+  
+  // Communication Features
+  multiMailbox: boolean("multi_mailbox").default(true),
+  emailSequences: boolean("email_sequences").default(true),
+  bulkOperations: boolean("bulk_operations").default(true),
+  
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  orgIdIdx: index("tenant_feature_flags_org_id_idx").on(table.organizationId),
+}));
+
+// Tenant Extended Configuration - FR-SA4: Additional limits and settings
+export const tenantConfiguration = pgTable("tenant_configuration", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }).unique(),
+  
+  // Storage Limits
+  storageQuotaMb: integer("storage_quota_mb").default(1000), // MB
+  currentStorageUsedMb: integer("current_storage_used_mb").default(0),
+  
+  // API Rate Limits
+  apiRequestsPerHour: integer("api_requests_per_hour").default(1000),
+  apiRequestsPerDay: integer("api_requests_per_day").default(10000),
+  bulkOperationsPerDay: integer("bulk_operations_per_day").default(10),
+  
+  // Email Limits (extends tenantSettings)
+  maxEmailsPerHour: integer("max_emails_per_hour").default(50),
+  warmupModeEnabled: boolean("warmup_mode_enabled").default(false),
+  warmupDailyLimit: integer("warmup_daily_limit").default(20),
+  
+  // Prospect Limits
+  maxProspectsPerImport: integer("max_prospects_per_import").default(1000),
+  maxEnrichmentsPerDay: integer("max_enrichments_per_day").default(100),
+  
+  // Multi-Manager Settings (Enterprise - FR-SA10)
+  multiManagerEnabled: boolean("multi_manager_enabled").default(false),
+  maxManagers: integer("max_managers").default(1),
+  
+  // Custom Branding (Enterprise)
+  brandingLogo: text("branding_logo"), // URL to logo
+  brandingPrimaryColor: text("branding_primary_color"), // Hex color
+  brandingSecondaryColor: text("branding_secondary_color"),
+  brandingFontFamily: text("branding_font_family"),
+  customEmailFooter: text("custom_email_footer"),
+  
+  // Advanced Settings
+  datRetentionDays: integer("data_retention_days").default(365),
+  auditLogRetentionDays: integer("audit_log_retention_days").default(90),
+  sessionTimeoutMinutes: integer("session_timeout_minutes").default(480), // 8 hours
+  
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  orgIdIdx: index("tenant_configuration_org_id_idx").on(table.organizationId),
+}));
+
+// Manager Role Enum for multi-manager support
+export const managerRoleEnum = pgEnum("manager_role", [
+  "primary",     // Full access, can manage other managers
+  "secondary",   // Limited access, cannot delete or manage managers
+  "readonly"     // Read-only access to tenant data
+]);
+
+// Manager Accounts - FR-SA7, FR-SA8, FR-SA10: Multi-manager support with role hierarchy
+export const managerAccounts = pgTable("manager_accounts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  organizationId: varchar("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  
+  // Manager Role within tenant
+  managerRole: managerRoleEnum("manager_role").default("secondary"),
+  
+  // Contact Information
+  phoneNumber: text("phone_number"),
+  jobTitle: text("job_title"),
+  department: text("department"),
+  
+  // Invitation & Onboarding
+  invitedBy: varchar("invited_by"), // References users.id or superAdmins.id
+  invitedByType: text("invited_by_type"), // 'super_admin' or 'manager'
+  invitationSentAt: timestamp("invitation_sent_at"),
+  invitationAcceptedAt: timestamp("invitation_accepted_at"),
+  welcomeEmailSent: boolean("welcome_email_sent").default(false),
+  
+  // Permissions (overrides for secondary managers)
+  permissions: jsonb("permissions").$type<{
+    canCreateUsers?: boolean;
+    canDeleteUsers?: boolean;
+    canManageSequences?: boolean;
+    canDeleteSequences?: boolean;
+    canManageMailboxes?: boolean;
+    canViewAnalytics?: boolean;
+    canExportData?: boolean;
+    canManageIntegrations?: boolean;
+    canInviteManagers?: boolean;
+  }>(),
+  
+  // Activity Tracking
+  lastActiveAt: timestamp("last_active_at"),
+  totalLogins: integer("total_logins").default(0),
+  totalActionsPerformed: integer("total_actions_performed").default(0),
+  
+  // Performance Metrics
+  prospectsCreated: integer("prospects_created").default(0),
+  emailsSent: integer("emails_sent").default(0),
+  sequencesLaunched: integer("sequences_launched").default(0),
+  
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  userIdIdx: index("manager_accounts_user_id_idx").on(table.userId),
+  orgIdIdx: index("manager_accounts_org_id_idx").on(table.organizationId),
+  managerRoleIdx: index("manager_accounts_role_idx").on(table.managerRole),
+  userOrgUnique: uniqueIndex("manager_accounts_user_org_unique").on(table.userId, table.organizationId),
+}));
+
+// Manager Activity Logs - FR-SA8: Track manager actions for oversight
+export const managerActivityLogs = pgTable("manager_activity_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  managerId: varchar("manager_id").notNull().references(() => managerAccounts.id, { onDelete: "cascade" }),
+  organizationId: varchar("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  
+  action: text("action").notNull(), // CREATE_PROSPECT, SEND_EMAIL, LAUNCH_SEQUENCE, etc.
+  resourceType: text("resource_type"), // prospect, sequence, email, user, etc.
+  resourceId: varchar("resource_id"),
+  details: jsonb("details"),
+  
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  managerIdIdx: index("manager_activity_logs_manager_id_idx").on(table.managerId),
+  orgIdIdx: index("manager_activity_logs_org_id_idx").on(table.organizationId),
+  actionIdx: index("manager_activity_logs_action_idx").on(table.action),
+  createdAtIdx: index("manager_activity_logs_created_at_idx").on(table.createdAt),
+}));
+
+// Tenant Activity Timeline - FR-SA3: Activity timeline for tenant detail view
+export const tenantActivityTimeline = pgTable("tenant_activity_timeline", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  
+  eventType: text("event_type").notNull(), // USER_CREATED, SEQUENCE_LAUNCHED, MILESTONE_REACHED, etc.
+  eventTitle: text("event_title").notNull(),
+  eventDescription: text("event_description"),
+  
+  actorId: varchar("actor_id"), // User or manager who triggered the event
+  actorType: text("actor_type"), // 'user', 'manager', 'system', 'super_admin'
+  
+  metadata: jsonb("metadata"),
+  importance: text("importance").default("normal"), // low, normal, high, critical
+  
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  orgIdIdx: index("tenant_activity_timeline_org_id_idx").on(table.organizationId),
+  eventTypeIdx: index("tenant_activity_timeline_event_type_idx").on(table.eventType),
+  createdAtIdx: index("tenant_activity_timeline_created_at_idx").on(table.createdAt),
+}));
+
 // ============================================
 // SUPER ADMIN TYPES
 // ============================================
@@ -2401,6 +2586,16 @@ export type TenantSettings = typeof tenantSettings.$inferSelect;
 export type InsertTenantSettings = typeof tenantSettings.$inferInsert;
 export type ImpersonationLog = typeof impersonationLogs.$inferSelect;
 export type InsertImpersonationLog = typeof impersonationLogs.$inferInsert;
+export type TenantFeatureFlags = typeof tenantFeatureFlags.$inferSelect;
+export type InsertTenantFeatureFlags = typeof tenantFeatureFlags.$inferInsert;
+export type TenantConfiguration = typeof tenantConfiguration.$inferSelect;
+export type InsertTenantConfiguration = typeof tenantConfiguration.$inferInsert;
+export type ManagerAccount = typeof managerAccounts.$inferSelect;
+export type InsertManagerAccount = typeof managerAccounts.$inferInsert;
+export type ManagerActivityLog = typeof managerActivityLogs.$inferSelect;
+export type InsertManagerActivityLog = typeof managerActivityLogs.$inferInsert;
+export type TenantActivityTimelineEntry = typeof tenantActivityTimeline.$inferSelect;
+export type InsertTenantActivityTimelineEntry = typeof tenantActivityTimeline.$inferInsert;
 
 // ============================================
 // SUPER ADMIN SCHEMAS
@@ -2423,4 +2618,32 @@ export const insertImpersonationLogSchema = createInsertSchema(impersonationLogs
   id: true,
   startedAt: true,
   endedAt: true,
+});
+
+export const insertTenantFeatureFlagsSchema = createInsertSchema(tenantFeatureFlags).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertTenantConfigurationSchema = createInsertSchema(tenantConfiguration).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertManagerAccountSchema = createInsertSchema(managerAccounts).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertManagerActivityLogSchema = createInsertSchema(managerActivityLogs).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertTenantActivityTimelineSchema = createInsertSchema(tenantActivityTimeline).omit({
+  id: true,
+  createdAt: true,
 });
