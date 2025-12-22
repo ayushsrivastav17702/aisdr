@@ -1,0 +1,281 @@
+Use this in one sitting and log results as PASS / FAIL / PARTIAL.
+
+0️⃣ Test Setup (Do this once)
+
+Tenant: Test Organization (test-org)
+Plan: Trial
+Users: 5 managers
+Role used: admin@increff.com (Super Admin)
+
+Create a simple bug log:
+
+Module | Action | Expected | Actual | Error | Severity
+
+1️⃣ Tenant Management (P0)
+A. Tenant List Page
+
+Tests
+
+Search by:
+
+Company name
+
+Slug (test-org)
+
+Filter by:
+
+Status (Active / Trial / Suspended)
+
+Plan
+
+Validate
+
+Counts update correctly
+
+Clicking tenant opens correct tenant
+
+No cross-tenant data leakage
+
+🚨 Fail if:
+Wrong tenant opens / stale counts / filters don’t apply
+
+B. Provision New Tenant
+
+Tests
+
+Create tenant with:
+
+Valid inputs
+
+Duplicate slug
+
+Invalid email
+
+Empty fields
+
+Assign:
+
+Trial plan
+
+Zero limits
+
+High limits
+
+Expected
+
+Duplicate slug → error
+
+Invalid email → error
+
+Tenant created → visible immediately
+
+2️⃣ Tenant Overview Page (P0)
+A. Read-only Data Accuracy
+
+Verify all values come from backend:
+
+Status
+
+Plan
+
+Health %
+
+Active users (7d)
+
+Alerts
+
+Campaign stats
+
+Performance metrics
+
+🧪 Negative Tests
+
+Change backend values → refresh → UI updates?
+
+Last activity = Never → alerts triggered?
+
+🚨 Fail if:
+Static / mocked data / wrong calculations
+
+3️⃣ Usage & Limits (P0)
+A. View Usage
+
+Validate
+
+Users: 5 / 30
+
+Prospects: 0 / 2000
+
+Sequences: 0 / 20
+
+Mailboxes: 0 / 5
+
+B. Edit Limits
+
+Change values one by one:
+
+Max Users → set to 3
+
+Daily Email Limit → set to 10
+
+API Rate Limit → set to 1
+
+Now switch to Tenant User account and test:
+
+Add 4th user → ❌ must fail
+
+Send 11th email → ❌ must fail
+
+Rapid API calls → ❌ must throttle
+
+🚨 Critical Fail if:
+Limits enforced only in UI, not backend
+
+4️⃣ Feature Flags (P0)
+
+Toggle ONE feature at a time 👇
+
+Feature	Test
+AI Search	Try NLP search from tenant
+Email Sequencing	Try creating sequence
+AI Email Gen	Generate email
+Sentiment Analysis	Reply tagging
+API Access	Call API
+Webhooks	Fire event
+Bulk Ops	Upload CSV
+Export	Export data
+Custom Domain	Try setup
+White Label	Branding visible?
+CRM Integration	Connect CRM
+
+Expected
+
+Disabled = feature inaccessible (API + UI)
+
+Enabled = works end-to-end
+
+🚨 Fail if:
+Feature usable via direct URL or API despite toggle OFF
+
+5️⃣ Managers Module (P0)
+A. Add Manager
+
+Test:
+
+Valid email
+
+Duplicate email
+
+Invalid domain
+
+Role assignment (Primary / Secondary)
+
+B. Permissions
+
+Login as:
+
+Primary Manager
+
+Secondary Manager
+
+Test access:
+
+Can they edit limits?
+
+Can they add managers?
+
+Can they toggle features?
+
+🚨 Fail if:
+Secondary bypasses admin controls
+
+6️⃣ Activity Timeline (P0)
+
+Trigger events:
+
+Add manager
+
+Change limit
+
+Toggle feature
+
+Login / Logout
+
+Failed action
+
+Validate
+
+Event name
+
+Actor
+
+Timestamp
+
+Tenant isolation
+
+🚨 Fail if:
+Missing logs / wrong actor / no timestamp
+
+7️⃣ Health & Alerts Engine
+
+Force conditions:
+
+No activity (simulate last_activity > 30 days)
+
+User limit at 95%
+
+Email bounce rate (mock)
+
+Expected
+
+Correct alert
+
+Correct severity
+
+Clears automatically when resolved
+
+8️⃣ Security & Isolation (🔥 CRITICAL)
+A. Cross-Tenant Isolation
+
+Open another tenant in parallel
+
+Check:
+
+Users
+
+Limits
+
+Features
+
+Activity logs
+
+🚨 Instant FAIL if:
+Any data overlaps
+
+B. Role Bypass
+
+Try manually calling:
+
+Update limits API
+
+Feature toggle API
+
+Manager add API
+Using non-super-admin token
+
+🚨 Fail if:
+Any request succeeds
+
+9️⃣ Hard Failure Testing (Do Last)
+Test	Expected
+Delete tenant with active users	Blocked
+Suspend tenant	Tenant login blocked
+Disable email feature	Sending fails
+Set limits = 0	All actions blocked
+Logout mid-save	No partial writes
+10️⃣ Final Output You Should Have
+
+At the end, you’ll know:
+✅ What is fully production-ready
+⚠️ What is UI-only
+❌ What is broken or unsafe
