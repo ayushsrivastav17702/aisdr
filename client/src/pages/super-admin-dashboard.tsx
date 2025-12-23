@@ -55,7 +55,18 @@ import {
   ChevronDown,
   RefreshCw,
   ClipboardList,
-  AlertTriangle
+  AlertTriangle,
+  Database,
+  Server,
+  Lock,
+  CheckCircle,
+  XCircle,
+  AlertCircle,
+  HardDrive,
+  Globe,
+  BarChart2,
+  UserX,
+  ShieldCheck
 } from "lucide-react";
 
 interface SuperAdmin {
@@ -296,7 +307,7 @@ export default function SuperAdminDashboard() {
 
       <main className="p-6 space-y-6">
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4" data-testid="stats-overview">
           <Card>
             <CardContent className="pt-6">
               <div className="flex items-center justify-between">
@@ -351,7 +362,45 @@ export default function SuperAdminDashboard() {
           </Card>
         </div>
 
-        {/* Tenant Management */}
+        {/* Main Navigation Tabs */}
+        <Tabs defaultValue="tenants" className="w-full">
+          <TabsList className="grid w-full grid-cols-4 lg:grid-cols-8 h-auto">
+            <TabsTrigger value="tenants" className="flex items-center gap-1 text-xs" data-testid="tab-tenants">
+              <Building2 className="h-3 w-3" />
+              Tenants
+            </TabsTrigger>
+            <TabsTrigger value="users" className="flex items-center gap-1 text-xs" data-testid="tab-users">
+              <Users className="h-3 w-3" />
+              Users
+            </TabsTrigger>
+            <TabsTrigger value="analytics" className="flex items-center gap-1 text-xs" data-testid="tab-analytics">
+              <BarChart2 className="h-3 w-3" />
+              Analytics
+            </TabsTrigger>
+            <TabsTrigger value="email" className="flex items-center gap-1 text-xs" data-testid="tab-email">
+              <Mail className="h-3 w-3" />
+              Email
+            </TabsTrigger>
+            <TabsTrigger value="storage" className="flex items-center gap-1 text-xs" data-testid="tab-storage">
+              <Database className="h-3 w-3" />
+              Storage
+            </TabsTrigger>
+            <TabsTrigger value="resources" className="flex items-center gap-1 text-xs" data-testid="tab-resources">
+              <Server className="h-3 w-3" />
+              Resources
+            </TabsTrigger>
+            <TabsTrigger value="security" className="flex items-center gap-1 text-xs" data-testid="tab-security">
+              <Lock className="h-3 w-3" />
+              Security
+            </TabsTrigger>
+            <TabsTrigger value="isolation" className="flex items-center gap-1 text-xs" data-testid="tab-isolation">
+              <ShieldCheck className="h-3 w-3" />
+              Isolation
+            </TabsTrigger>
+          </TabsList>
+
+          {/* Tenant Management Tab */}
+          <TabsContent value="tenants" className="mt-4">
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">
@@ -562,6 +611,43 @@ export default function SuperAdminDashboard() {
             )}
           </CardContent>
         </Card>
+          </TabsContent>
+
+          {/* Global User Overview Tab */}
+          <TabsContent value="users" className="mt-4">
+            <GlobalUserOverview />
+          </TabsContent>
+
+          {/* Platform Analytics Tab */}
+          <TabsContent value="analytics" className="mt-4">
+            <PlatformAnalytics />
+          </TabsContent>
+
+          {/* Email Infrastructure Tab */}
+          <TabsContent value="email" className="mt-4">
+            <EmailInfrastructure />
+          </TabsContent>
+
+          {/* Storage Management Tab */}
+          <TabsContent value="storage" className="mt-4">
+            <StorageManagement />
+          </TabsContent>
+
+          {/* Resource Monitoring Tab */}
+          <TabsContent value="resources" className="mt-4">
+            <ResourceMonitoring />
+          </TabsContent>
+
+          {/* Security Dashboard Tab */}
+          <TabsContent value="security" className="mt-4">
+            <SecurityDashboard />
+          </TabsContent>
+
+          {/* Tenant Isolation Tab */}
+          <TabsContent value="isolation" className="mt-4">
+            <TenantIsolationTest />
+          </TabsContent>
+        </Tabs>
       </main>
 
       {/* Impersonate Dialog */}
@@ -916,5 +1002,833 @@ function ImpersonateForm({ tenant, onClose }: { tenant: TenantWithSettings | nul
         </Button>
       </DialogFooter>
     </div>
+  );
+}
+
+// Global User Overview Component
+function GlobalUserOverview() {
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  const { data: usersData, isLoading } = useQuery({
+    queryKey: ["/api/super-admin/users", searchQuery, statusFilter],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (searchQuery) params.set("search", searchQuery);
+      if (statusFilter !== "all") params.set("status", statusFilter);
+      return superAdminFetch(`/api/super-admin/users?${params.toString()}`);
+    },
+  });
+
+  const updateUserStatusMutation = useMutation({
+    mutationFn: ({ userId, status, reason }: { userId: string; status: string; reason?: string }) =>
+      superAdminFetch(`/api/super-admin/users/${userId}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status, reason }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/users"] });
+      toast({ title: "User status updated" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed to update user status", description: error.message, variant: "destructive" });
+    },
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Users className="h-5 w-5" />
+          Global User Overview
+        </CardTitle>
+        <CardDescription>
+          View and manage all users across all tenants
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="flex flex-wrap gap-4 mb-4">
+          <div className="flex-1 min-w-[200px]">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-slate-400" />
+              <Input
+                placeholder="Search users by name or email..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10"
+                data-testid="input-search-users"
+              />
+            </div>
+          </div>
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-[150px]" data-testid="select-user-status-filter">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Status</SelectItem>
+              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="inactive">Inactive</SelectItem>
+              <SelectItem value="suspended">Suspended</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button variant="outline" size="icon" onClick={() => queryClient.invalidateQueries({ queryKey: ["/api/super-admin/users"] })}>
+            <RefreshCw className="h-4 w-4" />
+          </Button>
+        </div>
+
+        {/* User Stats Summary */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-4">
+          <Card>
+            <CardContent className="pt-4 pb-4">
+              <div className="text-2xl font-bold" data-testid="stat-total-platform-users">{usersData?.total || 0}</div>
+              <p className="text-xs text-slate-500">Total Users</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-4 pb-4">
+              <div className="text-2xl font-bold text-green-600" data-testid="stat-active-users">{usersData?.activeCount || 0}</div>
+              <p className="text-xs text-slate-500">Active Users</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-4 pb-4">
+              <div className="text-2xl font-bold text-blue-600" data-testid="stat-power-users">{usersData?.powerUserCount || 0}</div>
+              <p className="text-xs text-slate-500">Power Users</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-4 pb-4">
+              <div className="text-2xl font-bold text-yellow-600" data-testid="stat-inactive-users">{usersData?.inactiveCount || 0}</div>
+              <p className="text-xs text-slate-500">Inactive Users</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Users Table */}
+        <div className="rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>User</TableHead>
+                <TableHead>Tenant</TableHead>
+                <TableHead>Role</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Last Active</TableHead>
+                <TableHead className="text-right">Actions</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoading ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center py-8">Loading users...</TableCell>
+                </TableRow>
+              ) : usersData?.users?.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={6} className="text-center py-8">No users found</TableCell>
+                </TableRow>
+              ) : (
+                usersData?.users?.map((user: any) => (
+                  <TableRow key={user.id} data-testid={`row-user-${user.id}`}>
+                    <TableCell>
+                      <div>
+                        <p className="font-medium">{user.firstName} {user.lastName}</p>
+                        <p className="text-sm text-slate-500">{user.email}</p>
+                      </div>
+                    </TableCell>
+                    <TableCell>{user.organizationName || "N/A"}</TableCell>
+                    <TableCell><Badge variant="outline">{user.role}</Badge></TableCell>
+                    <TableCell>
+                      <Badge variant={user.status === "active" ? "default" : user.status === "suspended" ? "destructive" : "secondary"}>
+                        {user.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>
+                      <span className="text-sm text-slate-500">
+                        {user.lastActiveAt ? new Date(user.lastActiveAt).toLocaleDateString() : "Never"}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" data-testid={`button-user-actions-${user.id}`}>
+                            <MoreHorizontal className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                          <DropdownMenuItem onClick={() => updateUserStatusMutation.mutate({ userId: user.id, status: "active" })}>
+                            <Play className="h-4 w-4 mr-2" />
+                            Activate
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => updateUserStatusMutation.mutate({ userId: user.id, status: "suspended", reason: "Suspended by super admin" })}>
+                            <Pause className="h-4 w-4 mr-2" />
+                            Suspend
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// Platform Analytics Component
+function PlatformAnalytics() {
+  const { data: analytics, isLoading } = useQuery({
+    queryKey: ["/api/super-admin/analytics"],
+    queryFn: () => superAdminFetch("/api/super-admin/analytics"),
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <BarChart2 className="h-5 w-5" />
+          Platform Analytics
+        </CardTitle>
+        <CardDescription>
+          Platform-wide usage and engagement metrics
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="text-center py-8">Loading analytics...</div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Card>
+              <CardContent className="pt-4">
+                <div className="flex items-center gap-2">
+                  <Users className="h-8 w-8 text-blue-500" />
+                  <div>
+                    <div className="text-2xl font-bold" data-testid="analytics-total-users">{analytics?.totalUsers || 0}</div>
+                    <p className="text-xs text-slate-500">Total Users</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4">
+                <div className="flex items-center gap-2">
+                  <Activity className="h-8 w-8 text-green-500" />
+                  <div>
+                    <div className="text-2xl font-bold" data-testid="analytics-active-users">{analytics?.activeUsers || 0}</div>
+                    <p className="text-xs text-slate-500">Active This Month</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4">
+                <div className="flex items-center gap-2">
+                  <TrendingUp className="h-8 w-8 text-purple-500" />
+                  <div>
+                    <div className="text-2xl font-bold" data-testid="analytics-avg-users">{analytics?.avgUsersPerTenant?.toFixed(1) || "0.0"}</div>
+                    <p className="text-xs text-slate-500">Avg Users/Tenant</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="pt-4">
+                <div className="flex items-center gap-2">
+                  <UserX className="h-8 w-8 text-red-500" />
+                  <div>
+                    <div className="text-2xl font-bold" data-testid="analytics-churn-rate">{analytics?.churnRate?.toFixed(1) || "0.0"}%</div>
+                    <p className="text-xs text-slate-500">User Churn Rate</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+            <Card className="col-span-full">
+              <CardContent className="pt-4">
+                <h4 className="font-medium mb-2">Email Engagement</h4>
+                <div className="grid grid-cols-3 gap-4">
+                  <div className="text-center">
+                    <div className="text-xl font-bold text-blue-600" data-testid="analytics-emails-sent">{analytics?.emailsSentToday || 0}</div>
+                    <p className="text-xs text-slate-500">Sent Today</p>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-xl font-bold text-green-600" data-testid="analytics-open-rate">{analytics?.openRate?.toFixed(1) || "0.0"}%</div>
+                    <p className="text-xs text-slate-500">Open Rate</p>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-xl font-bold text-purple-600" data-testid="analytics-reply-rate">{analytics?.replyRate?.toFixed(1) || "0.0"}%</div>
+                    <p className="text-xs text-slate-500">Reply Rate</p>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// Email Infrastructure Component
+function EmailInfrastructure() {
+  const { data: emailData, isLoading } = useQuery({
+    queryKey: ["/api/super-admin/email-infrastructure"],
+    queryFn: () => superAdminFetch("/api/super-admin/email-infrastructure"),
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Mail className="h-5 w-5" />
+          Email Infrastructure
+        </CardTitle>
+        <CardDescription>
+          Email domains, mailboxes, and deliverability metrics
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="text-center py-8">Loading email infrastructure...</div>
+        ) : (
+          <div className="space-y-6">
+            {/* Mailbox Stats */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <Card>
+                <CardContent className="pt-4">
+                  <div className="text-2xl font-bold" data-testid="email-total-mailboxes">{emailData?.totalMailboxes || 0}</div>
+                  <p className="text-xs text-slate-500">Total Mailboxes</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4">
+                  <div className="text-2xl font-bold text-green-600" data-testid="email-active-mailboxes">{emailData?.activeMailboxes || 0}</div>
+                  <p className="text-xs text-slate-500">Active</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4">
+                  <div className="text-2xl font-bold text-yellow-600" data-testid="email-warmup-mailboxes">{emailData?.warmupMailboxes || 0}</div>
+                  <p className="text-xs text-slate-500">In Warmup</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4">
+                  <div className="text-2xl font-bold text-red-600" data-testid="email-error-mailboxes">{emailData?.errorMailboxes || 0}</div>
+                  <p className="text-xs text-slate-500">Error Status</p>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Deliverability Metrics */}
+            <div className="space-y-2">
+              <h4 className="font-medium">Deliverability Metrics</h4>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <Card>
+                  <CardContent className="pt-4">
+                    <div className="flex items-center gap-2">
+                      <div className="text-xl font-bold text-green-600" data-testid="email-delivery-rate">{emailData?.deliveryRate?.toFixed(1) || "0.0"}%</div>
+                      <CheckCircle className="h-5 w-5 text-green-500" />
+                    </div>
+                    <p className="text-xs text-slate-500">Delivery Rate</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-4">
+                    <div className="flex items-center gap-2">
+                      <div className="text-xl font-bold text-red-600" data-testid="email-bounce-rate">{emailData?.bounceRate?.toFixed(1) || "0.0"}%</div>
+                      <XCircle className="h-5 w-5 text-red-500" />
+                    </div>
+                    <p className="text-xs text-slate-500">Bounce Rate</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-4">
+                    <div className="flex items-center gap-2">
+                      <div className="text-xl font-bold text-yellow-600" data-testid="email-spam-rate">{emailData?.spamRate?.toFixed(1) || "0.0"}%</div>
+                      <AlertCircle className="h-5 w-5 text-yellow-500" />
+                    </div>
+                    <p className="text-xs text-slate-500">Spam Report Rate</p>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+
+            {/* Mailbox List */}
+            {emailData?.mailboxes?.length > 0 && (
+              <div className="space-y-2">
+                <h4 className="font-medium">Recent Mailboxes</h4>
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Tenant</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Emails Sent</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {emailData.mailboxes.slice(0, 5).map((mailbox: any) => (
+                        <TableRow key={mailbox.id} data-testid={`row-mailbox-${mailbox.id}`}>
+                          <TableCell>{mailbox.email}</TableCell>
+                          <TableCell>{mailbox.organizationName || "N/A"}</TableCell>
+                          <TableCell>
+                            <Badge variant={mailbox.status === "active" ? "default" : mailbox.status === "error" ? "destructive" : "secondary"}>
+                              {mailbox.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>{mailbox.emailsSent || 0}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// Storage Management Component
+function StorageManagement() {
+  const { data: storageData, isLoading } = useQuery({
+    queryKey: ["/api/super-admin/storage"],
+    queryFn: () => superAdminFetch("/api/super-admin/storage"),
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Database className="h-5 w-5" />
+          Storage Management
+        </CardTitle>
+        <CardDescription>
+          Database and storage usage across the platform
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="text-center py-8">Loading storage data...</div>
+        ) : (
+          <div className="space-y-6">
+            {/* Overall Storage Stats */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Card>
+                <CardContent className="pt-4">
+                  <div className="flex items-center gap-2">
+                    <HardDrive className="h-8 w-8 text-blue-500" />
+                    <div>
+                      <div className="text-2xl font-bold" data-testid="storage-total-prospects">{storageData?.totalProspects?.toLocaleString() || 0}</div>
+                      <p className="text-xs text-slate-500">Total Prospects</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4">
+                  <div className="flex items-center gap-2">
+                    <Mail className="h-8 w-8 text-green-500" />
+                    <div>
+                      <div className="text-2xl font-bold" data-testid="storage-total-sequences">{storageData?.totalSequences || 0}</div>
+                      <p className="text-xs text-slate-500">Total Sequences</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4">
+                  <div className="flex items-center gap-2">
+                    <Activity className="h-8 w-8 text-purple-500" />
+                    <div>
+                      <div className="text-2xl font-bold" data-testid="storage-total-emails">{storageData?.totalEmails?.toLocaleString() || 0}</div>
+                      <p className="text-xs text-slate-500">Total Emails Sent</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Tenant Usage Table */}
+            {storageData?.tenantUsage?.length > 0 && (
+              <div className="space-y-2">
+                <h4 className="font-medium">Tenant Resource Usage</h4>
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Tenant</TableHead>
+                        <TableHead>Users</TableHead>
+                        <TableHead>Prospects</TableHead>
+                        <TableHead>Sequences</TableHead>
+                        <TableHead>Mailboxes</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {storageData.tenantUsage.slice(0, 10).map((tenant: any) => (
+                        <TableRow key={tenant.organizationId} data-testid={`row-storage-${tenant.organizationId}`}>
+                          <TableCell className="font-medium">{tenant.organizationName}</TableCell>
+                          <TableCell>
+                            {tenant.currentUsers}/{tenant.maxUsers}
+                            <div className="w-16 bg-gray-200 rounded-full h-1.5 mt-1">
+                              <div 
+                                className="bg-blue-600 h-1.5 rounded-full" 
+                                style={{ width: `${Math.min(100, (tenant.currentUsers / tenant.maxUsers) * 100)}%` }}
+                              />
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            {tenant.currentProspects}/{tenant.maxProspects}
+                          </TableCell>
+                          <TableCell>
+                            {tenant.currentSequences}/{tenant.maxSequences}
+                          </TableCell>
+                          <TableCell>
+                            {tenant.currentMailboxes}/{tenant.maxMailboxes}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// Resource Monitoring Component
+function ResourceMonitoring() {
+  const { data: resourceData, isLoading } = useQuery({
+    queryKey: ["/api/super-admin/resources"],
+    queryFn: () => superAdminFetch("/api/super-admin/resources"),
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Server className="h-5 w-5" />
+          Resource Monitoring
+        </CardTitle>
+        <CardDescription>
+          Server capacity and resource utilization
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="text-center py-8">Loading resource data...</div>
+        ) : (
+          <div className="space-y-6">
+            {/* System Metrics */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <Card>
+                <CardContent className="pt-4">
+                  <div className="text-2xl font-bold" data-testid="resource-active-sequences">{resourceData?.activeSequences || 0}</div>
+                  <p className="text-xs text-slate-500">Active Sequences</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4">
+                  <div className="text-2xl font-bold" data-testid="resource-pending-emails">{resourceData?.pendingEmails || 0}</div>
+                  <p className="text-xs text-slate-500">Pending Emails</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4">
+                  <div className="text-2xl font-bold" data-testid="resource-emails-today">{resourceData?.emailsSentToday || 0}</div>
+                  <p className="text-xs text-slate-500">Emails Today</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4">
+                  <div className="text-2xl font-bold" data-testid="resource-api-calls">{resourceData?.apiCallsToday || 0}</div>
+                  <p className="text-xs text-slate-500">API Calls Today</p>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Capacity Limits */}
+            <div className="space-y-2">
+              <h4 className="font-medium">Platform Capacity</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Card>
+                  <CardContent className="pt-4">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-sm">Daily Email Capacity</span>
+                      <span className="text-sm font-medium">{resourceData?.emailsSentToday || 0} / {resourceData?.dailyEmailLimit || 10000}</span>
+                    </div>
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div 
+                        className="bg-blue-600 h-2 rounded-full" 
+                        style={{ width: `${Math.min(100, ((resourceData?.emailsSentToday || 0) / (resourceData?.dailyEmailLimit || 10000)) * 100)}%` }}
+                        data-testid="progress-email-capacity"
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-4">
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="text-sm">Active Tenants</span>
+                      <span className="text-sm font-medium">{resourceData?.activeTenants || 0}</span>
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      {resourceData?.tenantGrowthRate > 0 ? "+" : ""}{resourceData?.tenantGrowthRate?.toFixed(1) || "0.0"}% this month
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// Security Dashboard Component
+function SecurityDashboard() {
+  const { data: securityData, isLoading } = useQuery({
+    queryKey: ["/api/super-admin/security"],
+    queryFn: () => superAdminFetch("/api/super-admin/security"),
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Lock className="h-5 w-5" />
+          Security Dashboard
+        </CardTitle>
+        <CardDescription>
+          Failed logins, suspicious activity, and security alerts
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="text-center py-8">Loading security data...</div>
+        ) : (
+          <div className="space-y-6">
+            {/* Security Metrics */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+              <Card>
+                <CardContent className="pt-4">
+                  <div className="flex items-center gap-2">
+                    <XCircle className="h-8 w-8 text-red-500" />
+                    <div>
+                      <div className="text-2xl font-bold" data-testid="security-failed-logins">{securityData?.failedLoginsToday || 0}</div>
+                      <p className="text-xs text-slate-500">Failed Logins Today</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="h-8 w-8 text-yellow-500" />
+                    <div>
+                      <div className="text-2xl font-bold" data-testid="security-suspicious-count">{securityData?.suspiciousActivityCount || 0}</div>
+                      <p className="text-xs text-slate-500">Suspicious Activities</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4">
+                  <div className="flex items-center gap-2">
+                    <Pause className="h-8 w-8 text-orange-500" />
+                    <div>
+                      <div className="text-2xl font-bold" data-testid="security-suspended-users">{securityData?.suspendedUsers || 0}</div>
+                      <p className="text-xs text-slate-500">Suspended Users</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle className="h-8 w-8 text-green-500" />
+                    <div>
+                      <div className="text-2xl font-bold" data-testid="security-active-sessions">{securityData?.activeSessions || 0}</div>
+                      <p className="text-xs text-slate-500">Active Sessions</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Recent Security Events */}
+            {securityData?.recentEvents?.length > 0 && (
+              <div className="space-y-2">
+                <h4 className="font-medium">Recent Security Events</h4>
+                <div className="rounded-md border">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Event</TableHead>
+                        <TableHead>User</TableHead>
+                        <TableHead>IP Address</TableHead>
+                        <TableHead>Time</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {securityData.recentEvents.slice(0, 10).map((event: any, index: number) => (
+                        <TableRow key={index} data-testid={`row-security-event-${index}`}>
+                          <TableCell>
+                            <Badge variant={event.severity === "high" ? "destructive" : event.severity === "medium" ? "secondary" : "outline"}>
+                              {event.type}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>{event.userEmail || "Unknown"}</TableCell>
+                          <TableCell>{event.ipAddress || "N/A"}</TableCell>
+                          <TableCell className="text-sm text-slate-500">
+                            {event.createdAt ? new Date(event.createdAt).toLocaleString() : "N/A"}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// Tenant Isolation Test Component
+function TenantIsolationTest() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [testResults, setTestResults] = useState<any[]>([]);
+  const [isRunning, setIsRunning] = useState(false);
+
+  const runIsolationTest = async () => {
+    setIsRunning(true);
+    try {
+      const result = await superAdminFetch("/api/super-admin/isolation-test", { method: "POST" });
+      setTestResults(result.results || []);
+      toast({
+        title: result.success ? "All tests passed" : "Some tests failed",
+        description: `${result.passedCount}/${result.totalTests} tests passed`,
+        variant: result.success ? "default" : "destructive",
+      });
+    } catch (error: any) {
+      toast({ title: "Failed to run isolation test", description: error.message, variant: "destructive" });
+    } finally {
+      setIsRunning(false);
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5" />
+              Tenant Isolation Verification
+            </CardTitle>
+            <CardDescription>
+              Verify data isolation between tenants
+            </CardDescription>
+          </div>
+          <Button onClick={runIsolationTest} disabled={isRunning} data-testid="button-run-isolation-test">
+            {isRunning ? (
+              <>
+                <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                Running Tests...
+              </>
+            ) : (
+              <>
+                <Play className="h-4 w-4 mr-2" />
+                Run Isolation Tests
+              </>
+            )}
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {testResults.length === 0 ? (
+          <div className="text-center py-8 text-slate-500">
+            Click "Run Isolation Tests" to verify tenant data isolation
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+              <Card>
+                <CardContent className="pt-4">
+                  <div className="text-2xl font-bold" data-testid="isolation-total-tests">{testResults.length}</div>
+                  <p className="text-xs text-slate-500">Total Tests</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4">
+                  <div className="text-2xl font-bold text-green-600" data-testid="isolation-passed-tests">
+                    {testResults.filter(t => t.status === "passed").length}
+                  </div>
+                  <p className="text-xs text-slate-500">Passed</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4">
+                  <div className="text-2xl font-bold text-red-600" data-testid="isolation-failed-tests">
+                    {testResults.filter(t => t.status === "failed").length}
+                  </div>
+                  <p className="text-xs text-slate-500">Failed</p>
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="rounded-md border">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Test Name</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Details</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {testResults.map((test: any, index: number) => (
+                    <TableRow key={index} data-testid={`row-isolation-test-${index}`}>
+                      <TableCell className="font-medium">{test.name}</TableCell>
+                      <TableCell>
+                        {test.status === "passed" ? (
+                          <Badge variant="default" className="bg-green-100 text-green-800">
+                            <CheckCircle className="h-3 w-3 mr-1" />
+                            Passed
+                          </Badge>
+                        ) : (
+                          <Badge variant="destructive">
+                            <XCircle className="h-3 w-3 mr-1" />
+                            Failed
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-sm text-slate-500">{test.details}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
