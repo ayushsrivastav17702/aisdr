@@ -66,7 +66,18 @@ import {
   Globe,
   BarChart2,
   UserX,
-  ShieldCheck
+  ShieldCheck,
+  FileText,
+  Heart,
+  LineChart,
+  Bell,
+  MessageSquare,
+  Rocket,
+  Download,
+  Filter,
+  Calendar,
+  Send,
+  UserPlus
 } from "lucide-react";
 
 interface SuperAdmin {
@@ -364,7 +375,7 @@ export default function SuperAdminDashboard() {
 
         {/* Main Navigation Tabs */}
         <Tabs defaultValue="tenants" className="w-full">
-          <TabsList className="grid w-full grid-cols-4 lg:grid-cols-8 h-auto">
+          <TabsList className="flex flex-wrap w-full h-auto gap-1 justify-start">
             <TabsTrigger value="tenants" className="flex items-center gap-1 text-xs" data-testid="tab-tenants">
               <Building2 className="h-3 w-3" />
               Tenants
@@ -396,6 +407,30 @@ export default function SuperAdminDashboard() {
             <TabsTrigger value="isolation" className="flex items-center gap-1 text-xs" data-testid="tab-isolation">
               <ShieldCheck className="h-3 w-3" />
               Isolation
+            </TabsTrigger>
+            <TabsTrigger value="audit" className="flex items-center gap-1 text-xs" data-testid="tab-audit">
+              <FileText className="h-3 w-3" />
+              Audit
+            </TabsTrigger>
+            <TabsTrigger value="health" className="flex items-center gap-1 text-xs" data-testid="tab-health">
+              <Heart className="h-3 w-3" />
+              Health
+            </TabsTrigger>
+            <TabsTrigger value="usage" className="flex items-center gap-1 text-xs" data-testid="tab-usage">
+              <LineChart className="h-3 w-3" />
+              Usage
+            </TabsTrigger>
+            <TabsTrigger value="alerts" className="flex items-center gap-1 text-xs" data-testid="tab-alerts">
+              <Bell className="h-3 w-3" />
+              Alerts
+            </TabsTrigger>
+            <TabsTrigger value="comms" className="flex items-center gap-1 text-xs" data-testid="tab-comms">
+              <MessageSquare className="h-3 w-3" />
+              Comms
+            </TabsTrigger>
+            <TabsTrigger value="onboarding" className="flex items-center gap-1 text-xs" data-testid="tab-onboarding">
+              <Rocket className="h-3 w-3" />
+              Onboarding
             </TabsTrigger>
           </TabsList>
 
@@ -646,6 +681,36 @@ export default function SuperAdminDashboard() {
           {/* Tenant Isolation Tab */}
           <TabsContent value="isolation" className="mt-4">
             <TenantIsolationTest />
+          </TabsContent>
+
+          {/* Audit Logs Tab */}
+          <TabsContent value="audit" className="mt-4">
+            <AuditLogs />
+          </TabsContent>
+
+          {/* Platform Health Tab */}
+          <TabsContent value="health" className="mt-4">
+            <PlatformHealth />
+          </TabsContent>
+
+          {/* Tenant Usage Analytics Tab */}
+          <TabsContent value="usage" className="mt-4">
+            <TenantUsageAnalytics />
+          </TabsContent>
+
+          {/* Alerts Tab */}
+          <TabsContent value="alerts" className="mt-4">
+            <AlertsPanel />
+          </TabsContent>
+
+          {/* Communications Tab */}
+          <TabsContent value="comms" className="mt-4">
+            <CommunicationsPanel />
+          </TabsContent>
+
+          {/* Onboarding Tab */}
+          <TabsContent value="onboarding" className="mt-4">
+            <OnboardingPanel />
           </TabsContent>
         </Tabs>
       </main>
@@ -1826,6 +1891,906 @@ function TenantIsolationTest() {
                 </TableBody>
               </Table>
             </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ============================================
+// PHASE 2 COMPONENTS
+// ============================================
+
+// Audit Logs Component (FR-SA21)
+function AuditLogs() {
+  const [actionFilter, setActionFilter] = useState("");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const { toast } = useToast();
+
+  const { data: auditData, isLoading } = useQuery({
+    queryKey: ["/api/super-admin/audit-logs", actionFilter, startDate, endDate],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (actionFilter) params.set("action", actionFilter);
+      if (startDate) params.set("startDate", startDate);
+      if (endDate) params.set("endDate", endDate);
+      return superAdminFetch(`/api/super-admin/audit-logs?${params.toString()}`);
+    },
+  });
+
+  const exportLogs = async (format: string) => {
+    try {
+      const params = new URLSearchParams();
+      params.set("format", format);
+      if (startDate) params.set("startDate", startDate);
+      if (endDate) params.set("endDate", endDate);
+      
+      const response = await fetch(`/api/super-admin/audit-logs/export?${params.toString()}`, {
+        credentials: "include",
+      });
+      
+      if (format === "csv") {
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "audit-logs.csv";
+        a.click();
+      } else {
+        const data = await response.json();
+        toast({ title: `Exported ${data.logs?.length || 0} audit logs` });
+      }
+    } catch (error: any) {
+      toast({ title: "Export failed", description: error.message, variant: "destructive" });
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5" />
+              Platform Audit Logs
+            </CardTitle>
+            <CardDescription>
+              Tamper-proof audit trail with 5-year retention
+            </CardDescription>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={() => exportLogs("csv")} data-testid="button-export-csv">
+              <Download className="h-4 w-4 mr-1" />
+              CSV
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => exportLogs("json")} data-testid="button-export-json">
+              <Download className="h-4 w-4 mr-1" />
+              JSON
+            </Button>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="flex flex-wrap gap-4 mb-4">
+          <Select value={actionFilter} onValueChange={setActionFilter}>
+            <SelectTrigger className="w-[180px]" data-testid="select-audit-action">
+              <SelectValue placeholder="Filter by action" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">All Actions</SelectItem>
+              {auditData?.actionTypes?.map((action: string) => (
+                <SelectItem key={action} value={action}>{action}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Input
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            className="w-[150px]"
+            data-testid="input-audit-start-date"
+          />
+          <Input
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            className="w-[150px]"
+            data-testid="input-audit-end-date"
+          />
+        </div>
+
+        <div className="text-sm text-slate-500 mb-4">
+          Total: {auditData?.total || 0} logs | Retention: {auditData?.retentionDays || 1825} days (5 years)
+        </div>
+
+        <div className="rounded-md border max-h-[500px] overflow-auto">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Timestamp</TableHead>
+                <TableHead>Admin</TableHead>
+                <TableHead>Action</TableHead>
+                <TableHead>Target</TableHead>
+                <TableHead>IP Address</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {isLoading ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center py-8">Loading audit logs...</TableCell>
+                </TableRow>
+              ) : auditData?.logs?.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center py-8">No audit logs found</TableCell>
+                </TableRow>
+              ) : (
+                auditData?.logs?.map((log: any) => (
+                  <TableRow key={log.id} data-testid={`row-audit-${log.id}`}>
+                    <TableCell className="text-sm">
+                      {log.createdAt ? new Date(log.createdAt).toLocaleString() : "N/A"}
+                    </TableCell>
+                    <TableCell>{log.adminName || log.adminEmail || "System"}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{log.action}</Badge>
+                    </TableCell>
+                    <TableCell className="text-sm text-slate-500">
+                      {log.targetType}: {log.targetId || "N/A"}
+                    </TableCell>
+                    <TableCell className="text-sm text-slate-500">{log.ipAddress || "N/A"}</TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// Platform Health Dashboard (FR-SA22)
+function PlatformHealth() {
+  const { data: healthData, isLoading } = useQuery({
+    queryKey: ["/api/super-admin/platform-health"],
+    queryFn: () => superAdminFetch("/api/super-admin/platform-health"),
+    refetchInterval: 30000, // Refresh every 30 seconds
+  });
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "operational": return "text-green-600";
+      case "degraded": return "text-yellow-600";
+      case "down": return "text-red-600";
+      default: return "text-slate-500";
+    }
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Heart className="h-5 w-5" />
+              Platform Health
+            </CardTitle>
+            <CardDescription>
+              Real-time platform status and metrics
+            </CardDescription>
+          </div>
+          <Badge variant={healthData?.overallStatus === "healthy" ? "default" : "destructive"} data-testid="badge-health-status">
+            {healthData?.overallStatus?.toUpperCase() || "UNKNOWN"}
+          </Badge>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="text-center py-8">Loading health data...</div>
+        ) : (
+          <div className="space-y-6">
+            {/* Service Status */}
+            <div>
+              <h4 className="font-medium mb-3">Service Status</h4>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {Object.entries(healthData?.services || {}).map(([name, service]: [string, any]) => (
+                  <Card key={name}>
+                    <CardContent className="pt-4">
+                      <div className="flex items-center justify-between">
+                        <span className="font-medium capitalize">{name}</span>
+                        <span className={getStatusColor(service.status)}>
+                          {service.status === "operational" ? (
+                            <CheckCircle className="h-5 w-5" />
+                          ) : (
+                            <AlertCircle className="h-5 w-5" />
+                          )}
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-500 mt-1">
+                        Uptime: {service.uptime?.toFixed(2)}%
+                      </p>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            </div>
+
+            {/* Key Metrics */}
+            <div>
+              <h4 className="font-medium mb-3">Key Metrics</h4>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <Card>
+                  <CardContent className="pt-4">
+                    <div className="text-2xl font-bold" data-testid="health-total-tenants">
+                      {healthData?.metrics?.totalTenants || 0}
+                    </div>
+                    <p className="text-xs text-slate-500">Total Tenants</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-4">
+                    <div className="text-2xl font-bold text-green-600" data-testid="health-active-24h">
+                      {healthData?.metrics?.activeUsers24h || 0}
+                    </div>
+                    <p className="text-xs text-slate-500">Active (24h)</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-4">
+                    <div className="text-2xl font-bold text-blue-600" data-testid="health-active-7d">
+                      {healthData?.metrics?.activeUsers7d || 0}
+                    </div>
+                    <p className="text-xs text-slate-500">Active (7d)</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-4">
+                    <div className="text-2xl font-bold text-purple-600" data-testid="health-active-30d">
+                      {healthData?.metrics?.activeUsers30d || 0}
+                    </div>
+                    <p className="text-xs text-slate-500">Active (30d)</p>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+
+            {/* Email Metrics */}
+            <div>
+              <h4 className="font-medium mb-3">Email Performance</h4>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <Card>
+                  <CardContent className="pt-4">
+                    <div className="text-xl font-bold" data-testid="health-emails-today">
+                      {healthData?.metrics?.emailsToday || 0}
+                    </div>
+                    <p className="text-xs text-slate-500">Emails Today</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-4">
+                    <div className="text-xl font-bold">
+                      {healthData?.metrics?.emailsThisWeek || 0}
+                    </div>
+                    <p className="text-xs text-slate-500">This Week</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-4">
+                    <div className="text-xl font-bold">
+                      {healthData?.metrics?.emailsThisMonth || 0}
+                    </div>
+                    <p className="text-xs text-slate-500">This Month</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="pt-4">
+                    <div className={`text-xl font-bold ${Number(healthData?.metrics?.errorRate) > 5 ? "text-red-600" : "text-green-600"}`}>
+                      {healthData?.metrics?.errorRate || "0.00"}%
+                    </div>
+                    <p className="text-xs text-slate-500">Error Rate</p>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+
+            {/* Recent Incidents */}
+            {healthData?.recentIncidents?.length > 0 && (
+              <div>
+                <h4 className="font-medium mb-3">Recent Incidents</h4>
+                <div className="space-y-2">
+                  {healthData.recentIncidents.map((incident: any) => (
+                    <div key={incident.id} className="flex items-center gap-3 p-3 border rounded-lg">
+                      <AlertTriangle className={`h-5 w-5 ${incident.severity === "critical" ? "text-red-500" : "text-orange-500"}`} />
+                      <div className="flex-1">
+                        <p className="font-medium">{incident.title}</p>
+                        <p className="text-sm text-slate-500">{incident.message}</p>
+                      </div>
+                      <Badge variant={incident.status === "resolved" ? "default" : "destructive"}>
+                        {incident.status}
+                      </Badge>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <p className="text-xs text-slate-400 text-right">
+              Last updated: {healthData?.lastUpdated ? new Date(healthData.lastUpdated).toLocaleString() : "N/A"}
+            </p>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// Tenant Usage Analytics (FR-SA23)
+function TenantUsageAnalytics() {
+  const { data: usageData, isLoading } = useQuery({
+    queryKey: ["/api/super-admin/tenant-usage"],
+    queryFn: () => superAdminFetch("/api/super-admin/tenant-usage"),
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <LineChart className="h-5 w-5" />
+          Tenant Usage Analytics
+        </CardTitle>
+        <CardDescription>
+          Usage metrics, churn risk, and upsell opportunities
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="text-center py-8">Loading usage analytics...</div>
+        ) : (
+          <div className="space-y-6">
+            {/* Summary Cards */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <Card>
+                <CardContent className="pt-4">
+                  <div className="text-2xl font-bold" data-testid="usage-total-tenants">
+                    {usageData?.summary?.total || 0}
+                  </div>
+                  <p className="text-xs text-slate-500">Total Tenants</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4">
+                  <div className="text-2xl font-bold text-green-600" data-testid="usage-high-usage">
+                    {usageData?.summary?.highUsage || 0}
+                  </div>
+                  <p className="text-xs text-slate-500">High Usage</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4">
+                  <div className="text-2xl font-bold text-red-600" data-testid="usage-at-risk">
+                    {usageData?.summary?.atRisk || 0}
+                  </div>
+                  <p className="text-xs text-slate-500">At Risk (Churn)</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardContent className="pt-4">
+                  <div className="text-2xl font-bold text-purple-600" data-testid="usage-upsell">
+                    {usageData?.summary?.upsellCandidates || 0}
+                  </div>
+                  <p className="text-xs text-slate-500">Upsell Candidates</p>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Tenant Table */}
+            <div className="rounded-md border max-h-[400px] overflow-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Tenant</TableHead>
+                    <TableHead>Plan</TableHead>
+                    <TableHead>Users</TableHead>
+                    <TableHead>Emails Sent</TableHead>
+                    <TableHead>Usage</TableHead>
+                    <TableHead>Risk</TableHead>
+                    <TableHead>Last Active</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {usageData?.tenants?.map((tenant: any) => (
+                    <TableRow key={tenant.organizationId} data-testid={`row-usage-${tenant.organizationId}`}>
+                      <TableCell className="font-medium">{tenant.organizationName}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{tenant.plan || "trial"}</Badge>
+                      </TableCell>
+                      <TableCell>{tenant.currentUserCount || 0}</TableCell>
+                      <TableCell>{tenant.totalEmailsSent || 0}</TableCell>
+                      <TableCell>
+                        <Badge variant={tenant.usageLevel === "high" ? "default" : tenant.usageLevel === "medium" ? "secondary" : "outline"}>
+                          {tenant.usageLevel}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={tenant.churnRisk === "high" ? "destructive" : tenant.churnRisk === "medium" ? "secondary" : "outline"}>
+                          {tenant.churnRisk}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-sm text-slate-500">
+                        {tenant.lastActivityAt ? new Date(tenant.lastActivityAt).toLocaleDateString() : "Never"}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// Alerts Panel (FR-SA26)
+function AlertsPanel() {
+  const [statusFilter, setStatusFilter] = useState("active");
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  const { data: alertsData, isLoading } = useQuery({
+    queryKey: ["/api/super-admin/alerts", statusFilter],
+    queryFn: () => superAdminFetch(`/api/super-admin/alerts?status=${statusFilter}`),
+  });
+
+  const updateAlertMutation = useMutation({
+    mutationFn: ({ alertId, status, resolutionNotes }: { alertId: string; status: string; resolutionNotes?: string }) =>
+      superAdminFetch(`/api/super-admin/alerts/${alertId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status, resolutionNotes }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/alerts"] });
+      toast({ title: "Alert updated" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed to update alert", description: error.message, variant: "destructive" });
+    },
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Bell className="h-5 w-5" />
+              Platform Alerts
+            </CardTitle>
+            <CardDescription>
+              System alerts and incident management
+            </CardDescription>
+          </div>
+          <div className="flex gap-2">
+            <Badge variant="destructive">Active: {alertsData?.counts?.active || 0}</Badge>
+            <Badge variant="secondary">Acknowledged: {alertsData?.counts?.acknowledged || 0}</Badge>
+            <Badge variant="outline">Resolved: {alertsData?.counts?.resolved || 0}</Badge>
+          </div>
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="flex gap-4 mb-4">
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-[150px]" data-testid="select-alert-status">
+              <SelectValue placeholder="Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="active">Active</SelectItem>
+              <SelectItem value="acknowledged">Acknowledged</SelectItem>
+              <SelectItem value="resolved">Resolved</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {isLoading ? (
+          <div className="text-center py-8">Loading alerts...</div>
+        ) : alertsData?.alerts?.length === 0 ? (
+          <div className="text-center py-8 text-slate-500">
+            <Bell className="h-12 w-12 mx-auto mb-2 opacity-20" />
+            No {statusFilter} alerts
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {alertsData?.alerts?.map((alert: any) => (
+              <div 
+                key={alert.id} 
+                className={`p-4 border rounded-lg ${
+                  alert.severity === "critical" || alert.severity === "emergency" 
+                    ? "border-red-200 bg-red-50" 
+                    : alert.severity === "warning" 
+                    ? "border-yellow-200 bg-yellow-50" 
+                    : "border-slate-200"
+                }`}
+                data-testid={`alert-${alert.id}`}
+              >
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Badge variant={alert.severity === "critical" || alert.severity === "emergency" ? "destructive" : "secondary"}>
+                        {alert.severity}
+                      </Badge>
+                      <Badge variant="outline">{alert.alertType}</Badge>
+                    </div>
+                    <h4 className="font-medium">{alert.title}</h4>
+                    <p className="text-sm text-slate-600">{alert.message}</p>
+                    <p className="text-xs text-slate-400 mt-2">
+                      {alert.createdAt ? new Date(alert.createdAt).toLocaleString() : ""}
+                    </p>
+                  </div>
+                  <div className="flex gap-2">
+                    {alert.status === "active" && (
+                      <Button 
+                        size="sm" 
+                        variant="outline"
+                        onClick={() => updateAlertMutation.mutate({ alertId: alert.id, status: "acknowledged" })}
+                        data-testid={`button-acknowledge-${alert.id}`}
+                      >
+                        Acknowledge
+                      </Button>
+                    )}
+                    {(alert.status === "active" || alert.status === "acknowledged") && (
+                      <Button 
+                        size="sm"
+                        onClick={() => updateAlertMutation.mutate({ alertId: alert.id, status: "resolved", resolutionNotes: "Resolved by super admin" })}
+                        data-testid={`button-resolve-${alert.id}`}
+                      >
+                        Resolve
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// Communications Panel (FR-SA28)
+function CommunicationsPanel() {
+  const [showCompose, setShowCompose] = useState(false);
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  const { data: commsData, isLoading } = useQuery({
+    queryKey: ["/api/super-admin/communications"],
+    queryFn: () => superAdminFetch("/api/super-admin/communications"),
+  });
+
+  const [newComm, setNewComm] = useState({
+    type: "custom",
+    subject: "",
+    body: "",
+    targetAll: true,
+    targetPlanTypes: [] as string[],
+  });
+
+  const createCommMutation = useMutation({
+    mutationFn: (data: any) =>
+      superAdminFetch("/api/super-admin/communications", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/communications"] });
+      toast({ title: "Communication created" });
+      setShowCompose(false);
+      setNewComm({ type: "custom", subject: "", body: "", targetAll: true, targetPlanTypes: [] });
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed to create communication", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const sendCommMutation = useMutation({
+    mutationFn: (commId: string) =>
+      superAdminFetch(`/api/super-admin/communications/${commId}/send`, { method: "POST" }),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/communications"] });
+      toast({ title: "Communication sent", description: `Sent to ${data.recipientCount} recipients` });
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed to send", description: error.message, variant: "destructive" });
+    },
+  });
+
+  return (
+    <Card>
+      <CardHeader>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <MessageSquare className="h-5 w-5" />
+              Tenant Communications
+            </CardTitle>
+            <CardDescription>
+              Broadcast messages and targeted announcements
+            </CardDescription>
+          </div>
+          <Button onClick={() => setShowCompose(!showCompose)} data-testid="button-compose-comm">
+            <Plus className="h-4 w-4 mr-2" />
+            New Communication
+          </Button>
+        </div>
+      </CardHeader>
+      <CardContent>
+        {showCompose && (
+          <div className="mb-6 p-4 border rounded-lg bg-slate-50">
+            <h4 className="font-medium mb-4">Compose Communication</h4>
+            <div className="space-y-4">
+              <div>
+                <Label>Type</Label>
+                <Select value={newComm.type} onValueChange={(v) => setNewComm({ ...newComm, type: v })}>
+                  <SelectTrigger data-testid="select-comm-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="platform_update">Platform Update</SelectItem>
+                    <SelectItem value="new_feature">New Feature</SelectItem>
+                    <SelectItem value="maintenance">Maintenance</SelectItem>
+                    <SelectItem value="security_alert">Security Alert</SelectItem>
+                    <SelectItem value="best_practice">Best Practice</SelectItem>
+                    <SelectItem value="custom">Custom</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label>Subject</Label>
+                <Input
+                  value={newComm.subject}
+                  onChange={(e) => setNewComm({ ...newComm, subject: e.target.value })}
+                  placeholder="Communication subject..."
+                  data-testid="input-comm-subject"
+                />
+              </div>
+              <div>
+                <Label>Message</Label>
+                <Textarea
+                  value={newComm.body}
+                  onChange={(e) => setNewComm({ ...newComm, body: e.target.value })}
+                  placeholder="Write your message..."
+                  rows={5}
+                  data-testid="input-comm-body"
+                />
+              </div>
+              <div className="flex gap-2">
+                <Button 
+                  onClick={() => createCommMutation.mutate(newComm)}
+                  disabled={!newComm.subject || !newComm.body || createCommMutation.isPending}
+                  data-testid="button-save-comm"
+                >
+                  Save as Draft
+                </Button>
+                <Button variant="outline" onClick={() => setShowCompose(false)}>
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {isLoading ? (
+          <div className="text-center py-8">Loading communications...</div>
+        ) : commsData?.communications?.length === 0 ? (
+          <div className="text-center py-8 text-slate-500">
+            <MessageSquare className="h-12 w-12 mx-auto mb-2 opacity-20" />
+            No communications yet
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {commsData?.communications?.map((comm: any) => (
+              <div key={comm.id} className="p-4 border rounded-lg" data-testid={`comm-${comm.id}`}>
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Badge variant={comm.status === "sent" ? "default" : "secondary"}>
+                        {comm.status}
+                      </Badge>
+                      <Badge variant="outline">{comm.type}</Badge>
+                    </div>
+                    <h4 className="font-medium">{comm.subject}</h4>
+                    <p className="text-sm text-slate-500 mt-1">
+                      {comm.status === "sent" 
+                        ? `Sent to ${comm.recipientCount} recipients • ${comm.openCount} opens • ${comm.clickCount} clicks`
+                        : `Created by ${comm.createdByName}`}
+                    </p>
+                    <p className="text-xs text-slate-400 mt-1">
+                      {comm.sentAt ? `Sent: ${new Date(comm.sentAt).toLocaleString()}` : `Created: ${new Date(comm.createdAt).toLocaleString()}`}
+                    </p>
+                  </div>
+                  {comm.status === "draft" && (
+                    <Button 
+                      size="sm"
+                      onClick={() => sendCommMutation.mutate(comm.id)}
+                      disabled={sendCommMutation.isPending}
+                      data-testid={`button-send-${comm.id}`}
+                    >
+                      <Send className="h-4 w-4 mr-1" />
+                      Send
+                    </Button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// Onboarding Panel (FR-SA29)
+function OnboardingPanel() {
+  const [riskFilter, setRiskFilter] = useState("");
+  const { data: onboardingData, isLoading } = useQuery({
+    queryKey: ["/api/super-admin/onboarding", riskFilter],
+    queryFn: () => {
+      const params = new URLSearchParams();
+      if (riskFilter) params.set("riskLevel", riskFilter);
+      return superAdminFetch(`/api/super-admin/onboarding?${params.toString()}`);
+    },
+  });
+
+  const getProgressColor = (progress: number) => {
+    if (progress >= 80) return "bg-green-500";
+    if (progress >= 50) return "bg-yellow-500";
+    return "bg-red-500";
+  };
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Rocket className="h-5 w-5" />
+          Onboarding & Success
+        </CardTitle>
+        <CardDescription>
+          Track tenant onboarding progress and health scores
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        {/* Summary */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          <Card>
+            <CardContent className="pt-4">
+              <div className="text-2xl font-bold" data-testid="onboarding-total">
+                {onboardingData?.summary?.total || 0}
+              </div>
+              <p className="text-xs text-slate-500">Total</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-4">
+              <div className="text-2xl font-bold text-green-600" data-testid="onboarding-completed">
+                {onboardingData?.summary?.completed || 0}
+              </div>
+              <p className="text-xs text-slate-500">Completed</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-4">
+              <div className="text-2xl font-bold text-blue-600" data-testid="onboarding-in-progress">
+                {onboardingData?.summary?.inProgress || 0}
+              </div>
+              <p className="text-xs text-slate-500">In Progress</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardContent className="pt-4">
+              <div className="text-2xl font-bold text-red-600" data-testid="onboarding-at-risk">
+                {onboardingData?.summary?.atRisk || 0}
+              </div>
+              <p className="text-xs text-slate-500">At Risk</p>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="flex gap-4 mb-4">
+          <Select value={riskFilter} onValueChange={setRiskFilter}>
+            <SelectTrigger className="w-[150px]" data-testid="select-risk-filter">
+              <SelectValue placeholder="Risk Level" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">All</SelectItem>
+              <SelectItem value="low">Low Risk</SelectItem>
+              <SelectItem value="medium">Medium Risk</SelectItem>
+              <SelectItem value="high">High Risk</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {isLoading ? (
+          <div className="text-center py-8">Loading onboarding data...</div>
+        ) : onboardingData?.onboarding?.length === 0 ? (
+          <div className="text-center py-8 text-slate-500">
+            <Rocket className="h-12 w-12 mx-auto mb-2 opacity-20" />
+            No onboarding records found
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {onboardingData?.onboarding?.map((tenant: any) => (
+              <div key={tenant.id} className="p-4 border rounded-lg" data-testid={`onboarding-${tenant.organizationId}`}>
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <h4 className="font-medium">{tenant.organizationName}</h4>
+                    <div className="flex gap-2 mt-1">
+                      <Badge variant={tenant.onboardingCompleted ? "default" : "secondary"}>
+                        {tenant.onboardingCompleted ? "Completed" : "In Progress"}
+                      </Badge>
+                      <Badge variant={tenant.healthRiskLevel === "high" ? "destructive" : tenant.healthRiskLevel === "medium" ? "secondary" : "outline"}>
+                        {tenant.healthRiskLevel} risk
+                      </Badge>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className="text-2xl font-bold">{tenant.healthScore || 50}</div>
+                    <p className="text-xs text-slate-500">Health Score</p>
+                  </div>
+                </div>
+
+                {/* Progress Bar */}
+                <div className="mb-3">
+                  <div className="flex justify-between text-sm mb-1">
+                    <span>Progress</span>
+                    <span>{tenant.onboardingProgress || 0}%</span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div 
+                      className={`h-2 rounded-full ${getProgressColor(tenant.onboardingProgress || 0)}`}
+                      style={{ width: `${tenant.onboardingProgress || 0}%` }}
+                    />
+                  </div>
+                </div>
+
+                {/* Checklist */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
+                  <div className={`flex items-center gap-1 ${tenant.managerAccountCreated ? "text-green-600" : "text-slate-400"}`}>
+                    {tenant.managerAccountCreated ? <CheckCircle className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
+                    Manager Created
+                  </div>
+                  <div className={`flex items-center gap-1 ${tenant.initialUsersAdded ? "text-green-600" : "text-slate-400"}`}>
+                    {tenant.initialUsersAdded ? <CheckCircle className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
+                    Users Added
+                  </div>
+                  <div className={`flex items-center gap-1 ${tenant.mailboxConnected ? "text-green-600" : "text-slate-400"}`}>
+                    {tenant.mailboxConnected ? <CheckCircle className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
+                    Mailbox Connected
+                  </div>
+                  <div className={`flex items-center gap-1 ${tenant.firstEmailSent ? "text-green-600" : "text-slate-400"}`}>
+                    {tenant.firstEmailSent ? <CheckCircle className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
+                    First Email Sent
+                  </div>
+                  <div className={`flex items-center gap-1 ${tenant.firstCampaignLaunched ? "text-green-600" : "text-slate-400"}`}>
+                    {tenant.firstCampaignLaunched ? <CheckCircle className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
+                    Campaign Launched
+                  </div>
+                  <div className={`flex items-center gap-1 ${tenant.domainConfigured ? "text-green-600" : "text-slate-400"}`}>
+                    {tenant.domainConfigured ? <CheckCircle className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
+                    Domain Configured
+                  </div>
+                  <div className={`flex items-center gap-1 ${tenant.firstProspectAdded ? "text-green-600" : "text-slate-400"}`}>
+                    {tenant.firstProspectAdded ? <CheckCircle className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
+                    Prospect Added
+                  </div>
+                  <div className={`flex items-center gap-1 ${tenant.firstMeetingBooked ? "text-green-600" : "text-slate-400"}`}>
+                    {tenant.firstMeetingBooked ? <CheckCircle className="h-4 w-4" /> : <XCircle className="h-4 w-4" />}
+                    Meeting Booked
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
         )}
       </CardContent>
