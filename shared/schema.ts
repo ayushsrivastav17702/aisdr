@@ -2582,6 +2582,254 @@ export const tenantActivityTimeline = pgTable("tenant_activity_timeline", {
 }));
 
 // ============================================
+// PLATFORM ALERTS - FR-SA26
+// ============================================
+
+export const platformAlertSeverityEnum = pgEnum("platform_alert_severity", ["info", "warning", "critical", "emergency"]);
+export const platformAlertStatusEnum = pgEnum("platform_alert_status", ["active", "acknowledged", "resolved", "snoozed"]);
+
+export const platformAlerts = pgTable("platform_alerts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  
+  // Alert type and details
+  alertType: text("alert_type").notNull(), // system_downtime, performance_degradation, security_incident, failed_backup, tenant_issue, billing_issue, resource_exhaustion
+  severity: platformAlertSeverityEnum("severity").notNull().default("warning"),
+  status: platformAlertStatusEnum("status").notNull().default("active"),
+  
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+  details: jsonb("details"),
+  
+  // Source and target
+  sourceSystem: text("source_system"), // api, email, database, security, billing
+  affectedTenantId: varchar("affected_tenant_id").references(() => organizations.id, { onDelete: "set null" }),
+  
+  // Resolution tracking
+  acknowledgedBy: varchar("acknowledged_by").references(() => superAdmins.id),
+  acknowledgedAt: timestamp("acknowledged_at"),
+  resolvedBy: varchar("resolved_by").references(() => superAdmins.id),
+  resolvedAt: timestamp("resolved_at"),
+  resolutionNotes: text("resolution_notes"),
+  
+  // Notification tracking
+  notificationsSent: jsonb("notifications_sent").$type<{channel: string; sentAt: string; recipient: string}[]>().default(sql`'[]'::jsonb`),
+  
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  expiresAt: timestamp("expires_at"),
+}, (table) => ({
+  alertTypeIdx: index("platform_alerts_alert_type_idx").on(table.alertType),
+  severityIdx: index("platform_alerts_severity_idx").on(table.severity),
+  statusIdx: index("platform_alerts_status_idx").on(table.status),
+  createdAtIdx: index("platform_alerts_created_at_idx").on(table.createdAt),
+}));
+
+// Alert configurations - what triggers alerts
+export const alertConfigurations = pgTable("alert_configurations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  
+  alertType: text("alert_type").notNull().unique(),
+  enabled: boolean("enabled").notNull().default(true),
+  
+  // Thresholds
+  thresholds: jsonb("thresholds").$type<{
+    errorRatePercent?: number;
+    responseTimeMs?: number;
+    cpuPercent?: number;
+    memoryPercent?: number;
+    diskPercent?: number;
+    failedLoginCount?: number;
+    bounceRatePercent?: number;
+  }>(),
+  
+  // Notification channels
+  emailNotifications: boolean("email_notifications").default(true),
+  emailRecipients: text("email_recipients").array(),
+  
+  // Cooldown to prevent spam
+  cooldownMinutes: integer("cooldown_minutes").default(30),
+  lastTriggeredAt: timestamp("last_triggered_at"),
+  
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+// ============================================
+// TENANT COMMUNICATIONS - FR-SA28
+// ============================================
+
+export const tenantCommunicationTypeEnum = pgEnum("tenant_communication_type", ["platform_update", "new_feature", "maintenance", "security_alert", "best_practice", "custom"]);
+export const tenantCommunicationStatusEnum = pgEnum("tenant_communication_status", ["draft", "scheduled", "sent", "cancelled"]);
+
+export const tenantCommunications = pgTable("tenant_communications", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  
+  // Communication details
+  type: tenantCommunicationTypeEnum("type").notNull().default("custom"),
+  status: tenantCommunicationStatusEnum("status").notNull().default("draft"),
+  
+  subject: text("subject").notNull(),
+  body: text("body").notNull(), // HTML content
+  
+  // Targeting
+  targetAll: boolean("target_all").default(true),
+  targetPlanTypes: text("target_plan_types").array(), // trial, starter, growth, enterprise
+  targetIndustries: text("target_industries").array(),
+  targetUsageLevels: text("target_usage_levels").array(), // low, medium, high
+  targetTenantIds: text("target_tenant_ids").array(), // Specific tenant IDs
+  
+  // Scheduling
+  scheduledAt: timestamp("scheduled_at"),
+  sentAt: timestamp("sent_at"),
+  
+  // Tracking
+  createdBy: varchar("created_by").references(() => superAdmins.id),
+  recipientCount: integer("recipient_count").default(0),
+  openCount: integer("open_count").default(0),
+  clickCount: integer("click_count").default(0),
+  
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  statusIdx: index("tenant_communications_status_idx").on(table.status),
+  typeIdx: index("tenant_communications_type_idx").on(table.type),
+  createdAtIdx: index("tenant_communications_created_at_idx").on(table.createdAt),
+}));
+
+// Track individual communication recipients
+export const communicationRecipients = pgTable("communication_recipients", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  communicationId: varchar("communication_id").notNull().references(() => tenantCommunications.id, { onDelete: "cascade" }),
+  organizationId: varchar("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  recipientEmail: text("recipient_email").notNull(),
+  
+  // Tracking
+  sentAt: timestamp("sent_at"),
+  openedAt: timestamp("opened_at"),
+  clickedAt: timestamp("clicked_at"),
+  optedOut: boolean("opted_out").default(false),
+  
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  commIdIdx: index("communication_recipients_comm_id_idx").on(table.communicationId),
+  orgIdIdx: index("communication_recipients_org_id_idx").on(table.organizationId),
+}));
+
+// ============================================
+// TENANT ONBOARDING - FR-SA29
+// ============================================
+
+export const tenantOnboarding = pgTable("tenant_onboarding", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }).unique(),
+  
+  // Onboarding checklist items
+  managerAccountCreated: boolean("manager_account_created").default(false),
+  managerAccountCreatedAt: timestamp("manager_account_created_at"),
+  
+  initialUsersAdded: boolean("initial_users_added").default(false),
+  initialUsersAddedAt: timestamp("initial_users_added_at"),
+  usersAddedCount: integer("users_added_count").default(0),
+  
+  firstCampaignLaunched: boolean("first_campaign_launched").default(false),
+  firstCampaignLaunchedAt: timestamp("first_campaign_launched_at"),
+  
+  domainConfigured: boolean("domain_configured").default(false),
+  domainConfiguredAt: timestamp("domain_configured_at"),
+  
+  firstMeetingBooked: boolean("first_meeting_booked").default(false),
+  firstMeetingBookedAt: timestamp("first_meeting_booked_at"),
+  
+  firstProspectAdded: boolean("first_prospect_added").default(false),
+  firstProspectAddedAt: timestamp("first_prospect_added_at"),
+  
+  firstEmailSent: boolean("first_email_sent").default(false),
+  firstEmailSentAt: timestamp("first_email_sent_at"),
+  
+  mailboxConnected: boolean("mailbox_connected").default(false),
+  mailboxConnectedAt: timestamp("mailbox_connected_at"),
+  
+  // Progress tracking
+  onboardingProgress: integer("onboarding_progress").default(0), // 0-100
+  onboardingCompleted: boolean("onboarding_completed").default(false),
+  onboardingCompletedAt: timestamp("onboarding_completed_at"),
+  
+  // Success team
+  successManagerId: varchar("success_manager_id").references(() => superAdmins.id),
+  successManagerAssignedAt: timestamp("success_manager_assigned_at"),
+  
+  // Health score (0-100)
+  healthScore: integer("health_score").default(50),
+  healthScoreUpdatedAt: timestamp("health_score_updated_at"),
+  healthRiskLevel: text("health_risk_level").default("medium"), // low, medium, high, critical
+  
+  // Notes
+  notes: text("notes"),
+  
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  orgIdIdx: index("tenant_onboarding_org_id_idx").on(table.organizationId),
+  healthScoreIdx: index("tenant_onboarding_health_score_idx").on(table.healthScore),
+  onboardingProgressIdx: index("tenant_onboarding_progress_idx").on(table.onboardingProgress),
+}));
+
+// ============================================
+// PRODUCT ANALYTICS - FR-SA25
+// ============================================
+
+export const featureUsageTracking = pgTable("feature_usage_tracking", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  
+  featureName: text("feature_name").notNull(),
+  organizationId: varchar("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "set null" }),
+  
+  // Usage metrics
+  usageCount: integer("usage_count").default(1),
+  lastUsedAt: timestamp("last_used_at").notNull().defaultNow(),
+  
+  // Aggregation period
+  periodStart: timestamp("period_start").notNull(),
+  periodEnd: timestamp("period_end").notNull(),
+  
+  // Additional context
+  metadata: jsonb("metadata"),
+  
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  featureIdx: index("feature_usage_tracking_feature_idx").on(table.featureName),
+  orgIdIdx: index("feature_usage_tracking_org_id_idx").on(table.organizationId),
+  periodIdx: index("feature_usage_tracking_period_idx").on(table.periodStart, table.periodEnd),
+}));
+
+// Platform-wide feature analytics aggregation
+export const platformFeatureAnalytics = pgTable("platform_feature_analytics", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  
+  featureName: text("feature_name").notNull(),
+  
+  // Adoption metrics
+  totalUsageCount: integer("total_usage_count").default(0),
+  uniqueUsersCount: integer("unique_users_count").default(0),
+  uniqueTenantsCount: integer("unique_tenants_count").default(0),
+  adoptionRate: real("adoption_rate").default(0), // Percentage of tenants using feature
+  
+  // Engagement
+  avgUsagePerTenant: real("avg_usage_per_tenant").default(0),
+  avgUsagePerUser: real("avg_usage_per_user").default(0),
+  
+  // Time period
+  periodType: text("period_type").notNull(), // daily, weekly, monthly
+  periodStart: timestamp("period_start").notNull(),
+  periodEnd: timestamp("period_end").notNull(),
+  
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  featureIdx: index("platform_feature_analytics_feature_idx").on(table.featureName),
+  periodIdx: index("platform_feature_analytics_period_idx").on(table.periodType, table.periodStart),
+}));
+
+// ============================================
 // SUPER ADMIN TYPES
 // ============================================
 
@@ -2653,6 +2901,51 @@ export const insertManagerActivityLogSchema = createInsertSchema(managerActivity
 });
 
 export const insertTenantActivityTimelineSchema = createInsertSchema(tenantActivityTimeline).omit({
+  id: true,
+  createdAt: true,
+});
+
+// Phase 2 Types
+export type PlatformAlert = typeof platformAlerts.$inferSelect;
+export type InsertPlatformAlert = typeof platformAlerts.$inferInsert;
+export type AlertConfiguration = typeof alertConfigurations.$inferSelect;
+export type InsertAlertConfiguration = typeof alertConfigurations.$inferInsert;
+export type TenantCommunication = typeof tenantCommunications.$inferSelect;
+export type InsertTenantCommunication = typeof tenantCommunications.$inferInsert;
+export type CommunicationRecipient = typeof communicationRecipients.$inferSelect;
+export type InsertCommunicationRecipient = typeof communicationRecipients.$inferInsert;
+export type TenantOnboarding = typeof tenantOnboarding.$inferSelect;
+export type InsertTenantOnboarding = typeof tenantOnboarding.$inferInsert;
+export type FeatureUsageTracking = typeof featureUsageTracking.$inferSelect;
+export type InsertFeatureUsageTracking = typeof featureUsageTracking.$inferInsert;
+export type PlatformFeatureAnalytics = typeof platformFeatureAnalytics.$inferSelect;
+export type InsertPlatformFeatureAnalytics = typeof platformFeatureAnalytics.$inferInsert;
+
+// Phase 2 Schemas
+export const insertPlatformAlertSchema = createInsertSchema(platformAlerts).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertAlertConfigurationSchema = createInsertSchema(alertConfigurations).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertTenantCommunicationSchema = createInsertSchema(tenantCommunications).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertTenantOnboardingSchema = createInsertSchema(tenantOnboarding).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertFeatureUsageTrackingSchema = createInsertSchema(featureUsageTracking).omit({
   id: true,
   createdAt: true,
 });
