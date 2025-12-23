@@ -91,6 +91,14 @@ Frontend and backend use these consistent camelCase keys matching Drizzle schema
 - super_admins, super_admin_sessions, super_admin_audit_log
 - tenant_feature_flags, tenant_configuration, manager_accounts
 
+### Phase 2 Features (Dashboard Tabs)
+- **FR-SA21 Audit Logs**: Tamper-proof audit trail with 5-year retention, CSV/JSON export, filtering by action/date
+- **FR-SA22 Platform Health**: Real-time service status with 30-second auto-refresh, key metrics, email performance tracking
+- **FR-SA23 Tenant Usage Analytics**: Usage metrics per tenant, churn risk detection, upsell candidate identification
+- **FR-SA26 Alerts Panel**: System alerts with acknowledge/resolve workflow, severity-based styling
+- **FR-SA28 Communications**: Broadcast messaging with compose form, draft management, send functionality
+- **FR-SA29 Onboarding**: Tenant onboarding progress tracking with health scores and checklists
+
 ### Test Super Admin Account
 - Email: admin@increff.com
 - Password: SuperAdmin123!

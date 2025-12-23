@@ -1920,7 +1920,10 @@ function AuditLogs() {
     },
   });
 
+  const [isExporting, setIsExporting] = useState(false);
+  
   const exportLogs = async (format: string) => {
+    setIsExporting(true);
     try {
       const params = new URLSearchParams();
       params.set("format", format);
@@ -1931,6 +1934,10 @@ function AuditLogs() {
         credentials: "include",
       });
       
+      if (!response.ok) {
+        throw new Error(`Export failed with status ${response.status}`);
+      }
+      
       if (format === "csv") {
         const blob = await response.blob();
         const url = URL.createObjectURL(blob);
@@ -1938,12 +1945,16 @@ function AuditLogs() {
         a.href = url;
         a.download = "audit-logs.csv";
         a.click();
+        URL.revokeObjectURL(url);
+        toast({ title: "CSV exported successfully" });
       } else {
         const data = await response.json();
         toast({ title: `Exported ${data.logs?.length || 0} audit logs` });
       }
     } catch (error: any) {
       toast({ title: "Export failed", description: error.message, variant: "destructive" });
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -1961,12 +1972,12 @@ function AuditLogs() {
             </CardDescription>
           </div>
           <div className="flex gap-2">
-            <Button variant="outline" size="sm" onClick={() => exportLogs("csv")} data-testid="button-export-csv">
-              <Download className="h-4 w-4 mr-1" />
+            <Button variant="outline" size="sm" onClick={() => exportLogs("csv")} disabled={isExporting} data-testid="button-export-csv">
+              {isExporting ? <RefreshCw className="h-4 w-4 mr-1 animate-spin" /> : <Download className="h-4 w-4 mr-1" />}
               CSV
             </Button>
-            <Button variant="outline" size="sm" onClick={() => exportLogs("json")} data-testid="button-export-json">
-              <Download className="h-4 w-4 mr-1" />
+            <Button variant="outline" size="sm" onClick={() => exportLogs("json")} disabled={isExporting} data-testid="button-export-json">
+              {isExporting ? <RefreshCw className="h-4 w-4 mr-1 animate-spin" /> : <Download className="h-4 w-4 mr-1" />}
               JSON
             </Button>
           </div>
@@ -1974,12 +1985,12 @@ function AuditLogs() {
       </CardHeader>
       <CardContent>
         <div className="flex flex-wrap gap-4 mb-4">
-          <Select value={actionFilter} onValueChange={setActionFilter}>
+          <Select value={actionFilter || "all"} onValueChange={(v) => setActionFilter(v === "all" ? "" : v)}>
             <SelectTrigger className="w-[180px]" data-testid="select-audit-action">
               <SelectValue placeholder="Filter by action" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All Actions</SelectItem>
+              <SelectItem value="all">All Actions</SelectItem>
               {auditData?.actionTypes?.map((action: string) => (
                 <SelectItem key={action} value={action}>{action}</SelectItem>
               ))}
@@ -2052,19 +2063,24 @@ function AuditLogs() {
 
 // Platform Health Dashboard (FR-SA22)
 function PlatformHealth() {
-  const { data: healthData, isLoading } = useQuery({
+  const { data: healthData, isLoading, isError, error } = useQuery({
     queryKey: ["/api/super-admin/platform-health"],
     queryFn: () => superAdminFetch("/api/super-admin/platform-health"),
     refetchInterval: 30000, // Refresh every 30 seconds
   });
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status: string | undefined) => {
     switch (status) {
       case "operational": return "text-green-600";
       case "degraded": return "text-yellow-600";
       case "down": return "text-red-600";
       default: return "text-slate-500";
     }
+  };
+  
+  const formatUptime = (uptime: number | undefined | null) => {
+    if (uptime === undefined || uptime === null) return "N/A";
+    return `${uptime.toFixed(2)}%`;
   };
 
   return (
@@ -2088,6 +2104,12 @@ function PlatformHealth() {
       <CardContent>
         {isLoading ? (
           <div className="text-center py-8">Loading health data...</div>
+        ) : isError ? (
+          <div className="text-center py-8 text-red-500">
+            <AlertCircle className="h-12 w-12 mx-auto mb-2" />
+            <p>Failed to load health data</p>
+            <p className="text-sm text-slate-500">{(error as Error)?.message || "Unknown error"}</p>
+          </div>
         ) : (
           <div className="space-y-6">
             {/* Service Status */}
@@ -2099,8 +2121,8 @@ function PlatformHealth() {
                     <CardContent className="pt-4">
                       <div className="flex items-center justify-between">
                         <span className="font-medium capitalize">{name}</span>
-                        <span className={getStatusColor(service.status)}>
-                          {service.status === "operational" ? (
+                        <span className={getStatusColor(service?.status)}>
+                          {service?.status === "operational" ? (
                             <CheckCircle className="h-5 w-5" />
                           ) : (
                             <AlertCircle className="h-5 w-5" />
@@ -2108,7 +2130,7 @@ function PlatformHealth() {
                         </span>
                       </div>
                       <p className="text-xs text-slate-500 mt-1">
-                        Uptime: {service.uptime?.toFixed(2)}%
+                        Uptime: {formatUptime(service?.uptime)}
                       </p>
                     </CardContent>
                   </Card>
@@ -2227,7 +2249,7 @@ function PlatformHealth() {
 
 // Tenant Usage Analytics (FR-SA23)
 function TenantUsageAnalytics() {
-  const { data: usageData, isLoading } = useQuery({
+  const { data: usageData, isLoading, isError, error } = useQuery({
     queryKey: ["/api/super-admin/tenant-usage"],
     queryFn: () => superAdminFetch("/api/super-admin/tenant-usage"),
   });
@@ -2246,6 +2268,12 @@ function TenantUsageAnalytics() {
       <CardContent>
         {isLoading ? (
           <div className="text-center py-8">Loading usage analytics...</div>
+        ) : isError ? (
+          <div className="text-center py-8 text-red-500">
+            <AlertCircle className="h-12 w-12 mx-auto mb-2" />
+            <p>Failed to load usage data</p>
+            <p className="text-sm text-slate-500">{(error as Error)?.message || "Unknown error"}</p>
+          </div>
         ) : (
           <div className="space-y-6">
             {/* Summary Cards */}
@@ -2338,7 +2366,7 @@ function AlertsPanel() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const { data: alertsData, isLoading } = useQuery({
+  const { data: alertsData, isLoading, isError, error } = useQuery({
     queryKey: ["/api/super-admin/alerts", statusFilter],
     queryFn: () => superAdminFetch(`/api/super-admin/alerts?status=${statusFilter}`),
   });
@@ -2394,6 +2422,12 @@ function AlertsPanel() {
 
         {isLoading ? (
           <div className="text-center py-8">Loading alerts...</div>
+        ) : isError ? (
+          <div className="text-center py-8 text-red-500">
+            <AlertCircle className="h-12 w-12 mx-auto mb-2" />
+            <p>Failed to load alerts</p>
+            <p className="text-sm text-slate-500">{(error as Error)?.message || "Unknown error"}</p>
+          </div>
         ) : alertsData?.alerts?.length === 0 ? (
           <div className="text-center py-8 text-slate-500">
             <Bell className="h-12 w-12 mx-auto mb-2 opacity-20" />
@@ -2464,7 +2498,7 @@ function CommunicationsPanel() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const { data: commsData, isLoading } = useQuery({
+  const { data: commsData, isLoading, isError, error } = useQuery({
     queryKey: ["/api/super-admin/communications"],
     queryFn: () => superAdminFetch("/api/super-admin/communications"),
   });
@@ -2583,6 +2617,12 @@ function CommunicationsPanel() {
 
         {isLoading ? (
           <div className="text-center py-8">Loading communications...</div>
+        ) : isError ? (
+          <div className="text-center py-8 text-red-500">
+            <AlertCircle className="h-12 w-12 mx-auto mb-2" />
+            <p>Failed to load communications</p>
+            <p className="text-sm text-slate-500">{(error as Error)?.message || "Unknown error"}</p>
+          </div>
         ) : commsData?.communications?.length === 0 ? (
           <div className="text-center py-8 text-slate-500">
             <MessageSquare className="h-12 w-12 mx-auto mb-2 opacity-20" />
@@ -2634,7 +2674,7 @@ function CommunicationsPanel() {
 // Onboarding Panel (FR-SA29)
 function OnboardingPanel() {
   const [riskFilter, setRiskFilter] = useState("");
-  const { data: onboardingData, isLoading } = useQuery({
+  const { data: onboardingData, isLoading, isError, error } = useQuery({
     queryKey: ["/api/super-admin/onboarding", riskFilter],
     queryFn: () => {
       const params = new URLSearchParams();
@@ -2643,9 +2683,10 @@ function OnboardingPanel() {
     },
   });
 
-  const getProgressColor = (progress: number) => {
-    if (progress >= 80) return "bg-green-500";
-    if (progress >= 50) return "bg-yellow-500";
+  const getProgressColor = (progress: number | undefined | null) => {
+    const p = progress || 0;
+    if (p >= 80) return "bg-green-500";
+    if (p >= 50) return "bg-yellow-500";
     return "bg-red-500";
   };
 
@@ -2698,12 +2739,12 @@ function OnboardingPanel() {
         </div>
 
         <div className="flex gap-4 mb-4">
-          <Select value={riskFilter} onValueChange={setRiskFilter}>
+          <Select value={riskFilter || "all"} onValueChange={(v) => setRiskFilter(v === "all" ? "" : v)}>
             <SelectTrigger className="w-[150px]" data-testid="select-risk-filter">
               <SelectValue placeholder="Risk Level" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">All</SelectItem>
+              <SelectItem value="all">All</SelectItem>
               <SelectItem value="low">Low Risk</SelectItem>
               <SelectItem value="medium">Medium Risk</SelectItem>
               <SelectItem value="high">High Risk</SelectItem>
@@ -2713,6 +2754,12 @@ function OnboardingPanel() {
 
         {isLoading ? (
           <div className="text-center py-8">Loading onboarding data...</div>
+        ) : isError ? (
+          <div className="text-center py-8 text-red-500">
+            <AlertCircle className="h-12 w-12 mx-auto mb-2" />
+            <p>Failed to load onboarding data</p>
+            <p className="text-sm text-slate-500">{(error as Error)?.message || "Unknown error"}</p>
+          </div>
         ) : onboardingData?.onboarding?.length === 0 ? (
           <div className="text-center py-8 text-slate-500">
             <Rocket className="h-12 w-12 mx-auto mb-2 opacity-20" />
