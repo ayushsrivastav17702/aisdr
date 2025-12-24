@@ -1,0 +1,1317 @@
+AiSDR Development Plan
+Complete Step-by-Step Implementation Guide
+Version: 1.0
+Tech Stack Recommendation:
+
+Frontend: React.js + Tailwind CSS
+Backend: Node.js + Express.js
+Database: PostgreSQL (multi-tenant support)
+Authentication: JWT + bcrypt
+Email: SendGrid/AWS SES API
+AI: OpenAI API (GPT-4) or Anthropic Claude API
+Calendar Integration: Google Calendar API
+File Storage: AWS S3 or Cloudinary
+
+
+PHASE 1: Foundation & Core Authentication (Week 1-2)
+Step 1.1: Project Setup & Database Schema
+Instructions for Replit:
+Create a new Node.js project with the following structure:
+aisdr/
+├── backend/
+│   ├── config/
+│   │   └── database.js
+│   ├── models/
+│   ├── controllers/
+│   ├── routes/
+│   ├── middleware/
+│   └── server.js
+├── frontend/
+│   ├── src/
+│   │   ├── components/
+│   │   ├── pages/
+│   │   ├── services/
+│   │   ├── utils/
+│   │   └── App.js
+│   └── public/
+└── .env
+Database Schema - Create these tables:
+sql-- PHASE 1 TABLES
+
+-- Table 1: tenants (companies)
+CREATE TABLE tenants (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_name VARCHAR(255) NOT NULL,
+    subdomain VARCHAR(100) UNIQUE,
+    status VARCHAR(50) DEFAULT 'trial', -- trial, active, suspended, churned
+    plan_type VARCHAR(50) DEFAULT 'starter', -- starter, growth, enterprise
+    max_users INTEGER DEFAULT 5,
+    max_mailboxes INTEGER DEFAULT 5,
+    daily_send_limit INTEGER DEFAULT 1200,
+    trial_ends_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Table 2: users (super_admins, managers, users)
+CREATE TABLE users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    full_name VARCHAR(255) NOT NULL,
+    role VARCHAR(50) NOT NULL, -- super_admin, manager, user, read_only
+    status VARCHAR(50) DEFAULT 'active', -- active, inactive, suspended
+    phone VARCHAR(50),
+    job_title VARCHAR(100),
+    last_login TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_by UUID REFERENCES users(id)
+);
+
+-- Table 3: sessions
+CREATE TABLE sessions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    token VARCHAR(500) NOT NULL,
+    expires_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create indexes
+CREATE INDEX idx_users_tenant_id ON users(tenant_id);
+CREATE INDEX idx_users_email ON users(email);
+CREATE INDEX idx_sessions_token ON sessions(token);
+Environment Variables (.env):
+# Database
+DATABASE_URL=postgresql://user:password@localhost:5432/aisdr_db
+
+# JWT
+JWT_SECRET=your-super-secret-jwt-key-change-this
+JWT_EXPIRES_IN=24h
+
+# Server
+PORT=3000
+NODE_ENV=development
+
+# Frontend URL
+FRONTEND_URL=http://localhost:5173
+Step 1.2: Build Authentication System
+Backend Implementation:
+File: backend/models/User.js
+javascriptconst pool = require('../config/database');
+const bcrypt = require('bcrypt');
+
+class User {
+    static async create({ tenantId, email, password, fullName, role, createdBy }) {
+        const hashedPassword = await bcrypt.hash(password, 10);
+        const query = `
+            INSERT INTO users (tenant_id, email, password_hash, full_name, role, created_by)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING id, email, full_name, role, tenant_id
+        `;
+        const result = await pool.query(query, [tenantId, email, hashedPassword, fullName, role, createdBy]);
+        return result.rows[0];
+    }
+
+    static async findByEmail(email) {
+        const query = 'SELECT * FROM users WHERE email = $1';
+        const result = await pool.query(query, [email]);
+        return result.rows[0];
+    }
+
+    static async verifyPassword(plainPassword, hashedPassword) {
+        return bcrypt.compare(plainPassword, hashedPassword);
+    }
+
+    static async findById(id) {
+        const query = 'SELECT * FROM users WHERE id = $1';
+        const result = await pool.query(query, [id]);
+        return result.rows[0];
+    }
+}
+
+module.exports = User;
+File: backend/controllers/authController.js
+javascriptconst jwt = require('jsonwebtoken');
+const User = require('../models/User');
+
+exports.login = async (req, res) => {
+    try {
+        const { email, password } = req.body;
+        
+        // Find user
+        const user = await User.findByEmail(email);
+        if (!user) {
+            return res.status(401).json({ error: 'Invalid credentials' });
+        }
+
+        // Check if user is active
+        if (user.status !== 'active') {
+            return res.status(403).json({ error: 'Account is not active' });
+        }
+
+        // Verify password
+        const isValid = await User.verifyPassword(password, user.password_hash);
+        if (!isValid) {
+            return res.status(401).json({ error: 'Invalid credentials' });
+        }
+
+        // Generate JWT token
+        const token = jwt.sign(
+            { userId: user.id, tenantId: user.tenant_id, role: user.role },
+            process.env.JWT_SECRET,
+            { expiresIn: process.env.JWT_EXPIRES_IN }
+        );
+
+        // Update last login
+        await pool.query('UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = $1', [user.id]);
+
+        res.json({
+            token,
+            user: {
+                id: user.id,
+                email: user.email,
+                fullName: user.full_name,
+                role: user.role,
+                tenantId: user.tenant_id
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
+exports.register = async (req, res) => {
+    try {
+        const { email, password, fullName, role, tenantId } = req.body;
+        
+        // Check if user exists
+        const existing = await User.findByEmail(email);
+        if (existing) {
+            return res.status(400).json({ error: 'Email already registered' });
+        }
+
+        // Create user
+        const user = await User.create({
+            tenantId,
+            email,
+            password,
+            fullName,
+            role,
+            createdBy: req.user?.userId
+        });
+
+        res.status(201).json({ user });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+File: backend/middleware/auth.js
+javascriptconst jwt = require('jsonwebtoken');
+
+exports.authenticate = async (req, res, next) => {
+    try {
+        const token = req.headers.authorization?.split(' ')[1];
+        if (!token) {
+            return res.status(401).json({ error: 'No token provided' });
+        }
+
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
+        req.user = decoded;
+        next();
+    } catch (error) {
+        res.status(401).json({ error: 'Invalid token' });
+    }
+};
+
+exports.requireRole = (...roles) => {
+    return (req, res, next) => {
+        if (!roles.includes(req.user.role)) {
+            return res.status(403).json({ error: 'Insufficient permissions' });
+        }
+        next();
+    };
+};
+File: backend/routes/auth.js
+javascriptconst express = require('express');
+const router = express.Router();
+const authController = require('../controllers/authController');
+const { authenticate } = require('../middleware/auth');
+
+router.post('/login', authController.login);
+router.post('/register', authenticate, authController.register);
+
+module.exports = router;
+Frontend Implementation:
+File: frontend/src/pages/Login.jsx
+jsximport { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import api from '../services/api';
+
+export default function Login() {
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [error, setError] = useState('');
+    const navigate = useNavigate();
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setError('');
+
+        try {
+            const response = await api.post('/auth/login', { email, password });
+            localStorage.setItem('token', response.data.token);
+            localStorage.setItem('user', JSON.stringify(response.data.user));
+            
+            // Redirect based on role
+            if (response.data.user.role === 'super_admin') {
+                navigate('/super-admin/dashboard');
+            } else if (response.data.user.role === 'manager') {
+                navigate('/manager/dashboard');
+            } else {
+                navigate('/dashboard');
+            }
+        } catch (err) {
+            setError(err.response?.data?.error || 'Login failed');
+        }
+    };
+
+    return (
+        <div className="min-h-screen flex items-center justify-center bg-gray-50">
+            <div className="max-w-md w-full bg-white p-8 rounded-lg shadow">
+                <h2 className="text-2xl font-bold mb-6">Login to AiSDR</h2>
+                
+                {error && (
+                    <div className="bg-red-100 text-red-700 p-3 rounded mb-4">
+                        {error}
+                    </div>
+                )}
+
+                <form onSubmit={handleSubmit}>
+                    <div className="mb-4">
+                        <label className="block text-sm font-medium mb-2">Email</label>
+                        <input
+                            type="email"
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            className="w-full border rounded px-3 py-2"
+                            required
+                        />
+                    </div>
+
+                    <div className="mb-6">
+                        <label className="block text-sm font-medium mb-2">Password</label>
+                        <input
+                            type="password"
+                            value={password}
+                            onChange={(e) => setPassword(e.target.value)}
+                            className="w-full border rounded px-3 py-2"
+                            required
+                        />
+                    </div>
+
+                    <button
+                        type="submit"
+                        className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
+                    >
+                        Login
+                    </button>
+                </form>
+            </div>
+        </div>
+    );
+}
+File: frontend/src/services/api.js
+javascriptimport axios from 'axios';
+
+const api = axios.create({
+    baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000/api',
+});
+
+// Add token to requests
+api.interceptors.request.use((config) => {
+    const token = localStorage.getItem('token');
+    if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+});
+
+// Handle 401 errors
+api.interceptors.response.use(
+    (response) => response,
+    (error) => {
+        if (error.response?.status === 401) {
+            localStorage.removeItem('token');
+            localStorage.removeItem('user');
+            window.location.href = '/login';
+        }
+        return Promise.reject(error);
+    }
+);
+
+export default api;
+Step 1.3: Testing Checklist
+✅ Test these functionalities:
+
+Create database and run SQL schema
+Start backend server (node backend/server.js)
+Start frontend (npm run dev)
+Create a super_admin user manually in database
+Test login with super_admin credentials
+Verify JWT token is generated
+Test protected routes require authentication
+Test role-based access control
+
+
+PHASE 2: Super Admin - Tenant Management (Week 3)
+Step 2.1: Create Tenant Management Backend
+Additional Database Tables:
+sql-- Table 4: tenant_settings
+CREATE TABLE tenant_settings (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+    setting_key VARCHAR(100) NOT NULL,
+    setting_value TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(tenant_id, setting_key)
+);
+
+-- Table 5: audit_logs
+CREATE TABLE audit_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    action VARCHAR(100) NOT NULL, -- tenant_created, user_created, login, etc.
+    entity_type VARCHAR(50), -- tenant, user, campaign, etc.
+    entity_id UUID,
+    details JSONB,
+    ip_address VARCHAR(50),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_audit_logs_tenant_id ON audit_logs(tenant_id);
+CREATE INDEX idx_audit_logs_created_at ON audit_logs(created_at);
+NOTE: No signup request table needed - Super Admin creates tenants directly
+Backend Files:
+File: backend/models/Tenant.js
+javascriptconst pool = require('../config/database');
+
+class Tenant {
+    static async create({ companyName, planType = 'starter', maxUsers = 5 }) {
+        const query = `
+            INSERT INTO tenants (company_name, plan_type, max_users, trial_ends_at)
+            VALUES ($1, $2, $3, NOW() + INTERVAL '14 days')
+            RETURNING *
+        `;
+        const result = await pool.query(query, [companyName, planType, maxUsers]);
+        return result.rows[0];
+    }
+
+    static async findAll(filters = {}) {
+        let query = 'SELECT * FROM tenants WHERE 1=1';
+        const params = [];
+        let paramCount = 1;
+
+        if (filters.status) {
+            query += ` AND status = $${paramCount}`;
+            params.push(filters.status);
+            paramCount++;
+        }
+
+        if (filters.planType) {
+            query += ` AND plan_type = $${paramCount}`;
+            params.push(filters.planType);
+            paramCount++;
+        }
+
+        query += ' ORDER BY created_at DESC';
+        
+        const result = await pool.query(query, params);
+        return result.rows;
+    }
+
+    static async findById(id) {
+        const query = 'SELECT * FROM tenants WHERE id = $1';
+        const result = await pool.query(query, [id]);
+        return result.rows[0];
+    }
+
+    static async update(id, updates) {
+        const fields = Object.keys(updates);
+        const values = Object.values(updates);
+        
+        const setClause = fields.map((field, idx) => 
+            `${field} = $${idx + 2}`
+        ).join(', ');
+        
+        const query = `
+            UPDATE tenants 
+            SET ${setClause}, updated_at = CURRENT_TIMESTAMP 
+            WHERE id = $1 
+            RETURNING *
+        `;
+        
+        const result = await pool.query(query, [id, ...values]);
+        return result.rows[0];
+    }
+
+    static async delete(id) {
+        const query = 'DELETE FROM tenants WHERE id = $1';
+        await pool.query(query, [id]);
+    }
+
+    static async getStats() {
+        const query = `
+            SELECT 
+                COUNT(*) as total_tenants,
+                COUNT(*) FILTER (WHERE status = 'active') as active_tenants,
+                COUNT(*) FILTER (WHERE status = 'trial') as trial_tenants,
+                COUNT(*) FILTER (WHERE status = 'suspended') as suspended_tenants
+            FROM tenants
+        `;
+        const result = await pool.query(query);
+        return result.rows[0];
+    }
+}
+
+module.exports = Tenant;
+File: backend/controllers/tenantController.js
+javascriptconst Tenant = require('../models/Tenant');
+const User = require('../models/User');
+const { logAudit } = require('../utils/auditLog');
+
+exports.createTenant = async (req, res) => {
+    try {
+        const { companyName, planType, maxUsers, managerEmail, managerName, managerPassword } = req.body;
+
+        // Create tenant
+        const tenant = await Tenant.create({ companyName, planType, maxUsers });
+
+        // Create manager account
+        const manager = await User.create({
+            tenantId: tenant.id,
+            email: managerEmail,
+            password: managerPassword,
+            fullName: managerName,
+            role: 'manager',
+            createdBy: req.user.userId
+        });
+
+        // Log audit
+        await logAudit({
+            tenantId: tenant.id,
+            userId: req.user.userId,
+            action: 'tenant_created',
+            entityType: 'tenant',
+            entityId: tenant.id,
+            details: { companyName, planType }
+        });
+
+        res.status(201).json({ tenant, manager });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
+exports.getAllTenants = async (req, res) => {
+    try {
+        const { status, planType } = req.query;
+        const tenants = await Tenant.findAll({ status, planType });
+        res.json({ tenants });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
+exports.getTenantById = async (req, res) => {
+    try {
+        const tenant = await Tenant.findById(req.params.id);
+        if (!tenant) {
+            return res.status(404).json({ error: 'Tenant not found' });
+        }
+
+        // Get tenant users
+        const usersQuery = 'SELECT id, email, full_name, role, status, last_login FROM users WHERE tenant_id = $1';
+        const usersResult = await pool.query(usersQuery, [tenant.id]);
+
+        res.json({ tenant, users: usersResult.rows });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
+exports.updateTenant = async (req, res) => {
+    try {
+        const updates = req.body;
+        const tenant = await Tenant.update(req.params.id, updates);
+
+        await logAudit({
+            tenantId: tenant.id,
+            userId: req.user.userId,
+            action: 'tenant_updated',
+            entityType: 'tenant',
+            entityId: tenant.id,
+            details: updates
+        });
+
+        res.json({ tenant });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
+exports.deleteTenant = async (req, res) => {
+    try {
+        await Tenant.delete(req.params.id);
+
+        await logAudit({
+            tenantId: req.params.id,
+            userId: req.user.userId,
+            action: 'tenant_deleted',
+            entityType: 'tenant',
+            entityId: req.params.id
+        });
+
+        res.json({ message: 'Tenant deleted successfully' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
+exports.getDashboardStats = async (req, res) => {
+    try {
+        const stats = await Tenant.getStats();
+        res.json({ stats });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+File: backend/routes/tenants.js
+javascriptconst express = require('express');
+const router = express.Router();
+const tenantController = require('../controllers/tenantController');
+const { authenticate, requireRole } = require('../middleware/auth');
+
+// All routes require super_admin role
+router.use(authenticate, requireRole('super_admin'));
+
+router.post('/', tenantController.createTenant);
+router.get('/', tenantController.getAllTenants);
+router.get('/stats', tenantController.getDashboardStats);
+router.get('/:id', tenantController.getTenantById);
+router.put('/:id', tenantController.updateTenant);
+router.delete('/:id', tenantController.deleteTenant);
+
+module.exports = router;
+Frontend Files:
+File: frontend/src/pages/SuperAdmin/Dashboard.jsx
+jsximport { useState, useEffect } from 'react';
+import api from '../../services/api';
+
+export default function SuperAdminDashboard() {
+    const [stats, setStats] = useState(null);
+    const [tenants, setTenants] = useState([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        fetchData();
+    }, []);
+
+    const fetchData = async () => {
+        try {
+            const [statsRes, tenantsRes] = await Promise.all([
+                api.get('/tenants/stats'),
+                api.get('/tenants')
+            ]);
+            setStats(statsRes.data.stats);
+            setTenants(tenantsRes.data.tenants);
+        } catch (error) {
+            console.error('Error fetching data:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    if (loading) return <div>Loading...</div>;
+
+    return (
+        <div className="p-8">
+            <h1 className="text-3xl font-bold mb-8">Super Admin Dashboard</h1>
+
+            {/* Stats Cards */}
+            <div className="grid grid-cols-4 gap-4 mb-8">
+                <div className="bg-white p-6 rounded-lg shadow">
+                    <div className="text-gray-500 text-sm">Total Tenants</div>
+                    <div className="text-3xl font-bold">{stats.total_tenants}</div>
+                </div>
+                <div className="bg-white p-6 rounded-lg shadow">
+                    <div className="text-gray-500 text-sm">Active</div>
+                    <div className="text-3xl font-bold text-green-600">{stats.active_tenants}</div>
+                </div>
+                <div className="bg-white p-6 rounded-lg shadow">
+                    <div className="text-gray-500 text-sm">Trial</div>
+                    <div className="text-3xl font-bold text-blue-600">{stats.trial_tenants}</div>
+                </div>
+                <div className="bg-white p-6 rounded-lg shadow">
+                    <div className="text-gray-500 text-sm">Suspended</div>
+                    <div className="text-3xl font-bold text-red-600">{stats.suspended_tenants}</div>
+                </div>
+            </div>
+
+            {/* Tenants Table */}
+            <div className="bg-white rounded-lg shadow">
+                <div className="p-6 border-b flex justify-between items-center">
+                    <h2 className="text-xl font-bold">All Tenants</h2>
+                    <button 
+                        onClick={() => window.location.href = '/super-admin/tenants/new'}
+                        className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+                    >
+                        Create New Tenant
+                    </button>
+                </div>
+                <table className="w-full">
+                    <thead className="bg-gray-50">
+                        <tr>
+                            <th className="text-left p-4">Company Name</th>
+                            <th className="text-left p-4">Status</th>
+                            <th className="text-left p-4">Plan</th>
+                            <th className="text-left p-4">Users</th>
+                            <th className="text-left p-4">Created</th>
+                            <th className="text-left p-4">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {tenants.map(tenant => (
+                            <tr key={tenant.id} className="border-t hover:bg-gray-50">
+                                <td className="p-4 font-medium">{tenant.company_name}</td>
+                                <td className="p-4">
+                                    <span className={`px-2 py-1 rounded text-sm ${
+                                        tenant.status === 'active' ? 'bg-green-100 text-green-800' :
+                                        tenant.status === 'trial' ? 'bg-blue-100 text-blue-800' :
+                                        'bg-red-100 text-red-800'
+                                    }`}>
+                                        {tenant.status}
+                                    </span>
+                                </td>
+                                <td className="p-4">{tenant.plan_type}</td>
+                                <td className="p-4">{tenant.max_users}</td>
+                                <td className="p-4">{new Date(tenant.created_at).toLocaleDateString()}</td>
+                                <td className="p-4">
+                                    <button 
+                                        onClick={() => window.location.href = `/super-admin/tenants/${tenant.id}`}
+                                        className="text-blue-600 hover:underline"
+                                    >
+                                        View Details
+                                    </button>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+}
+File: frontend/src/pages/SuperAdmin/CreateTenant.jsx
+jsximport { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import api from '../../services/api';
+
+export default function CreateTenant() {
+    const navigate = useNavigate();
+    const [formData, setFormData] = useState({
+        companyName: '',
+        planType: 'starter',
+        maxUsers: 5,
+        managerEmail: '',
+        managerName: '',
+        managerPassword: ''
+    });
+    const [error, setError] = useState('');
+    const [loading, setLoading] = useState(false);
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setError('');
+        setLoading(true);
+
+        try {
+            await api.post('/tenants', formData);
+            navigate('/super-admin/dashboard');
+        } catch (err) {
+            setError(err.response?.data?.error || 'Failed to create tenant');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <div className="p-8 max-w-2xl mx-auto">
+            <h1 className="text-3xl font-bold mb-8">Create New Tenant</h1>
+
+            {error && (
+                <div className="bg-red-100 text-red-700 p-4 rounded mb-6">
+                    {error}
+                </div>
+            )}
+
+            <form onSubmit={handleSubmit} className="bg-white p-6 rounded-lg shadow">
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium mb-2">Company Name</label>
+                        <input
+                            type="text"
+                            value={formData.companyName}
+                            onChange={(e) => setFormData({...formData, companyName: e.target.value})}
+                            className="w-full border rounded px-3 py-2"
+                            required
+                        />
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium mb-2">Plan Type</label>
+                        <select
+                            value={formData.planType}
+                            onChange={(e) => setFormData({...formData, planType: e.target.value})}
+                            className="w-full border rounded px-3 py-2"
+                        >
+                            <option value="starter">Starter ($900/month)</option>
+                            <option value="growth">Growth (Custom)</option>
+                            <option value="enterprise">Enterprise (Custom)</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium mb-2">Max Users</label>
+                        <input
+                            type="number"
+                            value={formData.maxUsers}
+                            onChange={(e) => setFormData({...formData, maxUsers: parseInt(e.target.value)})}
+                            className="w-full border rounded px-3 py-2"
+                            min="1"
+                            required
+                        />
+                    </div>
+
+                    <hr className="my-6" />
+
+                    <h3 className="text-lg font-bold">Manager Account</h3>
+
+                    <div>
+                        <label className="block text-sm font-medium mb-2">Manager Name</label>
+                        <input
+                            type="text"
+                            value={formData.managerName}
+                            onChange={(e) => setFormData({...formData, managerName: e.target.value})}
+                            className="w-full border rounded px-3 py-2"
+                            required
+                        />
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium mb-2">Manager Email</label>
+                        <input
+                            type="email"
+                            value={formData.managerEmail}
+                            onChange={(e) => setFormData({...formData, managerEmail: e.target.value})}
+                            className="w-full border rounded px-3 py-2"
+                            required
+                        />
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium mb-2">Temporary Password</label>
+                        <input
+                            type="password"
+                            value={formData.managerPassword}
+                            onChange={(e) => setFormData({...formData, managerPassword: e.target.value})}
+                            className="w-full border rounded px-3 py-2"
+                            required
+                        />
+                        <p className="text-sm text-gray-500 mt-1">Manager will be asked to change on first login</p>
+                    </div>
+                </div>
+
+                <div className="mt-6 flex gap-4">
+                    <button
+                        type="submit"
+                        disabled={loading}
+                        className="flex-1 bg-blue-600 text-white py-2 rounded hover:bg-blue-700 disabled:opacity-50"
+                    >
+                        {loading ? 'Creating...' : 'Create Tenant'}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => navigate('/super-admin/dashboard')}
+                        className="flex-1 bg-gray-200 text-gray-800 py-2 rounded hover:bg-gray-300"
+                    >
+                        Cancel
+                    </button>
+                </div>
+            </form>
+        </div>
+    );
+}
+Step 2.2: Testing Checklist
+✅ Test these functionalities:
+
+Login as super_admin
+View super admin dashboard with stats
+Create a new tenant with manager account
+Verify tenant appears in list
+View tenant details
+Update tenant settings
+Verify manager receives credentials (email simulation)
+Test audit logging for all actions
+
+
+PHASE 3: Manager - User Management (Week 4)
+Step 3.1: Manager User Creation Backend
+File: backend/controllers/managerController.js
+javascriptconst User = require('../models/User');
+const Tenant = require('../models/Tenant');
+const { logAudit } = require('../utils/auditLog');
+const pool = require('../config/database');
+
+exports.createUser = async (req, res) => {
+    try {
+        const { email, password, fullName, role = 'user', jobTitle } = req.body;
+        const tenantId = req.user.tenantId;
+
+        // Check user limit
+        const tenant = await Tenant.findById(tenantId);
+        const userCountResult = await pool.query(
+            'SELECT COUNT(*) FROM users WHERE tenant_id = $1',
+            [tenantId]
+        );
+        const userCount = parseInt(userCountResult.rows[0].count);
+
+        if (userCount >= tenant.max_users) {
+            return res.status(400).json({ 
+                error: `User limit reached. Your plan allows ${tenant.max_users} users.` 
+            });
+        }
+
+        // Create user
+        const user = await User.create({
+            tenantId,
+            email,
+            password,
+            fullName,
+            role,
+            createdBy: req.user.userId
+        });
+
+        await logAudit({
+            tenantId,
+            userId: req.user.userId,
+            action: 'user_created',
+            entityType: 'user',
+            entityId: user.id,
+            details: { email, fullName, role }
+        });
+
+        res.status(201).json({ user });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
+exports.getUsers = async (req, res) => {
+    try {
+        const query = `
+            SELECT id, email, full_name, role, status, job_title, last_login, created_at
+            FROM users 
+            WHERE tenant_id = $1 AND role != 'super_admin'
+            ORDER BY created_at DESC
+        `;
+        const result = await pool.query(query, [req.user.tenantId]);
+        res.json({ users: result.rows });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
+exports.getUserById = async (req, res) => {
+    try {
+        const query = `
+            SELECT id, email, full_name, role, status, job_title, phone, last_login, created_at
+            FROM users 
+            WHERE id = $1 AND tenant_id = $2
+        `;
+        const result = await pool.query(query, [req.params.id, req.user.tenantId]);
+        
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        res.json({ user: result.rows[0] });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
+exports.updateUser = async (req, res) => {
+    try {
+        const { fullName, role, status, jobTitle, phone } = req.body;
+        
+        const query = `
+            UPDATE users 
+            SET full_name = COALESCE($1, full_name),
+                role = COALESCE($2, role),
+                status = COALESCE($3, status),
+                job_title = COALESCE($4, job_title),
+                phone = COALESCE($5, phone),
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = $6 AND tenant_id = $7
+            RETURNING id, email, full_name, role, status
+        `;
+        
+        const result = await pool.query(query, [
+            fullName, role, status, jobTitle, phone,
+            req.params.id, req.user.tenantId
+        ]);
+
+        if (result.rows.length === 0) {
+            return res.status(404).json({ error: 'User not found' });
+        }
+
+        await logAudit({
+            tenantId: req.user.tenantId,
+            userId: req.user.userId,
+            action: 'user_updated',
+            entityType: 'user',
+            entityId: req.params.id,
+            details: req.body
+        });
+
+        res.json({ user: result.rows[0] });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
+exports.deleteUser = async (req, res) => {
+    try {
+        await pool.query(
+            'DELETE FROM users WHERE id = $1 AND tenant_id = $2',
+            [req.params.id, req.user.tenantId]
+        );
+
+        await logAudit({
+            tenantId: req.user.tenantId,
+            userId: req.user.userId,
+            action: 'user_deleted',
+            entityType: 'user',
+            entityId: req.params.id
+        });
+
+        res.json({ message: 'User deleted successfully' });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+
+exports.getDashboard = async (req, res) => {
+    try {
+        const statsQuery = `
+            SELECT 
+                COUNT(*) FILTER (WHERE role = 'user') as total_users,
+                COUNT(*) FILTER (WHERE role = 'user' AND status = 'active') as active_users,
+                COUNT(*) FILTER (WHERE role = 'user' AND last_login > NOW() - INTERVAL '24 hours') as users_today
+            FROM users 
+            WHERE tenant_id = $1
+        `;
+        
+        const result = await pool.query(statsQuery, [req.user.tenantId]);
+        res.json({ stats: result.rows[0] });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+};
+File: backend/routes/manager.js
+javascriptconst express = require('express');
+const router = express.Router();
+const managerController = require('../controllers/managerController');
+const { authenticate, requireRole } = require('../middleware/auth');
+
+// All routes require manager or super_admin role
+router.use(authenticate, requireRole('manager', 'super_admin'));
+
+router.get('/dashboard', managerController.getDashboard);
+router.post('/users', managerController.createUser);
+router.get('/users', managerController.getUsers);
+router.get('/users/:id', managerController.getUserById);
+router.put('/users/:id', managerController.updateUser);
+router.delete('/users/:id', managerController.deleteUser);
+
+module.exports = router;
+Frontend Files:
+File: frontend/src/pages/Manager/Dashboard.jsx
+jsximport { useState, useEffect } from 'react';
+import api from '../../services/api';
+import { useNavigate } from 'react-router-dom';
+
+export default function ManagerDashboard() {
+    const [stats, setStats] = useState(null);
+    const [users, setUsers] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const navigate = useNavigate();
+
+    useEffect(() => {
+        fetchData();
+    }, []);
+
+    const fetchData = async () => {
+        try {
+            const [statsRes, usersRes] = await Promise.all([
+                api.get('/manager/dashboard'),
+                api.get('/manager/users')
+            ]);
+            setStats(statsRes.data.stats);
+            setUsers(usersRes.data.users);
+        } catch (error) {
+            console.error('Error fetching data:', error);
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    if (loading) return <div>Loading...</div>;
+
+    return (
+        <div className="p-8">
+            <h1 className="text-3xl font-bold mb-8">Manager Dashboard</h1>
+
+            {/* Stats */}
+            <div className="grid grid-cols-3 gap-4 mb-8">
+                <div className="bg-white p-6 rounded-lg shadow">
+                    <div className="text-gray-500 text-sm">Total Users</div>
+                    <div className="text-3xl font-bold">{stats.total_users}</div>
+                </div>
+                <div className="bg-white p-6 rounded-lg shadow">
+                    <div className="text-gray-500 text-sm">Active Users</div>
+                    <div className="text-3xl font-bold text-green-600">{stats.active_users}</div>
+                </div>
+                <div className="bg-white p-6 rounded-lg shadow">
+                    <div className="text-gray-500 text-sm">Active Today</div>
+                    <div className="text-3xl font-bold text-blue-600">{stats.users_today}</div>
+                </div>
+            </div>
+
+            {/* Users Table */}
+            <div className="bg-white rounded-lg shadow">
+                <div className="p-6 border-b flex justify-between items-center">
+                    <h2 className="text-xl font-bold">Team Members</h2>
+                    <button 
+                        onClick={() => navigate('/manager/users/new')}
+                        className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+                    >
+                        Add User
+                    </button>
+                </div>
+                <table className="w-full">
+                    <thead className="bg-gray-50">
+                        <tr>
+                            <th className="text-left p-4">Name</th>
+                            <th className="text-left p-4">Email</th>
+                            <th className="text-left p-4">Role</th>
+                            <th className="text-left p-4">Status</th>
+                            <th className="text-left p-4">Last Login</th>
+                            <th className="text-left p-4">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {users.map(user => (
+                            <tr key={user.id} className="border-t hover:bg-gray-50">
+                                <td className="p-4 font-medium">{user.full_name}</td>
+                                <td className="p-4">{user.email}</td>
+                                <td className="p-4">
+                                    <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-sm">
+                                        {user.role}
+                                    </span>
+                                </td>
+                                <td className="p-4">
+                                    <span className={`px-2 py-1 rounded text-sm ${
+                                        user.status === 'active' 
+                                            ? 'bg-green-100 text-green-800' 
+                                            : 'bg-gray-100 text-gray-800'
+                                    }`}>
+                                        {user.status}
+                                    </span>
+                                </td>
+                                <td className="p-4">
+                                    {user.last_login 
+                                        ? new Date(user.last_login).toLocaleString() 
+                                        : 'Never'}
+                                </td>
+                                <td className="p-4">
+                                    <button 
+                                        onClick={() => navigate(`/manager/users/${user.id}`)}
+                                        className="text-blue-600 hover:underline mr-4"
+                                    >
+                                        Edit
+                                    </button>
+                                    <button 
+                                        onClick={() => handleDelete(user.id)}
+                                        className="text-red-600 hover:underline"
+                                    >
+                                        Delete
+                                    </button>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+
+    async function handleDelete(userId) {
+        if (!confirm('Are you sure you want to delete this user?')) return;
+        
+        try {
+            await api.delete(`/manager/users/${userId}`);
+            fetchData(); // Refresh
+        } catch (error) {
+            alert('Failed to delete user');
+        }
+    }
+}
+File: frontend/src/pages/Manager/CreateUser.jsx
+jsximport { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import api from '../../services/api';
+
+export default function CreateUser() {
+    const navigate = useNavigate();
+    const [formData, setFormData] = useState({
+        fullName: '',
+        email: '',
+        password: '',
+        role: 'user',
+        jobTitle: ''
+    });
+    const [error, setError] = useState('');
+    const [loading, setLoading] = useState(false);
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setError('');
+        setLoading(true);
+
+        try {
+            await api.post('/manager/users', formData);
+            navigate('/manager/dashboard');
+        } catch (err) {
+            setError(err.response?.data?.error || 'Failed to create user');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    return (
+        <div className="p-8 max-w-2xl mx-auto">
+            <h1 className="text-3xl font-bold mb-8">Add New User</h1>
+
+            {error && (
+                <div className="bg-red-100 text-red-700 p-4 rounded mb-6">
+                    {error}
+                </div>
+            )}
+
+            <form onSubmit={handleSubmit} className="bg-white p-6 rounded-lg shadow">
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium mb-2">Full Name</label>
+                        <input
+                            type="text"
+                            value={formData.fullName}
+                            onChange={(e) => setFormData({...formData, fullName: e.target.value})}
+                            className="w-full border rounded px-3 py-2"
+                            required
+                        />
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium mb-2">Email</label>
+                        <input
+                            type="email"
+                            value={formData.email}
+                            onChange={(e) => setFormData({...formData, email: e.target.value})}
+                            className="w-full border rounded px-3 py-2"
+                            required
+                        />
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium mb-2">Temporary Password</label>
+                        <input
+                            type="password"
+                            value={formData.password}
+                            onChange={(e) => setFormData({...formData, password: e.target.value})}
+                            className="w-full border rounded px-3 py-2"
+                            required
+                        />
+                        <p className="text-sm text-gray-500 mt-1">User will be asked to change on first login</p>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium mb-2">Role</label>
+                        <select
+                            value={formData.role}
+                            onChange={(e) => setFormData({...formData, role: e.target.value})}
+                            className="w-full border rounded px-3 py-2"
+                        >
+                            <option value="user">User (SDR/BDR)</option>
+                            <option value="read_only">Read Only</option>
+                        </select>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium mb-2">Job Title</label>
+                        <input
+                            type="text"
+                            value={formData.jobTitle}
+                            onChange={(e) => setFormData({...formData, jobTitle: e.target.value})}
+                            className="w-full border rounded px-3 py-2"
+                            placeholder="e.g., Sales Development Representative"
+                        />
+                    </div>
+                </div>
+
+                <div className="mt-6 flex gap-4">
+                    <button
+                        type="submit"
+                        disabled={loading}
+                        className="flex-1 bg-blue-600 text-white py-2 rounded hover:bg-blue-700 disabled:opacity-50"
+                    >
+                        {loading ? 'Creating...' : 'Create User'}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => navigate('/manager/dashboard')}
+                        className="flex-1 bg-gray-200 text-gray-800 py-2 rounded hover:bg-gray-300"
+                    >
+                        Cancel
+                    </button>
+                </div>
+            </form>
+        </div>
+    );
+}
+Step 3.2: Testing Checklist
+✅ Test these functionalities:
+
+Login as manager
+View manager dashboard
+Create new user (SDR/BDR)
+Verify user limit enforcement
+Edit user details
+Delete user
+Verify user cannot access other tenants' data
+
