@@ -50,3 +50,6 @@ waitForPort = 5000
 [userenv.shared]
 APP_URL = "https://increff-aisdr-smitops.replit.app"
 EMAIL_VOLUME_PRESET = "medium"
+
+[userenv.development]
+REDIS_DISABLED = "true"

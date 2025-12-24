@@ -793,14 +793,14 @@ class AutomationService {
         -- Handle NULL config (fresh automation) - initialize with defaults
         WHEN rate_limit_config IS NULL THEN
           jsonb_build_object(
-            'dailyLimit', ${defaultDailyLimit},
+            'dailyLimit', ${defaultDailyLimit}::integer,
             'currentDailyCount', 1,
-            'delayBetweenEmails', ${defaultDelayMs},
+            'delayBetweenEmails', ${defaultDelayMs}::integer,
             'lastResetDate', ${today}::text,
             'lastEmailSentAt', ${nowISO}::text
           )
         -- New day - reset counters but PRESERVE all existing fields
-        WHEN COALESCE(rate_limit_config->>'lastResetDate', ${today}) != ${today} THEN
+        WHEN COALESCE(rate_limit_config->>'lastResetDate', ${today}::text) != ${today}::text THEN
           rate_limit_config 
           || jsonb_build_object(
             'currentDailyCount', 1,
@@ -815,12 +815,12 @@ class AutomationService {
             'lastEmailSentAt', ${nowISO}::text
           )
         END
-      WHERE id = ${automationRunId}
+      WHERE id = ${automationRunId}::text
       AND (
         -- Check if config is NULL (fresh) OR resetting (new day) OR within limit on same day
         rate_limit_config IS NULL
-        OR COALESCE(rate_limit_config->>'lastResetDate', ${today}) != ${today}
-        OR COALESCE((rate_limit_config->>'currentDailyCount')::int, 0) < COALESCE((rate_limit_config->>'dailyLimit')::int, ${defaultDailyLimit})
+        OR COALESCE(rate_limit_config->>'lastResetDate', ${today}::text) != ${today}::text
+        OR COALESCE((rate_limit_config->>'currentDailyCount')::int, 0) < COALESCE((rate_limit_config->>'dailyLimit')::int, ${defaultDailyLimit}::integer)
       )
       AND (
         -- Check delay: config NULL OR no last send OR enough time has elapsed

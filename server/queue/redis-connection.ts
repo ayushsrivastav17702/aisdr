@@ -7,9 +7,10 @@ import Redis from "ioredis";
 // Check for native Redis URL first (preferred for ioredis)
 const upstashRedisUrl = process.env.UPSTASH_REDIS_URL;
 const redisHost = process.env.REDIS_HOST;
+const redisDisabled = process.env.REDIS_DISABLED === 'true';
 
-// Check if Redis is configured
-const isRedisConfigured = Boolean(redisHost || upstashRedisUrl);
+// Check if Redis is configured (can be disabled via env var)
+const isRedisConfigured = !redisDisabled && Boolean(redisHost || upstashRedisUrl);
 
 let redisConnection: Redis | null = null;
 
@@ -59,6 +60,10 @@ if (isRedisConfigured) {
       redisConnection.on('error', (err: any) => {
         if (err.code === 'ECONNREFUSED') {
           console.warn('⚠️  Redis unavailable - Automation scheduling features will not work until Redis/Upstash is configured');
+        } else if (err.message?.includes('max requests limit exceeded')) {
+          console.warn('⚠️  Upstash Redis rate limit exceeded - Automation scheduling temporarily disabled. Please upgrade your Upstash plan or wait for limit reset.');
+          redisConnection?.disconnect();
+          redisConnection = null;
         } else {
           console.error('Redis connection error:', err.message);
         }
@@ -78,6 +83,9 @@ if (isRedisConfigured) {
     console.error('❌ Redis initialization error:', err.message);
     redisConnection = null;
   }
+} else if (redisDisabled) {
+  console.warn('⚠️  Redis disabled via REDIS_DISABLED env var');
+  console.warn('ℹ️  Automation scheduling features disabled. Remove REDIS_DISABLED to enable.');
 } else {
   console.warn('⚠️  Redis not configured (REDIS_HOST or UPSTASH_REDIS_URL not set)');
   console.warn('ℹ️  Automation scheduling features disabled. Configure Redis/Upstash to enable scheduled automations.');
