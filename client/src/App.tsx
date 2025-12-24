@@ -35,6 +35,9 @@ import DataProcessingAgreementPage from "@/pages/data-processing-agreement";
 import SuperAdminLogin from "@/pages/super-admin-login";
 import SuperAdminDashboard from "@/pages/super-admin-dashboard";
 import SuperAdminTenantDetail from "@/pages/super-admin-tenant-detail";
+import LeaderboardPage from "@/pages/leaderboard";
+import BestPracticesPage from "@/pages/best-practices";
+import AEHandoffPage from "@/pages/ae-handoff";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -133,6 +136,21 @@ function Router() {
       <Route path="/api-docs">
         <ProtectedRoute>
           <APIDocumentationPage />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/leaderboard">
+        <ProtectedRoute>
+          <LeaderboardPage />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/best-practices">
+        <ProtectedRoute>
+          <BestPracticesPage />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/ae-handoff">
+        <ProtectedRoute>
+          <AEHandoffPage />
         </ProtectedRoute>
       </Route>
       {/* Super Admin Routes - Separate from main app */}

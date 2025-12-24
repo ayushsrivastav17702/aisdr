@@ -35,6 +35,9 @@ import emailSettingsRoutes from "./routes/email-settings.routes";
 import notificationSettingsRoutes from "./routes/notification-settings.routes";
 import aiConfigRoutes from "./routes/ai-config.routes";
 import superAdminRoutes from "./routes/super-admin.routes";
+import leaderboardRoutes from "./routes/leaderboard.routes";
+import bestPracticesRoutes from "./routes/best-practices.routes";
+import aeHandoffRoutes from "./routes/ae-handoff.routes";
 import { authenticate } from "./middleware/auth.middleware";
 import { emailVolumeConfig, getCapacityReport, getEstimatedTimeForEmails, EMAIL_VOLUME_PRESETS } from "./config/email-volume.config";
 
@@ -1592,6 +1595,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Super Admin routes (platform-level administration)
   app.use("/api/super-admin", superAdminRoutes);
+
+  // FR-U25: Leaderboard & Gamification routes
+  app.use(leaderboardRoutes);
+
+  // FR-U29: Best Practices Library routes
+  app.use(bestPracticesRoutes);
+
+  // FR-U32: AE Handoff Workflow routes
+  app.use(aeHandoffRoutes);
 
   // Automation module routes
   registerAutomationRoutes(app);

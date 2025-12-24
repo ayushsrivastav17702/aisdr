@@ -2830,6 +2830,257 @@ export const platformFeatureAnalytics = pgTable("platform_feature_analytics", {
 }));
 
 // ============================================
+// FR-U25: LEADERBOARD & GAMIFICATION
+// ============================================
+
+export const badgeTypeEnum = pgEnum("badge_type", [
+  "meetings_milestone",
+  "reply_rate",
+  "streak",
+  "first_meeting",
+  "top_performer",
+  "improvement",
+  "team_player",
+  "speed_demon"
+]);
+
+export const userBadges = pgTable("user_badges", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  organizationId: varchar("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  
+  badgeType: badgeTypeEnum("badge_type").notNull(),
+  badgeName: text("badge_name").notNull(),
+  badgeDescription: text("badge_description"),
+  badgeIcon: text("badge_icon"), // Icon name or URL
+  badgeColor: text("badge_color"), // Hex color
+  
+  // Achievement details
+  achievedAt: timestamp("achieved_at").notNull().defaultNow(),
+  achievementValue: integer("achievement_value"), // e.g., 100 meetings
+  periodType: text("period_type"), // daily, weekly, monthly, all-time
+  
+  // Display
+  isDisplayed: boolean("is_displayed").default(true),
+  
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  userIdIdx: index("user_badges_user_id_idx").on(table.userId),
+  orgIdIdx: index("user_badges_org_id_idx").on(table.organizationId),
+  badgeTypeIdx: index("user_badges_type_idx").on(table.badgeType),
+}));
+
+export const leaderboardPeriods = pgTable("leaderboard_periods", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  
+  periodType: text("period_type").notNull(), // daily, weekly, monthly
+  periodStart: timestamp("period_start").notNull(),
+  periodEnd: timestamp("period_end").notNull(),
+  
+  isActive: boolean("is_active").default(true),
+  isFinal: boolean("is_final").default(false), // Set true when period ends
+  
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  orgPeriodIdx: index("leaderboard_periods_org_period_idx").on(table.organizationId, table.periodType),
+  periodStartIdx: index("leaderboard_periods_start_idx").on(table.periodStart),
+}));
+
+export const leaderboardEntries = pgTable("leaderboard_entries", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  periodId: varchar("period_id").notNull().references(() => leaderboardPeriods.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  organizationId: varchar("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  
+  // Metrics
+  meetingsBooked: integer("meetings_booked").default(0),
+  emailsSent: integer("emails_sent").default(0),
+  repliesReceived: integer("replies_received").default(0),
+  positiveReplies: integer("positive_replies").default(0),
+  openRate: real("open_rate").default(0),
+  replyRate: real("reply_rate").default(0),
+  
+  // Ranking
+  rank: integer("rank"),
+  points: integer("points").default(0),
+  previousRank: integer("previous_rank"),
+  rankChange: integer("rank_change"), // positive = up, negative = down
+  
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  periodIdIdx: index("leaderboard_entries_period_idx").on(table.periodId),
+  userIdIdx: index("leaderboard_entries_user_idx").on(table.userId),
+  rankIdx: index("leaderboard_entries_rank_idx").on(table.periodId, table.rank),
+}));
+
+// ============================================
+// FR-U29: BEST PRACTICE LIBRARY
+// ============================================
+
+export const bestPracticeCategories = pgTable("best_practice_categories", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  
+  name: text("name").notNull(),
+  slug: text("slug").notNull().unique(),
+  description: text("description"),
+  icon: text("icon"),
+  color: text("color"),
+  sortOrder: integer("sort_order").default(0),
+  
+  isActive: boolean("is_active").default(true),
+  
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export const bestPractices = pgTable("best_practices", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  categoryId: varchar("category_id").references(() => bestPracticeCategories.id, { onDelete: "set null" }),
+  
+  // Content
+  title: text("title").notNull(),
+  slug: text("slug").notNull().unique(),
+  description: text("description"),
+  content: text("content"), // Rich text/markdown content
+  contentType: text("content_type").notNull().default("article"), // article, template, guide, video, checklist
+  
+  // For templates
+  templateSubject: text("template_subject"),
+  templateBody: text("template_body"),
+  templateVariables: jsonb("template_variables").$type<string[]>(),
+  
+  // Metadata
+  author: text("author"),
+  industry: text("industry"), // Industry-specific
+  difficulty: text("difficulty"), // beginner, intermediate, advanced
+  estimatedReadTime: integer("estimated_read_time"), // minutes
+  
+  // Engagement
+  viewCount: integer("view_count").default(0),
+  useCount: integer("use_count").default(0), // Times template was used
+  rating: real("rating").default(0),
+  ratingCount: integer("rating_count").default(0),
+  
+  // Tags and search
+  tags: text("tags").array(),
+  
+  // Publishing
+  isPublished: boolean("is_published").default(false),
+  isFeatured: boolean("is_featured").default(false),
+  publishedAt: timestamp("published_at"),
+  
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  categoryIdx: index("best_practices_category_idx").on(table.categoryId),
+  contentTypeIdx: index("best_practices_type_idx").on(table.contentType),
+  publishedIdx: index("best_practices_published_idx").on(table.isPublished),
+}));
+
+export const bestPracticeRatings = pgTable("best_practice_ratings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  bestPracticeId: varchar("best_practice_id").notNull().references(() => bestPractices.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  
+  rating: integer("rating").notNull(), // 1-5
+  feedback: text("feedback"),
+  
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  practiceUserIdx: uniqueIndex("best_practice_ratings_unique").on(table.bestPracticeId, table.userId),
+}));
+
+// ============================================
+// FR-U32: AE HANDOFF / SQL QUALIFICATION
+// ============================================
+
+export const handoffStatusEnum = pgEnum("handoff_status", [
+  "pending_review",
+  "accepted",
+  "rejected",
+  "converted",
+  "lost"
+]);
+
+export const aeHandoffs = pgTable("ae_handoffs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  
+  // Prospect and SDR info
+  prospectId: varchar("prospect_id").notNull().references(() => prospects.id, { onDelete: "cascade" }),
+  sdrUserId: varchar("sdr_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  aeUserId: varchar("ae_user_id").references(() => users.id, { onDelete: "set null" }),
+  
+  // Qualification (BANT/MEDDIC)
+  qualificationFramework: text("qualification_framework").default("bant"), // bant, meddic, custom
+  qualificationScore: integer("qualification_score"), // 0-100
+  
+  // BANT fields
+  budget: text("budget"),
+  budgetConfirmed: boolean("budget_confirmed").default(false),
+  authority: text("authority"),
+  authorityConfirmed: boolean("authority_confirmed").default(false),
+  need: text("need"),
+  needConfirmed: boolean("need_confirmed").default(false),
+  timeline: text("timeline"),
+  timelineConfirmed: boolean("timeline_confirmed").default(false),
+  
+  // MEDDIC fields
+  metrics: text("metrics"),
+  economicBuyer: text("economic_buyer"),
+  decisionCriteria: text("decision_criteria"),
+  decisionProcess: text("decision_process"),
+  identifyPain: text("identify_pain"),
+  champion: text("champion"),
+  
+  // Meeting context
+  meetingScheduledAt: timestamp("meeting_scheduled_at"),
+  meetingCompletedAt: timestamp("meeting_completed_at"),
+  meetingNotes: text("meeting_notes"),
+  
+  // Handoff status
+  status: handoffStatusEnum("status").default("pending_review"),
+  handoffNotes: text("handoff_notes"),
+  handoffReason: text("handoff_reason"),
+  
+  // AE feedback
+  aeFeedback: text("ae_feedback"),
+  aeRating: integer("ae_rating"), // 1-5 quality rating
+  
+  // Outcome tracking
+  dealValue: real("deal_value"),
+  dealCurrency: text("deal_currency").default("USD"),
+  closedAt: timestamp("closed_at"),
+  outcome: text("outcome"), // won, lost, no_decision
+  
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  orgIdx: index("ae_handoffs_org_idx").on(table.organizationId),
+  prospectIdx: index("ae_handoffs_prospect_idx").on(table.prospectId),
+  sdrIdx: index("ae_handoffs_sdr_idx").on(table.sdrUserId),
+  aeIdx: index("ae_handoffs_ae_idx").on(table.aeUserId),
+  statusIdx: index("ae_handoffs_status_idx").on(table.status),
+}));
+
+export const handoffActivities = pgTable("handoff_activities", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  handoffId: varchar("handoff_id").notNull().references(() => aeHandoffs.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  
+  activityType: text("activity_type").notNull(), // note, status_change, feedback, meeting_update
+  description: text("description"),
+  metadata: jsonb("metadata"),
+  
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  handoffIdx: index("handoff_activities_handoff_idx").on(table.handoffId),
+}));
+
+// ============================================
 // SUPER ADMIN TYPES
 // ============================================
 
@@ -2946,6 +3197,81 @@ export const insertTenantOnboardingSchema = createInsertSchema(tenantOnboarding)
 });
 
 export const insertFeatureUsageTrackingSchema = createInsertSchema(featureUsageTracking).omit({
+  id: true,
+  createdAt: true,
+});
+
+// ============================================
+// FR-U25, FR-U29, FR-U32 TYPES
+// ============================================
+
+// Leaderboard Types
+export type UserBadge = typeof userBadges.$inferSelect;
+export type InsertUserBadge = typeof userBadges.$inferInsert;
+export type LeaderboardPeriod = typeof leaderboardPeriods.$inferSelect;
+export type InsertLeaderboardPeriod = typeof leaderboardPeriods.$inferInsert;
+export type LeaderboardEntry = typeof leaderboardEntries.$inferSelect;
+export type InsertLeaderboardEntry = typeof leaderboardEntries.$inferInsert;
+
+// Best Practice Types
+export type BestPracticeCategory = typeof bestPracticeCategories.$inferSelect;
+export type InsertBestPracticeCategory = typeof bestPracticeCategories.$inferInsert;
+export type BestPractice = typeof bestPractices.$inferSelect;
+export type InsertBestPractice = typeof bestPractices.$inferInsert;
+export type BestPracticeRating = typeof bestPracticeRatings.$inferSelect;
+export type InsertBestPracticeRating = typeof bestPracticeRatings.$inferInsert;
+
+// AE Handoff Types
+export type AEHandoff = typeof aeHandoffs.$inferSelect;
+export type InsertAEHandoff = typeof aeHandoffs.$inferInsert;
+export type HandoffActivity = typeof handoffActivities.$inferSelect;
+export type InsertHandoffActivity = typeof handoffActivities.$inferInsert;
+
+// ============================================
+// FR-U25, FR-U29, FR-U32 SCHEMAS
+// ============================================
+
+export const insertUserBadgeSchema = createInsertSchema(userBadges).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertLeaderboardPeriodSchema = createInsertSchema(leaderboardPeriods).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertLeaderboardEntrySchema = createInsertSchema(leaderboardEntries).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertBestPracticeCategorySchema = createInsertSchema(bestPracticeCategories).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertBestPracticeSchema = createInsertSchema(bestPractices).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertBestPracticeRatingSchema = createInsertSchema(bestPracticeRatings).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertAEHandoffSchema = createInsertSchema(aeHandoffs).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertHandoffActivitySchema = createInsertSchema(handoffActivities).omit({
   id: true,
   createdAt: true,
 });

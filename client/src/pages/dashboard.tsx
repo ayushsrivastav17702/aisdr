@@ -31,7 +31,10 @@ import {
   Building2,
   FolderTree,
   LogOut,
-  User as UserIcon
+  User as UserIcon,
+  Trophy,
+  BookOpen,
+  ArrowRightLeft
 } from "lucide-react";
 import { HelpTooltip } from "@/components/HelpTooltip";
 
@@ -175,6 +178,39 @@ export default function Dashboard() {
             >
               <BarChart3Icon className="w-4 h-4" />
               <span>Analytics</span>
+            </Button>
+          </Link>
+
+          <Link href="/leaderboard">
+            <Button
+              variant="ghost"
+              className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
+              data-testid="nav-leaderboard"
+            >
+              <Trophy className="w-4 h-4" />
+              <span>Leaderboard</span>
+            </Button>
+          </Link>
+
+          <Link href="/best-practices">
+            <Button
+              variant="ghost"
+              className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
+              data-testid="nav-best-practices"
+            >
+              <BookOpen className="w-4 h-4" />
+              <span>Best Practices</span>
+            </Button>
+          </Link>
+
+          <Link href="/ae-handoff">
+            <Button
+              variant="ghost"
+              className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
+              data-testid="nav-ae-handoff"
+            >
+              <ArrowRightLeft className="w-4 h-4" />
+              <span>AE Handoff</span>
             </Button>
           </Link>
           

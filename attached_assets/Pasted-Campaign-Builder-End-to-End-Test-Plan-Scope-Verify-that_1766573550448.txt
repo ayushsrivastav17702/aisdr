@@ -1,0 +1,310 @@
+Campaign Builder – End-to-End Test Plan
+
+Scope: Verify that everything added on frontend is correctly persisted, enforced, and executed by backend.
+
+1️⃣ Pre-Test Setup (Mandatory)
+
+Environment checks
+
+Tenant status: Active
+
+User role: User / Manager (as per permission)
+
+Subscription plan allows campaign creation
+
+Mailbox connected & verified
+
+Prospects exist OR CSV import available
+
+Expected
+
+User can access Campaign Builder
+
+No console errors on load
+
+API auth token includes correct tenant_id
+
+2️⃣ Step 1: Campaign Creation Entry Point
+Frontend Test
+
+Click “Create New Campaign”
+
+Wizard opens at Step 1: Planning
+
+Progress indicator visible (Step 1 → Step 7)
+
+Backend Test
+
+No campaign record created yet (draft only)
+
+No DB writes until user clicks Save / Next
+
+✅ Pass Criteria
+
+Wizard loads instantly
+
+No premature DB inserts
+
+3️⃣ Step 2: Planning (Campaign Basics)
+Inputs
+
+Campaign Name
+
+Campaign Goal
+
+Campaign Type (Cold / Warm / Re-engagement)
+
+Frontend Validation
+
+Empty fields show inline validation
+
+Cannot proceed without required fields
+
+Campaign name uniqueness warning (optional)
+
+Backend Validation
+
+On Next, draft campaign created:
+
+status = draft
+
+tenant_id attached
+
+created_by = user_id
+
+DB Check
+
+Record exists in tenant_xxx.campaigns
+
+No data written to any other tenant schema
+
+✅ Pass Criteria
+
+Draft persists on refresh
+
+Reload resumes same step
+
+4️⃣ Step 3: Prospect List Selection
+Scenarios to Test
+
+AI Prospecting
+
+CSV Upload
+
+Existing Prospect List
+
+Frontend
+
+Preview prospect count
+
+Show validation errors (invalid email, duplicates)
+
+Enforce max import limit (10k)
+
+Backend
+
+Deduplication logic executed server-side
+
+Prospect records created only under tenant schema
+
+Campaign-prospect mapping created
+
+Negative Tests
+
+Upload >10k → blocked
+
+Upload invalid CSV → error surfaced clearly
+
+✅ Pass Criteria
+
+Exact count matches frontend preview
+
+No cross-tenant contamination
+
+5️⃣ Step 4: Sequence Builder (Critical)
+Frontend
+
+Drag & drop steps
+
+Add / remove / reorder steps
+
+Configure:
+
+Delay (hours/days)
+
+Channel
+
+Conditions (if replied/opened)
+
+Visual flow updates live
+
+Backend
+
+Sequence JSON saved correctly
+
+Order index preserved
+
+Conditional logic persisted accurately
+
+DB Validation
+
+Steps stored as normalized rows OR structured JSON
+
+Sequence versioning enabled (recommended)
+
+Edge Cases
+
+Remove a middle step
+
+Change order after saving
+
+Add multi-channel path
+
+✅ Pass Criteria
+
+Reload shows exact same sequence
+
+No broken flow paths
+
+6️⃣ Step 5: Message Creation (AI + Manual)
+Frontend
+
+AI generates multiple variants
+
+Tone & personalization settings reflected
+
+Character count + spam score visible
+
+Preview with real prospect data
+
+Backend
+
+AI output saved explicitly (not regenerated on reload)
+
+Dynamic fields validated server-side
+
+Fallback values enforced
+
+Failure Tests
+
+Missing personalization fields
+
+Unsupported emojis
+
+Spam score exceeds threshold
+
+✅ Pass Criteria
+
+What user sees = what backend sends
+
+Preview == actual email payload
+
+7️⃣ Step 6: Campaign Configuration
+Inputs
+
+Daily send limits
+
+Mailboxes selection
+
+Schedule start date/time
+
+A/B test configuration
+
+Frontend
+
+Enforce plan limits visually
+
+Timezone displayed clearly
+
+Show estimated completion time
+
+Backend
+
+Hard limits enforced (cannot bypass via API)
+
+Schedule stored in UTC
+
+Mailbox ownership validated
+
+DB Check
+
+send_limit, start_at, mailbox_ids saved
+
+✅ Pass Criteria
+
+Cannot exceed plan limits
+
+No scheduling drift
+
+8️⃣ Step 7: Review & Launch
+Frontend
+
+Full campaign preview
+
+Error summary (if any)
+
+CTA: Submit / Schedule / Launch
+
+Backend
+
+Final validation executed
+
+Status transitions:
+
+draft → scheduled OR draft → pending_approval
+
+Side Effects
+
+Job scheduled in queue
+
+Prospect enrollment created
+
+Audit log entry written
+
+✅ Pass Criteria
+
+No campaign launches without passing all validations
+
+9️⃣ Post-Launch Validation
+Execution Checks
+
+Emails sent as per schedule
+
+Daily limits respected
+
+Auto-pause on reply works
+
+Analytics Checks
+
+Sent / Open / Reply metrics updating
+
+Campaign dashboard reflects real data
+
+Funnel visualization accurate
+
+Isolation Test
+
+Try accessing campaign ID from another tenant → 403
+
+✅ Pass Criteria
+
+Metrics are real-time & accurate
+
+No data leakage
+
+🔒 Mandatory Security & Isolation Tests
+
+Remove tenant_id from API call → rejected
+
+Force another tenant’s campaign ID → forbidden
+
+Check RLS enforcement at DB level
+
+📊 Final Acceptance Criteria (Go / No-Go)
+
+✔ Frontend state always matches backend
+✔ Drafts persist correctly
+✔ No step can be bypassed
+✔ Tenant isolation 100% enforced
+✔ Limits enforced server-side
+✔ Analytics trustworthy
