@@ -102,3 +102,44 @@ Frontend and backend use these consistent camelCase keys matching Drizzle schema
 ### Test Super Admin Account
 - Email: admin@increff.com
 - Password: SuperAdmin123!
+
+## User Engagement Features (FR-U25, FR-U29, FR-U32)
+
+### FR-U25: Leaderboard & Gamification
+Comprehensive gamification system to drive SDR performance:
+- **Leaderboard Rankings**: Daily, weekly, and monthly performance rankings based on points
+- **Points Calculation**: Positive replies (100 pts), all replies (50 pts), emails sent (1 pt)
+- **Badge System**: 10 achievement badges with thresholds (First Steps, Meeting Master, Deal Dynamo, etc.)
+- **Live Refresh**: Manual refresh button to recalculate stats from email activity
+- **Frontend**: `/leaderboard` page with rankings table, user badges, and available badges display
+- **Routes**: `/api/leaderboard`, `/api/leaderboard/refresh`, `/api/badges`, `/api/badges/check`
+- **Schema**: `user_badges`, `leaderboard_periods`, `leaderboard_entries` tables
+
+### FR-U29: Best Practices Library
+Knowledge base for SDR excellence:
+- **8 Categories**: Email Templates, Subject Lines, Objection Handling, Industry Guides, Cold Outreach, Follow-up Strategies, Meeting Booking, Video Tutorials
+- **Content Types**: Templates (with subject/body/variables), Guides (markdown), Articles, Videos
+- **Features**: Search, category filtering, difficulty levels (beginner/intermediate/advanced)
+- **Template Usage**: One-click copy to clipboard, usage tracking
+- **Rating System**: 5-star ratings with feedback collection
+- **Frontend**: `/best-practices` page with category cards, search, and detail modal
+- **Routes**: `/api/best-practices/categories`, `/api/best-practices`, `/api/best-practices/:slug`, `/api/best-practices/:id/use`, `/api/best-practices/:id/rate`, `/api/best-practices/seed`
+- **Schema**: `best_practice_categories`, `best_practices`, `best_practice_ratings` tables
+
+### FR-U32: AE Handoff Workflow
+SDR-to-AE prospect handoff with qualification tracking:
+- **Qualification Frameworks**: BANT (Budget, Authority, Need, Timeline) and MEDDIC (Metrics, Economic Buyer, Decision Criteria, Decision Process, Identify Pain, Champion)
+- **Automatic Scoring**: 0-100 quality score based on completed qualification fields
+- **Status Workflow**: pending_review → accepted/rejected → converted/lost
+- **AE Feedback**: Rating (1-5 stars) and written feedback on handoff quality
+- **Activity Timeline**: Full history of status changes, notes, and feedback
+- **Pipeline Metrics**: Total handoffs, conversion rate, average quality score, pipeline value
+- **Frontend**: `/ae-handoff` page with stats cards, handoff list, and detail drawer
+- **Routes**: `/api/handoffs`, `/api/handoffs/:id`, `/api/handoffs/:id/activity`, `/api/handoffs/stats/conversion`, `/api/team/ae-users`
+- **Schema**: `ae_handoffs`, `handoff_activities` tables
+
+### Navigation
+All three features accessible from main sidebar:
+- Trophy icon → Leaderboard
+- BookOpen icon → Best Practices
+- ArrowRightLeft icon → AE Handoff
