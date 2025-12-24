@@ -1,0 +1,162 @@
+Save draft campaigns
+Clone existing campaigns
+Template selection
+Preview before launch
+
+FR-U2: Campaign Configuration
+
+Priority: P0
+Set campaign name and goal
+Define campaign duration
+Choose channels (email, LinkedIn, SMS)
+Set daily send limits
+Schedule start date/time
+Configure A/B tests
+Set success criteria
+Add campaign tags
+
+FR-U3: Sequence Builder
+
+Priority: P0
+Drag-and-drop sequence editor
+Add/remove/reorder touchpoints
+Set delays between steps (days/hours)
+Define conditions (if replied, if opened, if clicked)
+Multi-channel sequence paths
+Visual sequence flow
+Step-level performance preview
+Sequence templates library
+
+FR-U4: Campaign Dashboard
+
+Priority: P0
+View all my campaigns
+Filter: Active, Scheduled, Paused, Completed
+Sort by: Created date, Performance, Status
+Key metrics per campaign:
+
+Prospects enrolled
+Emails sent
+Reply rate
+Meetings booked
+Days running
+
+
+Quick actions: Pause, Resume, Edit, Clone, Archive
+Campaign status indicators
+
+FR-U5: Campaign Analytics
+
+Priority: P0
+Detailed campaign performance:
+
+Funnel visualization (sent → opened → replied → booked)
+Time series graphs
+Step-by-step performance
+Best performing messages
+Reply sentiment breakdown
+Optimal send time analysis
+
+
+Compare to personal average
+Export campaign data
+
+2.2 AI Message Generation
+FR-U6: AI Message Composer
+
+Priority: P0
+Input: Value proposition and key points
+AI generates multiple message variants
+Choose tone: Professional, Casual, Consultative, Direct
+Personalization level: Low, Medium, High
+Message length preference
+Include/exclude emojis
+Real-time character count
+Spam score indicator
+
+FR-U7: Message Personalization
+
+Priority: P0
+Insert dynamic fields:
+
+{{First Name}}, {{Company}}, {{Title}}
+{{Recent LinkedIn Post}}
+{{Company News}}
+{{Mutual Connection}}
+{{Technology Used}}
+Custom fields from CRM
+
+
+Fallback values for missing data
+Preview with actual prospect data
+Personalization preview for multiple prospects
+
+FR-U8: Subject Line Generator
+
+Priority: P0
+AI-generated subject line suggestions
+Multiple variants to choose from
+A/B test setup
+Subject line best practices tips
+Character count optimization
+Emoji suggestions
+Open rate predictions
+
+FR-U9: Message Templates
+
+Priority: P1
+Save successful messages as templates
+Personal template library
+Use team/company templates
+Template categories
+Search templates
+Template performance tracking
+One-click apply template
+
+FR-U10: AI Writing Assistant
+
+Priority: P1
+Real-time writing suggestions
+Tone adjustment
+Clarity improvements
+Grammar and spell check
+Shorter/longer variants
+Different perspective (rewrite)
+Translate to other languages
+
+2.3 Prospect Management
+FR-U11: Prospect List
+
+Priority: P0
+View all my prospects
+Filter by:
+
+Status (New, Contacted, Replied, Booked, Unqualified)
+Campaign
+Reply sentiment
+Engagement level
+Date added
+
+
+Search by name, company, email
+Bulk actions: Add to campaign, Update status, Export
+Prospect detail view
+
+FR-U12: Prospect Profile
+
+Priority: P0
+Contact information (name, email, phone, LinkedIn)
+Company information
+Job title and role
+Enrichment data:
+
+Company size, industry, location
+Technologies used
+Recent company news
+LinkedIn activity
+Funding information
+
+
+Engagement history (emails, opens, clicks, replies)
+Notes and tags
+Related contacts at same company

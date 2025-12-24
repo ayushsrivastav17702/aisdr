@@ -1,0 +1,283 @@
+: Prospect Import
+
+Priority: P0
+Upload CSV file
+Map CSV columns to fields
+Validate email addresses
+De-duplicate against existing prospects
+Bulk import up to 10,000 prospects
+Import history and logs
+Error handling and correction
+
+FR-U14: AI Prospecting
+
+Priority: P0
+Define ICP criteria:
+
+Industry/vertical
+Company size
+Geography
+Job titles
+Technologies
+Intent signals (hiring, funding, etc.)
+
+
+AI finds matching prospects
+Preview results before adding
+Add directly to campaign
+Save ICP as template
+Unlimited prospect discovery
+
+FR-U15: Prospect Scoring
+
+Priority: P1
+Automatic lead scoring based on:
+
+Engagement level
+Company fit
+Intent signals
+Behavioral data
+
+
+Score visualization (0-100)
+Sort prospects by score
+Focus on high-scoring prospects
+Scoring explanation
+
+2.4 Inbox & Conversation Management
+FR-U16: Unified Inbox
+
+Priority: P0
+All prospect replies in one place
+Filter by:
+
+Unread/Read
+Sentiment (Positive, Neutral, Negative, OOO)
+Campaign
+Priority
+Date
+
+
+Sort by: Date, Priority, Sentiment
+Search conversations
+Mark as read/unread
+Archive conversations
+Snooze for follow-up
+
+FR-U17: Reply Detection & Classification
+
+Priority: P0
+Automatic reply detection
+AI classifies reply sentiment:
+
+Positive (interested, want to learn more)
+Neutral (questions, need more info)
+Negative (not interested, wrong fit)
+Out of Office
+Unsubscribe
+
+
+Priority flagging for hot leads
+Auto-pause sequence on reply
+Notifications for important replies
+
+FR-U18: Reply Composer
+
+Priority: P0
+AI suggests reply drafts
+Multiple reply options
+Edit AI suggestions
+Add personalization
+Include meeting link
+Attach resources (case studies, one-pagers)
+Schedule send later
+Track reply sent
+
+FR-U19: Conversation View
+
+Priority: P0
+Full email thread display
+Prospect profile sidebar
+Engagement timeline
+Previous touchpoints
+Notes and history
+Quick actions:
+
+Reply
+Book meeting
+Mark qualified
+Forward to AE
+Add note
+Update CRM
+
+
+
+FR-U20: Meeting Scheduler
+
+Priority: P0
+One-click meeting link insertion
+Calendar availability checking
+Meeting type selection (demo, discovery, etc.)
+Automated confirmation emails
+Calendar invite sending
+Meeting reminder automation
+Reschedule handling
+No-show tracking
+
+2.5 Performance Tracking
+FR-U21: Personal Dashboard
+
+Priority: P0
+Today's snapshot:
+
+Emails sent today
+Replies received
+Meetings booked today
+Tasks to complete
+
+
+This week's progress:
+
+Weekly quota vs. actual
+Trending metrics
+Goals on pace/behind
+
+
+Quick access to:
+
+Active campaigns
+Pending replies
+Today's meetings
+Upcoming tasks
+
+
+
+FR-U22: Activity Tracking
+
+Priority: P0
+Automatic activity logging:
+
+Emails sent
+LinkedIn touches
+Calls made (if integrated)
+Meetings completed
+Prospects contacted
+
+
+Daily/weekly/monthly activity summary
+Activity goals and progress
+Activity calendar heatmap
+
+FR-U23: Performance Metrics
+
+Priority: P0
+Key metrics tracked:
+
+Reply rate
+Positive reply rate
+Open rate
+Click rate
+Meeting booking rate
+Meeting show rate
+Response time
+
+
+Compare to personal baseline
+Compare to team average
+Identify improvement areas
+Performance trends over time
+
+FR-U24: Quota Tracking
+
+Priority: P0
+Meetings booked vs. quota
+Daily/weekly/monthly/quarterly quotas
+Pacing indicator (on track, ahead, behind)
+Projected attainment
+Historical quota performance
+Streak tracking (consecutive days hitting quota)
+
+FR-U25: Leaderboard
+
+Priority: P1
+Team ranking by meetings booked
+Other metric leaderboards (reply rate, etc.)
+Personal rank and percentile
+Point-based gamification
+Achievement badges
+Competition periods (daily, weekly, monthly)
+
+2.6 Learning & Optimization
+FR-U26: AI Coaching
+
+Priority: P1
+Personalized improvement suggestions
+Message quality feedback
+Performance insights and trends
+Best practice recommendations
+Benchmarking against top performers
+Skill gap identification
+Recommended training
+
+FR-U27: Campaign Insights
+
+Priority: P1
+What's working in my campaigns
+What's not working
+Recommendations for improvement
+Optimal send time for me
+Best performing subject lines
+Most engaging message types
+Channel effectiveness
+
+FR-U28: A/B Test Results
+
+Priority: P1
+A/B test performance comparison
+Statistical significance indicators
+Winner declaration
+Apply winner automatically
+Test history and learnings
+Suggested tests to run
+
+FR-U29: Best Practice Library
+
+Priority: P2
+Access to winning campaigns
+Message template library
+Subject line examples
+Industry-specific tips
+Objection handling guides
+Email copywriting resources
+Video tutorials
+
+2.7 Collaboration & Communication
+FR-U30: Team Collaboration
+
+Priority: P2
+Share campaigns with team
+Request feedback on messages
+Ask questions in team forum
+See what teammates are doing (opt-in)
+Celebrate wins together
+Learn from each other
+
+FR-U31: Manager Communication
+
+Priority: P1
+Submit campaigns for approval
+Receive feedback on campaigns
+View goals and expectations
+Request 1:1 meetings
+Share wins and challenges
+Access to manager notes
+
+FR-U32: AE Handoff
+
+Priority: P1
+Mark prospect as qualified (SQL)
+Add qualification notes (BANT, MEDDIC)
+Assign to Account Executive
+Include meeting context
+Track SQL to close conversion
+Get feedback from AE

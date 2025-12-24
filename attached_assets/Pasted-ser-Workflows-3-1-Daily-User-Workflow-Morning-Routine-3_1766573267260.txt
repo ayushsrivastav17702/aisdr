@@ -1,0 +1,777 @@
+ser Workflows
+3.1 Daily User Workflow
+Morning Routine (30-45 minutes):
+
+Check Dashboard (5 min):
+
+Review yesterday's results
+Check today's quota progress
+See what's scheduled today
+
+
+Inbox Review (20-30 min):
+
+Respond to positive replies
+Handle questions from neutral replies
+Book meetings for interested prospects
+Archive negative replies appropriately
+Forward qualified leads to AE
+
+
+Campaign Check (10 min):
+
+Review active campaign performance
+Pause underperforming campaigns
+Launch scheduled campaigns
+Make quick optimizations
+
+
+
+Afternoon Activities:
+
+New Campaign Creation (45-60 min):
+
+Build new outreach campaigns
+Use AI to generate messages
+Review and refine AI output
+Submit for manager approval
+Schedule launch
+
+
+Prospect Research (30 min):
+
+Find new prospects using AI prospecting
+Enrich prospect data
+Build targeted lists
+Add to campaigns
+
+
+Follow-up Tasks:
+
+Send scheduled manual follow-ups
+Complete promised actions
+Update CRM notes
+
+
+
+End of Day (10-15 min):
+
+Final Inbox Check:
+
+Respond to any urgent replies
+Schedule tomorrow's follow-ups
+
+
+Performance Review:
+
+Check daily quota achievement
+Review what worked/didn't work
+Plan tomorrow's priorities
+
+
+
+3.2 Campaign Creation Workflow
+Step 1: Planning (5 minutes)
+
+Define campaign objective (meetings, replies, awareness)
+Choose target audience (industry, role, company size)
+Select campaign type (cold, warm, re-engagement)
+
+Step 2: Prospect List (10 minutes)
+
+Use AI prospecting to find prospects OR
+Upload CSV file
+Review and refine list
+Set expected volume
+
+Step 3: Sequence Design (10 minutes)
+
+Choose number of touchpoints (recommended: 5-7)
+Select channels (email, LinkedIn, SMS)
+Set timing between touches
+Use template or start from scratch
+
+Step 4: Message Creation (20-30 minutes)
+
+Input value proposition and key points
+AI generates message variants
+Review and edit messages
+Customize personalization
+Add call-to-actions
+Create subject lines
+
+Step 5: Configuration (5 minutes)
+
+Set daily send limits
+Choose mailboxes
+Configure A/B tests
+Set up tracking
+
+Step 6: Review & Submit (5 minutes)
+
+Preview full campaign
+Check for errors
+Submit for manager approval OR
+Schedule to launch
+
+Step 7: Monitor (Ongoing)
+
+Check first 24 hours closely
+Respond to early replies
+Adjust if needed
+
+3.3 Reply Handling Workflow
+When Reply Arrives:
+
+Notification Received:
+
+Push notification or email alert
+Check reply sentiment classification
+
+
+Read & Assess (2 minutes):
+
+Read full conversation thread
+Review prospect profile
+Check engagement history
+Determine response needed
+
+
+Respond (5-10 minutes):
+If Positive Reply:
+
+Thank them for responding
+Gauge interest level
+Suggest meeting time
+Include calendar link
+Add to qualified pipeline
+
+If Neutral Reply (Question):
+
+Answer question thoroughly
+Provide relevant resources
+Keep conversation going
+Move toward meeting
+
+If Negative Reply:
+
+Thank them politely
+Ask permission to follow up later
+Respect their decision
+Archive and move on
+
+If Out of Office:
+
+Snooze for return date
+Set reminder to follow up
+
+
+Update Systems (2 minutes):
+
+Add notes in AiSDR
+Update prospect status
+Set next action
+
+
+
+3.4 Meeting Booking Workflow
+When Prospect Shows Interest:
+
+Confirm Interest:
+
+"Would Tuesday at 2pm work for a 30-minute call?"
+Provide 2-3 time options
+Include calendar link
+
+
+Send Meeting Invite:
+
+Use integrated calendar
+Include video call link
+Add agenda or prep materials
+Send confirmation email
+
+
+Meeting Preparation (Day Before):
+
+Research prospect and company
+Review conversation history
+Prepare questions
+Check qualification criteria
+
+
+Meeting Reminder (Day Of):
+
+System sends auto-reminder
+Verify prospect confirmed
+Join meeting on time
+
+
+Post-Meeting (Within 1 hour):
+
+Log meeting notes in AiSDR
+Update opportunity stage
+Send follow-up email
+Schedule next steps
+Hand off to AE if qualified
+
+
+
+3.5 Weekly Optimization Workflow
+Monday Morning:
+
+Review last week's performance
+Identify best performing campaigns
+Set this week's goals
+Plan campaign launches
+
+Mid-Week Check (Wednesday):
+
+Review campaign performance
+Pause underperformers
+Scale winners
+Adjust messaging if needed
+
+Friday Afternoon:
+
+Analyze week's results
+Document learnings
+Optimize templates
+Plan next week's campaigns
+Celebrate wins
+
+
+4. User UI Requirements
+4.1 User Dashboard
+Layout:
+
+Clean, uncluttered interface
+Focus on actionable items
+Visual hierarchy (most important on top)
+Quick access to common actions
+
+Key Sections:
+
+Today's Focus Card
+
+Quota progress bar (meetings)
+Today's send count
+Replies waiting
+Meetings scheduled
+
+
+Quick Actions Panel
+
+Create new campaign
+View inbox
+Book a meeting
+Add prospects
+
+
+Active Campaigns Widget
+
+Top 3 campaigns by performance
+Quick performance indicators
+One-click access
+
+
+Recent Activity Feed
+
+Latest replies
+Meetings booked
+Campaign launches
+System notifications
+
+
+Performance Chart
+
+Meetings booked trend (7/30 days)
+Reply rate trend
+Personal vs. team average
+
+
+
+4.2 Campaign Builder Interface
+Step-by-Step Wizard:
+
+Clear progress indicator (Step 1 of 6)
+Back/Next buttons
+Save draft at any point
+Exit warning if unsaved changes
+
+Message Editor:
+
+Rich text formatting
+Personalization token dropdown
+AI assistant sidebar
+Preview pane (desktop/mobile)
+Character count
+Spam score meter
+Sentiment indicator
+
+Visual Elements:
+
+Drag-and-drop sequence builder
+Visual flow diagram
+Color-coded step status
+Icons for channels (email, LinkedIn, SMS)
+
+4.3 Inbox Interface
+Conversation List:
+
+Inbox-style layout (like Gmail)
+Preview pane (optional)
+Sentiment badges (color-coded)
+Priority flags
+Unread indicators
+Search bar at top
+Filters sidebar
+
+Conversation Detail:
+
+Email thread view (newest first or oldest first toggle)
+Prospect profile sidebar (collapsible)
+Reply composer at bottom
+Quick action buttons (top right):
+
+Book meeting
+Mark qualified
+Archive
+Snooze
+Forward
+
+
+
+4.4 Mobile Experience
+Mobile-Optimized Views:
+
+Responsive design
+Touch-friendly buttons (minimum 44px)
+Swipe gestures (swipe to archive, snooze)
+Bottom navigation bar
+Streamlined forms
+
+Mobile Priority Features:
+
+View inbox
+Respond to replies
+Book meetings
+View dashboard
+Check calendar
+Quick campaign status
+
+
+5. User Success Metrics & KPIs
+Activity Metrics
+
+Campaigns launched per month: Target varies (typically 3-5)
+Prospects contacted per day: Target 50-100
+Emails sent per day: Target based on campaign volume
+Reply response time: Target <2 hours during work hours
+Active campaigns: Maintain 3-5 simultaneously
+
+Performance Metrics
+
+Meetings booked per month: Target based on company quota
+Reply rate: Target 5-8.5%
+Positive reply rate: Target >50% of replies
+Open rate: Target 65-70%
+Meeting show rate: Target >75%
+SQL conversion rate: Track and improve
+
+Quality Metrics
+
+Message quality score: Target >4/5 (from manager reviews)
+CRM data accuracy: Target 100%
+Compliance adherence: Target 100% (no violations)
+Campaign approval first-try rate: Target >80%
+
+Efficiency Metrics
+
+Time to create campaign: Target <1 hour
+Time to respond to reply: Target <2 hours
+Campaigns completed vs. started: Target >80%
+Prospect contact rate: Target >90% of list
+
+
+6. User Training & Onboarding
+New User Onboarding (Week 1)
+Day 1: Platform Introduction (2 hours)
+
+Welcome and platform tour
+Dashboard navigation
+Create sample campaign (guided)
+Send first test emails
+Review basic metrics
+
+Day 2: Campaign Creation (3 hours)
+
+Campaign strategy basics
+Using AI message generator
+Sequence design
+Personalization techniques
+Submit first real campaign
+
+Day 3: Prospect Management (2 hours)
+
+Finding prospects with AI
+Importing prospect lists
+Prospect research tools
+CRM integration
+Data enrichment
+
+Day 4: Inbox & Reply Management (2 hours)
+
+Handling different reply types
+Reply best practices
+Meeting booking process
+Conversation tracking
+CRM logging
+
+Day 5: Performance & Optimization (2 hours)
+
+Reading analytics
+A/B testing
+Campaign optimization
+Learning from data
+Goal setting
+
+Ongoing Training
+Weekly Best Practices (30 minutes):
+
+New feature demonstrations
+Successful campaign breakdowns
+Tips and tricks
+Q&A session
+
+Monthly Deep Dives (1 hour):
+
+Advanced techniques
+Industry-specific strategies
+Expert guest speakers
+Case study analysis
+
+Certification Path
+
+Foundational certification (after week 1)
+Advanced user certification (after 3 months)
+Expert certification (after 6 months)
+Benefits: Recognition, increased autonomy, bonuses
+
+
+7. User Best Practices
+Campaign Creation Best Practices
+
+Research First:
+
+Understand target audience deeply
+Research common pain points
+Know your value proposition
+Study successful campaigns
+
+
+Message Quality:
+
+Keep emails 50-125 words
+Clear value proposition
+Strong call-to-action
+Personalize beyond {{FirstName}}
+Test subject lines
+
+
+Sequence Strategy:
+
+5-7 touchpoints optimal
+Mix channels (email + LinkedIn)
+Vary your approach each touch
+Respect timing (2-3 days between)
+Always provide value
+
+
+Testing & Learning:
+
+Run A/B tests consistently
+Only test one variable at a time
+Give tests enough volume (minimum 100 sends)
+Document learnings
+Apply learnings to future campaigns
+
+
+
+Reply Management Best Practices
+
+Response Speed:
+
+Respond within 2 hours if possible
+Set up push notifications
+Check inbox 3-4 times per day minimum
+Prioritize hot leads first
+
+
+Reply Quality:
+
+Always add value in response
+Answer questions completely
+Be conversational, not salesy
+Match their tone
+Keep responses concise
+
+
+Meeting Booking:
+
+Suggest specific times
+Make scheduling easy (calendar link)
+Confirm 24 hours before
+Send reminder 1 hour before
+Follow up no-shows promptly
+
+
+
+Productivity Best Practices
+
+Time Blocking:
+
+Inbox time: Morning, midday, end of day
+Campaign creation: Deep focus blocks
+Prospecting: Daily consistent time
+Learning: Friday afternoons
+
+
+Prioritization:
+
+Hot leads first
+Quick wins next
+Long-term projects last
+Don't neglect follow-ups
+
+
+Organization:
+
+Use consistent naming (campaigns, lists)
+Tag everything appropriately
+Keep notes detailed and current
+Archive completed items
+Clean up weekly
+
+
+
+
+8. User Troubleshooting Guide
+Common User Issues
+Issue: Low Reply Rates
+Possible Causes:
+
+Poor targeting (wrong ICP)
+Generic messaging
+Weak value proposition
+Bad timing
+Deliverability issues
+
+Solutions:
+
+Refine ICP and target list
+Increase personalization
+Clarify value proposition
+Test different send times
+Check email health scores
+Get message feedback from manager
+
+Issue: Campaigns Stuck in Approval
+Possible Causes:
+
+Manager backlog
+Quality issues
+Incomplete information
+Compliance concerns
+
+Solutions:
+
+Follow approval checklist
+Run self-review before submission
+Add context notes for manager
+Follow up with manager if >24 hours
+Review previously approved campaigns
+
+Issue: Low Open Rates
+Possible Causes:
+
+Bad subject lines
+Email going to spam
+Wrong send times
+List quality issues
+
+Solutions:
+
+Test different subject lines
+Check spam score before sending
+Experiment with send times
+Verify email addresses
+Check domain health
+
+Issue: Can't Find Prospects
+Possible Causes:
+
+ICP too narrow
+Limited data access
+Wrong search criteria
+
+Solutions:
+
+Broaden ICP criteria
+Try different keywords
+Use AI prospecting suggestions
+Check data provider credits
+Request additional data access
+
+Issue: Meetings Not Booking
+Possible Causes:
+
+Not asking directly enough
+Complicated scheduling process
+Poor qualification
+Follow-up gaps
+
+Solutions:
+
+Include calendar link in every reply
+Offer specific time options
+Qualify interest better
+Set follow-up reminders
+Reduce friction in booking
+
+
+9. User Support Resources
+In-App Help
+Help Center Access:
+
+Question mark icon (top right)
+Contextual help (per page)
+Search help articles
+Video tutorials
+Quick tips
+
+AI Assistant:
+
+Ask questions in natural language
+Get step-by-step guidance
+Troubleshooting help
+Best practice suggestions
+
+Support Channels
+Self-Service (24/7):
+
+Knowledge base
+Video library
+Community forum
+FAQ section
+
+Assisted Support:
+
+In-app chat (business hours)
+Email support
+Team Slack channel
+Monthly office hours
+
+Escalation:
+
+Manager assistance
+CSM for account issues
+Technical support for bugs
+
+
+10. User Feedback & Feature Requests
+Providing Feedback
+In-App Feedback:
+
+Feedback button (bottom right)
+Rate features (thumbs up/down)
+Quick surveys
+Bug reporting
+
+Feature Requests:
+
+Submit via feedback form
+Vote on others' requests
+Track request status
+Get notified on implementation
+
+What's New:
+
+Product updates feed
+New feature tutorials
+Release notes
+Changelog
+
+User Voice
+Product Advisory Board:
+
+Opportunity for power users
+Quarterly meetings with product team
+Early access to beta features
+Shape product roadmap
+
+
+Appendix: User Quick Reference
+Keyboard Shortcuts
+ActionShortcutCreate new campaignCmd/Ctrl + NGo to inboxG → IGo to dashboardG → DReply to selectedRArchive selectedEBook meetingMSearch/Toggle help?
+Campaign Creation Checklist
+Before Launching:
+
+ Clear campaign objective defined
+ Target audience researched
+ ICP criteria validated
+ Prospect list quality checked
+ Messages reviewed for personalization
+ Subject lines tested for spam
+ Sequence logic makes sense
+ CTA is clear in each message
+ Compliance check passed
+ Preview looks good on mobile
+ Manager approval received
+ Send limits appropriate
+
+Daily Checklist
+Morning:
+
+ Check dashboard metrics
+ Review inbox for new replies
+ Respond to priority messages
+ Check today's scheduled sends
+ Review meetings for the day
+
+Afternoon:
+
+ Work on new campaign creation
+ Prospect research and list building
+ Optimize underperforming campaigns
+ Follow up on pending conversations
+
+End of Day:
+
+ Final inbox check
+ Update CRM notes
+ Review today's performance
+ Plan tomorrow's priorities
+ Set follow-up reminders
+
+Performance Benchmark Guide
+Excellent Performance:
+
+Reply rate: >8%
+Meeting booking rate: >3%
+Meeting show rate: >80%
+Quota attainment: >100%
+
+Good Performance:
+
+Reply rate: 5-8%
+Meeting booking rate: 1.5-3%
+Meeting show rate: 70-80%
+Quota attainment: 80-100%
+
+Needs Improvement:
+
+Reply rate: <5%
+Meeting booking rate: <1.5%
+Meeting show rate: <70%
+Quota attainment: <80%
