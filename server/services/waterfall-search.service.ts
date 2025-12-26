@@ -55,7 +55,8 @@ class WaterfallSearchService {
   async search(
     criteria: WaterfallSearchCriteria,
     organizationId?: string,
-    userId?: string
+    userId?: string,
+    perplexityOnly: boolean = true  // Default to Perplexity-only mode
   ): Promise<WaterfallSearchResult> {
     const limit = criteria.limit || 50;
     let totalCost = 0;
@@ -149,6 +150,7 @@ class WaterfallSearchService {
 
       if (perplexityService.isConfigured() && getRemainingNeeded() > 0) {
         console.log('\n📡 Step 1: Trying Perplexity API...');
+        console.log(`   Mode: ${perplexityOnly ? 'PERPLEXITY ONLY' : 'Waterfall (fallback enabled)'}`);
         try {
           const requestLimit = Math.min(getRemainingNeeded() + 10, criteria.limit || 50);
           const { prospects, cost } = await perplexityService.searchProspects(
@@ -169,18 +171,37 @@ class WaterfallSearchService {
           console.log(`   Perplexity returned ${fetchedCount} prospects (${uniqueProspects.length} unique added)`);
           console.log(`   Total accumulated: ${accumulatedProspects.length}/${limit}`);
 
+          // In Perplexity-only mode, ALWAYS return after Perplexity (don't fall back to other providers)
+          if (perplexityOnly) {
+            console.log('   ✅ Perplexity-only mode: Returning results without fallback to other providers');
+            await this.updateSearchRecord(searchRecord.id, 'perplexity', accumulatedProspects.length, totalCost);
+            return buildResult();
+          }
+
           if (accumulatedProspects.length >= limit) {
             await this.updateSearchRecord(searchRecord.id, 'perplexity', accumulatedProspects.length, totalCost);
             return buildResult();
           }
         } catch (err) {
           console.log(`   ⚠️ Perplexity error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+          // In Perplexity-only mode, don't fall back even on error
+          if (perplexityOnly) {
+            console.log('   ❌ Perplexity-only mode: No fallback - returning empty results');
+            await this.updateSearchRecord(searchRecord.id, 'perplexity', 0, totalCost, err instanceof Error ? err.message : 'Perplexity failed');
+            return buildResult();
+          }
         }
       } else if (!perplexityService.isConfigured()) {
         console.log('   ⚠️ Perplexity not configured, skipping...');
+        if (perplexityOnly) {
+          console.log('   ❌ Perplexity-only mode but Perplexity not configured - returning empty results');
+          await this.updateSearchRecord(searchRecord.id, 'perplexity', 0, 0, 'Perplexity not configured');
+          return buildResult();
+        }
       }
 
-      if (apolloService.isConfigured() && getRemainingNeeded() > 0) {
+      // Only continue to other providers if NOT in perplexityOnly mode
+      if (apolloService.isConfigured() && getRemainingNeeded() > 0 && !perplexityOnly) {
         console.log('\n📡 Step 2: Trying Apollo API...');
         try {
           const requestLimit = Math.min(getRemainingNeeded() + 10, 100);
@@ -214,7 +235,7 @@ class WaterfallSearchService {
         console.log('   ⚠️ Apollo not configured, skipping...');
       }
 
-      if (lushaService.isConfigured() && getRemainingNeeded() > 0) {
+      if (lushaService.isConfigured() && getRemainingNeeded() > 0 && !perplexityOnly) {
         console.log('\n📡 Step 3: Trying Lusha API...');
         try {
           const requestLimit = Math.min(getRemainingNeeded() + 5, 50);
@@ -247,7 +268,7 @@ class WaterfallSearchService {
         console.log('   ⚠️ Lusha not configured, skipping...');
       }
 
-      if (getRemainingNeeded() > 0) {
+      if (getRemainingNeeded() > 0 && !perplexityOnly) {
         const remaining = getRemainingNeeded();
         console.log(`\n📡 Step 4: Using OpenRouter AI to generate ${remaining} more prospects...`);
         try {
