@@ -22,7 +22,8 @@ import {
   Trophy,
   BookOpen,
   ArrowRightLeft,
-  ChevronRight
+  ChevronRight,
+  Users2
 } from 'lucide-react';
 
 interface LayoutProps {
@@ -58,6 +59,7 @@ export function Layout({ children }: LayoutProps) {
   ];
 
   const adminNavItems: NavItem[] = [
+    { href: '/manager/dashboard', icon: <Users2 className="w-4 h-4" />, label: 'Manager Dashboard', requireAdmin: true },
     { href: '/admin/users', icon: <Shield className="w-4 h-4" />, label: 'User Admin', requireAdmin: true },
     { href: '/organization-settings', icon: <Building2 className="w-4 h-4" />, label: 'Organization', requireAdmin: true },
     { href: '/workspace-management', icon: <FolderTree className="w-4 h-4" />, label: 'Workspaces', requireAdmin: true },
