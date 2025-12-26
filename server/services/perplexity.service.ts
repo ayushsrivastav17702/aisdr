@@ -139,41 +139,74 @@ Only return real, verifiable contacts. Do not fabricate data. Prioritize contact
   private buildSearchPrompt(criteria: WaterfallSearchCriteria): string {
     const parts: string[] = [];
     
-    parts.push(`Find ${criteria.limit || 50} B2B prospects matching this profile:`);
+    // Build a natural language query for better Perplexity results
+    const queryParts: string[] = [];
+    
+    // Add company/industry first (most important for specific searches)
+    if (criteria.industry) {
+      queryParts.push(criteria.industry);
+    }
+    
+    // Add location
+    if (criteria.location) {
+      queryParts.push(criteria.location);
+    } else if (criteria.locations && criteria.locations.length > 0) {
+      queryParts.push(criteria.locations.join(' or '));
+    }
+    
+    // Add job titles
+    if (criteria.jobTitles && criteria.jobTitles.length > 0) {
+      queryParts.push(criteria.jobTitles.join(', '));
+    }
+    
+    // Add departments if no job titles
+    if ((!criteria.jobTitles || criteria.jobTitles.length === 0) && criteria.departments && criteria.departments.length > 0) {
+      queryParts.push(criteria.departments.join(', '));
+    }
+    
+    // Add keywords
+    if (criteria.keywords) {
+      queryParts.push(criteria.keywords);
+    }
+    
+    const naturalQuery = queryParts.join(' ').trim() || 'business professionals';
+    
+    parts.push(`Search for "${naturalQuery}" and find ${criteria.limit || 20} real people with their contact information.`);
+    parts.push('');
+    parts.push('SEARCH REQUIREMENTS:');
     
     if (criteria.industry) {
-      parts.push(`- Industry: ${criteria.industry}`);
+      parts.push(`- COMPANY: ${criteria.industry} (search for employees at this specific company)`);
+    }
+    if (criteria.location || criteria.locations) {
+      const loc = criteria.location || criteria.locations?.join(', ');
+      parts.push(`- LOCATION: MUST be in ${loc} - do NOT include people from other countries/regions`);
+    }
+    if (criteria.jobTitles && criteria.jobTitles.length > 0) {
+      parts.push(`- JOB TITLES: ${criteria.jobTitles.join(', ')} (or similar roles like merchandiser, buyer, category manager)`);
+    }
+    if (criteria.seniority && criteria.seniority.length > 0) {
+      parts.push(`- SENIORITY: ${criteria.seniority.join(', ')}`);
     }
     if (criteria.companySize) {
       parts.push(`- Company Size: ${criteria.companySize}`);
     }
-    if (criteria.jobTitles && criteria.jobTitles.length > 0) {
-      parts.push(`- Job Titles: ${criteria.jobTitles.join(', ')}`);
-    }
-    if (criteria.seniority && criteria.seniority.length > 0) {
-      parts.push(`- Seniority Levels: ${criteria.seniority.join(', ')}`);
-    }
-    if (criteria.departments && criteria.departments.length > 0) {
-      parts.push(`- Departments: ${criteria.departments.join(', ')}`);
-    }
-    if (criteria.location) {
-      parts.push(`- Location: ${criteria.location}`);
-    }
-    if (criteria.technologies && criteria.technologies.length > 0) {
-      parts.push(`- Technologies Used: ${criteria.technologies.join(', ')}`);
-    }
-    if (criteria.fundingStage) {
-      parts.push(`- Funding Stage: ${criteria.fundingStage}`);
-    }
-    if (criteria.keywords) {
-      parts.push(`- Keywords: ${criteria.keywords}`);
-    }
 
-    parts.push('\nCRITICAL REQUIREMENTS:');
-    parts.push('1. For each prospect, find their business EMAIL ADDRESS - search LinkedIn, company websites, team pages, press releases');
-    parts.push('2. For each prospect, find their PHONE/MOBILE NUMBER - search contact pages, LinkedIn profiles, business directories');
-    parts.push('3. Use email patterns when direct email not found (e.g., firstname.lastname@company.com)');
-    parts.push('\nReturn the results as a JSON array. Prioritize contacts with both email AND phone when possible.');
+    parts.push('');
+    parts.push('FOR EACH PERSON, YOU MUST FIND:');
+    parts.push('1. VERIFIED EMAIL ADDRESS - Use the company email pattern (e.g., firstname.lastname@adidas.com)');
+    parts.push('2. PHONE NUMBER if available - From LinkedIn, company directory, or press releases');
+    parts.push('3. LinkedIn URL - Their actual LinkedIn profile');
+    parts.push('4. Current job title and company');
+    parts.push('5. Location (city, state)');
+    parts.push('');
+    parts.push('EMAIL PATTERN STRATEGY:');
+    parts.push('- If company is Adidas: firstname.lastname@adidas.com');
+    parts.push('- If company is Nike: firstname.lastname@nike.com');
+    parts.push('- If company is Puma: firstname.lastname@puma.com');
+    parts.push('- Look for other employees email patterns on the company website and apply the same pattern');
+    parts.push('');
+    parts.push('Return ONLY a valid JSON array with NO markdown formatting. Each prospect must have: fullName, firstName, lastName, email, jobTitle, companyName, linkedinUrl, phone, location');
     
     return parts.join('\n');
   }

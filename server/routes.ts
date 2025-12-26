@@ -264,7 +264,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Supports useWaterfall: true to try Perplexity first for better email coverage
   app.post("/api/apollo-search-and-save", authenticate, async (req, res) => {
     try {
-      const { apolloFilters, page = 1, per_page = 50, extractionName, tag, useWaterfall = false } = req.body;
+      const { apolloFilters, page = 1, per_page = 50, extractionName, tag, useWaterfall = true } = req.body;
       
       console.log('\n========== APOLLO SEARCH REQUEST ==========');
       console.log('  Extraction Name:', extractionName);
