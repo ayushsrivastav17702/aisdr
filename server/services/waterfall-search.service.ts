@@ -481,6 +481,8 @@ Generate realistic but fictional data based on the ICP criteria. These are AI-ge
       'technology': ['5567cd4773696439b10b0000'],
       'software': ['5567cd4773696439b10b0000'],
       'tech': ['5567cd4773696439b10b0000'],
+      'saas': ['5567cd4773696439b10b0000'],
+      'fintech': ['5567cd4773696439b10b0000', '5567cd4773696439b12b0000'],
       'healthcare': ['5567cd4773696439b11b0000'],
       'health': ['5567cd4773696439b11b0000'],
       'medical': ['5567cd4773696439b11b0000'],
@@ -525,7 +527,17 @@ Generate realistic but fictional data based on the ICP criteria. These are AI-ge
       'biotechnology': ['5567cd4773696439b270000'],
       'biotech': ['5567cd4773696439b270000'],
       'agriculture': ['5567cd4773696439b280000'],
-      'agtech': ['5567cd4773696439b280000']
+      'agtech': ['5567cd4773696439b280000'],
+      'marketing': ['5567cd4773696439b290000'],
+      'advertising': ['5567cd4773696439b290000'],
+      'hr': ['5567cd4773696439b2a0000'],
+      'human resources': ['5567cd4773696439b2a0000'],
+      'staffing': ['5567cd4773696439b2a0000'],
+      'security': ['5567cd4773696439b2b0000'],
+      'cybersecurity': ['5567cd4773696439b2b0000'],
+      'ai': ['5567cd4773696439b10b0000'],
+      'artificial intelligence': ['5567cd4773696439b10b0000'],
+      'machine learning': ['5567cd4773696439b10b0000']
     };
     const key = industry.toLowerCase();
     return industryMap[key] || [industry];
