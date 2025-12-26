@@ -1785,7 +1785,7 @@ function TenantIsolationTest() {
   const runIsolationTest = async () => {
     setIsRunning(true);
     try {
-      const result = await superAdminFetch("/api/super-admin/isolation-test", { method: "POST" });
+      const result = await superAdminFetch("/api/super-admin/security/isolation-test", { method: "POST" });
       setTestResults(result.results || []);
       toast({
         title: result.success ? "All tests passed" : "Some tests failed",
