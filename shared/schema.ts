@@ -3275,3 +3275,101 @@ export const insertHandoffActivitySchema = createInsertSchema(handoffActivities)
   id: true,
   createdAt: true,
 });
+
+// ============================================
+// MULTI-PROVIDER WATERFALL SEARCH SYSTEM
+// ============================================
+
+// Provider enum for waterfall search
+export const searchProviderEnum = pgEnum("search_provider", ["perplexity", "apollo", "lusha", "openrouter"]);
+
+// Prospect searches tracking table
+export const prospectSearches = pgTable("prospect_searches", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "set null" }),
+  searchCriteria: jsonb("search_criteria").notNull(),
+  provider: varchar("provider", { length: 50 }),
+  totalResults: integer("total_results").default(0),
+  apiCost: real("api_cost").default(0),
+  status: varchar("status", { length: 50 }).default("completed"),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  orgIdIdx: index("prospect_searches_org_id_idx").on(table.organizationId),
+  userIdIdx: index("prospect_searches_user_id_idx").on(table.userId),
+  providerIdx: index("prospect_searches_provider_idx").on(table.provider),
+  createdAtIdx: index("prospect_searches_created_at_idx").on(table.createdAt),
+}));
+
+// API usage tracking table
+export const apiUsage = pgTable("api_usage", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
+  provider: varchar("provider", { length: 50 }).notNull(),
+  endpoint: varchar("endpoint", { length: 255 }),
+  requestData: jsonb("request_data"),
+  responseData: jsonb("response_data"),
+  tokensUsed: integer("tokens_used"),
+  cost: real("cost"),
+  success: boolean("success").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  orgIdIdx: index("api_usage_org_id_idx").on(table.organizationId),
+  providerIdx: index("api_usage_provider_idx").on(table.provider),
+  createdAtIdx: index("api_usage_created_at_idx").on(table.createdAt),
+}));
+
+// Prospect enrichment queue for async processing
+export const prospectEnrichmentQueue = pgTable("prospect_enrichment_queue", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  prospectId: varchar("prospect_id").references(() => prospects.id, { onDelete: "cascade" }),
+  status: varchar("status", { length: 50 }).default("pending"),
+  provider: varchar("provider", { length: 50 }),
+  retryCount: integer("retry_count").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  processedAt: timestamp("processed_at"),
+}, (table) => ({
+  prospectIdIdx: index("enrichment_queue_prospect_id_idx").on(table.prospectId),
+  statusIdx: index("enrichment_queue_status_idx").on(table.status),
+}));
+
+// Waterfall Search Types
+export type ProspectSearch = typeof prospectSearches.$inferSelect;
+export type InsertProspectSearch = typeof prospectSearches.$inferInsert;
+export type ApiUsage = typeof apiUsage.$inferSelect;
+export type InsertApiUsage = typeof apiUsage.$inferInsert;
+export type ProspectEnrichmentQueue = typeof prospectEnrichmentQueue.$inferSelect;
+export type InsertProspectEnrichmentQueue = typeof prospectEnrichmentQueue.$inferInsert;
+
+// Waterfall Search Schemas
+export const insertProspectSearchSchema = createInsertSchema(prospectSearches).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertApiUsageSchema = createInsertSchema(apiUsage).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertProspectEnrichmentQueueSchema = createInsertSchema(prospectEnrichmentQueue).omit({
+  id: true,
+  createdAt: true,
+  processedAt: true,
+});
+
+// ICP Criteria interface for waterfall search
+export interface WaterfallSearchCriteria {
+  industry?: string;
+  companySize?: string;
+  jobTitles?: string[];
+  location?: string;
+  limit?: number;
+  keywords?: string;
+  seniority?: string[];
+  departments?: string[];
+  revenueRange?: { min?: number; max?: number };
+  technologies?: string[];
+  fundingStage?: string;
+}
