@@ -76,6 +76,10 @@ class ApolloService {
     this.apiKey = process.env.APOLLO_API_KEY || '';
   }
 
+  isConfigured(): boolean {
+    return !!this.apiKey;
+  }
+
   async searchContacts(params: ApolloSearchParams): Promise<ApolloSearchResponse> {
     if (!this.apiKey) {
       throw new Error('Apollo API key not configured. Please set APOLLO_API_KEY environment variable.');
