@@ -1,0 +1,144 @@
+8. Protected Route Component
+jsx// File: frontend/src/components/ProtectedRoute.jsx
+import { Navigate } from 'react-router-dom';
+
+export default function ProtectedRoute({ children, allowedRoles }) {
+    const token = localStorage.getItem('token');
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    
+    if (!token) {
+        return <Navigate to="/login" />;
+    }
+    
+    if (allowedRoles && !allowedRoles.includes(user.role)) {
+        return <Navigate to="/login" />;
+    }
+    
+    return children;
+}
+9. Layout Components
+jsx// File: frontend/src/components/Layout.jsx
+import { useNavigate } from 'react-router-dom';
+
+export default function Layout({ children }) {
+    const navigate = useNavigate();
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    
+    const handleLogout = () => {
+        localStorage.removeItem('token');
+        localStorage.removeItem('user');
+        navigate('/login');
+    };
+    
+    return (
+        <div className="min-h-screen bg-gray-50">
+            <nav className="bg-white shadow">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+                    <div className="flex justify-between h-16">
+                        <div className="flex items-center">
+                            <h1 className="text-xl font-bold text-blue-600">AiSDR</h1>
+                        </div>
+                        <div className="flex items-center gap-4">
+                            <span className="text-sm text-gray-600">{user.fullName}</span>
+                            <button
+                                onClick={handleLogout}
+                                className="text-sm text-red-600 hover:underline"
+                            >
+                                Logout
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </nav>
+            <main>{children}</main>
+        </div>
+    );
+}
+10. Frontend Config
+javascript// File: frontend/vite.config.js
+import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+
+export default defineConfig({
+  plugins: [react()],
+  server: {
+    port: 5173,
+    proxy: {
+      '/api': {
+        target: 'http://localhost:3000',
+        changeOrigin: true
+      }
+    }
+  }
+})
+11. Tailwind Config
+javascript// File: frontend/tailwind.config.js
+/** @type {import('tailwindcss').Config} */
+export default {
+  content: [
+    "./index.html",
+    "./src/**/*.{js,ts,jsx,tsx}",
+  ],
+  theme: {
+    extend: {},
+  },
+  plugins: [],
+}
+
+🟢 LOW PRIORITY - Nice to Have
+12. Error Boundary
+13. Loading Spinner Component
+14. Toast Notifications
+15. Form Validation Library
+16. API Response Interceptors
+
+📋 Installation Steps (Start Fresh)
+bash# 1. Create project structure
+mkdir aisdr
+cd aisdr
+mkdir backend frontend
+
+# 2. Backend Setup
+cd backend
+npm init -y
+npm install express cors pg bcrypt jsonwebtoken dotenv axios
+
+# 3. Create backend files
+mkdir config models controllers routes middleware utils
+touch server.js
+touch config/database.js
+touch utils/auditLog.js
+touch .env
+
+# 4. Frontend Setup
+cd ../frontend
+npm create vite@latest . -- --template react
+npm install react-router-dom axios
+npm install -D tailwindcss postcss autoprefixer
+npx tailwindcss init -p
+
+# 5. Database Setup
+createdb aisdr_db
+psql aisdr_db < database/init.sql
+
+# 6. Start Development
+# Terminal 1 (Backend):
+cd backend
+npm run dev
+
+# Terminal 2 (Frontend):
+cd frontend
+npm run dev
+
+✅ Summary
+Completed: 80% of core functionality
+Missing: 20% of setup/configuration files
+Critical Missing Files (Need Now):
+
+✅ database.js
+✅ auditLog.js
+✅ Complete server.js
+✅ App.jsx with routing
+✅ package.json files
+✅ Complete .env
+✅ Consolidated SQL script
