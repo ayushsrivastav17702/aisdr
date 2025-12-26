@@ -143,3 +143,59 @@ All three features accessible from main sidebar:
 - Trophy icon → Leaderboard
 - BookOpen icon → Best Practices
 - ArrowRightLeft icon → AE Handoff
+
+## Multi-Provider Waterfall Search System
+
+### Overview
+Intelligent prospect search system that cascades through multiple providers to maximize result coverage while controlling costs.
+
+### Provider Cascade Order
+1. **Perplexity AI** (PERPLEXITY_API_KEY) - AI-powered B2B research using Llama-3.1-sonar model
+2. **Apollo.io** (APOLLO_API_KEY) - Verified business contacts database
+3. **Lusha** (LUSHA_API_KEY) - Contact enrichment and company search
+4. **OpenRouter** (OPENROUTER_API_KEY) - AI fallback for generating prospects when other providers fail
+
+### Key Features
+- **Accumulating Mode**: Results aggregate across providers until target limit is reached
+- **Smart Deduplication**: Uses email, LinkedIn URL, or name+company+title as dedupe keys
+- **Cost Optimization**: Each provider requests only remaining needed prospects + buffer
+- **Error Resilience**: Each provider wrapped in try-catch to prevent cascade failure
+- **Usage Tracking**: Both `fetched` and `unique` counts tracked per provider for billing reconciliation
+
+### API Endpoints
+- `POST /api/waterfall/search` - Execute waterfall search
+- `POST /api/waterfall/search-and-save` - Search and save prospects to database
+- `GET /api/waterfall/history` - Get search history
+- `GET /api/waterfall/usage` - Get API usage statistics
+- `GET /api/waterfall/providers` - Get provider status
+- `GET /api/waterfall/cost-summary` - Get cost summary by provider
+
+### Database Tables
+- `prospect_searches` - Search history with criteria, results, and costs
+- `api_usage` - Per-provider API call tracking for cost analytics
+
+### Response Structure
+```typescript
+{
+  providers: SearchProvider[],      // All providers that contributed results
+  prospects: WaterfallProspect[],   // Deduplicated prospect list
+  totalCost: number,                // Total cost across all providers
+  providerChain: [{                 // Detailed per-provider metrics
+    provider: string,
+    fetched: number,                // Records fetched from API
+    unique: number,                 // Unique records added after dedup
+    cost: number
+  }],
+  summary: {
+    totalFetched: number,
+    totalUnique: number,
+    primaryProvider: SearchProvider
+  }
+}
+```
+
+### Files
+- `server/services/waterfall-search.service.ts` - Core cascade logic
+- `server/services/perplexity.service.ts` - Perplexity AI integration
+- `server/services/lusha.service.ts` - Lusha API integration
+- `server/routes/waterfall-search.routes.ts` - API routes
