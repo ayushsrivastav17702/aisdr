@@ -1,0 +1,353 @@
+/ Helper: Build Perplexity prompt
+    buildPerplexityPrompt(criteria) {
+        return `Find ${criteria.limit || 50} B2B prospects matching this profile:
+- Industry: ${criteria.industry}
+- Company Size: ${criteria.companySize}
+- Job Titles: ${criteria.jobTitles.join(', ')}
+- Location: ${criteria.location || 'Any'}
+
+For each prospect, provide:
+- Full Name
+- Email (if available)
+- Job Title
+- Company Name
+- LinkedIn URL
+- Phone (if available)
+- Company Website
+
+Return results as a JSON array with this exact structure:
+[
+  {
+    "firstName": "John",
+    "lastName": "Doe",
+    "email": "john.doe@company.com",
+    "jobTitle": "VP of Sales",
+    "companyName": "Acme Corp",
+    "linkedinUrl": "https://linkedin.com/in/johndoe",
+    "phone": "+1-555-0123",
+    "website": "https://acmecorp.com",
+    "companySize": "100-500",
+    "location": "San Francisco, CA"
+  }
+]
+
+IMPORTANT: Return ONLY the JSON array, no explanation.`;
+    }
+
+    // Helper: Build OpenRouter prompt
+    buildOpenRouterPrompt(criteria) {
+        return `Generate ${criteria.limit || 50} realistic B2B prospect profiles matching this ICP:
+
+Industry: ${criteria.industry}
+Company Size: ${criteria.companySize}
+Job Titles: ${criteria.jobTitles.join(', ')}
+Location: ${criteria.location || 'United States'}
+
+Create realistic prospects with:
+- Realistic names for the industry/region
+- Corporate email patterns (firstname.lastname@company.com)
+- Appropriate job titles
+- Real company name patterns for the industry
+- LinkedIn URL format
+- Phone number format
+
+Return as JSON array:
+[
+  {
+    "firstName": "string",
+    "lastName": "string",
+    "email": "string",
+    "jobTitle": "string",
+    "companyName": "string",
+    "linkedinUrl": "string",
+    "phone": "string",
+    "website": "string",
+    "companySize": "string",
+    "industry": "string",
+    "location": "string"
+  }
+]
+
+CRITICAL: Return ONLY valid JSON array, nothing else.`;
+    }
+
+    // Helper: Parse responses
+    parsePerplexityResponse(content) {
+        try {
+            const cleaned = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+            const parsed = JSON.parse(cleaned);
+            return Array.isArray(parsed) ? parsed : [];
+        } catch (error) {
+            console.error('Failed to parse Perplexity response:', error);
+            return [];
+        }
+    }
+
+    parseOpenRouterResponse(content) {
+        try {
+            const cleaned = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+            const parsed = JSON.parse(cleaned);
+            return Array.isArray(parsed) ? parsed : [];
+        } catch (error) {
+            console.error('Failed to parse OpenRouter response:', error);
+            return [];
+        }
+    }
+
+    // Helper: Industry mapping for Apollo
+    mapIndustryToApollo(industry) {
+        const mapping = {
+            'technology': ['5567cd4773696439b10b0000'],
+            'healthcare': ['5567cd4773696439b11b0000'],
+            'finance': ['5567cd4773696439b12b0000'],
+            'retail': ['5567cd4773696439b13b0000'],
+            'manufacturing': ['5567cd4773696439b14b0000']
+        };
+        return mapping[industry.toLowerCase()] || [];
+    }
+
+    // Helper: Company size mapping for Apollo
+    mapCompanySizeToApollo(size) {
+        const mapping = {
+            '1-10': ['1,10'],
+            '11-50': ['11,50'],
+            '51-200': ['51,200'],
+            '201-500': ['201,500'],
+            '501-1000': ['501,1000'],
+            '1001-5000': ['1001,5000'],
+            '5001+': ['5001,10000', '10001+']
+        };
+        return mapping[size] || [];
+    }
+
+    // Helper: Company size mapping for Lusha
+    mapCompanySizeToLusha(size) {
+        const mapping = {
+            '1-10': 'SMALL',
+            '11-50': 'SMALL',
+            '51-200': 'MEDIUM',
+            '201-500': 'MEDIUM',
+            '501-1000': 'LARGE',
+            '1001-5000': 'LARGE',
+            '5001+': 'ENTERPRISE'
+        };
+        return mapping[size] || 'MEDIUM';
+    }
+
+    // Helper: Get Lusha contacts
+    async getLushaContacts(companyId, jobTitles) {
+        try {
+            const response = await axios.get(
+                `${process.env.LUSHA_API_URL}/companies/${companyId}/contacts`,
+                {
+                    headers: { 'api_token': process.env.LUSHA_API_KEY },
+                    params: { roles: jobTitles.join(',') }
+                }
+            );
+
+            return response.data.data.map(contact => ({
+                email: contact.email,
+                firstName: contact.firstName,
+                lastName: contact.lastName,
+                fullName: `${contact.firstName} ${contact.lastName}`,
+                jobTitle: contact.title,
+                companyName: contact.company?.name,
+                linkedinUrl: contact.linkedInUrl,
+                phone: contact.phoneNumbers?.[0],
+                location: contact.location,
+                source: 'lusha'
+            }));
+        } catch (error) {
+            console.error('Lusha contacts error:', error);
+            return [];
+        }
+    }
+
+    // Helper: Calculate costs
+    calculatePerplexityCost(usage) {
+        const inputCost = (usage.prompt_tokens / 1000000) * 5;
+        const outputCost = (usage.completion_tokens / 1000000) * 15;
+        return inputCost + outputCost;
+    }
+
+    calculateOpenRouterCost(usage) {
+        const inputCost = (usage.prompt_tokens / 1000000) * 15;
+        const outputCost = (usage.completion_tokens / 1000000) * 75;
+        return inputCost + outputCost;
+    }
+
+    // Database operations
+    async createSearchRecord(criteria) {
+        const query = `
+            INSERT INTO prospect_searches (tenant_id, user_id, search_criteria, status)
+            VALUES ($1, $2, $3, 'pending')
+            RETURNING *
+        `;
+        const result = await pool.query(query, [
+            this.tenantId,
+            this.userId,
+            JSON.stringify(criteria)
+        ]);
+        return result.rows[0];
+    }
+
+    async updateSearchRecord(searchId, provider, resultCount, errorMessage = null) {
+        const query = `
+            UPDATE prospect_searches 
+            SET provider = $1, total_results = $2, api_cost = $3, 
+                status = $4, error_message = $5
+            WHERE id = $6
+        `;
+        await pool.query(query, [
+            provider,
+            resultCount,
+            this.totalCost,
+            errorMessage ? 'failed' : 'completed',
+            errorMessage,
+            searchId
+        ]);
+    }
+
+    async logApiUsage(provider, request, response, cost, success = true) {
+        const query = `
+            INSERT INTO api_usage (tenant_id, provider, request_data, response_data, cost, success)
+            VALUES ($1, $2, $3, $4, $5, $6)
+        `;
+        await pool.query(query, [
+            this.tenantId,
+            provider,
+            JSON.stringify(request),
+            response ? JSON.stringify(response) : null,
+            cost,
+            success
+        ]);
+    }
+}
+
+module.exports = ProspectSearchService;
+
+Step 5.4: Prospect Model
+File: backend/models/Prospect.js
+javascriptconst pool = require('../config/database');
+
+class Prospect {
+    static async create(data) {
+        const query = `
+            INSERT INTO prospects (
+                tenant_id, user_id, email, first_name, last_name, full_name,
+                company_name, job_title, linkedin_url, phone, website,
+                industry, company_size, location, status, notes
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+            RETURNING *
+        `;
+        
+        const result = await pool.query(query, [
+            data.tenantId, data.userId, data.email, data.firstName, data.lastName,
+            data.fullName, data.companyName, data.jobTitle, data.linkedinUrl,
+            data.phone, data.website, data.industry, data.companySize,
+            data.location, data.status || 'new', data.notes || null
+        ]);
+        
+        return result.rows[0];
+    }
+
+    static async bulkCreate(prospects, tenantId, userId) {
+        if (prospects.length === 0) return [];
+
+        const values = prospects.map((p, idx) => {
+            const base = idx * 16;
+            return `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4}, $${base + 5}, 
+                     $${base + 6}, $${base + 7}, $${base + 8}, $${base + 9}, $${base + 10},
+                     $${base + 11}, $${base + 12}, $${base + 13}, $${base + 14}, $${base + 15}, $${base + 16})`;
+        }).join(',');
+
+        const params = prospects.flatMap(p => [
+            tenantId, userId, p.email, p.firstName, p.lastName, p.fullName || `${p.firstName} ${p.lastName}`,
+            p.companyName, p.jobTitle, p.linkedinUrl, p.phone, p.website,
+            p.industry, p.companySize, p.location, 'new', null
+        ]);
+
+        const query = `
+            INSERT INTO prospects (
+                tenant_id, user_id, email, first_name, last_name, full_name,
+                company_name, job_title, linkedin_url, phone, website,
+                industry, company_size, location, status, notes
+            ) VALUES ${values}
+            ON CONFLICT (email, tenant_id) DO NOTHING
+            RETURNING *
+        `;
+
+        const result = await pool.query(query, params);
+        return result.rows;
+    }
+
+    static async findByTenant(tenantId, filters = {}) {
+        let query = 'SELECT * FROM prospects WHERE tenant_id = $1';
+        const params = [tenantId];
+        let paramCount = 2;
+
+        if (filters.status) {
+            query += ` AND status = $${paramCount}`;
+            params.push(filters.status);
+            paramCount++;
+        }
+
+        if (filters.search) {
+            query += ` AND (full_name ILIKE $${paramCount} OR email ILIKE $${paramCount} OR company_name ILIKE $${paramCount})`;
+            params.push(`%${filters.search}%`);
+            paramCount++;
+        }
+
+        query += ' ORDER BY created_at DESC LIMIT 1000';
+        
+        const result = await pool.query(query, params);
+        return result.rows;
+    }
+
+    static async findById(id, tenantId) {
+        const query = 'SELECT * FROM prospects WHERE id = $1 AND tenant_id = $2';
+        const result = await pool.query(query, [id, tenantId]);
+        return result.rows[0];
+    }
+
+    static async update(id, tenantId, updates) {
+        const fields = Object.keys(updates);
+        const values = Object.values(updates);
+        
+        const setClause = fields.map((field, idx) => 
+            `${field} = $${idx + 3}`
+        ).join(', ');
+        
+        const query = `
+            UPDATE prospects 
+            SET ${setClause}, updated_at = CURRENT_TIMESTAMP 
+            WHERE id = $1 AND tenant_id = $2 
+            RETURNING *
+        `;
+        
+        const result = await pool.query(query, [id, tenantId, ...values]);
+        return result.rows[0];
+    }
+
+    static async delete(id, tenantId) {
+        const query = 'DELETE FROM prospects WHERE id = $1 AND tenant_id = $2';
+        await pool.query(query, [id, tenantId]);
+    }
+
+    static async getStats(tenantId) {
+        const query = `
+            SELECT 
+                COUNT(*) as total,
+                COUNT(*) FILTER (WHERE status = 'new') as new,
+                COUNT(*) FILTER (WHERE status = 'contacted') as contacted,
+                COUNT(*) FILTER (WHERE status = 'replied') as replied,
+                COUNT(*) FILTER (WHERE status = 'qualified') as qualified
+            FROM prospects
+            WHERE tenant_id = $1
+        `;
+        const result = await pool.query(query, [tenantId]);
+        return result.rows[0];
+    }
+}
+
+module.exports = Prospect;

@@ -41,10 +41,10 @@ router.post("/search", authenticate, async (req, res) => {
     );
 
     console.log('\n========== WATERFALL SEARCH RESULT ==========');
-    console.log('Provider:', result.provider);
+    console.log('Providers:', result.providers.join(' → ') || 'none');
     console.log('Prospects Found:', result.prospects.length);
     console.log('Total Cost:', `$${result.totalCost.toFixed(4)}`);
-    console.log('Provider Chain:', result.providerChain.map(p => `${p.provider}(${p.resultCount})`).join(' → '));
+    console.log('Provider Chain:', result.providerChain.map(p => `${p.provider}(${p.unique}/${p.fetched})`).join(' → '));
 
     res.json({
       success: true,
@@ -129,13 +129,14 @@ router.post("/search-and-save", authenticate, async (req, res) => {
 
     res.json({
       success: true,
-      provider: result.provider,
+      providers: result.providers,
       totalFound: result.prospects.length,
       savedCount,
       duplicateCount,
       totalCost: result.totalCost,
       searchId: result.searchId,
       providerChain: result.providerChain,
+      summary: result.summary,
       savedProspects: savedProspects.slice(0, 10)
     });
   } catch (error) {
