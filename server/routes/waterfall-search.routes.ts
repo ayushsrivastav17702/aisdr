@@ -258,10 +258,16 @@ router.get("/providers", authenticate, async (_req, res) => {
   try {
     const status = waterfallSearchService.getProviderStatus();
 
+    const providers = [
+      { name: 'Perplexity', available: status.perplexity.configured, priority: 1 },
+      { name: 'Apollo', available: status.apollo.configured, priority: 2 },
+      { name: 'Lusha', available: status.lusha.configured, priority: 3 },
+      { name: 'OpenRouter', available: status.openrouter.configured, priority: 4 }
+    ];
+
     res.json({
       success: true,
-      providers: status,
-      order: ['perplexity', 'apollo', 'lusha', 'openrouter'],
+      providers,
       description: 'Providers are tried in order until one returns sufficient results'
     });
   } catch (error) {
