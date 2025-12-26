@@ -66,8 +66,26 @@ class WaterfallSearchService {
 
     const searchRecord = await this.createSearchRecord(criteria, organizationId, userId);
 
+    // Helper to check if email is a locked/placeholder email
+    const isLockedEmail = (email?: string): boolean => {
+      if (!email || email === '') return false;
+      // Check for specific Apollo placeholder patterns
+      return email.includes('email_not_unlocked') || 
+             email === 'locked@domain.com' ||
+             email.endsWith('@domain.com');
+    };
+
+    // Clean prospect emails - remove locked placeholders
+    const cleanProspectEmail = (p: WaterfallProspect): WaterfallProspect => {
+      if (isLockedEmail(p.email)) {
+        return { ...p, email: undefined };
+      }
+      return p;
+    };
+
     const createDedupeKey = (p: WaterfallProspect): string => {
-      const email = p.email?.toLowerCase() || '';
+      // Ignore locked emails for deduplication
+      const email = (!isLockedEmail(p.email) && p.email) ? p.email.toLowerCase() : '';
       const name = p.fullName.toLowerCase();
       const company = p.companyName.toLowerCase();
       const title = p.jobTitle?.toLowerCase() || '';
@@ -79,12 +97,14 @@ class WaterfallSearchService {
 
     const deduplicateProspects = (existing: WaterfallProspect[], newProspects: WaterfallProspect[]): WaterfallProspect[] => {
       const existingKeys = new Set(existing.map(createDedupeKey));
-      return newProspects.filter(p => {
-        const key = createDedupeKey(p);
-        if (existingKeys.has(key)) return false;
-        existingKeys.add(key);
-        return true;
-      });
+      return newProspects
+        .map(cleanProspectEmail)  // Clean locked emails before adding
+        .filter(p => {
+          const key = createDedupeKey(p);
+          if (existingKeys.has(key)) return false;
+          existingKeys.add(key);
+          return true;
+        });
     };
 
     const getRemainingNeeded = (): number => Math.max(0, limit - accumulatedProspects.length);
@@ -280,7 +300,10 @@ class WaterfallSearchService {
         apolloFilters.organization_num_employees_ranges = [this.mapCompanySizeToApollo(criteria.companySize)];
       }
       if (criteria.location) {
-        apolloFilters.person_locations = [criteria.location];
+        apolloFilters.person_locations = [this.normalizeLocation(criteria.location)];
+      }
+      if (criteria.locations && criteria.locations.length > 0) {
+        apolloFilters.person_locations = criteria.locations.map(loc => this.normalizeLocation(loc));
       }
       if (criteria.technologies && criteria.technologies.length > 0) {
         apolloFilters.q_organization_keyword_tags = criteria.technologies;
@@ -651,6 +674,41 @@ Generate realistic but fictional data based on the ICP criteria. These are AI-ge
       lusha: { configured: lushaService.isConfigured(), priority: 3 },
       openrouter: { configured: !!this.openRouterApiKey, priority: 4, fallback: true }
     };
+  }
+
+  private normalizeLocation(location: string): string {
+    const locationAliases: Record<string, string> = {
+      'usa': 'United States',
+      'us': 'United States',
+      'u.s.': 'United States',
+      'u.s.a.': 'United States',
+      'america': 'United States',
+      'uk': 'United Kingdom',
+      'u.k.': 'United Kingdom',
+      'britain': 'United Kingdom',
+      'great britain': 'United Kingdom',
+      'england': 'United Kingdom',
+      'uae': 'United Arab Emirates',
+      'korea': 'South Korea',
+      'holland': 'Netherlands',
+      'the netherlands': 'Netherlands',
+      'nz': 'New Zealand',
+      'sg': 'Singapore',
+      'hk': 'Hong Kong',
+      'jp': 'Japan',
+      'de': 'Germany',
+      'fr': 'France',
+      'es': 'Spain',
+      'it': 'Italy',
+      'ca': 'Canada',
+      'au': 'Australia',
+      'in': 'India',
+      'cn': 'China',
+      'br': 'Brazil',
+      'mx': 'Mexico'
+    };
+    const normalized = location.trim().toLowerCase();
+    return locationAliases[normalized] || location.trim();
   }
 }
 
