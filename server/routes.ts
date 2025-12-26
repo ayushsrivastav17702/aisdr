@@ -5,7 +5,8 @@ import { aiService } from "./services/ai.service";
 import { apolloService } from "./services/apollo.service";
 import { jobService } from "./services/job.service";
 import { lushaService } from "./services/lusha.service";
-import { waterfallSearchService, WaterfallSearchCriteria } from "./services/waterfall-search.service";
+import { waterfallSearchService } from "./services/waterfall-search.service";
+import type { WaterfallSearchCriteria } from "@shared/schema";
 import { intelligentPersonalizationService } from "./services/intelligent-personalization.service";
 import { webScrapingService } from "./services/web-scraping.service";
 import { contentManagementService } from "./services/content-management.service";
@@ -272,8 +273,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log('  Filters:', JSON.stringify(apolloFilters, null, 2));
       console.log('  Page:', page, 'Per Page:', per_page);
       
-      // If useWaterfall is enabled and Perplexity is configured, try waterfall search first
-      if (useWaterfall && process.env.PERPLEXITY_API_KEY) {
+      // Location normalization helper
+      const normalizeLocation = (loc: string): string => {
+        const aliases: Record<string, string> = {
+          'usa': 'United States', 'us': 'United States', 'u.s.': 'United States',
+          'america': 'United States', 'uk': 'United Kingdom', 'britain': 'United Kingdom',
+          'england': 'United Kingdom', 'uae': 'United Arab Emirates', 'korea': 'South Korea'
+        };
+        return aliases[loc.trim().toLowerCase()] || loc.trim();
+      };
+
+      // Normalize locations in Apollo filters
+      if (apolloFilters.person_locations) {
+        apolloFilters.person_locations = apolloFilters.person_locations.map(normalizeLocation);
+        console.log('  📍 Normalized locations:', apolloFilters.person_locations);
+      }
+
+      // If useWaterfall is enabled, use waterfall search (works with or without Perplexity)
+      if (useWaterfall) {
         console.log('  🌊 Using Waterfall Search (Perplexity → Apollo → Lusha → OpenRouter)');
         
         // Convert Apollo filters to waterfall criteria
@@ -437,6 +454,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const keywordResponse = await apolloService.searchContacts({
               q_keywords: keywords,
               person_seniorities: apolloFilters.person_seniorities,
+              person_locations: apolloFilters.person_locations, // Preserve location filter
               page,
               per_page,
             });
@@ -454,6 +472,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 console.log('  🔄 Trying Strategy 3: Seniority Only...');
                 const seniorityResponse = await apolloService.searchContacts({
                   person_seniorities: apolloFilters.person_seniorities,
+                  person_locations: apolloFilters.person_locations, // Preserve location filter
                   page,
                   per_page: Math.min(per_page, 25), // Reduce count for very broad searches
                 });
