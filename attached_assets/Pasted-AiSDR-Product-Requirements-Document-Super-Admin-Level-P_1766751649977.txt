@@ -1,0 +1,191 @@
+AiSDR Product Requirements Document
+Super Admin Level (Platform Administrator)
+Version: 2.0
+Last Updated: December 2025
+User Role: Super Admin / Platform Owner / AiSDR Company Admin
+Access Level: Full Platform Access (All Tenants)
+
+1. Super Admin Role Overview
+Role Definition
+Super Admins are AiSDR company employees who manage the entire multi-tenant platform. They provision new company accounts (tenants), create Manager logins for each company, monitor platform health, and ensure all tenants operate smoothly.
+Key Responsibilities
+
+Provision new company/tenant accounts
+Create and manage Manager accounts for each company
+Monitor platform-wide performance and health
+Manage billing and subscriptions for all companies
+Handle technical escalations
+Ensure system security and compliance
+Platform maintenance and updates
+Multi-tenant data isolation
+Resource allocation across tenants
+
+Hierarchy
+Super Admin (AiSDR Company)
+    ↓
+Manager (Company A Admin)
+    ↓
+User 1, User 2, User 3... (Company A SDRs)
+
+Manager (Company B Admin)
+    ↓
+User 1, User 2, User 3... (Company B SDRs)
+
+Manager (Company C Admin)
+    ↓
+User 1, User 2, User 3... (Company C SDRs)
+Success Metrics
+
+Number of active tenants (companies)
+Platform uptime (target: 99.9%)
+Average tenant onboarding time (target: <24 hours)
+Tenant churn rate (target: <5% monthly)
+Support ticket resolution time
+Revenue per tenant
+System resource utilization
+
+
+2. Super Admin Functional Requirements
+2.1 Tenant/Company Management
+FR-SA1: Company Provisioning (Manual Only)
+
+Priority: P0
+Super Admin manually creates new company/tenant accounts
+No public signup form or self-service registration
+Company creation process:
+
+Super Admin logs into platform
+Navigates to "Create New Tenant" page
+Fills in company information:
+
+Company name
+Industry
+Size (number of employees)
+Expected users
+Contact person details
+
+
+Creates new tenant account:
+
+Generate unique tenant ID
+Allocate database schema/namespace
+Set up isolated environment
+Configure default settings
+
+
+
+
+Bulk tenant creation (for partnerships)
+No approval workflow needed (Super Admin decides)
+
+FR-SA2: Tenant Dashboard
+
+Priority: P0
+View all companies/tenants in one place
+Tenant list with columns:
+
+Company name
+Status (Active, Trial, Suspended, Churned)
+Plan type (Starter, Growth, Enterprise)
+Created date
+Manager name and email
+User count
+Monthly spend
+Health score
+Last activity
+
+
+Search and filter tenants:
+
+By status
+By plan
+By industry
+By user count
+By MRR range
+
+
+Sort by any column
+Quick actions per tenant:
+
+View details
+Impersonate Manager
+Suspend/Activate
+Upgrade/Downgrade
+Delete tenant
+
+
+
+FR-SA3: Tenant Detail View
+
+Priority: P0
+Complete tenant profile:
+
+Company information
+Subscription details
+Usage statistics
+Manager information
+User list
+Active campaigns count
+Resource allocation
+Integration status
+Billing history
+Support tickets
+Notes and tags
+
+
+Activity timeline
+Health metrics and alerts
+Edit tenant settings
+Access tenant's view (impersonation)
+
+FR-SA4: Tenant Configuration
+
+Priority: P0
+Set tenant-level limits:
+
+Maximum users allowed
+Maximum mailboxes
+Daily send limits
+Storage quota
+API rate limits
+Data enrichment credits
+
+
+Enable/disable features per tenant:
+
+AI prospecting
+LinkedIn automation
+SMS messaging
+Advanced analytics
+API access
+White-label options
+
+
+Custom branding per tenant (Enterprise)
+Data retention policies
+Compliance settings (GDPR, CCPA)
+
+FR-SA5: Tenant Lifecycle Management
+
+Priority: P0
+Tenant states:
+
+Trial: 14-day free trial
+Active: Paid subscription
+Suspended: Payment failed or policy violation
+Churned: Canceled subscription
+Archived: Historical record only
+
+
+State transition workflows
+Automated actions on state change:
+
+Trial → Active: Full feature access
+Active → Suspended: Read-only access, stop sends
+Suspended → Active: Restore full access
+Active → Churned: Data retention period (90 days)
+Churned → Archived: Data deletion
+
+
+Reactivation process for churned tenants
+Data export before deletion

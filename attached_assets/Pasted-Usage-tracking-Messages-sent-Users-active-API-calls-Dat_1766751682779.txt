@@ -1,0 +1,716 @@
+Usage tracking:
+
+Messages sent
+Users active
+API calls
+Data enrichment credits
+Storage used
+
+
+Generate invoices automatically
+Manual invoice adjustments
+Payment method management
+Payment failure handling
+Usage-based billing calculation
+Prorated upgrades/downgrades
+Discount codes and promotions
+Annual vs. monthly pricing
+
+2.2 Manager Account Management
+FR-SA7: Create Manager Account
+
+Priority: P0
+Create Manager login for each company
+Manager creation form:
+
+Full name
+Email address (will be login)
+Phone number
+Job title
+Temporary password (user resets on first login)
+Send welcome email with credentials
+
+
+One Manager per tenant (default)
+Option to add multiple Managers (Enterprise plan)
+Manager permissions:
+
+Full access to their tenant
+Cannot access other tenants
+Can create/manage Users
+Can configure tenant settings
+Can view billing (optional)
+
+
+Manager role assignment
+
+FR-SA8: Manager Account Administration
+
+Priority: P0
+View all Managers across all tenants
+Manager list with columns:
+
+Name
+Email
+Company/Tenant
+Status (Active, Inactive)
+Last login
+Created date
+
+
+Search and filter Managers
+Manager actions:
+
+Edit Manager details
+Reset Manager password
+Suspend/Activate Manager
+Impersonate Manager (troubleshooting)
+Transfer Manager role to another person
+Delete Manager (requires replacement)
+
+
+Manager activity logs
+Manager performance overview
+
+FR-SA9: Manager Support
+
+Priority: P1
+View Manager support tickets
+Direct communication with Managers
+Manager training materials
+Onboarding checklist tracking
+Manager health check (engagement, activity)
+Manager success metrics
+Schedule Manager check-ins
+
+FR-SA10: Multi-Manager Support (Enterprise)
+
+Priority: P2
+Allow multiple Managers per tenant
+Define Manager roles within tenant:
+
+Primary Manager (full access)
+Secondary Manager (limited access)
+Read-only Manager
+
+
+Manager-to-Manager permissions
+Manager workspace separation
+
+2.3 Platform-Wide User Management
+FR-SA11: Global User Overview
+
+Priority: P0
+View ALL users across ALL tenants
+User list with columns:
+
+Name
+Email
+Company/Tenant
+Role (Manager, User, Read-only)
+Status
+Last active
+Performance metrics
+
+
+Search across all tenants
+Filter by tenant, role, status
+Identify power users
+Identify inactive users
+Usage patterns analysis
+
+FR-SA12: User Administration
+
+Priority: P1
+Super Admin can view any user
+Cannot directly create users (Managers do this)
+Can suspend/delete users (emergency)
+Can reset user passwords (support)
+Can impersonate users (troubleshooting)
+View user activity logs
+User performance benchmarking across tenants
+
+FR-SA13: User Analytics (Platform-Wide)
+
+Priority: P1
+Total active users across platform
+Users added this month
+User churn rate
+Average users per tenant
+User engagement metrics
+Feature adoption rates
+Power user identification
+
+2.4 Platform Infrastructure Management
+FR-SA14: Email Infrastructure (Multi-Tenant)
+
+Priority: P0
+Manage email sending infrastructure
+Domain allocation per tenant:
+
+Assign dedicated domains to tenants
+Shared domain pools (Starter plan)
+White-label domain setup (Enterprise)
+
+
+Mailbox provisioning per tenant:
+
+Auto-provision mailboxes on tenant creation
+Allocate mailbox quota per plan
+Monitor mailbox health globally
+
+
+Global email deliverability monitoring:
+
+Platform-wide sender reputation
+Blacklist monitoring
+Bounce rate tracking
+Spam complaint monitoring
+
+
+Email provider management:
+
+SendGrid accounts
+AWS SES configuration
+SMTP server pools
+Provider rotation strategy
+
+
+Isolate email issues by tenant
+Emergency shutoff for problematic tenants
+
+FR-SA15: Integration Management (Platform-Wide)
+
+Priority: P0
+Master integration configurations
+OAuth app credentials (platform-wide):
+
+Google Workspace OAuth
+Microsoft 365 OAuth
+LinkedIn API access
+
+
+Tenant-specific integration connections
+Integration health monitoring across tenants
+API rate limit management
+Integration usage analytics
+Troubleshoot integration issues
+
+FR-SA16: Database & Storage Management
+
+Priority: P0
+Multi-tenant database architecture:
+
+Schema-per-tenant isolation
+Shared tables for platform data
+Data segregation enforcement
+
+
+Storage allocation per tenant:
+
+Monitor storage usage
+Set storage limits by plan
+Alert on approaching limits
+
+
+Database performance monitoring
+Query optimization
+Backup and restore per tenant:
+
+Automated daily backups
+Point-in-time recovery
+Backup retention (30 days)
+Test restores quarterly
+
+
+
+FR-SA17: Server & Resource Management
+
+Priority: P0
+Server capacity planning
+Resource allocation per tenant:
+
+CPU limits
+Memory limits
+Network bandwidth
+
+
+Load balancing
+Auto-scaling configuration
+Server health monitoring
+Alert on resource exhaustion
+Tenant resource usage reports
+
+2.5 Security & Compliance (Platform-Wide)
+FR-SA18: Platform Security Dashboard
+
+Priority: P0
+Real-time security monitoring
+Security metrics:
+
+Failed login attempts (all tenants)
+Suspicious activity alerts
+Data export events
+Permission changes
+Integration authorization events
+
+
+Security incident tracking
+Vulnerability scanning results
+Penetration test reports
+Security patch status
+
+FR-SA19: Tenant Isolation & Security
+
+Priority: P0
+Enforce strict tenant data isolation
+Prevent cross-tenant data access
+Tenant-specific encryption keys
+Audit data access patterns
+Detect and prevent data leakage
+Test isolation regularly
+Security incident response per tenant
+
+FR-SA20: Compliance Management
+
+Priority: P0
+Platform-wide compliance dashboard
+Compliance by region:
+
+GDPR (EU tenants)
+CCPA (California tenants)
+CAN-SPAM (US tenants)
+CASL (Canadian tenants)
+
+
+Tenant compliance settings
+Data processing agreements (DPA) per tenant
+Subprocessor management
+Compliance audit logs
+Generate compliance reports
+Handle data subject requests (DSR):
+
+Right to access
+Right to deletion
+Right to portability
+
+
+Coordinate with legal team
+
+FR-SA21: Audit Logging (Platform-Wide)
+
+Priority: P0
+Comprehensive audit trail:
+
+Tenant creation/deletion
+Manager account changes
+Tenant configuration changes
+Data exports
+Integration authorizations
+Security incidents
+System configuration changes
+
+
+Search and filter audit logs
+Export audit logs (SIEM integration)
+Retention: 5 years minimum
+Tamper-proof logging
+Real-time log streaming
+
+2.6 Monitoring & Analytics
+FR-SA22: Platform Health Dashboard
+
+Priority: P0
+Real-time platform status:
+
+Overall system status
+Service availability (API, web app, email)
+Active incidents
+Scheduled maintenance
+
+
+Key metrics:
+
+Total tenants
+Active users (24h, 7d, 30d)
+Emails sent (today, this week, this month)
+API requests
+Error rates
+Response times (p50, p95, p99)
+
+
+Performance graphs and trends
+Resource utilization (CPU, memory, disk)
+Alert history
+Public status page
+
+FR-SA23: Tenant Usage Analytics
+
+Priority: P0
+Usage metrics per tenant:
+
+Active users
+Campaigns launched
+Emails sent
+Meetings booked
+API calls
+Storage used
+Feature usage
+
+
+Usage trends over time
+Identify heavy users (potential upsell)
+Identify low users (churn risk)
+Benchmark tenants against each other
+Usage forecasting
+
+FR-SA24: Financial Analytics
+
+Priority: P0
+Revenue metrics:
+
+MRR (Monthly Recurring Revenue)
+ARR (Annual Recurring Revenue)
+Revenue by plan type
+Revenue by tenant
+Revenue growth rate
+
+
+Customer metrics:
+
+CAC (Customer Acquisition Cost)
+LTV (Lifetime Value)
+LTV:CAC ratio
+Payback period
+
+
+Churn metrics:
+
+Customer churn rate
+Revenue churn rate
+Churn reasons
+Retention cohorts
+
+
+Forecast revenue and growth
+
+FR-SA25: Product Analytics
+
+Priority: P1
+Feature usage across platform:
+
+Most used features
+Least used features
+Feature adoption rate
+Feature engagement
+
+
+User behavior patterns
+Funnel analysis (signup → active user)
+Retention curves
+Engagement metrics
+A/B test results (platform features)
+
+FR-SA26: Alerting & Notifications
+
+Priority: P0
+Configure platform-wide alerts:
+
+System downtime
+Performance degradation
+Security incidents
+Failed backups
+Tenant issues (high bounce rates, suspended)
+Billing issues
+Resource exhaustion
+
+
+Alert channels:
+
+Email
+Slack
+PagerDuty
+SMS (critical only)
+
+
+Alert escalation policies
+On-call rotation
+Alert acknowledgment
+
+2.7 Support & Operations
+FR-SA27: Support Ticket Management
+
+Priority: P0
+View all support tickets across tenants
+Ticket categories:
+
+Technical issues
+Billing questions
+Feature requests
+Bug reports
+Security concerns
+
+
+Ticket routing and assignment
+SLA tracking by plan:
+
+Starter: 24-hour response
+Growth: 4-hour response
+Enterprise: 1-hour response
+
+
+Ticket resolution tracking
+Customer satisfaction (CSAT) scores
+Support analytics and trends
+
+FR-SA28: Tenant Communication
+
+Priority: P1
+Broadcast messages to all Managers
+Targeted communication:
+
+By plan type
+By industry
+By usage level
+
+
+Communication types:
+
+Platform updates
+New features
+Maintenance windows
+Security alerts
+Best practices
+
+
+Email templates
+Communication history
+Opt-in/opt-out management
+
+FR-SA29: Onboarding & Success
+
+Priority: P1
+Tenant onboarding checklist:
+
+Manager account created ✓
+Initial users added ✓
+First campaign launched ✓
+CRM integrated ✓
+Domain configured ✓
+First meeting booked ✓
+
+
+Track onboarding progress per tenant
+Automated onboarding emails
+Success milestones
+Health scores per tenant
+Proactive intervention for at-risk tenants
+Success team assignment (Enterprise)
+
+FR-SA30: Documentation & Knowledge Base
+
+Priority: P1
+Platform documentation:
+
+Manager guides
+User guides
+API documentation
+Integration guides
+Video tutorials
+
+
+Internal documentation:
+
+Runbooks
+Troubleshooting guides
+Architecture documentation
+Security procedures
+
+
+Version control for docs
+Search functionality
+Usage analytics (which docs are read)
+
+2.8 Platform Configuration
+FR-SA31: System Settings
+
+Priority: P0
+Global platform settings:
+
+Default tenant settings
+Email sending limits (global)
+API rate limits (global)
+Security policies
+Compliance requirements
+Feature flags (enable/disable features)
+Maintenance mode
+
+
+Email provider configuration
+Third-party API credentials
+Payment gateway settings
+Notification settings
+
+FR-SA32: Plan & Pricing Management
+
+Priority: P0
+Define subscription plans:
+
+Plan name
+Monthly price
+Annual price (with discount)
+Included features
+Usage limits (messages, users, mailboxes)
+Add-on options
+
+
+Create custom plans for Enterprise
+Grandfathered plan management
+Plan comparison tool
+Promotional pricing
+Update pricing (with notification)
+
+FR-SA33: Feature Flags
+
+Priority: P1
+Enable/disable features globally
+Enable/disable features per tenant
+Gradual rollout (% of tenants)
+A/B testing new features
+Emergency feature kill switch
+Feature usage tracking
+Beta testing programs
+
+FR-SA34: White-Label Configuration
+
+Priority: P2
+White-label options for Enterprise:
+
+Custom domain (app.clientcompany.com)
+Custom branding (logo, colors)
+Custom email domains
+Remove AiSDR branding
+
+
+White-label tenant management
+Custom login pages
+Custom support emails
+
+2.9 Data Management & Privacy
+FR-SA35: Data Governance
+
+Priority: P0
+Data retention policies per tenant
+Data deletion workflows
+Data export tools (per tenant)
+Data migration tools (tenant to tenant)
+Data anonymization
+Data encryption management
+Data sovereignty (EU data in EU, US data in US)
+
+FR-SA36: GDPR/Privacy Management
+
+Priority: P0
+Data Subject Request (DSR) handling:
+
+Identify tenant from request
+Retrieve all data for subject
+Generate data export package
+Execute deletion request
+Log all actions
+
+
+Consent management
+Privacy policy enforcement
+DPA (Data Processing Agreement) repository
+Privacy impact assessments
+Coordinate with tenant Managers on DSRs
+
+FR-SA37: Data Backup & Recovery
+
+Priority: P0
+Automated backup schedule:
+
+Database: Daily
+File storage: Daily
+Configuration: On change
+
+
+Backup verification and testing
+Disaster recovery procedures
+Recovery Time Objective (RTO): 4 hours
+Recovery Point Objective (RPO): 24 hours
+Backup retention: 30 days
+Point-in-time recovery
+Tenant-specific restore capability
+
+
+3. Super Admin User Workflows
+3.1 New Company Creation Workflow
+When Super Admin Wants to Add a New Company:
+Step 1: Gather Information (Manual - 5 minutes)
+
+Super Admin decides to add new company (no signup form)
+Collect company information:
+
+Company name and size
+Industry
+Contact person (will be Manager)
+Email and phone
+Desired plan
+Special requirements
+
+
+
+Step 2: Create Tenant (10 minutes)
+
+Super Admin logs into platform
+Click "Create New Tenant" button
+Fill in tenant creation form:
+
+Company name
+Tenant ID (auto-generated: company-name-123)
+Plan selection (Starter/Growth/Enterprise)
+Initial user limit
+Billing contact
+
+
+Configure initial settings:
+
+Enable default features
+Set usage limits
+Configure compliance settings
+
+
+Click "Create Tenant"
+System automatically:
+
+Creates isolated database schema
+Provisions default mailboxes (3)
+Sets up email domains
+Configures integrations
+Creates default settings
+
+
+
+Step 3: Create Manager Account (5 minutes)
+
+From tenant detail page, click "Create Manager"
+Fill in Manager information:
+
+Full name: [John Smith]
+Email: [john@company.com] (will be login)
+Phone: [+1-555-0123]
+Job title: [VP of Sales]
+
+
+Generate temporary password
+Send welcome email automatically:
+
+Login credentials
+Onboarding guide
+Setup instructions
+Support contact
+
+
+Manager account created ✓
