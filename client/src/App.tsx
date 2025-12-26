@@ -43,7 +43,9 @@ import CampaignDashboard from "@/pages/campaign-dashboard";
 import CreateCampaign from "@/pages/create-campaign";
 import ManagerDashboard from "@/pages/manager-dashboard";
 import CreateTenant from "@/pages/create-tenant";
+import StatusPage from "@/pages/status-page";
 import NotFound from "@/pages/not-found";
+import { ImpersonationBanner } from "@/components/impersonation-banner";
 
 function Router() {
   return (
@@ -185,6 +187,8 @@ function Router() {
       <Route path="/super-admin/tenants/new" component={CreateTenant} />
       <Route path="/super-admin/tenants/:id" component={SuperAdminTenantDetail} />
       <Route path="/super-admin" component={SuperAdminDashboard} />
+      {/* Public Status Page */}
+      <Route path="/status" component={StatusPage} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -198,6 +202,7 @@ function App() {
           <HelpProvider>
             <TooltipProvider>
               <Toaster />
+              <ImpersonationBanner />
               <OnboardingWizard />
               <CookieConsent />
               <Router />

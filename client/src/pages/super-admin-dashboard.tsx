@@ -34,6 +34,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 import { 
   Shield, 
@@ -160,6 +161,9 @@ export default function SuperAdminDashboard() {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [suspendReason, setSuspendReason] = useState("");
   const [selectedTenant, setSelectedTenant] = useState<TenantWithSettings | null>(null);
+  const [selectedTenantIds, setSelectedTenantIds] = useState<Set<string>>(new Set());
+  const [bulkMessageDialogOpen, setBulkMessageDialogOpen] = useState(false);
+  const [bulkMessage, setBulkMessage] = useState("");
 
   useEffect(() => {
     const storedAdmin = sessionStorage.getItem("super_admin");
@@ -518,11 +522,102 @@ export default function SuperAdminDashboard() {
               </Button>
             </div>
 
+            {/* Bulk Actions Bar */}
+            {selectedTenantIds.size > 0 && (
+              <div className="mb-4 p-4 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg flex items-center justify-between" data-testid="bulk-actions-bar">
+                <div className="flex items-center gap-2">
+                  <Checkbox 
+                    checked={selectedTenantIds.size === tenantsData?.tenants?.length}
+                    onCheckedChange={(checked) => {
+                      if (checked) {
+                        setSelectedTenantIds(new Set(tenantsData?.tenants?.map(t => t.organization.id) || []));
+                      } else {
+                        setSelectedTenantIds(new Set());
+                      }
+                    }}
+                    data-testid="checkbox-bulk-select-all"
+                  />
+                  <span className="text-sm font-medium text-blue-700 dark:text-blue-300">
+                    {selectedTenantIds.size} tenant{selectedTenantIds.size !== 1 ? 's' : ''} selected
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => setBulkMessageDialogOpen(true)}
+                    data-testid="button-bulk-message"
+                  >
+                    <Send className="h-4 w-4 mr-2" />
+                    Send Message
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={() => {
+                      const selectedTenants = tenantsData?.tenants?.filter(t => selectedTenantIds.has(t.organization.id)) || [];
+                      const csv = [
+                        ["ID", "Company Name", "Slug", "Status", "Plan", "Users", "Health Score", "Last Activity"].join(","),
+                        ...selectedTenants.map(t => [
+                          t.organization.id,
+                          `"${t.organization.name}"`,
+                          t.organization.slug,
+                          t.settings?.tenantStatus || "N/A",
+                          t.settings?.plan || "N/A",
+                          t.userCount,
+                          t.settings?.healthScore ?? "N/A",
+                          t.settings?.lastActivityAt || "Never"
+                        ].join(","))
+                      ].join("\n");
+                      
+                      const blob = new Blob([csv], { type: "text/csv" });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement("a");
+                      a.href = url;
+                      a.download = `tenants-export-${new Date().toISOString().split('T')[0]}.csv`;
+                      a.style.display = "none";
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                      URL.revokeObjectURL(url);
+                      
+                      toast({ title: "Export complete", description: `Exported ${selectedTenants.length} tenants` });
+                    }}
+                    data-testid="button-bulk-export"
+                  >
+                    <Download className="h-4 w-4 mr-2" />
+                    Export Selected
+                  </Button>
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    onClick={() => setSelectedTenantIds(new Set())}
+                    data-testid="button-clear-selection"
+                  >
+                    Clear Selection
+                  </Button>
+                </div>
+              </div>
+            )}
+
             {/* Tenants Table */}
             <div className="rounded-md border">
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead className="w-[50px]">
+                      <Checkbox 
+                        checked={tenantsData?.tenants?.length ? selectedTenantIds.size === tenantsData.tenants.length : false}
+                        onCheckedChange={(checked) => {
+                          if (checked) {
+                            setSelectedTenantIds(new Set(tenantsData?.tenants?.map(t => t.organization.id) || []));
+                          } else {
+                            setSelectedTenantIds(new Set());
+                          }
+                        }}
+                        data-testid="checkbox-select-all-tenants"
+                      />
+                    </TableHead>
                     <TableHead>Company</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Plan</TableHead>
@@ -535,19 +630,34 @@ export default function SuperAdminDashboard() {
                 <TableBody>
                   {tenantsLoading ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center py-8">
+                      <TableCell colSpan={8} className="text-center py-8">
                         Loading tenants...
                       </TableCell>
                     </TableRow>
                   ) : tenantsData?.tenants?.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={7} className="text-center py-8">
+                      <TableCell colSpan={8} className="text-center py-8">
                         No tenants found
                       </TableCell>
                     </TableRow>
                   ) : (
                     tenantsData?.tenants?.map((tenant) => (
                       <TableRow key={tenant.organization.id} data-testid={`row-tenant-${tenant.organization.id}`}>
+                        <TableCell>
+                          <Checkbox 
+                            checked={selectedTenantIds.has(tenant.organization.id)}
+                            onCheckedChange={(checked) => {
+                              const newSelected = new Set(selectedTenantIds);
+                              if (checked) {
+                                newSelected.add(tenant.organization.id);
+                              } else {
+                                newSelected.delete(tenant.organization.id);
+                              }
+                              setSelectedTenantIds(newSelected);
+                            }}
+                            data-testid={`checkbox-tenant-${tenant.organization.id}`}
+                          />
+                        </TableCell>
                         <TableCell>
                           <div>
                             <p className="font-medium">{tenant.organization.name}</p>
@@ -859,6 +969,99 @@ export default function SuperAdminDashboard() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Bulk Message Dialog */}
+      <Dialog open={bulkMessageDialogOpen} onOpenChange={setBulkMessageDialogOpen}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Send className="h-5 w-5" />
+              Send Message to Selected Tenants
+            </DialogTitle>
+            <DialogDescription>
+              Send a message to {selectedTenantIds.size} selected tenant{selectedTenantIds.size !== 1 ? 's' : ''}.
+              This will notify the primary contact for each tenant.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Recipients</Label>
+              <div className="p-3 bg-slate-100 dark:bg-slate-800 rounded-lg max-h-24 overflow-y-auto">
+                <div className="flex flex-wrap gap-1">
+                  {tenantsData?.tenants
+                    ?.filter(t => selectedTenantIds.has(t.organization.id))
+                    .map(t => (
+                      <Badge key={t.organization.id} variant="secondary" className="text-xs">
+                        {t.organization.name}
+                      </Badge>
+                    ))
+                  }
+                </div>
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="bulk-message">Message *</Label>
+              <Textarea
+                id="bulk-message"
+                value={bulkMessage}
+                onChange={(e) => setBulkMessage(e.target.value)}
+                placeholder="Enter your message to the selected tenants..."
+                rows={5}
+                data-testid="input-bulk-message"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                setBulkMessageDialogOpen(false);
+                setBulkMessage("");
+              }}
+              data-testid="button-cancel-bulk-message"
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={async () => {
+                if (!bulkMessage.trim()) {
+                  toast({ title: "Please enter a message", variant: "destructive" });
+                  return;
+                }
+                
+                try {
+                  await superAdminFetch("/api/super-admin/broadcast", {
+                    method: "POST",
+                    body: JSON.stringify({
+                      tenantIds: Array.from(selectedTenantIds),
+                      message: bulkMessage,
+                    }),
+                  });
+                  
+                  toast({ 
+                    title: "Message sent", 
+                    description: `Message sent to ${selectedTenantIds.size} tenant${selectedTenantIds.size !== 1 ? 's' : ''}` 
+                  });
+                  setBulkMessageDialogOpen(false);
+                  setBulkMessage("");
+                  setSelectedTenantIds(new Set());
+                } catch (error: any) {
+                  toast({ 
+                    title: "Failed to send message", 
+                    description: error.message, 
+                    variant: "destructive" 
+                  });
+                }
+              }}
+              disabled={!bulkMessage.trim()}
+              data-testid="button-send-bulk-message"
+            >
+              <Send className="h-4 w-4 mr-2" />
+              Send Message
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -1010,6 +1213,8 @@ function ImpersonateForm({ tenant, onClose }: { tenant: TenantWithSettings | nul
       return;
     }
 
+    const selectedManagerData = managers.find(m => m.id === selectedManager);
+    
     setIsLoading(true);
     try {
       const result = await superAdminFetch(`/api/super-admin/tenants/${tenant?.organization.id}/impersonate`, {
@@ -1018,6 +1223,15 @@ function ImpersonateForm({ tenant, onClose }: { tenant: TenantWithSettings | nul
       });
 
       sessionStorage.setItem("impersonation_log_id", result.impersonationLogId);
+      
+      // Store full impersonation info for the banner
+      sessionStorage.setItem("impersonation_info", JSON.stringify({
+        managerName: selectedManagerData ? `${selectedManagerData.firstName} ${selectedManagerData.lastName}` : "Manager",
+        managerEmail: selectedManagerData?.email || "",
+        tenantName: tenant?.organization.name || "",
+        logId: result.impersonationLogId,
+        startTime: new Date().toISOString(),
+      }));
       
       toast({ title: "Impersonation started", description: "You are now viewing as the manager. Opening in new tab..." });
       

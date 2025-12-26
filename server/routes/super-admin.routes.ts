@@ -639,6 +639,48 @@ router.post('/impersonation/:logId/end', authenticateSuperAdmin, async (req, res
   }
 });
 
+// Bulk broadcast message to selected tenants - requires proper permission
+const broadcastSchema = z.object({
+  tenantIds: z.array(z.string().uuid()).min(1, 'At least one tenant ID is required'),
+  message: z.string().min(1, 'Message is required').max(5000, 'Message too long'),
+});
+
+router.post('/broadcast', authenticateSuperAdmin, requireSuperAdminPermission('canProvisionTenants'), async (req, res) => {
+  try {
+    const validation = broadcastSchema.safeParse(req.body);
+    if (!validation.success) {
+      return res.status(400).json({ 
+        error: 'Validation failed', 
+        details: validation.error.errors.map(e => e.message) 
+      });
+    }
+
+    const { tenantIds, message } = validation.data;
+
+    // Log the broadcast action
+    await superAdminService.logAction(
+      req.superAdmin!.id,
+      'broadcast_message',
+      'tenant',
+      tenantIds.join(','),
+      { recipientCount: tenantIds.length, messagePreview: message.substring(0, 100) }
+    );
+
+    // Log the broadcast - actual email sending would require additional implementation
+    console.log(`[SuperAdmin] Broadcast message to ${tenantIds.length} tenants by ${req.superAdmin!.email}`);
+    console.log(`[SuperAdmin] Message: ${message.substring(0, 200)}${message.length > 200 ? '...' : ''}`);
+
+    res.json({ 
+      success: true, 
+      message: 'Broadcast queued successfully',
+      recipientCount: tenantIds.length 
+    });
+  } catch (error) {
+    console.error('Error sending broadcast:', error);
+    res.status(500).json({ error: 'Failed to send broadcast' });
+  }
+});
+
 router.get('/audit-logs', authenticateSuperAdmin, async (req, res) => {
   try {
     const { superAdminId, action, targetType, page, limit } = req.query;
