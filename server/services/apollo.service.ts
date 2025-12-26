@@ -28,6 +28,10 @@ interface ApolloContact {
   departments: string[];
   linkedin_url: string;
   phone_numbers: Array<{ raw_number: string; sanitized_number: string }>;
+  // Person's location (may not be present for all contacts)
+  city?: string;
+  state?: string;
+  country?: string;
   organization: {
     id: string;
     name: string;
@@ -301,6 +305,13 @@ class ApolloService {
     const phoneNumber = contact.phone_numbers?.[0]?.sanitized_number || 
                        contact.phone_numbers?.[0]?.raw_number || '';
 
+    // Get person's location (contact location)
+    const contactLocation = this.formatPersonLocation(contact);
+    
+    // Get company employee count with proper handling
+    const employeeCount = contact.organization?.num_employees || contact.organization?.estimated_num_employees;
+    const companySize = employeeCount ? this.formatEmployeeCount(employeeCount) : '';
+    
     const prospect = {
       apolloId: contact.id || '',
       firstName: contact.first_name || '',
@@ -313,9 +324,10 @@ class ApolloService {
       department: contact.departments?.[0] || '',
       companyName: contact.organization?.name || '',
       companyDomain: this.extractDomainFromUrl(contact.organization?.website_url || ''),
-      companySize: this.formatEmployeeCount(contact.organization?.num_employees || contact.organization?.estimated_num_employees || 0),
+      companySize,
       companyIndustry: contact.organization?.industry || '',
       companyLocation: this.formatLocation(contact.organization?.headquarters_location),
+      contactLocation,
       phoneNumber,
       linkedinUrl: contact.linkedin_url || '',
       enrichmentStatus: emailStatus === 'found' ? 'enriched' as const : 'new' as const,
@@ -362,6 +374,17 @@ class ApolloService {
       location.city,
       location.state,
       location.country
+    ].filter(Boolean);
+    
+    return parts.join(', ');
+  }
+
+  private formatPersonLocation(contact: ApolloContact): string {
+    // Apollo stores person's location in contact.city, contact.state, contact.country
+    const parts = [
+      contact.city,
+      contact.state,
+      contact.country
     ].filter(Boolean);
     
     return parts.join(', ');
