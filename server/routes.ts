@@ -506,6 +506,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log('  WARNING: No contacts found even after trying multiple search strategies!');
         console.log('  Suggestion: Try different search terms or check if Apollo API has data for this query');
       }
+      
+      // Post-fetch location validation - filter out prospects not matching requested location
+      const requestedLocation = apolloFilters.person_locations?.[0];
+      if (requestedLocation && contacts.length > 0) {
+        const normalizedRequest = normalizeLocation(requestedLocation).toLowerCase();
+        
+        const usVariants = ['united states', 'usa', 'us', 'america'];
+        const ukVariants = ['united kingdom', 'uk', 'britain', 'england'];
+        const usStates = /\b(ca|ny|tx|fl|il|pa|oh|ga|nc|mi|nj|va|wa|az|ma|tn|in|mo|md|wi|co|mn|sc|al|la|ky|or|ok|ct|ut|ia|nv|ar|ms|ks|nm|ne|id|wv|hi|nh|me|mt|ri|de|sd|nd|ak|dc|vt|wy)\b/i;
+        const usCities = /(new york|los angeles|chicago|houston|phoenix|philadelphia|san antonio|san diego|dallas|san jose|austin|jacksonville|fort worth|columbus|charlotte|san francisco|indianapolis|seattle|denver|washington|boston|detroit|nashville|portland|memphis|oklahoma|las vegas|louisville|baltimore|milwaukee|albuquerque|tucson|fresno|sacramento|atlanta|kansas city|colorado springs|miami|raleigh|omaha|minneapolis|tulsa|arlington|new orleans)/i;
+        
+        const matchesLocation = (contact: any): boolean => {
+          const contactLoc = (contact.city || contact.state || contact.country || '').toLowerCase();
+          if (!contactLoc) return false;
+          
+          if (usVariants.includes(normalizedRequest)) {
+            return usVariants.some(v => contactLoc.includes(v)) || 
+                   usStates.test(contactLoc) || 
+                   usCities.test(contactLoc) ||
+                   contactLoc.includes('united states');
+          }
+          if (ukVariants.includes(normalizedRequest)) {
+            return ukVariants.some(v => contactLoc.includes(v)) ||
+                   /(london|birmingham|manchester|glasgow|liverpool|bristol|sheffield|leeds|edinburgh|leicester|cardiff|belfast)/i.test(contactLoc);
+          }
+          return contactLoc.includes(normalizedRequest);
+        };
+        
+        const beforeFilter = contacts.length;
+        contacts = contacts.filter(matchesLocation);
+        const removed = beforeFilter - contacts.length;
+        if (removed > 0) {
+          console.log(`  🌍 Location filter removed ${removed} non-matching prospects (kept ${contacts.length})`);
+        }
+      }
+      
+      // Remove locked/placeholder emails
+      const lockedEmailPatterns = ['email_not_unlocked', '@domain.com', 'locked@', 'placeholder@', 'noemail@', 'unknown@'];
+      contacts = contacts.map(contact => {
+        if (contact.email && lockedEmailPatterns.some(p => contact.email.toLowerCase().includes(p))) {
+          console.log(`  🔒 Removed locked email: ${contact.email} for ${contact.first_name} ${contact.last_name}`);
+          return { ...contact, email: undefined };
+        }
+        return contact;
+      });
+      
       const savedProspects = [];
       let skippedCount = 0;
       let errorCount = 0;
