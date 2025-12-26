@@ -277,6 +277,19 @@ class WaterfallSearchService {
     }
   }
 
+  private sanitizeForApollo(value: string): string {
+    if (!value) return value;
+    return value
+      .replace(/[""'']/g, '"')
+      .replace(/"/g, '')
+      .replace(/[^\w\s\-.,@&()\/]/g, '')
+      .trim();
+  }
+
+  private sanitizeArrayForApollo(values: string[]): string[] {
+    return values.map(v => this.sanitizeForApollo(v)).filter(v => v.length > 0);
+  }
+
   private async searchApollo(
     criteria: WaterfallSearchCriteria,
     organizationId?: string
@@ -285,7 +298,7 @@ class WaterfallSearchService {
       const apolloFilters: any = {};
 
       if (criteria.jobTitles && criteria.jobTitles.length > 0) {
-        apolloFilters.person_titles = criteria.jobTitles;
+        apolloFilters.person_titles = this.sanitizeArrayForApollo(criteria.jobTitles);
       }
       if (criteria.seniority && criteria.seniority.length > 0) {
         apolloFilters.person_seniorities = criteria.seniority;
@@ -294,22 +307,22 @@ class WaterfallSearchService {
         apolloFilters.person_departments = criteria.departments;
       }
       if (criteria.industry) {
-        apolloFilters.organization_industry_tag_ids = this.mapIndustryToApollo(criteria.industry);
+        apolloFilters.organization_industry_tag_ids = this.mapIndustryToApollo(this.sanitizeForApollo(criteria.industry));
       }
       if (criteria.companySize) {
         apolloFilters.organization_num_employees_ranges = [this.mapCompanySizeToApollo(criteria.companySize)];
       }
       if (criteria.location) {
-        apolloFilters.person_locations = [this.normalizeLocation(criteria.location)];
+        apolloFilters.person_locations = [this.normalizeLocation(this.sanitizeForApollo(criteria.location))];
       }
       if (criteria.locations && criteria.locations.length > 0) {
-        apolloFilters.person_locations = criteria.locations.map(loc => this.normalizeLocation(loc));
+        apolloFilters.person_locations = criteria.locations.map(loc => this.normalizeLocation(this.sanitizeForApollo(loc)));
       }
       if (criteria.technologies && criteria.technologies.length > 0) {
-        apolloFilters.q_organization_keyword_tags = criteria.technologies;
+        apolloFilters.q_organization_keyword_tags = this.sanitizeArrayForApollo(criteria.technologies);
       }
       if (criteria.keywords) {
-        apolloFilters.q_keywords = criteria.keywords;
+        apolloFilters.q_keywords = this.sanitizeForApollo(criteria.keywords);
       }
 
       const response = await apolloService.searchContacts({
