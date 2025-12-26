@@ -1,0 +1,447 @@
+Step 4: Provision Resources (Automatic)
+
+Email domains purchased/assigned
+Mailboxes created and warming started
+Calendar integration setup
+API keys generated
+Trial period started (14 days)
+
+Step 5: Monitor Onboarding (Ongoing)
+
+Track Manager first login (target: <24 hours)
+Monitor onboarding checklist completion
+Check for first campaign launch (target: <7 days)
+Verify integrations connected
+Ensure first meeting booked (target: <14 days)
+Proactive outreach if stuck
+
+Total Time: ~20 minutes
+Automated Time: ~5 minutes
+Follow-up: Week 1, Week 2, End of trial
+3.2 Daily Super Admin Workflow
+Morning Routine (30 minutes):
+
+Platform Health Check (5 min)
+
+Check platform status dashboard
+Review overnight incidents (if any)
+Verify all services operational
+Check error rates and performance
+
+
+New Tenant Activity (5 min)
+
+Check newly created tenants (yesterday)
+Monitor new tenant onboarding progress
+Verify Manager first login status
+
+
+Alerts & Incidents (10 min)
+
+Review security alerts
+Check compliance violations
+Address tenant issues (high bounce rates, suspensions)
+Respond to urgent support tickets
+
+
+Billing & Revenue (5 min)
+
+Check payment failures
+Process refunds if needed
+Review trial expirations (today)
+Monitor MRR trends
+
+
+Quick Tenant Scan (5 min)
+
+Identify at-risk tenants (low usage, high churn signals)
+Note high-performing tenants (upsell opportunities)
+Check health scores
+
+
+
+Mid-Day Check (15 minutes):
+
+Support ticket queue review
+Manager communication responses
+Resource utilization check
+Address any escalations
+
+End-of-Day (20 minutes):
+
+Daily metrics summary:
+
+New tenants created
+Revenue added
+Churn (if any)
+Platform performance
+Incidents resolved
+
+
+Prepare for next day
+Handoff to on-call if applicable
+
+3.3 Weekly Super Admin Workflow
+Monday: Planning & Review
+
+Review last week's metrics
+New tenant pipeline review
+Plan tenant outreach
+Resource allocation planning
+Team sync meeting
+
+Mid-Week: Operations
+
+Tenant health assessments
+Manager check-ins (sample)
+Feature usage review
+Performance optimization
+Security reviews
+
+Friday: Reporting & Strategy
+
+Weekly metrics report:
+
+New tenants
+Churn
+MRR growth
+Platform performance
+Incidents and resolutions
+
+
+Stakeholder updates
+Next week planning
+Documentation updates
+
+3.4 Monthly Super Admin Workflow
+Week 1: Month Close
+
+Month-end financial reports
+Churn analysis and reasons
+Success stories documentation
+Invoice reconciliation
+
+Week 2: Planning
+
+Tenant growth planning
+Resource capacity planning
+Feature prioritization
+Partnership discussions
+
+Week 3: Execution
+
+Tenant success initiatives
+Platform improvements
+Documentation updates
+Training material creation
+
+Week 4: Review
+
+Monthly business review
+Tenant health review
+Platform roadmap review
+Team performance review
+
+3.5 Tenant Issue Escalation Workflow
+When Manager Reports Critical Issue:
+
+Receive Escalation
+
+Manager submits urgent ticket
+Automatic alert to Super Admin
+Review issue details
+
+
+Assess Impact
+
+Severity: P0 (critical), P1 (high), P2 (medium)
+Scope: Single tenant vs. platform-wide
+Urgency: Blocking work vs. inconvenience
+
+
+Immediate Actions (P0 Critical)
+
+Acknowledge receipt (<30 min)
+Assign to technical team
+Impersonate Manager to see issue
+Access tenant logs and metrics
+Diagnose root cause
+
+
+Resolution
+
+Apply fix (if simple)
+Escalate to engineering (if complex)
+Implement workaround if fix takes time
+Test resolution
+Verify with Manager
+
+
+Follow-up
+
+Document issue and resolution
+Update knowledge base
+Identify if affects other tenants
+Implement prevention measures
+Close ticket with summary
+
+
+
+
+4. Super Admin UI Requirements
+4.1 Super Admin Dashboard
+Layout:
+
+Top bar: Platform status, Search tenants, Notifications, Profile
+Left sidebar: Main navigation
+
+Dashboard
+Tenants
+Managers
+Users
+Billing
+Support
+Analytics
+System
+Settings
+
+
+
+Main Dashboard Widgets:
+
+Platform Health Status
+
+Green/Red indicator
+Service status (API, Web, Email, Database)
+Active incidents count
+Response times
+
+
+Tenant Overview
+
+Total tenants: 247
+Active: 198
+Trial: 32
+Suspended: 5
+Churned (30 days): 12
+New today: 3
+
+
+Revenue Metrics
+
+MRR: $185,000
+Growth this month: +12%
+Churn rate: 3.2%
+Average revenue per tenant: $937
+
+
+Activity Summary
+
+Users active (24h): 1,847
+Emails sent (today): 127,543
+Meetings booked (today): 312
+API requests (24h): 2.4M
+
+
+Alerts & Actions
+
+Trials expiring (7 days): 8
+Payment failures: 3
+Support tickets: 12 open
+At-risk tenants: 7
+
+
+Recent Activity Feed
+
+New tenant created: Company ABC
+Trial converted: Company XYZ
+Integration authorized: Company 123
+Support ticket escalated: Tenant 456
+
+
+
+4.2 Tenant Management Interface
+Tenant List View:
+
+Table with columns:
+
+Company Name
+Status badge (color-coded)
+Plan
+Users (current/max)
+MRR
+Health Score (0-100)
+Manager Name
+Created Date
+Last Active
+Actions (•••)
+
+
+
+Filters:
+
+Status dropdown
+Plan dropdown
+Health score range slider
+Search by company name
+Date range picker
+
+Bulk Actions:
+
+Select multiple tenants
+Send message
+Export list
+Apply billing adjustment
+
+Tenant Detail Page:
+Tabs:
+
+Overview:
+
+Company information card
+Subscription details card
+Usage metrics (gauges and graphs)
+Recent activity timeline
+
+
+Users:
+
+Manager card (primary contact)
+User list table
+Add/remove users button
+User activity summary
+
+
+Configuration:
+
+Feature toggles
+Limits and quotas
+Integrations status
+Custom settings
+
+
+Billing:
+
+Current plan details
+Payment method
+Invoice history
+Usage-based charges
+Upgrade/downgrade buttons
+
+
+Support:
+
+Open tickets list
+Communication history
+Notes (internal)
+Health check results
+
+
+Analytics:
+
+Usage graphs
+Performance metrics
+Feature adoption
+ROI indicators
+
+
+
+Quick Actions Bar (Top Right):
+
+Impersonate Manager
+Send message
+Suspend tenant
+Edit details
+View logs
+
+4.3 Create Tenant Wizard
+Step 1: Company Information
+
+Company name (required)
+Industry dropdown
+Company size
+Website
+Country/Region
+
+Step 2: Manager Details
+
+Full name
+Email
+Phone
+Job title
+
+Step 3: Subscription
+
+Plan selection (radio buttons)
+Trial duration (14/30 days)
+Payment method (later/now)
+
+Step 4: Configuration
+
+Initial user limit
+Feature enablement checklist
+Email domains (auto/manual)
+Compliance region
+
+Step 5: Review
+
+Summary of all inputs
+Edit any section
+Terms acceptance
+Create Tenant button
+
+After Creation:
+
+Success message
+Tenant ID displayed
+Manager credentials shown
+Next steps checklist
+Go to Tenant button
+
+4.4 Manager Management Interface
+Manager List View:
+
+Table with columns:
+
+Name
+Email
+Company (linked)
+Status
+Last Login
+Created
+Actions
+
+
+
+Manager Detail View:
+
+Profile information
+Company assignment
+Permission level
+Activity log
+Support tickets
+Performance metrics
+Quick actions:
+
+Reset password
+Suspend/Activate
+Impersonate
+Send email
+Transfer ownership
+
+
+
+4.5 Impersonation Mode
+When Impersonating Manager:
+
+Banner at top: "You are viewing as Manager [Name] from [Company]"
+Exit impersonation button (always visible)
+Full access to Manager's view
+All actions logged in audit trail
+Cannot delete tenant while impersonating
+Cannot modify critical settings
+Clear indication of impersonation mode
+
+
+5. Super Admin Permissions Matrix
+FeatureSuper AdminManagerUserCreate tenants✓✗✗Delete tenants✓✗✗View all tenants✓✗ (own only)✗Create Managers✓✗✗Manage Managers✓✗✗View all users✓✓ (tenant only)✗ (self only)Platform settings✓✗✗Billing management (all)✓✗✗Billing management (own)✗✓✗System monitoring✓✗✗Audit logs (all)✓✗✗Audit logs (tenant)✓✓✗Feature flags✓✗✗Impersonate users✓✓ (tenant only)✗Support all tenants✓✗✗API access (platform)✓✗✗

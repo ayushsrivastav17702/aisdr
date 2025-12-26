@@ -1,0 +1,181 @@
+6. Multi-Tenant Architecture
+6.1 Data Isolation Strategy
+Schema-per-Tenant:
+Database: aisdr_platform
+├── public (shared platform data)
+│   ├── tenants
+│   ├── super_admins
+│   ├── subscription_plans
+│   └── system_settings
+├── tenant_001 (Company A)
+│   ├── users
+│   ├── campaigns
+│   ├── prospects
+│   └── messages
+├── tenant_002 (Company B)
+│   ├── users
+│   ├── campaigns
+│   ├── prospects
+│   └── messages
+└── tenant_003 (Company C)
+    └── ...
+Access Control:
+
+Every query must include tenant_id filter
+Middleware enforces tenant isolation
+Database row-level security
+Encrypted tenant data at rest
+Separate encryption keys per tenant
+
+Testing Isolation:
+
+Regular penetration testing
+Automated isolation tests
+Cross-tenant access attempts logged
+Quarterly security audits
+
+6.2 Resource Allocation
+Per-Tenant Limits (Configurable):
+Starter Plan:
+- Max users: 5
+- Max mailboxes: 5
+- Daily sends: 1,200
+- Storage: 5 GB
+- API rate: 100 req/min
+
+Growth Plan:
+- Max users: 25
+- Max mailboxes: 25
+- Daily sends: 10,000
+- Storage: 50 GB
+- API rate: 500 req/min
+
+Enterprise Plan:
+- Max users: Unlimited
+- Max mailboxes: Unlimited
+- Daily sends: Unlimited
+- Storage: 500 GB
+- API rate: 2,000 req/min
+Enforcement:
+
+Hard limits prevent overages
+Soft limits trigger warnings
+Grace period for payment issues
+Automatic cleanup of old data
+
+
+7. Super Admin Success Metrics
+Platform Metrics
+
+Active tenants: Track and grow
+Platform uptime: >99.9%
+Average tenant onboarding time: <24 hours
+Tenant activation rate: >80% (trial → paid)
+Support response time: <2 hours (P1)
+
+Financial Metrics
+
+MRR growth rate: Target >10% monthly
+Average MRR per tenant: Track and increase
+Churn rate: Target <5% monthly
+LTV:CAC ratio: Target >3:1
+Revenue per employee: Track
+
+Operational Metrics
+
+New tenant provisioning time: <1 hour
+Time to resolve support tickets: <24 hours
+Tenant satisfaction (NPS): Target >50
+Manager engagement: >80% active monthly
+System resource utilization: 60-80%
+
+
+8. Troubleshooting Guide
+Tenant Cannot Login
+Diagnosis:
+
+Check tenant status (Active?)
+Check Manager account status
+Review recent password resets
+Check for failed login attempts
+Verify email address
+
+Resolution:
+
+Reset Manager password
+Reactivate suspended account
+Check billing status
+Clear login lockout
+Provide support
+
+Platform Performance Issues
+Diagnosis:
+
+Check system resource usage
+Identify heavy tenants
+Review database performance
+Check external service status
+Review error logs
+
+Resolution:
+
+Scale infrastructure
+Throttle heavy users
+Optimize slow queries
+Restart services if needed
+Communicate with affected tenants
+
+Integration Failures
+Diagnosis:
+
+Which integration? (HubSpot, Salesforce, etc.)
+Single tenant or multiple?
+Recent credential changes?
+API rate limits hit?
+Service status
+
+Resolution:
+
+Refresh OAuth tokens
+Update API credentials
+Contact integration provider
+Implement retry logic
+Provide status updates
+
+
+Appendix: Quick Reference
+New Tenant Checklist
+When Creating New Tenant:
+
+ Company information verified
+ Plan selected
+ Tenant account created
+ Manager account created
+ Welcome email sent
+ Email domains configured
+ Mailboxes provisioned
+ Default settings applied
+ Trial started (if applicable)
+ Onboarding tracking initiated
+ Support team notified
+
+Emergency Procedures
+Platform Outage:
+
+Update status page
+Notify all Managers
+Activate incident response team
+Identify root cause
+Implement fix
+Verify restoration
+Post-mortem review
+
+Security Breach:
+
+Contain breach immediately
+Assess impact and scope
+Notify affected tenants
+Coordinate with security team
+Implement remediation
+File required reports
+Update security measures
