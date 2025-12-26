@@ -563,11 +563,24 @@ class AIService {
     };
   }
 
+  private sanitizeForApollo(value: string): string {
+    if (!value) return value;
+    return value
+      .replace(/[""'']/g, '"')
+      .replace(/"/g, '')
+      .replace(/[^\w\s\-.,@&()\/]/g, '')
+      .trim();
+  }
+
+  private sanitizeArrayForApollo(values: string[]): string[] {
+    return values.map(v => this.sanitizeForApollo(v)).filter(v => v.length > 0);
+  }
+
   private convertToApolloFilters(aiFilters: AIFilters): ApolloFilters {
     const apolloFilters: ApolloFilters = {};
 
     if (aiFilters.jobTitles?.length) {
-      apolloFilters.person_titles = aiFilters.jobTitles;
+      apolloFilters.person_titles = this.sanitizeArrayForApollo(aiFilters.jobTitles);
     }
 
     if (aiFilters.seniority?.length) {
@@ -579,10 +592,7 @@ class AIService {
     }
 
     if (aiFilters.industries?.length) {
-      // Industry IDs are complex and require exact Apollo.io mapping
-      // For now, include industries in keywords for better matching
-      // This ensures search works even without exact industry tag IDs
-      const industryKeywords = aiFilters.industries.join(' ');
+      const industryKeywords = this.sanitizeArrayForApollo(aiFilters.industries).join(' ');
       if (apolloFilters.q_keywords) {
         apolloFilters.q_keywords += ' ' + industryKeywords;
       } else {
@@ -595,17 +605,16 @@ class AIService {
     }
 
     if (aiFilters.locations?.length) {
-      apolloFilters.person_locations = aiFilters.locations;
+      apolloFilters.person_locations = this.sanitizeArrayForApollo(aiFilters.locations);
     }
 
     if (aiFilters.companyNames?.length) {
-      // Join multiple company names with OR operator for broader matching
-      // Apollo API searches across company names using keyword-style matching
-      apolloFilters.q_organization_name = aiFilters.companyNames.join(' OR ');
+      const sanitizedNames = this.sanitizeArrayForApollo(aiFilters.companyNames);
+      apolloFilters.q_organization_name = sanitizedNames.join(' OR ');
     }
 
     if (aiFilters.keywords?.length) {
-      apolloFilters.q_keywords = aiFilters.keywords.join(' ');
+      apolloFilters.q_keywords = this.sanitizeArrayForApollo(aiFilters.keywords).join(' ');
     }
 
     return apolloFilters;
