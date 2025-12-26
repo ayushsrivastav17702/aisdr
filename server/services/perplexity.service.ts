@@ -24,15 +24,16 @@ interface PerplexityUsage {
 }
 
 class PerplexityService {
-  private apiKey: string;
   private baseUrl = 'https://api.perplexity.ai';
 
-  constructor() {
-    this.apiKey = process.env.PERPLEXITY_API_KEY || '';
+  private getApiKey(): string {
+    return process.env.PERPLEXITY_API_KEY || '';
   }
 
   isConfigured(): boolean {
-    return !!this.apiKey;
+    const configured = !!this.getApiKey();
+    console.log(`🔑 Perplexity isConfigured check: ${configured} (key length: ${this.getApiKey().length})`);
+    return configured;
   }
 
   async searchProspects(
@@ -50,7 +51,7 @@ class PerplexityService {
       const response = await fetch(`${this.baseUrl}/chat/completions`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
+          'Authorization': `Bearer ${this.getApiKey()}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
