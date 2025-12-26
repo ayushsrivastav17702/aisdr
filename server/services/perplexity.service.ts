@@ -196,8 +196,8 @@ Only return prospects you can verify exist. Do not make up fake contacts. Return
 
   private calculateCost(usage?: PerplexityUsage): number {
     if (!usage) return 0;
-    const inputCost = (usage.prompt_tokens / 1000) * 0.001;
-    const outputCost = (usage.completion_tokens / 1000) * 0.001;
+    const inputCost = (usage.prompt_tokens / 1000000) * 5;
+    const outputCost = (usage.completion_tokens / 1000000) * 15;
     return inputCost + outputCost;
   }
 

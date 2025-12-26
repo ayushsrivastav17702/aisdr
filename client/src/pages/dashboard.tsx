@@ -213,6 +213,17 @@ export default function Dashboard() {
               <span>AE Handoff</span>
             </Button>
           </Link>
+
+          <Link href="/ai-prospecting">
+            <Button
+              variant="ghost"
+              className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
+              data-testid="nav-ai-prospecting"
+            >
+              <SparklesIcon className="w-4 h-4" />
+              <span>AI Prospecting</span>
+            </Button>
+          </Link>
           
           <Link href="/api-docs">
             <Button
