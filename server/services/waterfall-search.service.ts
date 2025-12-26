@@ -69,10 +69,16 @@ class WaterfallSearchService {
     // Helper to check if email is a locked/placeholder email
     const isLockedEmail = (email?: string): boolean => {
       if (!email || email === '') return false;
-      // Check for specific Apollo placeholder patterns
-      return email.includes('email_not_unlocked') || 
-             email === 'locked@domain.com' ||
-             email.endsWith('@domain.com');
+      const emailLower = email.toLowerCase();
+      const lockedPatterns = [
+        'email_not_unlocked',
+        '@domain.com',
+        'locked@',
+        'placeholder@',
+        'noemail@',
+        'unknown@'
+      ];
+      return lockedPatterns.some(pattern => emailLower.includes(pattern));
     };
 
     // Clean prospect emails - remove locked placeholders
@@ -116,15 +122,26 @@ class WaterfallSearchService {
 
       const buildResult = (): WaterfallSearchResult => {
         const primaryProvider = usedProviders.length > 0 ? usedProviders[0] : 'openrouter';
+        
+        let finalProspects = accumulatedProspects;
+        
+        if (criteria.location) {
+          finalProspects = this.filterProspectsByLocation(finalProspects, criteria.location);
+        }
+        
+        finalProspects = this.removeLockedEmails(finalProspects);
+        
+        console.log(`   📊 Final prospect count after filters: ${finalProspects.length}`);
+        
         return {
           providers: usedProviders,
-          prospects: accumulatedProspects.slice(0, limit),
+          prospects: finalProspects.slice(0, limit),
           totalCost,
           searchId: searchRecord.id,
           providerChain,
           summary: {
             totalFetched,
-            totalUnique: accumulatedProspects.length,
+            totalUnique: finalProspects.length,
             primaryProvider
           }
         };
@@ -722,6 +739,59 @@ Generate realistic but fictional data based on the ICP criteria. These are AI-ge
     };
     const normalized = location.trim().toLowerCase();
     return locationAliases[normalized] || location.trim();
+  }
+
+  private matchesLocation(prospectLocation: string | undefined, criteriaLocation: string): boolean {
+    if (!prospectLocation) return false;
+    
+    const normalizedCriteria = this.normalizeLocation(criteriaLocation).toLowerCase();
+    const prospectLoc = prospectLocation.toLowerCase();
+    
+    const usVariants = ['united states', 'usa', 'us', 'america'];
+    const ukVariants = ['united kingdom', 'uk', 'britain', 'england', 'scotland', 'wales'];
+    
+    if (usVariants.includes(normalizedCriteria)) {
+      return usVariants.some(v => prospectLoc.includes(v)) || 
+             /\b(ca|ny|tx|fl|il|pa|oh|ga|nc|mi|nj|va|wa|az|ma|tn|in|mo|md|wi|co|mn|sc|al|la|ky|or|ok|ct|ut|ia|nv|ar|ms|ks|nm|ne|id|wv|hi|nh|me|mt|ri|de|sd|nd|ak|dc|vt|wy)\b/i.test(prospectLoc) ||
+             /(new york|los angeles|chicago|houston|phoenix|philadelphia|san antonio|san diego|dallas|san jose|austin|jacksonville|fort worth|columbus|charlotte|san francisco|indianapolis|seattle|denver|washington|boston|detroit|nashville|portland|memphis|oklahoma|las vegas|louisville|baltimore|milwaukee|albuquerque|tucson|fresno|sacramento|atlanta|kansas city|colorado springs|miami|raleigh|omaha|minneapolis|tulsa|arlington|new orleans)/i.test(prospectLoc);
+    }
+    
+    if (ukVariants.includes(normalizedCriteria)) {
+      return ukVariants.some(v => prospectLoc.includes(v)) ||
+             /(london|birmingham|manchester|glasgow|liverpool|bristol|sheffield|leeds|edinburgh|leicester|cardiff|belfast|nottingham|newcastle)/i.test(prospectLoc);
+    }
+    
+    return prospectLoc.includes(normalizedCriteria) || normalizedCriteria.includes(prospectLoc);
+  }
+
+  filterProspectsByLocation(prospects: WaterfallProspect[], location: string): WaterfallProspect[] {
+    const filtered = prospects.filter(p => this.matchesLocation(p.location, location));
+    const removed = prospects.length - filtered.length;
+    if (removed > 0) {
+      console.log(`   🌍 Location filter removed ${removed} non-matching prospects (kept ${filtered.length})`);
+    }
+    return filtered;
+  }
+
+  removeLockedEmails(prospects: WaterfallProspect[]): WaterfallProspect[] {
+    const lockedPatterns = [
+      'email_not_unlocked',
+      '@domain.com',
+      'locked@',
+      'placeholder@',
+      'noemail@',
+      'unknown@'
+    ];
+    
+    const cleaned = prospects.map(p => {
+      if (p.email && lockedPatterns.some(pattern => p.email!.toLowerCase().includes(pattern))) {
+        console.log(`   🔒 Removed locked email: ${p.email} for ${p.fullName}`);
+        return { ...p, email: undefined };
+      }
+      return p;
+    });
+    
+    return cleaned;
   }
 }
 
