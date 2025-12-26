@@ -1,0 +1,316 @@
+4. Frontend Routing Setup
+javascript// File: frontend/src/App.jsx - MISSING
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import Login from './pages/Login';
+import SuperAdminDashboard from './pages/SuperAdmin/Dashboard';
+import CreateTenant from './pages/SuperAdmin/CreateTenant';
+import ManagerDashboard from './pages/Manager/Dashboard';
+import CreateUser from './pages/Manager/CreateUser';
+import CampaignDashboard from './pages/User/CampaignDashboard';
+import CreateCampaign from './pages/User/CreateCampaign';
+
+function App() {
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    
+    return (
+        <BrowserRouter>
+            <Routes>
+                <Route path="/login" element={<Login />} />
+                
+                {/* Super Admin Routes */}
+                <Route path="/super-admin/dashboard" element={<SuperAdminDashboard />} />
+                <Route path="/super-admin/tenants/new" element={<CreateTenant />} />
+                
+                {/* Manager Routes */}
+                <Route path="/manager/dashboard" element={<ManagerDashboard />} />
+                <Route path="/manager/users/new" element={<CreateUser />} />
+                
+                {/* User Routes */}
+                <Route path="/campaigns" element={<CampaignDashboard />} />
+                <Route path="/campaigns/new" element={<CreateCampaign />} />
+                <Route path="/dashboard" element={<CampaignDashboard />} />
+                
+                {/* Default */}
+                <Route path="/" element={<Navigate to="/login" />} />
+            </Routes>
+        </BrowserRouter>
+    );
+}
+
+export default App;
+5. Package.json Files
+Backend package.json:
+json{
+  "name": "aisdr-backend",
+  "version": "1.0.0",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "pg": "^8.11.3",
+    "bcrypt": "^5.1.1",
+    "jsonwebtoken": "^9.0.2",
+    "dotenv": "^16.3.1",
+    "axios": "^1.6.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}
+Frontend package.json:
+json{
+  "name": "aisdr-frontend",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.20.0",
+    "axios": "^1.6.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.2.0",
+    "autoprefixer": "^10.4.16",
+    "postcss": "^8.4.32",
+    "tailwindcss": "^3.3.6",
+    "vite": "^5.0.0"
+  }
+}
+6. Complete .env Template
+env# Database
+DATABASE_URL=postgresql://username:password@localhost:5432/aisdr_db
+
+# JWT
+JWT_SECRET=your-super-secret-jwt-key-change-this-in-production
+JWT_EXPIRES_IN=24h
+
+# Server
+PORT=3000
+NODE_ENV=development
+
+# Frontend URL (for CORS)
+FRONTEND_URL=http://localhost:5173
+
+# Future APIs (not needed yet for Phases 1-4)
+# OPENAI_API_KEY=
+# SENDGRID_API_KEY=
+7. Database Initialization Script
+sql-- File: database/init.sql - CONSOLIDATE ALL TABLES
+
+-- Drop existing tables (for fresh start)
+DROP TABLE IF EXISTS messages CASCADE;
+DROP TABLE IF EXISTS campaign_prospects CASCADE;
+DROP TABLE IF EXISTS campaign_sequences CASCADE;
+DROP TABLE IF EXISTS campaigns CASCADE;
+DROP TABLE IF EXISTS prospects CASCADE;
+DROP TABLE IF EXISTS audit_logs CASCADE;
+DROP TABLE IF EXISTS tenant_settings CASCADE;
+DROP TABLE IF EXISTS sessions CASCADE;
+DROP TABLE IF EXISTS users CASCADE;
+DROP TABLE IF EXISTS tenants CASCADE;
+
+-- Table 1: tenants
+CREATE TABLE tenants (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    company_name VARCHAR(255) NOT NULL,
+    subdomain VARCHAR(100) UNIQUE,
+    status VARCHAR(50) DEFAULT 'trial',
+    plan_type VARCHAR(50) DEFAULT 'starter',
+    max_users INTEGER DEFAULT 5,
+    max_mailboxes INTEGER DEFAULT 5,
+    daily_send_limit INTEGER DEFAULT 1200,
+    trial_ends_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Table 2: users
+CREATE TABLE users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    full_name VARCHAR(255) NOT NULL,
+    role VARCHAR(50) NOT NULL,
+    status VARCHAR(50) DEFAULT 'active',
+    phone VARCHAR(50),
+    job_title VARCHAR(100),
+    last_login TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_by UUID REFERENCES users(id)
+);
+
+-- Table 3: sessions
+CREATE TABLE sessions (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+    token VARCHAR(500) NOT NULL,
+    expires_at TIMESTAMP NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Table 4: tenant_settings
+CREATE TABLE tenant_settings (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+    setting_key VARCHAR(100) NOT NULL,
+    setting_value TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(tenant_id, setting_key)
+);
+
+-- Table 5: audit_logs
+CREATE TABLE audit_logs (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    action VARCHAR(100) NOT NULL,
+    entity_type VARCHAR(50),
+    entity_id UUID,
+    details JSONB,
+    ip_address VARCHAR(50),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Table 6: campaigns
+CREATE TABLE campaigns (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    name VARCHAR(255) NOT NULL,
+    status VARCHAR(50) DEFAULT 'draft',
+    campaign_type VARCHAR(50) DEFAULT 'cold_outreach',
+    goal VARCHAR(50) DEFAULT 'meetings',
+    start_date TIMESTAMP,
+    end_date TIMESTAMP,
+    daily_send_limit INTEGER DEFAULT 100,
+    total_prospects INTEGER DEFAULT 0,
+    prospects_contacted INTEGER DEFAULT 0,
+    total_sent INTEGER DEFAULT 0,
+    total_opened INTEGER DEFAULT 0,
+    total_clicked INTEGER DEFAULT 0,
+    total_replied INTEGER DEFAULT 0,
+    positive_replies INTEGER DEFAULT 0,
+    negative_replies INTEGER DEFAULT 0,
+    meetings_booked INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Table 7: campaign_sequences
+CREATE TABLE campaign_sequences (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    campaign_id UUID REFERENCES campaigns(id) ON DELETE CASCADE,
+    step_number INTEGER NOT NULL,
+    channel VARCHAR(50) NOT NULL,
+    subject_line VARCHAR(255),
+    message_body TEXT NOT NULL,
+    delay_days INTEGER DEFAULT 2,
+    delay_hours INTEGER DEFAULT 0,
+    is_active BOOLEAN DEFAULT true,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(campaign_id, step_number)
+);
+
+-- Table 8: campaign_prospects
+CREATE TABLE campaign_prospects (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    campaign_id UUID REFERENCES campaigns(id) ON DELETE CASCADE,
+    prospect_id UUID REFERENCES prospects(id) ON DELETE CASCADE,
+    status VARCHAR(50) DEFAULT 'pending',
+    current_step INTEGER DEFAULT 0,
+    last_contacted TIMESTAMP,
+    next_contact_date TIMESTAMP,
+    total_sent INTEGER DEFAULT 0,
+    total_opened INTEGER DEFAULT 0,
+    total_clicked INTEGER DEFAULT 0,
+    replied BOOLEAN DEFAULT false,
+    reply_sentiment VARCHAR(50),
+    meeting_booked BOOLEAN DEFAULT false,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(campaign_id, prospect_id)
+);
+
+-- Table 9: prospects
+CREATE TABLE prospects (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    email VARCHAR(255) NOT NULL,
+    first_name VARCHAR(100),
+    last_name VARCHAR(100),
+    full_name VARCHAR(255),
+    company_name VARCHAR(255),
+    job_title VARCHAR(255),
+    linkedin_url VARCHAR(500),
+    phone VARCHAR(50),
+    website VARCHAR(500),
+    industry VARCHAR(100),
+    company_size VARCHAR(50),
+    location VARCHAR(255),
+    status VARCHAR(50) DEFAULT 'new',
+    tags TEXT[],
+    notes TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Table 10: messages
+CREATE TABLE messages (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    tenant_id UUID REFERENCES tenants(id) ON DELETE CASCADE,
+    campaign_id UUID REFERENCES campaigns(id) ON DELETE CASCADE,
+    prospect_id UUID REFERENCES prospects(id) ON DELETE CASCADE,
+    user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+    sequence_id UUID REFERENCES campaign_sequences(id) ON DELETE SET NULL,
+    channel VARCHAR(50) NOT NULL,
+    subject_line VARCHAR(255),
+    message_body TEXT NOT NULL,
+    sent_at TIMESTAMP,
+    opened_at TIMESTAMP,
+    clicked_at TIMESTAMP,
+    replied_at TIMESTAMP,
+    bounce_type VARCHAR(50),
+    is_bounced BOOLEAN DEFAULT false,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Indexes
+CREATE INDEX idx_users_tenant_id ON users(tenant_id);
+CREATE INDEX idx_users_email ON users(email);
+CREATE INDEX idx_sessions_token ON sessions(token);
+CREATE INDEX idx_audit_logs_tenant_id ON audit_logs(tenant_id);
+CREATE INDEX idx_audit_logs_created_at ON audit_logs(created_at);
+CREATE INDEX idx_campaigns_tenant_id ON campaigns(tenant_id);
+CREATE INDEX idx_campaigns_user_id ON campaigns(user_id);
+CREATE INDEX idx_campaigns_status ON campaigns(status);
+CREATE INDEX idx_campaign_sequences_campaign_id ON campaign_sequences(campaign_id);
+CREATE INDEX idx_campaign_prospects_campaign_id ON campaign_prospects(campaign_id);
+CREATE INDEX idx_campaign_prospects_prospect_id ON campaign_prospects(prospect_id);
+CREATE INDEX idx_prospects_tenant_id ON prospects(tenant_id);
+CREATE INDEX idx_prospects_email ON prospects(email);
+CREATE INDEX idx_messages_campaign_id ON messages(campaign_id);
+CREATE INDEX idx_messages_prospect_id ON messages(prospect_id);
+
+-- Create first super admin user (password: "admin123")
+INSERT INTO users (email, password_hash, full_name, role, status)
+VALUES (
+    'admin@aisdr.com',
+    '$2b$10$rFKzn5g5tV5p5fO5tV5p5eK5g5tV5p5fO5tV5p5eK5g5tV5p5fO5t',
+    'Super Admin',
+    'super_admin',
+    'active'
+);
