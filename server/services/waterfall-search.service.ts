@@ -48,87 +48,154 @@ class WaterfallSearchService {
     const limit = criteria.limit || 50;
     let totalCost = 0;
     const providerChain: { provider: SearchProvider; resultCount: number; cost: number }[] = [];
+    const accumulatedProspects: WaterfallProspect[] = [];
+    let primaryProvider: SearchProvider = 'openrouter';
 
     const searchRecord = await this.createSearchRecord(criteria, organizationId, userId);
 
+    const deduplicateProspects = (existing: WaterfallProspect[], newProspects: WaterfallProspect[]): WaterfallProspect[] => {
+      const existingKeys = new Set(existing.map(p => 
+        `${p.email?.toLowerCase() || ''}|${p.fullName.toLowerCase()}|${p.companyName.toLowerCase()}`
+      ));
+      return newProspects.filter(p => {
+        const key = `${p.email?.toLowerCase() || ''}|${p.fullName.toLowerCase()}|${p.companyName.toLowerCase()}`;
+        if (existingKeys.has(key)) return false;
+        existingKeys.add(key);
+        return true;
+      });
+    };
+
     try {
-      console.log('🔍 Starting Waterfall Search...');
+      console.log('🔍 Starting Waterfall Search (Accumulating Mode)...');
       console.log('   Criteria:', JSON.stringify(criteria, null, 2));
+      console.log(`   Target: ${limit} prospects`);
 
       if (perplexityService.isConfigured()) {
         console.log('\n📡 Step 1: Trying Perplexity API...');
-        const { prospects, cost } = await perplexityService.searchProspects(criteria, organizationId);
-        totalCost += cost;
-        providerChain.push({ provider: 'perplexity', resultCount: prospects.length, cost });
+        try {
+          const { prospects, cost } = await perplexityService.searchProspects(criteria, organizationId);
+          totalCost += cost;
+          const uniqueProspects = deduplicateProspects(accumulatedProspects, prospects as WaterfallProspect[]);
+          accumulatedProspects.push(...uniqueProspects);
+          providerChain.push({ provider: 'perplexity', resultCount: uniqueProspects.length, cost });
+          
+          if (accumulatedProspects.length > 0 && primaryProvider === 'openrouter') {
+            primaryProvider = 'perplexity';
+          }
 
-        if (prospects.length >= limit) {
-          await this.updateSearchRecord(searchRecord.id, 'perplexity', prospects.length, totalCost);
-          return {
-            provider: 'perplexity',
-            prospects: prospects.slice(0, limit) as WaterfallProspect[],
-            totalCost,
-            searchId: searchRecord.id,
-            providerChain
-          };
+          console.log(`   Perplexity returned ${prospects.length} prospects (${uniqueProspects.length} unique)`);
+          console.log(`   Total accumulated: ${accumulatedProspects.length}/${limit}`);
+
+          if (accumulatedProspects.length >= limit) {
+            await this.updateSearchRecord(searchRecord.id, primaryProvider, accumulatedProspects.length, totalCost);
+            return {
+              provider: primaryProvider,
+              prospects: accumulatedProspects.slice(0, limit),
+              totalCost,
+              searchId: searchRecord.id,
+              providerChain
+            };
+          }
+        } catch (err) {
+          console.log(`   ⚠️ Perplexity error: ${err instanceof Error ? err.message : 'Unknown error'}`);
         }
-        console.log(`   Perplexity returned ${prospects.length}/${limit} prospects`);
       } else {
         console.log('   ⚠️ Perplexity not configured, skipping...');
       }
 
-      if (apolloService.isConfigured()) {
+      if (apolloService.isConfigured() && accumulatedProspects.length < limit) {
         console.log('\n📡 Step 2: Trying Apollo API...');
-        const apolloProspects = await this.searchApollo(criteria, organizationId);
-        const apolloCost = apolloProspects.length * 0.10;
-        totalCost += apolloCost;
-        providerChain.push({ provider: 'apollo', resultCount: apolloProspects.length, cost: apolloCost });
+        try {
+          const apolloProspects = await this.searchApollo(criteria, organizationId);
+          const apolloCost = apolloProspects.length * 0.10;
+          totalCost += apolloCost;
+          const uniqueProspects = deduplicateProspects(accumulatedProspects, apolloProspects);
+          accumulatedProspects.push(...uniqueProspects);
+          providerChain.push({ provider: 'apollo', resultCount: uniqueProspects.length, cost: apolloCost });
 
-        if (apolloProspects.length >= limit) {
-          await this.updateSearchRecord(searchRecord.id, 'apollo', apolloProspects.length, totalCost);
-          return {
-            provider: 'apollo',
-            prospects: apolloProspects.slice(0, limit),
-            totalCost,
-            searchId: searchRecord.id,
-            providerChain
-          };
+          if (uniqueProspects.length > 0 && primaryProvider === 'openrouter') {
+            primaryProvider = 'apollo';
+          }
+
+          console.log(`   Apollo returned ${apolloProspects.length} prospects (${uniqueProspects.length} unique)`);
+          console.log(`   Total accumulated: ${accumulatedProspects.length}/${limit}`);
+
+          if (accumulatedProspects.length >= limit) {
+            await this.updateSearchRecord(searchRecord.id, primaryProvider, accumulatedProspects.length, totalCost);
+            return {
+              provider: primaryProvider,
+              prospects: accumulatedProspects.slice(0, limit),
+              totalCost,
+              searchId: searchRecord.id,
+              providerChain
+            };
+          }
+        } catch (err) {
+          console.log(`   ⚠️ Apollo error: ${err instanceof Error ? err.message : 'Unknown error'}`);
         }
-        console.log(`   Apollo returned ${apolloProspects.length}/${limit} prospects`);
-      } else {
+      } else if (!apolloService.isConfigured()) {
         console.log('   ⚠️ Apollo not configured, skipping...');
       }
 
-      if (lushaService.isConfigured()) {
+      if (lushaService.isConfigured() && accumulatedProspects.length < limit) {
         console.log('\n📡 Step 3: Trying Lusha API...');
-        const { prospects, cost } = await lushaService.searchProspects(criteria, organizationId);
-        totalCost += cost;
-        providerChain.push({ provider: 'lusha', resultCount: prospects.length, cost });
+        try {
+          const { prospects, cost } = await lushaService.searchProspects(criteria, organizationId);
+          totalCost += cost;
+          const uniqueProspects = deduplicateProspects(accumulatedProspects, prospects as WaterfallProspect[]);
+          accumulatedProspects.push(...uniqueProspects);
+          providerChain.push({ provider: 'lusha', resultCount: uniqueProspects.length, cost });
 
-        if (prospects.length >= limit) {
-          await this.updateSearchRecord(searchRecord.id, 'lusha', prospects.length, totalCost);
-          return {
-            provider: 'lusha',
-            prospects: prospects.slice(0, limit) as WaterfallProspect[],
-            totalCost,
-            searchId: searchRecord.id,
-            providerChain
-          };
+          if (uniqueProspects.length > 0 && primaryProvider === 'openrouter') {
+            primaryProvider = 'lusha';
+          }
+
+          console.log(`   Lusha returned ${prospects.length} prospects (${uniqueProspects.length} unique)`);
+          console.log(`   Total accumulated: ${accumulatedProspects.length}/${limit}`);
+
+          if (accumulatedProspects.length >= limit) {
+            await this.updateSearchRecord(searchRecord.id, primaryProvider, accumulatedProspects.length, totalCost);
+            return {
+              provider: primaryProvider,
+              prospects: accumulatedProspects.slice(0, limit),
+              totalCost,
+              searchId: searchRecord.id,
+              providerChain
+            };
+          }
+        } catch (err) {
+          console.log(`   ⚠️ Lusha error: ${err instanceof Error ? err.message : 'Unknown error'}`);
         }
-        console.log(`   Lusha returned ${prospects.length}/${limit} prospects`);
-      } else {
+      } else if (!lushaService.isConfigured()) {
         console.log('   ⚠️ Lusha not configured, skipping...');
       }
 
-      console.log('\n📡 Step 4: Using OpenRouter AI Fallback...');
-      const { prospects: aiProspects, cost: aiCost } = await this.generateWithOpenRouter(criteria, organizationId);
-      totalCost += aiCost;
-      providerChain.push({ provider: 'openrouter', resultCount: aiProspects.length, cost: aiCost });
+      if (accumulatedProspects.length < limit) {
+        const remaining = limit - accumulatedProspects.length;
+        console.log(`\n📡 Step 4: Using OpenRouter AI to generate ${remaining} more prospects...`);
+        try {
+          const { prospects: aiProspects, cost: aiCost } = await this.generateWithOpenRouter(
+            { ...criteria, limit: remaining },
+            organizationId
+          );
+          totalCost += aiCost;
+          const uniqueProspects = deduplicateProspects(accumulatedProspects, aiProspects);
+          accumulatedProspects.push(...uniqueProspects);
+          providerChain.push({ provider: 'openrouter', resultCount: uniqueProspects.length, cost: aiCost });
 
-      await this.updateSearchRecord(searchRecord.id, 'openrouter', aiProspects.length, totalCost);
+          console.log(`   OpenRouter generated ${aiProspects.length} prospects (${uniqueProspects.length} unique)`);
+        } catch (err) {
+          console.log(`   ⚠️ OpenRouter error: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        }
+      }
+
+      console.log(`\n✅ Waterfall Search Complete: ${accumulatedProspects.length} total prospects from ${providerChain.length} providers`);
+
+      await this.updateSearchRecord(searchRecord.id, primaryProvider, accumulatedProspects.length, totalCost);
 
       return {
-        provider: 'openrouter',
-        prospects: aiProspects.slice(0, limit),
+        provider: primaryProvider,
+        prospects: accumulatedProspects.slice(0, limit),
         totalCost,
         searchId: searchRecord.id,
         providerChain

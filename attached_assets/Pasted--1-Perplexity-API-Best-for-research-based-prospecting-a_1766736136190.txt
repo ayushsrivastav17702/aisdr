@@ -1,0 +1,182 @@
+ 1. Perplexity API - Best for research-based prospecting
+    async searchPerplexity(criteria) {
+        try {
+            const prompt = this.buildPerplexityPrompt(criteria);
+            
+            const response = await axios.post(
+                `${process.env.PERPLEXITY_API_URL}/chat/completions`,
+                {
+                    model: 'llama-3.1-sonar-large-128k-online',
+                    messages: [
+                        {
+                            role: 'system',
+                            content: 'You are a B2B prospect research assistant. Return prospects in JSON format.'
+                        },
+                        {
+                            role: 'user',
+                            content: prompt
+                        }
+                    ],
+                    temperature: 0.2,
+                    max_tokens: 4000
+                },
+                {
+                    headers: {
+                        'Authorization': `Bearer ${process.env.PERPLEXITY_API_KEY}`,
+                        'Content-Type': 'application/json'
+                    }
+                }
+            );
+
+            const cost = this.calculatePerplexityCost(response.data.usage);
+            await this.logApiUsage('perplexity', criteria, response.data, cost);
+            this.totalCost += cost;
+
+            const prospects = this.parsePerplexityResponse(response.data.choices[0].message.content);
+            return prospects;
+
+        } catch (error) {
+            console.error('Perplexity API error:', error.response?.data || error.message);
+            await this.logApiUsage('perplexity', criteria, null, 0, false);
+            return [];
+        }
+    }
+
+    // 2. Apollo.io API - Best for B2B contact data
+    async searchApollo(criteria) {
+        try {
+            const response = await axios.post(
+                `${process.env.APOLLO_API_URL}/mixed_people/search`,
+                {
+                    person_titles: criteria.jobTitles,
+                    organization_industry_tag_ids: this.mapIndustryToApollo(criteria.industry),
+                    organization_num_employees_ranges: this.mapCompanySizeToApollo(criteria.companySize),
+                    person_locations: criteria.location ? [criteria.location] : [],
+                    page: 1,
+                    per_page: criteria.limit || 50
+                },
+                {
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Cache-Control': 'no-cache',
+                        'X-Api-Key': process.env.APOLLO_API_KEY
+                    }
+                }
+            );
+
+            const cost = response.data.people.length * 0.10; // $0.10 per contact
+            await this.logApiUsage('apollo', criteria, response.data, cost);
+            this.totalCost += cost;
+
+            const prospects = response.data.people.map(person => ({
+                email: person.email,
+                firstName: person.first_name,
+                lastName: person.last_name,
+                fullName: `${person.first_name} ${person.last_name}`,
+                jobTitle: person.title,
+                companyName: person.organization?.name,
+                linkedinUrl: person.linkedin_url,
+                phone: person.phone_numbers?.[0]?.raw_number,
+                location: person.city,
+                companySize: person.organization?.estimated_num_employees,
+                industry: person.organization?.industry,
+                website: person.organization?.website_url,
+                source: 'apollo'
+            }));
+
+            return prospects;
+
+        } catch (error) {
+            console.error('Apollo API error:', error.response?.data || error.message);
+            await this.logApiUsage('apollo', criteria, null, 0, false);
+            return [];
+        }
+    }
+
+    // 3. Lusha API - Good for enrichment and contact finding
+    async searchLusha(criteria) {
+        try {
+            const response = await axios.post(
+                `${process.env.LUSHA_API_URL}/companies/search`,
+                {
+                    industry: criteria.industry,
+                    sizeRange: this.mapCompanySizeToLusha(criteria.companySize),
+                    location: criteria.location,
+                    limit: criteria.limit || 50
+                },
+                {
+                    headers: {
+                        'api_token': process.env.LUSHA_API_KEY,
+                        'Content-Type': 'application/json'
+                    }
+                }
+            );
+
+            const cost = response.data.data.length * 0.15; // $0.15 per contact
+            await this.logApiUsage('lusha', criteria, response.data, cost);
+            this.totalCost += cost;
+
+            // Get contacts from companies
+            const prospects = [];
+            for (const company of response.data.data) {
+                const contacts = await this.getLushaContacts(company.id, criteria.jobTitles);
+                prospects.push(...contacts);
+                
+                if (prospects.length >= criteria.limit) break;
+            }
+
+            return prospects;
+
+        } catch (error) {
+            console.error('Lusha API error:', error.response?.data || error.message);
+            await this.logApiUsage('lusha', criteria, null, 0, false);
+            return [];
+        }
+    }
+
+    // 4. OpenRouter API - Fallback using AI to generate based on ICP
+    async generateWithOpenRouter(criteria) {
+        try {
+            const prompt = this.buildOpenRouterPrompt(criteria);
+            
+            const response = await axios.post(
+                `${process.env.OPENROUTER_API_URL}/chat/completions`,
+                {
+                    model: 'anthropic/claude-3-opus',
+                    messages: [
+                        {
+                            role: 'system',
+                            content: 'You are a B2B prospect generator. Create realistic prospect data based on ICP criteria. Return ONLY valid JSON array.'
+                        },
+                        {
+                            role: 'user',
+                            content: prompt
+                        }
+                    ],
+                    temperature: 0.7,
+                    max_tokens: 4000
+                },
+                {
+                    headers: {
+                        'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+                        'Content-Type': 'application/json'
+                    }
+                }
+            );
+
+            const cost = this.calculateOpenRouterCost(response.data.usage);
+            await this.logApiUsage('openrouter', criteria, response.data, cost);
+            this.totalCost += cost;
+
+            const content = response.data.choices[0].message.content;
+            const prospects = this.parseOpenRouterResponse(content);
+            
+            // Mark as AI-generated
+            return prospects.map(p => ({ ...p, source: 'ai-generated', verified: false }));
+
+        } catch (error) {
+            console.error('OpenRouter API error:', error.response?.data || error.message);
+            await this.logApiUsage('openrouter', criteria, null, 0, false);
+            return [];
+        }
+    }
