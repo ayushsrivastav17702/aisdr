@@ -274,7 +274,7 @@ class WaterfallSearchService {
         apolloFilters.person_departments = criteria.departments;
       }
       if (criteria.industry) {
-        apolloFilters.organization_industry_tag_ids = [criteria.industry];
+        apolloFilters.organization_industry_tag_ids = this.mapIndustryToApollo(criteria.industry);
       }
       if (criteria.companySize) {
         apolloFilters.organization_num_employees_ranges = [this.mapCompanySizeToApollo(criteria.companySize)];
@@ -453,26 +453,82 @@ Generate realistic but fictional data based on the ICP criteria. These are AI-ge
 
   private calculateOpenRouterCost(usage?: { prompt_tokens: number; completion_tokens: number }): number {
     if (!usage) return 0;
-    const inputCost = (usage.prompt_tokens / 1000) * 0.00025;
-    const outputCost = (usage.completion_tokens / 1000) * 0.00125;
+    const inputCost = (usage.prompt_tokens / 1000000) * 15;
+    const outputCost = (usage.completion_tokens / 1000000) * 75;
     return inputCost + outputCost;
   }
 
   private mapCompanySizeToApollo(size: string): string {
     const sizeMap: Record<string, string> = {
-      '1-10': '1-10',
-      '11-50': '11-50',
-      '51-200': '51-200',
-      '201-500': '201-500',
-      '501-1000': '501-1000',
-      '1001-5000': '1001-5000',
-      '5000+': '5001-10000',
-      'small': '1-50',
-      'medium': '51-500',
-      'large': '501-5000',
-      'enterprise': '5001-10000'
+      '1-10': '1,10',
+      '11-50': '11,50',
+      '51-200': '51,200',
+      '201-500': '201,500',
+      '501-1000': '501,1000',
+      '1001-5000': '1001,5000',
+      '5000+': '5001,10000',
+      '5001+': '10001,',
+      'small': '1,50',
+      'medium': '51,500',
+      'large': '501,5000',
+      'enterprise': '5001,10000'
     };
     return sizeMap[size.toLowerCase()] || size;
+  }
+
+  private mapIndustryToApollo(industry: string): string[] {
+    const industryMap: Record<string, string[]> = {
+      'technology': ['5567cd4773696439b10b0000'],
+      'software': ['5567cd4773696439b10b0000'],
+      'tech': ['5567cd4773696439b10b0000'],
+      'healthcare': ['5567cd4773696439b11b0000'],
+      'health': ['5567cd4773696439b11b0000'],
+      'medical': ['5567cd4773696439b11b0000'],
+      'finance': ['5567cd4773696439b12b0000'],
+      'financial services': ['5567cd4773696439b12b0000'],
+      'banking': ['5567cd4773696439b12b0000'],
+      'retail': ['5567cd4773696439b13b0000'],
+      'e-commerce': ['5567cd4773696439b13b0000'],
+      'ecommerce': ['5567cd4773696439b13b0000'],
+      'manufacturing': ['5567cd4773696439b14b0000'],
+      'industrial': ['5567cd4773696439b14b0000'],
+      'consumer goods': ['5567cd4773696439b15b0000'],
+      'cpg': ['5567cd4773696439b15b0000'],
+      'media': ['5567cd4773696439b16b0000'],
+      'entertainment': ['5567cd4773696439b16b0000'],
+      'telecommunications': ['5567cd4773696439b17b0000'],
+      'telecom': ['5567cd4773696439b17b0000'],
+      'real estate': ['5567cd4773696439b18b0000'],
+      'construction': ['5567cd4773696439b19b0000'],
+      'education': ['5567cd4773696439b1a0000'],
+      'edtech': ['5567cd4773696439b1a0000'],
+      'energy': ['5567cd4773696439b1b0000'],
+      'utilities': ['5567cd4773696439b1b0000'],
+      'transportation': ['5567cd4773696439b1c0000'],
+      'logistics': ['5567cd4773696439b1c0000'],
+      'hospitality': ['5567cd4773696439b1d0000'],
+      'travel': ['5567cd4773696439b1d0000'],
+      'food & beverage': ['5567cd4773696439b1e0000'],
+      'food': ['5567cd4773696439b1e0000'],
+      'automotive': ['5567cd4773696439b1f0000'],
+      'aerospace': ['5567cd4773696439b200000'],
+      'defense': ['5567cd4773696439b200000'],
+      'government': ['5567cd4773696439b210000'],
+      'non-profit': ['5567cd4773696439b220000'],
+      'nonprofit': ['5567cd4773696439b220000'],
+      'legal': ['5567cd4773696439b230000'],
+      'professional services': ['5567cd4773696439b240000'],
+      'consulting': ['5567cd4773696439b240000'],
+      'insurance': ['5567cd4773696439b250000'],
+      'pharma': ['5567cd4773696439b260000'],
+      'pharmaceutical': ['5567cd4773696439b260000'],
+      'biotechnology': ['5567cd4773696439b270000'],
+      'biotech': ['5567cd4773696439b270000'],
+      'agriculture': ['5567cd4773696439b280000'],
+      'agtech': ['5567cd4773696439b280000']
+    };
+    const key = industry.toLowerCase();
+    return industryMap[key] || [industry];
   }
 
   private async createSearchRecord(

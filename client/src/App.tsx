@@ -38,6 +38,7 @@ import SuperAdminTenantDetail from "@/pages/super-admin-tenant-detail";
 import LeaderboardPage from "@/pages/leaderboard";
 import BestPracticesPage from "@/pages/best-practices";
 import AEHandoffPage from "@/pages/ae-handoff";
+import AIProspectingPage from "@/pages/ai-prospecting";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -151,6 +152,11 @@ function Router() {
       <Route path="/ae-handoff">
         <ProtectedRoute>
           <AEHandoffPage />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/ai-prospecting">
+        <ProtectedRoute>
+          <AIProspectingPage />
         </ProtectedRoute>
       </Route>
       {/* Super Admin Routes - Separate from main app */}

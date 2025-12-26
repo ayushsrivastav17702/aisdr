@@ -3,8 +3,28 @@ import { z } from "zod";
 import { authenticate } from "../middleware/auth.middleware";
 import { waterfallSearchService } from "../services/waterfall-search.service";
 import { db } from "../db";
-import { prospectSearches, apiUsage, prospects } from "@shared/schema";
+import { prospectSearches, apiUsage, prospects, auditLogs } from "@shared/schema";
 import { eq, desc, and, gte, sql } from "drizzle-orm";
+
+async function logAudit(params: {
+  userId: string;
+  action: string;
+  module: string;
+  details?: Record<string, any>;
+}) {
+  try {
+    await db.insert(auditLogs).values({
+      userId: params.userId,
+      action: params.action,
+      module: params.module,
+      details: params.details || {},
+      ipAddress: null,
+      userAgent: null
+    });
+  } catch (error) {
+    console.error('Failed to log audit:', error);
+  }
+}
 
 const router = Router();
 
@@ -45,6 +65,20 @@ router.post("/search", authenticate, async (req, res) => {
     console.log('Prospects Found:', result.prospects.length);
     console.log('Total Cost:', `$${result.totalCost.toFixed(4)}`);
     console.log('Provider Chain:', result.providerChain.map(p => `${p.provider}(${p.unique}/${p.fetched})`).join(' → '));
+
+    await logAudit({
+      userId: req.userContext!.userId,
+      action: 'prospect_search',
+      module: 'waterfall_search',
+      details: {
+        searchId: result.searchId,
+        organizationId: req.userContext?.organizationId,
+        providers: result.providers,
+        count: result.prospects.length,
+        cost: result.totalCost,
+        criteria
+      }
+    });
 
     res.json({
       success: true,
@@ -126,6 +160,23 @@ router.post("/search-and-save", authenticate, async (req, res) => {
     }
 
     console.log(`Saved ${savedCount} prospects, ${duplicateCount} duplicates skipped`);
+
+    await logAudit({
+      userId: req.userContext!.userId,
+      action: 'prospect_search_save',
+      module: 'waterfall_search',
+      details: {
+        searchId: result.searchId,
+        organizationId: req.userContext?.organizationId,
+        providers: result.providers,
+        totalFound: result.prospects.length,
+        savedCount,
+        duplicateCount,
+        cost: result.totalCost,
+        extractionName,
+        tag
+      }
+    });
 
     res.json({
       success: true,
