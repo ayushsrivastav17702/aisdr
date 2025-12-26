@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Progress } from "@/components/ui/progress";
 import {
   Table,
   TableBody,
@@ -34,6 +36,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Layout } from "@/components/layout";
@@ -52,7 +55,20 @@ import {
   Shield,
   Edit,
   Trash2,
-  Eye
+  Eye,
+  BarChart3,
+  Target,
+  Pause,
+  Play,
+  CheckCircle,
+  XCircle,
+  RefreshCw,
+  Send,
+  Inbox,
+  HardDrive,
+  MessageSquare,
+  FileText,
+  Settings
 } from "lucide-react";
 
 interface TeamMember {
@@ -62,8 +78,10 @@ interface TeamMember {
   lastName: string | null;
   role: string;
   status: string;
+  isActive: boolean;
   lastLogin: string | null;
   createdAt: string;
+  onboardingCompleted: boolean;
 }
 
 interface TeamStats {
@@ -71,6 +89,68 @@ interface TeamStats {
   activeUsers: number;
   totalEmailsSent: number;
   totalMeetingsBooked: number;
+  replyRate: number;
+  openRate: number;
+  activeCampaigns: number;
+}
+
+interface Campaign {
+  id: string;
+  name: string;
+  status: string;
+  userId: string;
+  totalProspects: number;
+  activeProspects: number;
+  completedProspects: number;
+  createdAt: string;
+  updatedAt: string;
+  ownerEmail: string;
+  ownerName: string;
+  stats: {
+    totalProspects: number;
+    sent: number;
+    replies: number;
+    replyRate: number;
+  };
+}
+
+interface Analytics {
+  period: string;
+  emailStats: {
+    sent: number;
+    replied: number;
+    positiveReplies: number;
+    replyRate: number;
+  };
+  campaignStats: {
+    active: number;
+    paused: number;
+    completed: number;
+    draft: number;
+  };
+  topPerformers: Array<{
+    id: string;
+    email: string;
+    name: string;
+    emailsSent: number;
+  }>;
+}
+
+interface ResourceAllocation {
+  teamResources: Array<{
+    id: string;
+    email: string;
+    firstName: string | null;
+    lastName: string | null;
+    mailboxes: number;
+    activeMailboxes: number;
+    prospects: number;
+  }>;
+  totals: {
+    totalMailboxes: number;
+    totalActiveMailboxes: number;
+    totalProspects: number;
+  };
 }
 
 export default function ManagerDashboard() {
@@ -78,10 +158,15 @@ export default function ManagerDashboard() {
   const [searchQuery, setSearchQuery] = useState("");
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [newUser, setNewUser] = useState({ email: "", firstName: "", lastName: "", role: "user" });
+  const [activeTab, setActiveTab] = useState("team");
+  const [campaignFilter, setCampaignFilter] = useState<string>("all");
+  const [selectedPeriod, setSelectedPeriod] = useState("30d");
+  const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; type: string; userId?: string; campaignId?: string }>({ open: false, type: "" });
   const { toast } = useToast();
   const { user } = useAuth();
 
-  const { data: teamMembers = [], isLoading } = useQuery<TeamMember[]>({
+  // Queries
+  const { data: teamMembers = [], isLoading: teamLoading } = useQuery<TeamMember[]>({
     queryKey: ["/api/manager/team"],
   });
 
@@ -89,12 +174,37 @@ export default function ManagerDashboard() {
     queryKey: ["/api/manager/stats"],
   });
 
+  const { data: campaignsData, isLoading: campaignsLoading } = useQuery<{ campaigns: Campaign[]; total: number }>({
+    queryKey: ["/api/manager/campaigns", campaignFilter],
+    queryFn: async () => {
+      const url = campaignFilter === "all" 
+        ? "/api/manager/campaigns" 
+        : `/api/manager/campaigns?status=${campaignFilter}`;
+      const res = await fetch(url, { credentials: "include" });
+      return res.json();
+    },
+  });
+
+  const { data: analytics } = useQuery<Analytics>({
+    queryKey: ["/api/manager/analytics", selectedPeriod],
+    queryFn: async () => {
+      const res = await fetch(`/api/manager/analytics?period=${selectedPeriod}`, { credentials: "include" });
+      return res.json();
+    },
+  });
+
+  const { data: resources } = useQuery<ResourceAllocation>({
+    queryKey: ["/api/manager/resources"],
+  });
+
+  // Mutations
   const createUserMutation = useMutation({
     mutationFn: async (userData: typeof newUser) => {
       return await apiRequest("POST", "/api/manager/users", userData);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/manager/team"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/manager/stats"] });
       setIsCreateDialogOpen(false);
       setNewUser({ email: "", firstName: "", lastName: "", role: "user" });
       toast({
@@ -108,6 +218,65 @@ export default function ManagerDashboard() {
         description: error.message || "Failed to create user",
         variant: "destructive",
       });
+    },
+  });
+
+  const deleteUserMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      return await apiRequest("DELETE", `/api/manager/users/${userId}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/manager/team"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/manager/stats"] });
+      setConfirmDialog({ open: false, type: "" });
+      toast({ title: "User deactivated", description: "The user has been deactivated." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const resetPasswordMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      return await apiRequest("POST", `/api/manager/users/${userId}/reset-password`);
+    },
+    onSuccess: (data: any) => {
+      setConfirmDialog({ open: false, type: "" });
+      toast({ 
+        title: "Password reset", 
+        description: `Temporary password: ${data.tempPassword}. Please share it securely with the user.` 
+      });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const approveCampaignMutation = useMutation({
+    mutationFn: async ({ campaignId, approved }: { campaignId: string; approved: boolean }) => {
+      return await apiRequest("POST", `/api/manager/campaigns/${campaignId}/approve`, { approved });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/manager/campaigns"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/manager/stats"] });
+      toast({ title: "Campaign updated", description: "Campaign status has been updated." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const pauseCampaignMutation = useMutation({
+    mutationFn: async (campaignId: string) => {
+      return await apiRequest("POST", `/api/manager/campaigns/${campaignId}/pause`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/manager/campaigns"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/manager/stats"] });
+      toast({ title: "Campaign paused", description: "The campaign has been paused." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
     },
   });
 
@@ -126,6 +295,17 @@ export default function ManagerDashboard() {
     return <Badge variant={variants[status] || "outline"}>{status}</Badge>;
   };
 
+  const getCampaignStatusBadge = (status: string) => {
+    const config: Record<string, { variant: "default" | "secondary" | "destructive" | "outline"; label: string }> = {
+      active: { variant: "default", label: "Active" },
+      paused: { variant: "secondary", label: "Paused" },
+      draft: { variant: "outline", label: "Draft" },
+      completed: { variant: "default", label: "Completed" },
+    };
+    const s = config[status] || { variant: "outline", label: status };
+    return <Badge variant={s.variant}>{s.label}</Badge>;
+  };
+
   const getRoleBadge = (role: string) => {
     return (
       <Badge variant={role === "admin" ? "default" : "secondary"}>
@@ -140,89 +320,28 @@ export default function ManagerDashboard() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold" data-testid="page-title">Manager Dashboard</h1>
-            <p className="text-muted-foreground">Manage your team and track performance</p>
+            <p className="text-muted-foreground">Manage your team, campaigns, and track performance</p>
           </div>
-          <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-            <DialogTrigger asChild>
-              <Button data-testid="btn-add-user">
-                <UserPlus className="w-4 h-4 mr-2" />
-                Add Team Member
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Add New Team Member</DialogTitle>
-                <DialogDescription>
-                  Send an invitation to add a new member to your team.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    placeholder="user@company.com"
-                    value={newUser.email}
-                    onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-                    data-testid="input-user-email"
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="firstName">First Name</Label>
-                    <Input
-                      id="firstName"
-                      placeholder="John"
-                      value={newUser.firstName}
-                      onChange={(e) => setNewUser({ ...newUser, firstName: e.target.value })}
-                      data-testid="input-first-name"
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="lastName">Last Name</Label>
-                    <Input
-                      id="lastName"
-                      placeholder="Doe"
-                      value={newUser.lastName}
-                      onChange={(e) => setNewUser({ ...newUser, lastName: e.target.value })}
-                      data-testid="input-last-name"
-                    />
-                  </div>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="role">Role</Label>
-                  <Select
-                    value={newUser.role}
-                    onValueChange={(value) => setNewUser({ ...newUser, role: value })}
-                  >
-                    <SelectTrigger data-testid="select-user-role">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="user">User</SelectItem>
-                      <SelectItem value="admin">Admin</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
-                  Cancel
-                </Button>
-                <Button
-                  onClick={() => createUserMutation.mutate(newUser)}
-                  disabled={createUserMutation.isPending || !newUser.email}
-                  data-testid="btn-send-invitation"
-                >
-                  {createUserMutation.isPending ? "Sending..." : "Send Invitation"}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          <div className="flex items-center gap-2">
+            <Button 
+              variant="outline" 
+              size="icon"
+              onClick={() => {
+                queryClient.invalidateQueries({ queryKey: ["/api/manager/team"] });
+                queryClient.invalidateQueries({ queryKey: ["/api/manager/stats"] });
+                queryClient.invalidateQueries({ queryKey: ["/api/manager/campaigns"] });
+                queryClient.invalidateQueries({ queryKey: ["/api/manager/analytics"] });
+                queryClient.invalidateQueries({ queryKey: ["/api/manager/resources"] });
+              }}
+              data-testid="btn-refresh"
+            >
+              <RefreshCw className="w-4 h-4" />
+            </Button>
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        {/* Summary Stats Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-7 gap-4">
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
@@ -234,18 +353,19 @@ export default function ManagerDashboard() {
               <div className="text-2xl font-bold" data-testid="stat-total-users">
                 {stats?.totalUsers || teamMembers.length}
               </div>
+              <p className="text-xs text-muted-foreground">{stats?.activeUsers || 0} active</p>
             </CardContent>
           </Card>
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                <Activity className="w-4 h-4" />
-                Active Users
+                <Target className="w-4 h-4" />
+                Active Campaigns
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-green-600" data-testid="stat-active-users">
-                {stats?.activeUsers || teamMembers.filter(m => m.status === 'active').length}
+              <div className="text-2xl font-bold text-blue-600" data-testid="stat-campaigns">
+                {stats?.activeCampaigns || 0}
               </div>
             </CardContent>
           </Card>
@@ -253,7 +373,7 @@ export default function ManagerDashboard() {
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                 <Mail className="w-4 h-4" />
-                Emails Sent (Team)
+                Emails Sent
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -265,109 +385,583 @@ export default function ManagerDashboard() {
           <Card>
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <Inbox className="w-4 h-4" />
+                Reply Rate
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-green-600" data-testid="stat-reply-rate">
+                {stats?.replyRate || 0}%
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
                 <TrendingUp className="w-4 h-4" />
                 Meetings Booked
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-blue-600" data-testid="stat-meetings">
+              <div className="text-2xl font-bold text-purple-600" data-testid="stat-meetings">
                 {stats?.totalMeetingsBooked || "0"}
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <HardDrive className="w-4 h-4" />
+                Mailboxes
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold" data-testid="stat-mailboxes">
+                {resources?.totals?.totalActiveMailboxes || 0}
+              </div>
+              <p className="text-xs text-muted-foreground">of {resources?.totals?.totalMailboxes || 0}</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                <FileText className="w-4 h-4" />
+                Total Prospects
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold" data-testid="stat-prospects">
+                {resources?.totals?.totalProspects?.toLocaleString() || "0"}
               </div>
             </CardContent>
           </Card>
         </div>
 
-        <Card>
-          <CardHeader>
+        {/* Main Tabs */}
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+          <TabsList>
+            <TabsTrigger value="team" data-testid="tab-team">
+              <Users className="w-4 h-4 mr-2" />
+              Team
+            </TabsTrigger>
+            <TabsTrigger value="campaigns" data-testid="tab-campaigns">
+              <Target className="w-4 h-4 mr-2" />
+              Campaigns
+            </TabsTrigger>
+            <TabsTrigger value="analytics" data-testid="tab-analytics">
+              <BarChart3 className="w-4 h-4 mr-2" />
+              Analytics
+            </TabsTrigger>
+            <TabsTrigger value="resources" data-testid="tab-resources">
+              <Settings className="w-4 h-4 mr-2" />
+              Resources
+            </TabsTrigger>
+          </TabsList>
+
+          {/* Team Tab */}
+          <TabsContent value="team" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle>Team Members</CardTitle>
+                  <div className="flex items-center gap-4">
+                    <div className="relative w-64">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                      <Input
+                        placeholder="Search team members..."
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="pl-9"
+                        data-testid="input-search-team"
+                      />
+                    </div>
+                    <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+                      <DialogTrigger asChild>
+                        <Button data-testid="btn-add-user">
+                          <UserPlus className="w-4 h-4 mr-2" />
+                          Add Team Member
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Add New Team Member</DialogTitle>
+                          <DialogDescription>
+                            Send an invitation to add a new member to your team.
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-4 py-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="email">Email</Label>
+                            <Input
+                              id="email"
+                              type="email"
+                              placeholder="user@company.com"
+                              value={newUser.email}
+                              onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+                              data-testid="input-user-email"
+                            />
+                          </div>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <Label htmlFor="firstName">First Name</Label>
+                              <Input
+                                id="firstName"
+                                placeholder="John"
+                                value={newUser.firstName}
+                                onChange={(e) => setNewUser({ ...newUser, firstName: e.target.value })}
+                                data-testid="input-first-name"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="lastName">Last Name</Label>
+                              <Input
+                                id="lastName"
+                                placeholder="Doe"
+                                value={newUser.lastName}
+                                onChange={(e) => setNewUser({ ...newUser, lastName: e.target.value })}
+                                data-testid="input-last-name"
+                              />
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="role">Role</Label>
+                            <Select
+                              value={newUser.role}
+                              onValueChange={(value) => setNewUser({ ...newUser, role: value })}
+                            >
+                              <SelectTrigger data-testid="select-user-role">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="user">User (SDR/BDR)</SelectItem>
+                                <SelectItem value="admin">Admin (Manager)</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                        <DialogFooter>
+                          <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
+                            Cancel
+                          </Button>
+                          <Button
+                            onClick={() => createUserMutation.mutate(newUser)}
+                            disabled={createUserMutation.isPending || !newUser.email}
+                            data-testid="btn-send-invitation"
+                          >
+                            {createUserMutation.isPending ? "Sending..." : "Send Invitation"}
+                          </Button>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {teamLoading ? (
+                  <div className="text-center py-8 text-muted-foreground">Loading team members...</div>
+                ) : filteredMembers.length === 0 ? (
+                  <div className="text-center py-8">
+                    <Users className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                    <h3 className="text-lg font-medium mb-2">No team members yet</h3>
+                    <p className="text-muted-foreground mb-4">Add your first team member to get started</p>
+                    <Button onClick={() => setIsCreateDialogOpen(true)} data-testid="btn-add-first-user">
+                      <UserPlus className="w-4 h-4 mr-2" />
+                      Add Team Member
+                    </Button>
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Role</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Onboarding</TableHead>
+                        <TableHead>Last Login</TableHead>
+                        <TableHead>Joined</TableHead>
+                        <TableHead className="w-[50px]"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {filteredMembers.map((member) => (
+                        <TableRow key={member.id} data-testid={`row-member-${member.id}`}>
+                          <TableCell className="font-medium">
+                            {member.firstName && member.lastName
+                              ? `${member.firstName} ${member.lastName}`
+                              : "-"}
+                          </TableCell>
+                          <TableCell>{member.email}</TableCell>
+                          <TableCell>{getRoleBadge(member.role)}</TableCell>
+                          <TableCell>{getStatusBadge(member.status)}</TableCell>
+                          <TableCell>
+                            {member.onboardingCompleted ? (
+                              <Badge variant="default" className="bg-green-500">Complete</Badge>
+                            ) : (
+                              <Badge variant="outline">In Progress</Badge>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {member.lastLogin
+                              ? new Date(member.lastLogin).toLocaleDateString()
+                              : "Never"}
+                          </TableCell>
+                          <TableCell>{new Date(member.createdAt).toLocaleDateString()}</TableCell>
+                          <TableCell>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="sm" data-testid={`btn-actions-${member.id}`}>
+                                  <MoreHorizontal className="w-4 h-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem 
+                                  data-testid={`action-view-${member.id}`}
+                                  onClick={() => setLocation(`/admin/users`)}
+                                >
+                                  <Eye className="w-4 h-4 mr-2" />
+                                  View Profile
+                                </DropdownMenuItem>
+                                <DropdownMenuItem 
+                                  data-testid={`action-performance-${member.id}`}
+                                >
+                                  <BarChart3 className="w-4 h-4 mr-2" />
+                                  View Performance
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem 
+                                  data-testid={`action-reset-${member.id}`}
+                                  onClick={() => setConfirmDialog({ open: true, type: "reset", userId: member.id })}
+                                >
+                                  <Shield className="w-4 h-4 mr-2" />
+                                  Reset Password
+                                </DropdownMenuItem>
+                                <DropdownMenuItem 
+                                  className="text-red-600"
+                                  data-testid={`action-delete-${member.id}`}
+                                  onClick={() => setConfirmDialog({ open: true, type: "delete", userId: member.id })}
+                                >
+                                  <Trash2 className="w-4 h-4 mr-2" />
+                                  Deactivate User
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Campaigns Tab */}
+          <TabsContent value="campaigns" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle>Team Campaigns</CardTitle>
+                  <Select value={campaignFilter} onValueChange={setCampaignFilter}>
+                    <SelectTrigger className="w-[180px]" data-testid="select-campaign-filter">
+                      <SelectValue placeholder="Filter by status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Campaigns</SelectItem>
+                      <SelectItem value="active">Active</SelectItem>
+                      <SelectItem value="paused">Paused</SelectItem>
+                      <SelectItem value="draft">Draft</SelectItem>
+                      <SelectItem value="completed">Completed</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {campaignsLoading ? (
+                  <div className="text-center py-8 text-muted-foreground">Loading campaigns...</div>
+                ) : (campaignsData?.campaigns?.length || 0) === 0 ? (
+                  <div className="text-center py-8">
+                    <Target className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                    <h3 className="text-lg font-medium mb-2">No campaigns found</h3>
+                    <p className="text-muted-foreground">Your team hasn't created any campaigns yet</p>
+                  </div>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Campaign Name</TableHead>
+                        <TableHead>Owner</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Prospects</TableHead>
+                        <TableHead>Sent</TableHead>
+                        <TableHead>Replies</TableHead>
+                        <TableHead>Reply Rate</TableHead>
+                        <TableHead>Created</TableHead>
+                        <TableHead className="w-[50px]"></TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {campaignsData?.campaigns?.map((campaign) => (
+                        <TableRow key={campaign.id} data-testid={`row-campaign-${campaign.id}`}>
+                          <TableCell className="font-medium">{campaign.name}</TableCell>
+                          <TableCell>{campaign.ownerName || campaign.ownerEmail}</TableCell>
+                          <TableCell>{getCampaignStatusBadge(campaign.status)}</TableCell>
+                          <TableCell>{campaign.stats.totalProspects}</TableCell>
+                          <TableCell>{campaign.stats.sent}</TableCell>
+                          <TableCell>{campaign.stats.replies}</TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2">
+                              <Progress value={campaign.stats.replyRate} className="w-16 h-2" />
+                              <span className="text-sm">{campaign.stats.replyRate}%</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>{new Date(campaign.createdAt).toLocaleDateString()}</TableCell>
+                          <TableCell>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="sm" data-testid={`btn-campaign-actions-${campaign.id}`}>
+                                  <MoreHorizontal className="w-4 h-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuItem onClick={() => setLocation(`/sequences/${campaign.id}`)}>
+                                  <Eye className="w-4 h-4 mr-2" />
+                                  View Details
+                                </DropdownMenuItem>
+                                {campaign.status === "draft" && (
+                                  <DropdownMenuItem 
+                                    onClick={() => approveCampaignMutation.mutate({ campaignId: campaign.id, approved: true })}
+                                    data-testid={`action-approve-${campaign.id}`}
+                                  >
+                                    <CheckCircle className="w-4 h-4 mr-2 text-green-600" />
+                                    Approve & Activate
+                                  </DropdownMenuItem>
+                                )}
+                                {campaign.status === "active" && (
+                                  <DropdownMenuItem 
+                                    onClick={() => pauseCampaignMutation.mutate(campaign.id)}
+                                    data-testid={`action-pause-${campaign.id}`}
+                                  >
+                                    <Pause className="w-4 h-4 mr-2 text-orange-600" />
+                                    Pause Campaign
+                                  </DropdownMenuItem>
+                                )}
+                                {campaign.status === "paused" && (
+                                  <DropdownMenuItem 
+                                    onClick={() => approveCampaignMutation.mutate({ campaignId: campaign.id, approved: true })}
+                                    data-testid={`action-resume-${campaign.id}`}
+                                  >
+                                    <Play className="w-4 h-4 mr-2 text-green-600" />
+                                    Resume Campaign
+                                  </DropdownMenuItem>
+                                )}
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Analytics Tab */}
+          <TabsContent value="analytics" className="space-y-4">
             <div className="flex items-center justify-between">
-              <CardTitle>Team Members</CardTitle>
-              <div className="relative w-64">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search team members..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-9"
-                  data-testid="input-search-team"
-                />
-              </div>
+              <h2 className="text-lg font-semibold">Team Analytics</h2>
+              <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
+                <SelectTrigger className="w-[150px]" data-testid="select-period">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="7d">Last 7 days</SelectItem>
+                  <SelectItem value="30d">Last 30 days</SelectItem>
+                  <SelectItem value="90d">Last 90 days</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-          </CardHeader>
-          <CardContent>
-            {isLoading ? (
-              <div className="text-center py-8 text-muted-foreground">Loading team members...</div>
-            ) : filteredMembers.length === 0 ? (
-              <div className="text-center py-8">
-                <Users className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-                <h3 className="text-lg font-medium mb-2">No team members yet</h3>
-                <p className="text-muted-foreground mb-4">Add your first team member to get started</p>
-                <Button onClick={() => setIsCreateDialogOpen(true)} data-testid="btn-add-first-user">
-                  <UserPlus className="w-4 h-4 mr-2" />
-                  Add Team Member
-                </Button>
-              </div>
-            ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Role</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Last Login</TableHead>
-                    <TableHead>Joined</TableHead>
-                    <TableHead className="w-[50px]"></TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {filteredMembers.map((member) => (
-                    <TableRow key={member.id} data-testid={`row-member-${member.id}`}>
-                      <TableCell className="font-medium">
-                        {member.firstName && member.lastName
-                          ? `${member.firstName} ${member.lastName}`
-                          : "-"}
-                      </TableCell>
-                      <TableCell>{member.email}</TableCell>
-                      <TableCell>{getRoleBadge(member.role)}</TableCell>
-                      <TableCell>{getStatusBadge(member.status)}</TableCell>
-                      <TableCell>
-                        {member.lastLogin
-                          ? new Date(member.lastLogin).toLocaleDateString()
-                          : "Never"}
-                      </TableCell>
-                      <TableCell>{new Date(member.createdAt).toLocaleDateString()}</TableCell>
-                      <TableCell>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="sm" data-testid={`btn-actions-${member.id}`}>
-                              <MoreHorizontal className="w-4 h-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuItem 
-                              data-testid={`action-view-${member.id}`}
-                              onClick={() => setLocation(`/admin/users`)}
-                            >
-                              <Eye className="w-4 h-4 mr-2" />
-                              View Profile
-                            </DropdownMenuItem>
-                            <DropdownMenuItem 
-                              data-testid={`action-edit-${member.id}`}
-                              onClick={() => setLocation(`/admin/users`)}
-                            >
-                              <Edit className="w-4 h-4 mr-2" />
-                              Edit
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </TableCell>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm">Emails Sent</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-bold">{analytics?.emailStats?.sent?.toLocaleString() || 0}</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm">Total Replies</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-bold">{analytics?.emailStats?.replied || 0}</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm">Positive Replies</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-bold text-green-600">{analytics?.emailStats?.positiveReplies || 0}</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm">Reply Rate</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-3xl font-bold">{analytics?.emailStats?.replyRate || 0}%</div>
+                </CardContent>
+              </Card>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Campaign Status Breakdown</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-green-500"></div>
+                      Active
+                    </span>
+                    <span className="font-semibold">{analytics?.campaignStats?.active || 0}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-yellow-500"></div>
+                      Paused
+                    </span>
+                    <span className="font-semibold">{analytics?.campaignStats?.paused || 0}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-gray-400"></div>
+                      Draft
+                    </span>
+                    <span className="font-semibold">{analytics?.campaignStats?.draft || 0}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-blue-500"></div>
+                      Completed
+                    </span>
+                    <span className="font-semibold">{analytics?.campaignStats?.completed || 0}</span>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Top Performers</CardTitle>
+                  <CardDescription>By emails sent this period</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {(analytics?.topPerformers?.length || 0) === 0 ? (
+                    <p className="text-muted-foreground text-center py-4">No activity this period</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {analytics?.topPerformers?.map((performer, index) => (
+                        <div key={performer.id} className="flex items-center justify-between">
+                          <div className="flex items-center gap-3">
+                            <span className="text-lg font-bold text-muted-foreground w-6">{index + 1}</span>
+                            <div>
+                              <p className="font-medium">{performer.name}</p>
+                              <p className="text-sm text-muted-foreground">{performer.email}</p>
+                            </div>
+                          </div>
+                          <Badge variant="secondary">{performer.emailsSent} emails</Badge>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          {/* Resources Tab */}
+          <TabsContent value="resources" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <CardTitle>Resource Allocation</CardTitle>
+                <CardDescription>View and manage mailbox and prospect allocation across your team</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Team Member</TableHead>
+                      <TableHead>Email</TableHead>
+                      <TableHead>Active Mailboxes</TableHead>
+                      <TableHead>Total Mailboxes</TableHead>
+                      <TableHead>Prospects</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            )}
-          </CardContent>
-        </Card>
+                  </TableHeader>
+                  <TableBody>
+                    {resources?.teamResources?.map((member) => (
+                      <TableRow key={member.id} data-testid={`row-resource-${member.id}`}>
+                        <TableCell className="font-medium">
+                          {member.firstName && member.lastName
+                            ? `${member.firstName} ${member.lastName}`
+                            : member.email}
+                        </TableCell>
+                        <TableCell>{member.email}</TableCell>
+                        <TableCell>
+                          <Badge variant={member.activeMailboxes > 0 ? "default" : "secondary"}>
+                            {member.activeMailboxes}
+                          </Badge>
+                        </TableCell>
+                        <TableCell>{member.mailboxes}</TableCell>
+                        <TableCell>{member.prospects.toLocaleString()}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
+
+        {/* Confirmation Dialog */}
+        <Dialog open={confirmDialog.open} onOpenChange={(open) => setConfirmDialog({ ...confirmDialog, open })}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>
+                {confirmDialog.type === "delete" ? "Deactivate User" : "Reset Password"}
+              </DialogTitle>
+              <DialogDescription>
+                {confirmDialog.type === "delete" 
+                  ? "Are you sure you want to deactivate this user? They will no longer be able to access the system."
+                  : "Are you sure you want to reset this user's password? A temporary password will be generated."}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setConfirmDialog({ open: false, type: "" })}>
+                Cancel
+              </Button>
+              <Button
+                variant={confirmDialog.type === "delete" ? "destructive" : "default"}
+                onClick={() => {
+                  if (confirmDialog.type === "delete" && confirmDialog.userId) {
+                    deleteUserMutation.mutate(confirmDialog.userId);
+                  } else if (confirmDialog.type === "reset" && confirmDialog.userId) {
+                    resetPasswordMutation.mutate(confirmDialog.userId);
+                  }
+                }}
+                disabled={deleteUserMutation.isPending || resetPasswordMutation.isPending}
+              >
+                {deleteUserMutation.isPending || resetPasswordMutation.isPending 
+                  ? "Processing..." 
+                  : confirmDialog.type === "delete" ? "Deactivate" : "Reset Password"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </Layout>
   );

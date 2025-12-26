@@ -153,3 +153,16 @@ export function requireActiveStatus(req: Request, res: Response, next: NextFunct
 
   next();
 }
+
+export function requireManager(req: Request, res: Response, next: NextFunction) {
+  if (!req.user) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  // Managers can be admin role users within an organization
+  if (req.user.role !== 'admin') {
+    return res.status(403).json({ error: 'Manager access required' });
+  }
+
+  next();
+}
