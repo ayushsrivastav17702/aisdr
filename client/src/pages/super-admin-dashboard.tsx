@@ -1224,7 +1224,7 @@ function GlobalUserOverview() {
                         <DropdownMenuContent align="end">
                           <DropdownMenuLabel>Actions</DropdownMenuLabel>
                           <DropdownMenuItem 
-                            onClick={() => {
+                            onSelect={() => {
                               console.log("Activating user:", user.id);
                               updateUserStatusMutation.mutate({ userId: user.id, status: "active" });
                             }}
@@ -1234,7 +1234,7 @@ function GlobalUserOverview() {
                             Activate
                           </DropdownMenuItem>
                           <DropdownMenuItem 
-                            onClick={() => {
+                            onSelect={() => {
                               console.log("Suspending user:", user.id);
                               updateUserStatusMutation.mutate({ userId: user.id, status: "suspended", reason: "Suspended by super admin" });
                             }}
@@ -1242,6 +1242,17 @@ function GlobalUserOverview() {
                           >
                             <Pause className="h-4 w-4 mr-2" />
                             Suspend
+                          </DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem 
+                            onSelect={() => {
+                              console.log("Setting inactive user:", user.id);
+                              updateUserStatusMutation.mutate({ userId: user.id, status: "inactive" });
+                            }}
+                            data-testid={`button-deactivate-user-${user.id}`}
+                          >
+                            <UserX className="h-4 w-4 mr-2" />
+                            Deactivate
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
