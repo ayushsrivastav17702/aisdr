@@ -58,30 +58,40 @@ class PerplexityService {
           messages: [
             {
               role: 'system',
-              content: `You are a B2B prospect research assistant specializing in finding real business contacts with verified email addresses.
+              content: `You are a B2B prospect research assistant specializing in finding real business contacts with verified contact information.
 
-Your PRIMARY goal is to find prospects WITH EMAIL ADDRESSES. Search LinkedIn, company websites, press releases, business directories, and other public sources.
+Your PRIMARY goals are to find prospects WITH:
+1. EMAIL ADDRESSES (most important)
+2. PHONE/MOBILE NUMBERS (very important)
+
+Search LinkedIn, company websites, press releases, business directories, contact pages, team pages, and other public sources.
 
 Return ONLY a valid JSON array of prospects. Each prospect must have these fields:
 - fullName (required): Full name of the person
 - firstName: First name
 - lastName: Last name  
-- email (IMPORTANT): Business email address - search for it on company websites, LinkedIn, press releases, business cards, conference speakers lists, or derive from company email patterns (e.g., firstname.lastname@company.com, first@company.com)
+- email (CRITICAL): Business email address - search for it on company websites, LinkedIn, press releases, business cards, conference speakers lists, or derive from company email patterns
 - jobTitle (required): Current job title
 - companyName (required): Company they work at
 - linkedinUrl: LinkedIn profile URL - search for their profile
-- phone: Phone number if available
+- phone (IMPORTANT): Direct phone or mobile number - search contact pages, LinkedIn profiles, business directories, press releases
 - location: City/Region/Country
 - companySize: Approximate company size (e.g., "50-200 employees")
 - industry: Company industry
 - website: Company website domain
 
-IMPORTANT: Prioritize finding prospects where you can determine their email address. If you find a prospect on LinkedIn or a company website, try to determine their email using:
-1. Email found on their profile or company page
+EMAIL FINDING STRATEGIES:
+1. Email found directly on their profile, company page, or team page
 2. Email pattern from the company (e.g., if you see john.doe@puma.com, use that pattern)
 3. Common patterns: firstname.lastname@company.com, firstname@company.com, f.lastname@company.com
 
-Only return real, verifiable contacts. Do not fabricate data.`
+PHONE FINDING STRATEGIES:
+1. Direct dial listed on company website contact/team pages
+2. Phone number on LinkedIn profile or business directory listings
+3. Company switchboard numbers with extensions
+4. Mobile numbers from press releases, conference speaker bios
+
+Only return real, verifiable contacts. Do not fabricate data. Prioritize contacts with both email AND phone when possible.`
             },
             {
               role: 'user',
@@ -113,7 +123,8 @@ Only return real, verifiable contacts. Do not fabricate data.`
       const prospects = this.parseResponse(rawContent);
       
       const withEmails = prospects.filter(p => p.email).length;
-      console.log(`✅ Perplexity found ${prospects.length} prospects (${withEmails} with emails, cost: $${cost.toFixed(4)})`);
+      const withPhones = prospects.filter(p => p.phone).length;
+      console.log(`✅ Perplexity found ${prospects.length} prospects (${withEmails} with emails, ${withPhones} with phones, cost: $${cost.toFixed(4)})`);
       
       return { prospects, cost };
 
@@ -157,8 +168,11 @@ Only return real, verifiable contacts. Do not fabricate data.`
       parts.push(`- Keywords: ${criteria.keywords}`);
     }
 
-    parts.push('\nIMPORTANT: For each prospect, try to find or derive their business email address. Search LinkedIn profiles, company websites, press releases, and use common email patterns.');
-    parts.push('\nReturn the results as a JSON array. Only include real, verifiable contacts with as much contact info as possible.');
+    parts.push('\nCRITICAL REQUIREMENTS:');
+    parts.push('1. For each prospect, find their business EMAIL ADDRESS - search LinkedIn, company websites, team pages, press releases');
+    parts.push('2. For each prospect, find their PHONE/MOBILE NUMBER - search contact pages, LinkedIn profiles, business directories');
+    parts.push('3. Use email patterns when direct email not found (e.g., firstname.lastname@company.com)');
+    parts.push('\nReturn the results as a JSON array. Prioritize contacts with both email AND phone when possible.');
     
     return parts.join('\n');
   }
