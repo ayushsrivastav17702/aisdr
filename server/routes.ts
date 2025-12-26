@@ -5,6 +5,7 @@ import { aiService } from "./services/ai.service";
 import { apolloService } from "./services/apollo.service";
 import { jobService } from "./services/job.service";
 import { lushaService } from "./services/lusha.service";
+import { waterfallSearchService, WaterfallSearchCriteria } from "./services/waterfall-search.service";
 import { intelligentPersonalizationService } from "./services/intelligent-personalization.service";
 import { webScrapingService } from "./services/web-scraping.service";
 import { contentManagementService } from "./services/content-management.service";
@@ -259,15 +260,152 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Apollo search and save to database (synchronous alternative to job queue)
+  // Supports useWaterfall: true to try Perplexity first for better email coverage
   app.post("/api/apollo-search-and-save", authenticate, async (req, res) => {
     try {
-      const { apolloFilters, page = 1, per_page = 50, extractionName, tag } = req.body;
+      const { apolloFilters, page = 1, per_page = 50, extractionName, tag, useWaterfall = false } = req.body;
       
       console.log('\n========== APOLLO SEARCH REQUEST ==========');
       console.log('  Extraction Name:', extractionName);
       console.log('  Tag:', tag);
+      console.log('  Use Waterfall:', useWaterfall);
       console.log('  Filters:', JSON.stringify(apolloFilters, null, 2));
       console.log('  Page:', page, 'Per Page:', per_page);
+      
+      // If useWaterfall is enabled and Perplexity is configured, try waterfall search first
+      if (useWaterfall && process.env.PERPLEXITY_API_KEY) {
+        console.log('  🌊 Using Waterfall Search (Perplexity → Apollo → Lusha → OpenRouter)');
+        
+        // Convert Apollo filters to waterfall criteria
+        const waterfallCriteria: WaterfallSearchCriteria = {
+          industry: apolloFilters.q_organization_industries?.[0] || apolloFilters.q_organization_name,
+          companySize: apolloFilters.organization_num_employees_ranges?.[0],
+          jobTitles: apolloFilters.person_titles || [],
+          seniority: apolloFilters.person_seniorities || [],
+          departments: apolloFilters.person_departments || [],
+          location: apolloFilters.person_locations?.[0],
+          keywords: apolloFilters.q_keywords,
+          limit: per_page
+        };
+        
+        try {
+          const waterfallResult = await waterfallSearchService.search(
+            waterfallCriteria,
+            req.userContext!.organizationId
+          );
+          
+          if (waterfallResult.prospects.length > 0) {
+            console.log(`  ✅ Waterfall found ${waterfallResult.prospects.length} prospects (${waterfallResult.prospects.filter(p => p.email).length} with emails)`);
+            console.log(`  💰 Total cost: $${waterfallResult.totalCost.toFixed(4)}`);
+            console.log(`  📊 Provider chain:`, waterfallResult.providerChain.map(p => `${p.provider}(${p.unique})`).join(' → '));
+            
+            // Save waterfall prospects to database
+            const savedProspects = [];
+            let newCount = 0;
+            let updatedCount = 0;
+            let errorCount = 0;
+            
+            for (const prospect of waterfallResult.prospects) {
+              try {
+                const prospectData = {
+                  firstName: prospect.firstName,
+                  lastName: prospect.lastName,
+                  fullName: prospect.fullName,
+                  primaryEmail: prospect.email || '',
+                  jobTitle: prospect.jobTitle,
+                  seniority: apolloFilters.person_seniorities?.[0] || 'manager',
+                  department: apolloFilters.person_departments?.[0] || 'other',
+                  companyName: prospect.companyName,
+                  companyDomain: prospect.website?.replace(/^https?:\/\//, '').replace(/\/$/, '') || '',
+                  companySize: prospect.companySize || '',
+                  companyIndustry: prospect.industry || '',
+                  contactLocation: prospect.location || '',
+                  linkedinUrl: prospect.linkedinUrl || '',
+                  phoneNumber: prospect.phone || '',
+                  enrichmentStatus: 'new' as const,
+                  enrichmentData: { source: prospect.source }
+                };
+                
+                // Check if prospect already exists
+                const existing = await storage.findProspectByEmailOrApolloId(
+                  req.userContext!,
+                  prospectData.primaryEmail,
+                  undefined
+                );
+                
+                if (existing) {
+                  const existingTags = existing.tags || [];
+                  const newTags = tag ? [tag] : [];
+                  const mergedTags = Array.from(new Set([...existingTags, ...newTags]));
+                  
+                  const updated = await storage.updateProspect(req.userContext!, existing.id, {
+                    ...prospectData,
+                    tags: mergedTags
+                  });
+                  savedProspects.push(updated);
+                  updatedCount++;
+                } else {
+                  const created = await storage.createProspect(req.userContext!, {
+                    userId: req.userContext!.userId,
+                    ...prospectData,
+                    tags: tag ? [tag] : undefined
+                  });
+                  savedProspects.push(created);
+                  newCount++;
+                }
+              } catch (error) {
+                errorCount++;
+                console.error('  ✗ Error saving waterfall prospect:', error instanceof Error ? error.message : 'Unknown error');
+              }
+            }
+            
+            // Create search record
+            let searchRecord = null;
+            if (extractionName) {
+              searchRecord = await storage.createSearch(req.userContext!, {
+                userId: req.userContext!.userId,
+                extractionName,
+                tag,
+                query: extractionName,
+                apolloFilters: waterfallCriteria,
+                totalResults: waterfallResult.prospects.length,
+                importedResults: savedProspects.length,
+              });
+            }
+            
+            console.log('\n========== WATERFALL SEARCH COMPLETE ==========');
+            console.log('  Prospects Saved:', savedProspects.length);
+            console.log('  New:', newCount, 'Updated:', updatedCount, 'Errors:', errorCount);
+            console.log('  Providers Used:', waterfallResult.providers.join(', '));
+            console.log('===============================================\n');
+            
+            return res.json({
+              prospects: savedProspects,
+              pagination: {
+                page: 1,
+                per_page: per_page,
+                total_entries: waterfallResult.prospects.length,
+                total_pages: 1
+              },
+              saved: savedProspects.length,
+              newCount,
+              updatedCount,
+              searchId: searchRecord?.id,
+              searchStrategy: 'waterfall',
+              searchStrategyMessage: `Used waterfall search (${waterfallResult.providers.join(' → ')}) - ${waterfallResult.prospects.filter(p => p.email).length}/${waterfallResult.prospects.length} with emails`,
+              waterfallStats: {
+                totalCost: waterfallResult.totalCost,
+                providerChain: waterfallResult.providerChain,
+                withEmails: waterfallResult.prospects.filter(p => p.email).length
+              }
+            });
+          } else {
+            console.log('  ⚠️  Waterfall returned 0 prospects, falling back to Apollo-only search');
+          }
+        } catch (waterfallError) {
+          console.error('  ❌ Waterfall search failed, falling back to Apollo:', waterfallError);
+        }
+      }
       
       // Try multiple search strategies if initial search returns 0 results
       let searchResponse;

@@ -58,22 +58,30 @@ class PerplexityService {
           messages: [
             {
               role: 'system',
-              content: `You are a B2B prospect research assistant. Your task is to find real business contacts that match the given criteria.
+              content: `You are a B2B prospect research assistant specializing in finding real business contacts with verified email addresses.
+
+Your PRIMARY goal is to find prospects WITH EMAIL ADDRESSES. Search LinkedIn, company websites, press releases, business directories, and other public sources.
+
 Return ONLY a valid JSON array of prospects. Each prospect must have these fields:
 - fullName (required): Full name of the person
 - firstName: First name
 - lastName: Last name  
-- email: Business email if findable
+- email (IMPORTANT): Business email address - search for it on company websites, LinkedIn, press releases, business cards, conference speakers lists, or derive from company email patterns (e.g., firstname.lastname@company.com, first@company.com)
 - jobTitle (required): Current job title
 - companyName (required): Company they work at
-- linkedinUrl: LinkedIn profile URL if findable
+- linkedinUrl: LinkedIn profile URL - search for their profile
 - phone: Phone number if available
-- location: City/Region
+- location: City/Region/Country
 - companySize: Approximate company size (e.g., "50-200 employees")
 - industry: Company industry
-- website: Company website
+- website: Company website domain
 
-Only return prospects you can verify exist. Do not make up fake contacts. Return an empty array if you cannot find real prospects.`
+IMPORTANT: Prioritize finding prospects where you can determine their email address. If you find a prospect on LinkedIn or a company website, try to determine their email using:
+1. Email found on their profile or company page
+2. Email pattern from the company (e.g., if you see john.doe@puma.com, use that pattern)
+3. Common patterns: firstname.lastname@company.com, firstname@company.com, f.lastname@company.com
+
+Only return real, verifiable contacts. Do not fabricate data.`
             },
             {
               role: 'user',
@@ -99,9 +107,13 @@ Only return prospects you can verify exist. Do not make up fake contacts. Return
       
       await this.logApiUsage(organizationId, criteria, data, cost, true);
 
-      const prospects = this.parseResponse(data.choices?.[0]?.message?.content);
+      const rawContent = data.choices?.[0]?.message?.content || '';
+      console.log('📝 Perplexity raw response length:', rawContent.length);
       
-      console.log(`✅ Perplexity found ${prospects.length} prospects (cost: $${cost.toFixed(4)})`);
+      const prospects = this.parseResponse(rawContent);
+      
+      const withEmails = prospects.filter(p => p.email).length;
+      console.log(`✅ Perplexity found ${prospects.length} prospects (${withEmails} with emails, cost: $${cost.toFixed(4)})`);
       
       return { prospects, cost };
 
@@ -145,7 +157,8 @@ Only return prospects you can verify exist. Do not make up fake contacts. Return
       parts.push(`- Keywords: ${criteria.keywords}`);
     }
 
-    parts.push('\nReturn the results as a JSON array. Only include real, verifiable contacts.');
+    parts.push('\nIMPORTANT: For each prospect, try to find or derive their business email address. Search LinkedIn profiles, company websites, press releases, and use common email patterns.');
+    parts.push('\nReturn the results as a JSON array. Only include real, verifiable contacts with as much contact info as possible.');
     
     return parts.join('\n');
   }
