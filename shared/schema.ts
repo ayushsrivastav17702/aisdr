@@ -3365,6 +3365,7 @@ export interface WaterfallSearchCriteria {
   companySize?: string;
   jobTitles?: string[];
   location?: string;
+  locations?: string[];
   limit?: number;
   keywords?: string;
   seniority?: string[];

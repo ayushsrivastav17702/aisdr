@@ -274,6 +274,15 @@ class ApolloService {
       throw new Error(`Invalid Apollo contact: missing both ID and email`);
     }
 
+    // Helper to check if email is a locked/placeholder email
+    const isLockedEmail = (e?: string): boolean => {
+      if (!e || e === '') return true;
+      // Check for specific Apollo placeholder patterns
+      return e.includes('email_not_unlocked') || 
+             e === 'locked@domain.com' ||
+             e.endsWith('@domain.com');
+    };
+
     // Handle missing or unlocked emails
     let email = '';
     let emailStatus = 'found';
@@ -281,7 +290,7 @@ class ApolloService {
     if (!contact.email) {
       email = '';
       emailStatus = 'not_found';
-    } else if (contact.email.includes('email_not_unlocked') || contact.email.includes('@domain.com')) {
+    } else if (isLockedEmail(contact.email)) {
       // Apollo returns placeholder emails when email credits are needed
       email = '';
       emailStatus = 'not_unlocked';
@@ -291,6 +300,9 @@ class ApolloService {
     } else {
       email = contact.email;
     }
+    
+    // Clean the contact object for storage - remove locked emails from enrichment data
+    const cleanedContact = { ...contact, email: isLockedEmail(contact.email) ? '' : contact.email };
     
     console.log(`  📧 Contact ${contact.first_name} ${contact.last_name}: email=${email || 'NONE'} (status: ${emailStatus})`);
 
@@ -332,7 +344,7 @@ class ApolloService {
       linkedinUrl: contact.linkedin_url || '',
       enrichmentStatus: emailStatus === 'found' ? 'enriched' as const : 'new' as const,
       enrichmentData: {
-        apollo: contact,
+        apollo: cleanedContact,
         enrichedAt: new Date().toISOString(),
         emailStatus,
       },

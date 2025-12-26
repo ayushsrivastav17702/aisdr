@@ -284,6 +284,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           seniority: apolloFilters.person_seniorities || [],
           departments: apolloFilters.person_departments || [],
           location: apolloFilters.person_locations?.[0],
+          locations: apolloFilters.person_locations,
           keywords: apolloFilters.q_keywords,
           limit: per_page
         };
