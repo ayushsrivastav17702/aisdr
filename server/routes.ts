@@ -326,11 +326,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   enrichmentData: { source: prospect.source }
                 };
                 
-                // Check if prospect already exists
+                // Check if prospect already exists (by email or LinkedIn URL for waterfall results)
                 const existing = await storage.findProspectByEmailOrApolloId(
                   req.userContext!,
-                  prospectData.primaryEmail,
-                  undefined
+                  prospectData.primaryEmail || null,
+                  null  // Waterfall results don't have Apollo IDs
                 );
                 
                 if (existing) {
