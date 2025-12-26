@@ -39,6 +39,10 @@ import LeaderboardPage from "@/pages/leaderboard";
 import BestPracticesPage from "@/pages/best-practices";
 import AEHandoffPage from "@/pages/ae-handoff";
 import AIProspectingPage from "@/pages/ai-prospecting";
+import CampaignDashboard from "@/pages/campaign-dashboard";
+import CreateCampaign from "@/pages/create-campaign";
+import ManagerDashboard from "@/pages/manager-dashboard";
+import CreateTenant from "@/pages/create-tenant";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -159,8 +163,26 @@ function Router() {
           <AIProspectingPage />
         </ProtectedRoute>
       </Route>
+      {/* Campaign Routes */}
+      <Route path="/campaigns">
+        <ProtectedRoute>
+          <CampaignDashboard />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/campaigns/new">
+        <ProtectedRoute>
+          <CreateCampaign />
+        </ProtectedRoute>
+      </Route>
+      {/* Manager Routes */}
+      <Route path="/manager/dashboard">
+        <ProtectedRoute requireAdmin>
+          <ManagerDashboard />
+        </ProtectedRoute>
+      </Route>
       {/* Super Admin Routes - Separate from main app */}
       <Route path="/super-admin/login" component={SuperAdminLogin} />
+      <Route path="/super-admin/tenants/new" component={CreateTenant} />
       <Route path="/super-admin/tenants/:id" component={SuperAdminTenantDetail} />
       <Route path="/super-admin" component={SuperAdminDashboard} />
       <Route component={NotFound} />
