@@ -149,13 +149,14 @@ export default function AISearch() {
   });
 
   const apolloSearchMutation = useMutation({
-    mutationFn: (params: { apolloFilters: any; extractionName?: string; tag?: string; prospectCount?: number }) => 
+    mutationFn: (params: { apolloFilters: any; extractionName?: string; tag?: string; prospectCount?: number; useWaterfall?: boolean }) => 
       api.apolloSearchAndSave(
         params.apolloFilters, 
         1, 
         params.prospectCount || 50,
         params.extractionName,
-        params.tag
+        params.tag,
+        params.useWaterfall ?? true  // Default to waterfall for better email coverage
       ),
     onSuccess: (data) => {
       console.log('🔍 Apollo search mutation onSuccess:', data);

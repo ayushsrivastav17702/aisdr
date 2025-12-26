@@ -179,19 +179,22 @@ export const api = {
   },
 
   // Apollo Search and Save
+  // Set useWaterfall: true to use Perplexity AI first for better email coverage
   async apolloSearchAndSave(
     apolloFilters: any, 
     page: number = 1, 
     per_page: number = 50,
     extractionName?: string,
-    tag?: string
+    tag?: string,
+    useWaterfall: boolean = true  // Default to waterfall for better emails
   ) {
     const response = await apiRequest("POST", "/api/apollo-search-and-save", { 
       apolloFilters, 
       page, 
       per_page,
       extractionName,
-      tag
+      tag,
+      useWaterfall
     });
     return response.json();
   },
