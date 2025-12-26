@@ -14,45 +14,32 @@ An AI-powered Sales Development Representative (SDR) platform designed to automa
 The platform is built on a modern web stack, featuring a multi-tenant architecture designed for scalability, security, and user experience.
 
 ### UI/UX Decisions
-- **Design System**: Clean, modern design utilizing Tailwind CSS and shadcn/ui for a responsive and intuitive interface.
+- **Design System**: Clean, modern design utilizing Tailwind CSS and shadcn/ui.
 - **Workflow Focus**: User-friendly workflows for AI search, prospect management, and campaign creation.
-- **Performance**: Animated skeleton loading, URL parameter synchronization, and lazy loading for large datasets.
+- **Performance**: Animated skeleton loading, URL parameter synchronization, and lazy loading.
 
 ### Technical Implementations
 - **Frontend**: React, TypeScript, Vite.
 - **Backend**: Express.js with TypeScript.
 - **Database**: PostgreSQL with Drizzle ORM.
-- **AI Integration**: Multi-provider AI system with automatic fallback (OpenAI, OpenRouter, Anthropic) for NLP query parsing, email generation, and sentiment analysis.
-- **Job Queue**: BullMQ (requires Redis/Upstash) for background tasks.
-- **Authentication & Security**: Enterprise-grade passwordless authentication (Google/Microsoft OAuth, Magic Link), JWT sessions, bcrypt hashing, CSRF protection, and role-based access. Includes comprehensive audit logging.
-- **Multi-Tenancy**: RequestContext-based data isolation, user invitation system, and admin impersonation.
-- **Organization Management**: Full organization settings with branding, regional preferences, fiscal year configuration, and organization-wide preferences.
-- **Workspace Management**: Hierarchical workspace structure with resource limits, workspace-specific settings, archiving/restoration, and ownership transfer capabilities.
-- **Natural Language Processing**: Converts user queries into structured Apollo.io filters with AI and intelligent fallback.
-- **Email Sequence Management**: Multi-step sequences, prospect enrollment, tracking, AI personalization, multi-mailbox sending with round-robin rotation and encryption.
-- **AI Personalization Wizard**: Batch email personalization (up to 25 prospects) with intelligent analysis.
-- **Bulk Operations**: Efficient enrichment using Apollo's bulk match API.
+- **AI Integration**: Multi-provider AI system with automatic fallback (OpenAI, OpenRouter, Anthropic) for NLP, email generation, and sentiment analysis.
+- **Job Queue**: BullMQ (requires Redis/Upstash) for background tasks like automation scheduling.
+- **Authentication & Security**: Enterprise-grade passwordless authentication (Google/Microsoft OAuth, Magic Link), JWT sessions, bcrypt, CSRF protection, role-based access, and comprehensive audit logging.
+- **Multi-Tenancy**: RequestContext-based data isolation, user invitation system, and admin impersonation. Includes organization and workspace management with hierarchical structures and resource limits.
+- **Natural Language Processing**: Converts user queries into structured Apollo.io filters with AI.
+- **Email Sequence Management**: Multi-step sequences, prospect enrollment, tracking, AI personalization, multi-mailbox sending with round-robin rotation.
 - **Data Security**: Secure credential encryption (AES-256-CBC) for mailboxes.
-- **CSV Import Resilience**: 50MB file limit with detailed logging and error tracking.
-- **Reply Detection**: IMAP-based polling for automatic reply detection, matching, and storage with intelligent content cleanup. Includes OOO detection, bounce handling, and unsubscribe processing.
+- **Reply Detection**: IMAP-based polling for automatic reply detection, OOO detection, bounce handling, and unsubscribe processing.
 - **Email Threading**: Follow-up emails properly thread using RFC 5322 Message-ID headers.
-- **Automation Layer**: Background automation for autonomous prospect imports and sequence enrollment with manual prospect selection capability, ensuring multi-tenant security.
-- **Automation Scheduler**: Production-ready BullMQ-based scheduler with Redis resilience, graceful fallback, retry logic, and cancellation safety.
-- **Email Tracking & Analytics**: Comprehensive email engagement tracking (open, click, reply rates) with HMAC-signed URL wrapping for click tracking and performance metrics.
-- **Merge Field Fallbacks**: Support for `{{variable|fallback}}` syntax.
+- **Automation Layer**: Background automation for autonomous prospect imports and sequence enrollment.
+- **Email Tracking & Analytics**: Comprehensive email engagement tracking (open, click, reply rates) with HMAC-signed URL wrapping.
 - **Duplicate Detection**: Intelligent checks by email, Apollo ID, LinkedIn URL, and name+company.
-- **Advanced Search**: Revenue range, technology stack, and funding stage filtering.
-- **Smart Search Fallback**: Multi-strategy Apollo search to maximize results.
-- **Cascade Deletes**: Ensures clean removal of sequences and related data.
-- **Error Monitoring (Sentry)**: Comprehensive error tracking and monitoring for both frontend and backend (optional).
-- **Uptime Monitoring**: `/healthz` endpoint for external monitoring.
-- **Email Deliverability**: DKIM/SPF/DMARC configuration for optimal email delivery.
-- **Admin Infrastructure**: Comprehensive admin settings page (`/admin-infrastructure`) with 5 tabs:
-  - **Email Infrastructure**: Sending domain management with DNS verification status tracking
-  - **API Access**: API key generation with scopes (read/write/admin) and webhook configuration with event subscriptions
-  - **Email Settings**: Deliverability settings (daily/hourly limits, warmup mode, tracking) and Do Not Contact list with CSV import
-  - **AI Configuration**: Model selection (default/fallback), temperature control, token limits, and budget tracking
-  - **Notifications**: Multi-channel preferences (email/in-app) for system notifications (daily summary, bounce alerts, reply notifications, etc.)
+- **Advanced Search**: Revenue range, technology stack, and funding stage filtering with multi-strategy Apollo search fallback.
+- **Admin Infrastructure**: Comprehensive admin settings including email infrastructure, API access (keys, webhooks), email deliverability settings, AI configuration, and multi-channel notifications.
+- **Super Admin System (Planned)**: Comprehensive super admin functionality for platform-level tenant management, including detailed tenant profiles, configuration controls, manager account creation, audit logs, platform health monitoring, tenant usage analytics, alerts, broadcast messaging, and onboarding tracking.
+- **User Engagement Features (Planned)**: Leaderboard & Gamification (points, badges), Best Practices Library (templates, guides, videos), and AE Handoff Workflow (qualification frameworks, scoring, status workflow).
+- **Manager Dashboard**: Implemented at `/manager/dashboard` with team management (add, update, deactivate users, password reset), campaign oversight (approve, pause, stats), performance analytics with time period selection (7d/30d/90d), and resource allocation tracking. Uses `requireManager` middleware for role-based access.
+- **Multi-Provider Waterfall Search System**: Intelligent prospect search system that cascades through multiple providers (Perplexity AI, Apollo.io, Lusha, OpenRouter) to maximize result coverage while optimizing costs. Features accumulating mode, smart deduplication, cost optimization, error resilience, and usage tracking.
 
 ## External Dependencies
 - **Apollo.io**: Prospect search, data enrichment, and bulk matching API.
@@ -60,142 +47,8 @@ The platform is built on a modern web stack, featuring a multi-tenant architectu
 - **OpenRouter**: Multi-model AI gateway.
 - **Anthropic**: Alternative AI provider.
 - **Lusha.io**: Email enrichment service.
+- **Perplexity AI**: AI-powered B2B research.
 - **PostgreSQL (Neon)**: Cloud-hosted relational database.
 - **Redis/Upstash**: Required for BullMQ job queue.
 - **Resend**: Email service for sending HTML invitation emails.
 - **Sentry**: Error monitoring and performance tracking service (optional).
-
-## Super Admin System (Phase 2)
-Comprehensive Super Admin functionality for managing tenants at a platform level:
-
-### Authentication
-- Separate cookie-based authentication (super_admin_token cookie)
-- JWT session tokens with 8-hour expiry
-- Master admin role with full permissions
-
-### Tenant Management Features
-- **FR-SA3**: Detailed tenant profile views with organization info, usage stats, and health metrics
-- **FR-SA4**: Configuration controls for resource limits (maxUsers, maxProspects, maxSequences, maxMailboxes) and feature flags
-- **FR-SA7/FR-SA8**: Manager account creation with temporary passwords and role assignment
-- **FR-SA10**: Multi-manager support with role hierarchy (primary, secondary, readonly)
-
-### Feature Flag Keys (aligned with database schema)
-Frontend and backend use these consistent camelCase keys matching Drizzle schema columns:
-- aiProspecting, aiEmailGeneration, aiSentimentAnalysis
-- advancedAnalytics, customReports, exportCapabilities
-- whiteLabel, customBranding, customDomain
-- crmIntegration, webhookAccess, apiAccess
-- multiMailbox, emailSequences, bulkOperations
-
-### Database Tables
-- super_admins, super_admin_sessions, super_admin_audit_log
-- tenant_feature_flags, tenant_configuration, manager_accounts
-
-### Phase 2 Features (Dashboard Tabs)
-- **FR-SA21 Audit Logs**: Tamper-proof audit trail with 5-year retention, CSV/JSON export, filtering by action/date
-- **FR-SA22 Platform Health**: Real-time service status with 30-second auto-refresh, key metrics, email performance tracking
-- **FR-SA23 Tenant Usage Analytics**: Usage metrics per tenant, churn risk detection, upsell candidate identification
-- **FR-SA26 Alerts Panel**: System alerts with acknowledge/resolve workflow, severity-based styling
-- **FR-SA28 Communications**: Broadcast messaging with compose form, draft management, send functionality
-- **FR-SA29 Onboarding**: Tenant onboarding progress tracking with health scores and checklists
-
-### Test Super Admin Account
-- Email: admin@increff.com
-- Password: SuperAdmin123!
-
-## User Engagement Features (FR-U25, FR-U29, FR-U32)
-
-### FR-U25: Leaderboard & Gamification
-Comprehensive gamification system to drive SDR performance:
-- **Leaderboard Rankings**: Daily, weekly, and monthly performance rankings based on points
-- **Points Calculation**: Positive replies (100 pts), all replies (50 pts), emails sent (1 pt)
-- **Badge System**: 10 achievement badges with thresholds (First Steps, Meeting Master, Deal Dynamo, etc.)
-- **Live Refresh**: Manual refresh button to recalculate stats from email activity
-- **Frontend**: `/leaderboard` page with rankings table, user badges, and available badges display
-- **Routes**: `/api/leaderboard`, `/api/leaderboard/refresh`, `/api/badges`, `/api/badges/check`
-- **Schema**: `user_badges`, `leaderboard_periods`, `leaderboard_entries` tables
-
-### FR-U29: Best Practices Library
-Knowledge base for SDR excellence:
-- **8 Categories**: Email Templates, Subject Lines, Objection Handling, Industry Guides, Cold Outreach, Follow-up Strategies, Meeting Booking, Video Tutorials
-- **Content Types**: Templates (with subject/body/variables), Guides (markdown), Articles, Videos
-- **Features**: Search, category filtering, difficulty levels (beginner/intermediate/advanced)
-- **Template Usage**: One-click copy to clipboard, usage tracking
-- **Rating System**: 5-star ratings with feedback collection
-- **Frontend**: `/best-practices` page with category cards, search, and detail modal
-- **Routes**: `/api/best-practices/categories`, `/api/best-practices`, `/api/best-practices/:slug`, `/api/best-practices/:id/use`, `/api/best-practices/:id/rate`, `/api/best-practices/seed`
-- **Schema**: `best_practice_categories`, `best_practices`, `best_practice_ratings` tables
-
-### FR-U32: AE Handoff Workflow
-SDR-to-AE prospect handoff with qualification tracking:
-- **Qualification Frameworks**: BANT (Budget, Authority, Need, Timeline) and MEDDIC (Metrics, Economic Buyer, Decision Criteria, Decision Process, Identify Pain, Champion)
-- **Automatic Scoring**: 0-100 quality score based on completed qualification fields
-- **Status Workflow**: pending_review → accepted/rejected → converted/lost
-- **AE Feedback**: Rating (1-5 stars) and written feedback on handoff quality
-- **Activity Timeline**: Full history of status changes, notes, and feedback
-- **Pipeline Metrics**: Total handoffs, conversion rate, average quality score, pipeline value
-- **Frontend**: `/ae-handoff` page with stats cards, handoff list, and detail drawer
-- **Routes**: `/api/handoffs`, `/api/handoffs/:id`, `/api/handoffs/:id/activity`, `/api/handoffs/stats/conversion`, `/api/team/ae-users`
-- **Schema**: `ae_handoffs`, `handoff_activities` tables
-
-### Navigation
-All three features accessible from main sidebar:
-- Trophy icon → Leaderboard
-- BookOpen icon → Best Practices
-- ArrowRightLeft icon → AE Handoff
-
-## Multi-Provider Waterfall Search System
-
-### Overview
-Intelligent prospect search system that cascades through multiple providers to maximize result coverage while controlling costs.
-
-### Provider Cascade Order
-1. **Perplexity AI** (PERPLEXITY_API_KEY) - AI-powered B2B research using Llama-3.1-sonar model
-2. **Apollo.io** (APOLLO_API_KEY) - Verified business contacts database
-3. **Lusha** (LUSHA_API_KEY) - Contact enrichment and company search
-4. **OpenRouter** (OPENROUTER_API_KEY) - AI fallback for generating prospects when other providers fail
-
-### Key Features
-- **Accumulating Mode**: Results aggregate across providers until target limit is reached
-- **Smart Deduplication**: Uses email, LinkedIn URL, or name+company+title as dedupe keys
-- **Cost Optimization**: Each provider requests only remaining needed prospects + buffer
-- **Error Resilience**: Each provider wrapped in try-catch to prevent cascade failure
-- **Usage Tracking**: Both `fetched` and `unique` counts tracked per provider for billing reconciliation
-
-### API Endpoints
-- `POST /api/waterfall/search` - Execute waterfall search
-- `POST /api/waterfall/search-and-save` - Search and save prospects to database
-- `GET /api/waterfall/history` - Get search history
-- `GET /api/waterfall/usage` - Get API usage statistics
-- `GET /api/waterfall/providers` - Get provider status
-- `GET /api/waterfall/cost-summary` - Get cost summary by provider
-
-### Database Tables
-- `prospect_searches` - Search history with criteria, results, and costs
-- `api_usage` - Per-provider API call tracking for cost analytics
-
-### Response Structure
-```typescript
-{
-  providers: SearchProvider[],      // All providers that contributed results
-  prospects: WaterfallProspect[],   // Deduplicated prospect list
-  totalCost: number,                // Total cost across all providers
-  providerChain: [{                 // Detailed per-provider metrics
-    provider: string,
-    fetched: number,                // Records fetched from API
-    unique: number,                 // Unique records added after dedup
-    cost: number
-  }],
-  summary: {
-    totalFetched: number,
-    totalUnique: number,
-    primaryProvider: SearchProvider
-  }
-}
-```
-
-### Files
-- `server/services/waterfall-search.service.ts` - Core cascade logic
-- `server/services/perplexity.service.ts` - Perplexity AI integration
-- `server/services/lusha.service.ts` - Lusha API integration
-- `server/routes/waterfall-search.routes.ts` - API routes

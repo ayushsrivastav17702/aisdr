@@ -41,6 +41,7 @@ import leaderboardRoutes from "./routes/leaderboard.routes";
 import bestPracticesRoutes from "./routes/best-practices.routes";
 import aeHandoffRoutes from "./routes/ae-handoff.routes";
 import waterfallSearchRoutes from "./routes/waterfall-search.routes";
+import managerRoutes from "./routes/manager.routes";
 import { authenticate } from "./middleware/auth.middleware";
 import { emailVolumeConfig, getCapacityReport, getEstimatedTimeForEmails, EMAIL_VOLUME_PRESETS } from "./config/email-volume.config";
 
@@ -1812,6 +1813,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Multi-Provider Waterfall Search routes
   app.use(waterfallSearchRoutes.path, waterfallSearchRoutes.router);
+
+  // Manager routes (FR-M features)
+  app.use(managerRoutes);
 
   // Automation module routes
   registerAutomationRoutes(app);
