@@ -1223,11 +1223,23 @@ function GlobalUserOverview() {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                          <DropdownMenuItem onClick={() => updateUserStatusMutation.mutate({ userId: user.id, status: "active" })}>
+                          <DropdownMenuItem 
+                            onClick={() => {
+                              console.log("Activating user:", user.id);
+                              updateUserStatusMutation.mutate({ userId: user.id, status: "active" });
+                            }}
+                            data-testid={`button-activate-user-${user.id}`}
+                          >
                             <Play className="h-4 w-4 mr-2" />
                             Activate
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => updateUserStatusMutation.mutate({ userId: user.id, status: "suspended", reason: "Suspended by super admin" })}>
+                          <DropdownMenuItem 
+                            onClick={() => {
+                              console.log("Suspending user:", user.id);
+                              updateUserStatusMutation.mutate({ userId: user.id, status: "suspended", reason: "Suspended by super admin" });
+                            }}
+                            data-testid={`button-suspend-user-${user.id}`}
+                          >
                             <Pause className="h-4 w-4 mr-2" />
                             Suspend
                           </DropdownMenuItem>
