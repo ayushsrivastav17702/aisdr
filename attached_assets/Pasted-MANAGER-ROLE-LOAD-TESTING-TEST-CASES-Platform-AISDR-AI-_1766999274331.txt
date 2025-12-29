@@ -1,0 +1,345 @@
+MANAGER ROLE — LOAD TESTING TEST CASES
+
+Platform: AISDR – AI Sales Platform
+Role: Manager (Read-only governance)
+
+🔐 GLOBAL ASSUMPTIONS (IMPORTANT)
+
+Role = manager
+
+Tenant = single org
+
+Data volume simulated per test
+
+Load = concurrent users + request bursts
+
+Focus = read-heavy dashboards
+
+1️⃣ MANAGER LOGIN & SESSION LOAD
+Objective
+
+Validate auth, session handling, and JWT verification under load.
+
+Test Cases
+
+50 concurrent manager logins
+
+100 concurrent page refreshes
+
+Token validation spikes
+
+Metrics to Capture
+
+Auth latency (p95, p99)
+
+JWT decode time
+
+Session memory usage
+
+Login failure %
+
+Pass Criteria
+
+No 5xx
+
+Auth < 300ms p95
+
+No session leakage across tenants
+
+2️⃣ MANAGER DASHBOARD (HOME)
+Data Scale
+
+Users: 50 / 200 / 500
+
+Campaigns: 100 / 500 / 1,000
+
+Emails sent (30 days): 100K+
+
+Load Scenarios
+
+100 concurrent dashboard loads
+
+Auto-refresh every 30 seconds
+
+Cold cache vs warm cache
+
+APIs Hit
+
+/api/manager/stats
+
+/api/manager/summary
+
+/api/manager/campaign-overview
+
+Metrics
+
+TTFB
+
+DB query count
+
+Aggregate calculation time
+
+Cache hit ratio
+
+Pass Criteria
+
+Dashboard load < 2s p95
+
+No N+1 queries
+
+Stats consistent across refreshes
+
+3️⃣ TEAM MEMBERS TAB
+Data Scale
+
+Team members: 10 / 50 / 200
+
+Pagination enabled
+
+Load Scenarios
+
+100 concurrent searches
+
+Sorting by last login
+
+Filtering by status
+
+APIs
+
+GET /api/manager/users
+
+GET /api/manager/users?search=
+
+Metrics
+
+Query execution time
+
+Index usage (email, role)
+
+Pagination performance
+
+Edge Tests
+
+Bulk user creation spikes (10/min)
+
+Simultaneous edits by 5 managers
+
+Pass Criteria
+
+Search < 500ms
+
+No duplicate users
+
+No role escalation under load
+
+4️⃣ TEAM CAMPAIGNS TAB (READ-ONLY)
+Data Scale
+
+Campaigns: 500 / 2,000 / 10,000
+
+Prospects per campaign: 1K+
+
+Load Scenarios
+
+200 concurrent campaign list loads
+
+Sorting by reply rate
+
+Filtering by status (Active/Draft)
+
+APIs
+
+GET /api/manager/campaigns
+
+GET /api/manager/campaigns/:id/stats
+
+Metrics
+
+Query time
+
+Join performance
+
+Response payload size
+
+Security Validation (Under Load)
+
+Ensure no mutation APIs are triggered accidentally
+
+Ensure no lock/contention on SDR tables
+
+Pass Criteria
+
+Read-only access enforced
+
+Campaign list < 1.5s p95
+
+5️⃣ PERFORMANCE TAB (ANALYTICS)
+Data Scale
+
+Emails sent: 1M+
+
+Replies: 200K+
+
+Time window: 7 / 30 / 90 days
+
+Load Scenarios
+
+50 managers pulling analytics simultaneously
+
+Switching date ranges rapidly
+
+Auto-refresh every 60s
+
+APIs
+
+GET /api/manager/performance
+
+GET /api/manager/performance/top-users
+
+Metrics
+
+Aggregation time
+
+DB CPU usage
+
+Cache utilization
+
+Stress Edge Case
+
+Time range = last 365 days
+
+Campaign filter applied
+
+Pass Criteria
+
+Aggregates < 2s p95
+
+No DB timeouts
+
+Correct totals (no partial aggregation)
+
+6️⃣ SETTINGS TAB (READ-ONLY)
+Data Scale
+
+Tenant metadata
+
+Plan info
+
+Seat usage
+
+Load Scenarios
+
+100 concurrent opens
+
+Rapid refresh
+
+APIs
+
+GET /api/organization
+
+GET /api/subscription
+
+Metrics
+
+Latency
+
+Cache hit
+
+Security
+
+Ensure no PATCH/POST allowed
+
+Ensure billing info masked
+
+Pass Criteria
+
+Always read-only
+
+< 300ms load
+
+7️⃣ CROSS-TAB LOAD (REALISTIC MANAGER BEHAVIOR)
+Scenario
+
+Simulate a real manager:
+
+Dashboard → Campaigns → Performance → Team Members
+
+100 managers concurrently
+
+Session duration: 10 minutes
+
+Metrics
+
+Memory growth
+
+DB connection pool exhaustion
+
+API error rate
+
+Pass Criteria
+
+No memory leak
+
+Stable latency throughout
+
+8️⃣ API THROTTLING & RATE LIMIT
+Tests
+
+Burst 500 req/min to manager APIs
+
+Sustained 50 req/sec for 5 mins
+
+Validate
+
+Rate limiting triggers correctly
+
+Manager does NOT starve SDR traffic
+
+Pass Criteria
+
+Fair throttling
+
+No global slowdown
+
+9️⃣ RBAC UNDER LOAD (CRITICAL)
+Attack Simulation
+
+While load is running:
+
+Attempt POST /api/sequences
+
+Attempt POST /api/emails/send
+
+Pass Criteria
+
+Always 403
+
+No race-condition bypass
+
+No partial writes
+
+🔟 DATABASE & INFRA OBSERVABILITY
+Must Monitor
+
+Slow query logs
+
+Lock contention
+
+Connection pool
+
+CPU & memory
+
+Red Flags
+
+Campaign analytics causing table locks
+
+Manager reads blocking SDR writes
+
+✅ FINAL EXIT CRITERIA (MANAGER LOAD)
+Area	Requirement
+Availability	99.9%
+p95 latency	< 2s
+Error rate	< 0.1%
+RBAC leaks	0
+DB contention	None
+Tenant isolation	Guaranteed
