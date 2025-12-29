@@ -26,7 +26,7 @@ export interface AuthUser {
   emailVerified: boolean;
   firstName: string | null;
   lastName: string | null;
-  role: 'admin' | 'user';
+  role: 'manager' | 'user' | 'super_admin';
   status: 'active' | 'inactive' | 'suspended';
   organizationId: string | null;
   isManager: boolean;
@@ -202,13 +202,17 @@ export class AuthService {
       .where(eq(managerAccounts.userId, user.id))
       .limit(1);
 
+    // Normalize role: DB stores 'admin' for managers, but we return 'manager'
+    // This ensures JWT and API responses use the correct role name
+    const normalizedRole = user.role === 'admin' ? 'manager' : user.role;
+
     return {
       id: user.id,
       email: user.email,
       emailVerified: user.emailVerified || false,
       firstName: user.firstName,
       lastName: user.lastName,
-      role: user.role as 'admin' | 'user',
+      role: normalizedRole as 'manager' | 'user',
       status: user.status as 'active' | 'inactive' | 'suspended',
       organizationId: user.organizationId,
       isManager: !!managerAccount,
@@ -358,12 +362,15 @@ export class AuthService {
 
     await this.logAuditEvent(user.id, 'invitation_accepted', { invitationId: invitation.id });
 
+    // Normalize role: DB stores 'admin' for managers, but we return 'manager'
+    const normalizedRole = user.role === 'admin' ? 'manager' : user.role;
+
     return {
       id: user.id,
       email: user.email,
       firstName: user.firstName,
       lastName: user.lastName,
-      role: user.role as 'admin' | 'user',
+      role: normalizedRole as 'manager' | 'user',
       status: user.status as 'active' | 'inactive' | 'suspended',
       emailVerified: user.emailVerified || false,
       organizationId: user.organizationId,
