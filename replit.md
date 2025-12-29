@@ -25,6 +25,11 @@ The platform is built on a modern web stack, featuring a multi-tenant architectu
 - **AI Integration**: Multi-provider AI system with automatic fallback (OpenAI, OpenRouter, Anthropic) for NLP, email generation, and sentiment analysis.
 - **Job Queue**: BullMQ (requires Redis/Upstash) for background tasks like automation scheduling.
 - **Authentication & Security**: Enterprise-grade passwordless authentication (Google/Microsoft OAuth, Magic Link), JWT sessions, bcrypt, CSRF protection, role-based access, and comprehensive audit logging.
+- **RBAC Middleware Rules** (Source of Truth - `server/middleware/auth.middleware.ts`):
+  - **User (SDR)**: Full SDR execution - campaigns, sequences, emails, AI writing, prospect import, automation, mailboxes
+  - **Manager** (`admin` role): Team oversight only - view campaigns (read-only), team analytics, user management. BLOCKED from all SDR execution via `forbidManager` middleware
+  - **Super Admin** (`super_admin` role): Platform governance only - tenant provisioning, config, manager creation, audit logs, impersonation. BLOCKED from all SDR execution via `forbidManager` middleware
+  - **Key Middleware**: `forbidManager` blocks managers AND super_admins from SDR routes; `requireSuperAdmin` enforces super-admin-only access; `requireManager` enforces manager-only access
 - **Multi-Tenancy**: RequestContext-based data isolation, user invitation system, and admin impersonation. Includes organization and workspace management with hierarchical structures and resource limits.
 - **Natural Language Processing**: Converts user queries into structured Apollo.io filters with AI.
 - **Email Sequence Management**: Multi-step sequences, prospect enrollment, tracking, AI personalization, multi-mailbox sending with round-robin rotation.

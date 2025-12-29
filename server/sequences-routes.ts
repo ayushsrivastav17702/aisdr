@@ -6,7 +6,7 @@ import { db } from "./db";
 import { sequenceProspects, emailReplies, emailQueue, emails, prospects, personalizationResults } from "@shared/schema";
 import { eq, and, sql, desc } from "drizzle-orm";
 import { z } from "zod";
-import { authenticate, forbidManager } from "./middleware/auth.middleware";
+import { authenticate, forbidManager, blockSuperAdminFromSDR } from "./middleware/auth.middleware";
 
 const router = Router();
 
@@ -123,7 +123,7 @@ async function initializeSequence(userContext: RequestContext, sequenceId: strin
 }
 
 // Get all sequences
-router.get("/sequences", authenticate, async (req, res) => {
+router.get("/sequences", authenticate, blockSuperAdminFromSDR, async (req, res) => {
   try {
     const sequences = await storage.getSequences(req.userContext!);
     
@@ -153,7 +153,7 @@ router.get("/sequences", authenticate, async (req, res) => {
 });
 
 // Get single sequence with steps
-router.get("/sequences/:id", authenticate, async (req, res) => {
+router.get("/sequences/:id", authenticate, blockSuperAdminFromSDR, async (req, res) => {
   try {
     const sequence = await storage.getSequence(req.userContext!, req.params.id);
     
@@ -556,7 +556,7 @@ router.put("/sequences/:id/steps/:stepId", authenticate, forbidManager, async (r
 });
 
 // Get prospects in sequence
-router.get("/sequences/:id/prospects", authenticate, async (req, res) => {
+router.get("/sequences/:id/prospects", authenticate, blockSuperAdminFromSDR, async (req, res) => {
   try {
     const prospects = await storage.getSequenceProspects(req.userContext!, req.params.id);
     res.json({ total: prospects.length, prospects });
@@ -618,7 +618,7 @@ router.post("/sequences/:id/prospects", authenticate, forbidManager, async (req,
 });
 
 // Get email replies for sequence
-router.get("/sequences/:id/replies", authenticate, async (req, res) => {
+router.get("/sequences/:id/replies", authenticate, blockSuperAdminFromSDR, async (req, res) => {
   try {
     const replies = await storage.getEmailReplies(req.userContext!, req.params.id);
     
@@ -641,7 +641,7 @@ router.get("/sequences/:id/replies", authenticate, async (req, res) => {
 });
 
 // Get tracking stats for sequence
-router.get("/sequences/:id/tracking", authenticate, async (req, res) => {
+router.get("/sequences/:id/tracking", authenticate, blockSuperAdminFromSDR, async (req, res) => {
   try {
     const sequenceId = req.params.id;
     
@@ -674,7 +674,7 @@ router.get("/sequences/:id/tracking", authenticate, async (req, res) => {
 });
 
 // Get emails for sequence (for analytics/tracking tab)
-router.get("/sequences/:id/emails", authenticate, async (req, res) => {
+router.get("/sequences/:id/emails", authenticate, blockSuperAdminFromSDR, async (req, res) => {
   try {
     const sequenceId = req.params.id;
     
@@ -1051,7 +1051,7 @@ router.post("/sequences/enhanced-personalization", authenticate, forbidManager, 
 });
 
 // AI Follow-up Preview by Prospect ID
-router.get("/sequences/ai-followup-preview/:prospectId", authenticate, async (req, res) => {
+router.get("/sequences/ai-followup-preview/:prospectId", authenticate, blockSuperAdminFromSDR, async (req, res) => {
   try {
     const { aiFollowUpScheduler } = await import("./services/ai-followup-scheduler.service");
     const { prospectId } = req.params;
