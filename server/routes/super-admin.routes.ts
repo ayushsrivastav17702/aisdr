@@ -933,16 +933,63 @@ router.get('/users', authenticateSuperAdmin, async (req, res) => {
 router.patch('/users/:userId/status', authenticateSuperAdmin, requireSuperAdminPermission('canSuspendTenants'), async (req, res) => {
   try {
     const { userId } = req.params;
-    const { status, reason } = req.body;
+    const { status, reason, sendCredentials } = req.body;
 
     if (!['active', 'inactive', 'suspended'].includes(status)) {
       return res.status(400).json({ error: 'Invalid status' });
     }
 
-    await db.update(users).set({ 
-      status, 
-      updatedAt: new Date() 
-    }).where(eq(users.id, userId));
+    // Get user info before update
+    const [user] = await db.select().from(users).where(eq(users.id, userId));
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Get organization name
+    const [org] = user.organizationId 
+      ? await db.select().from(organizations).where(eq(organizations.id, user.organizationId))
+      : [null];
+
+    let tempPassword: string | null = null;
+
+    // If activating and sendCredentials is true, generate new password
+    if (status === 'active' && sendCredentials) {
+      const crypto = await import('crypto');
+      const bcrypt = await import('bcrypt');
+      tempPassword = crypto.randomBytes(12).toString('base64').replace(/[+/=]/g, '').slice(0, 12);
+      const passwordHash = await bcrypt.hash(tempPassword, 12);
+
+      await db.update(users).set({ 
+        status: 'active',
+        isActive: true,
+        passwordHash,
+        forcePasswordReset: true,
+        updatedAt: new Date() 
+      }).where(eq(users.id, userId));
+
+      // Send welcome email with credentials
+      try {
+        const { emailService } = await import('../services/email.service');
+        const baseUrl = process.env.APP_URL || 'https://increff-aisdr.replit.app';
+        await emailService.sendWelcomeCredentialsEmail({
+          to: user.email,
+          userName: user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : undefined,
+          email: user.email,
+          tempPassword,
+          loginUrl: `${baseUrl}/login`,
+          organizationName: org?.name,
+          role: user.role === 'admin' ? 'Administrator' : 'User',
+        });
+      } catch (emailError) {
+        console.error('Failed to send welcome credentials email:', emailError);
+      }
+    } else {
+      await db.update(users).set({ 
+        status,
+        isActive: status === 'active',
+        updatedAt: new Date() 
+      }).where(eq(users.id, userId));
+    }
 
     // Log the action
     await db.insert(superAdminAuditLogs).values({
@@ -950,11 +997,15 @@ router.patch('/users/:userId/status', authenticateSuperAdmin, requireSuperAdminP
       action: 'user_status_change',
       targetType: 'user',
       targetId: userId,
-      details: { newStatus: status, reason },
+      details: { newStatus: status, reason, credentialsSent: !!tempPassword },
       ipAddress: req.ip || null,
     });
 
-    res.json({ success: true, message: `User status updated to ${status}` });
+    res.json({ 
+      success: true, 
+      message: `User status updated to ${status}${tempPassword ? ' and credentials sent via email' : ''}`,
+      credentialsSent: !!tempPassword
+    });
   } catch (error) {
     console.error('Error updating user status:', error);
     res.status(500).json({ error: 'Failed to update user status' });

@@ -1,0 +1,385 @@
+Role & Context
+
+You are a Senior SaaS Architect + QA Lead auditing the User (SDR/BDR) role in a multi-tenant sales engagement platform (AiSDR) built on Replit.
+
+This User:
+
+Is created by a Manager (Company Admin)
+
+Operates inside a single tenant
+
+Can only access their own campaigns, prospects, inbox, and performance
+
+Is responsible for campaign execution, replies, and meeting booking
+
+🎯 Goal of This Audit
+
+Determine what is ACTUALLY BUILT vs PARTIALLY BUILT vs NOT BUILT for the User role, across:
+
+Campaigns
+
+AI messaging
+
+Prospect management
+
+Inbox & replies
+
+Meetings
+
+Performance tracking
+
+Workflows & UI
+
+Permissions & isolation
+
+❗ No assumptions allowed.
+❗ UI alone does NOT count as built.
+
+🚫 Explicit Scope Exclusions (DO NOT EXPECT)
+
+Even if mentioned in PRD, do NOT expect these to be present:
+
+Stripe / Billing
+
+CRM sync (Salesforce, HubSpot)
+
+LinkedIn automation (sending, scraping)
+
+SMS / calling
+
+Real calendar integrations (Google/Outlook live sync)
+
+If UI exists for these → mark UI-only / NOT BUILT.
+
+🧱 Audit Rules (MANDATORY)
+Mark a feature as BUILT only if:
+
+UI exists
+
+Backend API exists
+
+Data is persisted & enforced server-side
+
+Mark PARTIAL if:
+
+UI exists but backend missing
+
+Backend exists but not wired
+
+Logic exists but no enforcement
+
+Mark NOT BUILT if:
+
+Static mock data
+
+Placeholder screens
+
+Comments only
+
+🧩 AUDIT BY MAJOR USER MODULES
+🔹 Module 1: User Access, Roles & Isolation (P0)
+
+Verify:
+
+User role exists in DB
+
+User is linked to exactly ONE tenant
+
+User cannot access:
+
+Other users’ campaigns
+
+Other users’ prospects
+
+Manager / Super Admin routes
+
+Backend query scoping enforces user_id + tenant_id
+
+Output
+
+Status: BUILT / PARTIAL / NOT BUILT
+
+Evidence: middleware, query filters, auth guards
+
+Risk if broken
+
+🔹 Module 2: Campaign Creation & Management (FR-U1 → FR-U5)
+
+Verify end-to-end:
+
+Campaign Builder
+
+Wizard UI exists
+
+Draft save works
+
+Clone works
+
+Preview is real (not static)
+
+Campaign Config
+
+Name, goal, duration saved in DB
+
+Daily send limits enforced server-side
+
+Scheduling logic exists
+
+A/B test config persisted
+
+Sequence Builder
+
+Drag/drop backed by stored sequence JSON
+
+Step ordering persisted
+
+Delay logic enforced
+
+Conditional logic actually evaluated
+
+Campaign Dashboard
+
+Only “my campaigns” visible
+
+Metrics are live (not mock)
+
+Pause/Resume changes backend state
+
+Campaign Analytics
+
+Funnel computed from real events
+
+Step-level stats exist
+
+Export works (or marked NOT BUILT)
+
+🔹 Module 3: AI Message Generation (FR-U6 → FR-U10)
+
+Verify:
+
+Prompt → AI → stored output
+
+Tone & personalization parameters actually affect output
+
+Dynamic variables resolve with fallback logic
+
+Subject line variants stored
+
+Templates persist and can be reused
+
+❗ If AI text is generated but not saved → PARTIAL
+
+🔹 Module 4: Prospect Management (FR-U11 → FR-U15)
+
+Verify:
+
+User sees only their prospects
+
+Status changes persist
+
+Prospect profile loads enrichment data (if any)
+
+CSV import:
+
+Mapping works
+
+Deduplication works
+
+Errors logged
+
+AI prospecting:
+
+Real query logic OR
+
+Clearly mocked (mark NOT BUILT)
+
+Scoring logic:
+
+Computed server-side OR
+
+Static placeholder
+
+🔹 Module 5: Inbox & Reply Handling (FR-U16 → FR-U19)
+
+Verify:
+
+Unified inbox backed by real replies table
+
+Reply classification actually runs
+
+Campaign auto-pause on reply works
+
+Reply composer sends messages
+
+Conversation view shows real thread history
+
+Actions update backend state:
+
+Mark qualified
+
+Archive
+
+Snooze
+
+Notes
+
+🔹 Module 6: Meeting Booking (FR-U20)
+
+Verify:
+
+Meeting link insertion works
+
+Booking updates prospect status
+
+Meeting record stored
+
+Reminders exist OR explicitly absent
+
+No-show logic real or placeholder
+
+If calendar is fake → mark PARTIAL / NOT BUILT
+
+🔹 Module 7: Performance Tracking (FR-U21 → FR-U25)
+
+Verify:
+
+Dashboard metrics computed from events
+
+Activity tracking auto-logs (not manual)
+
+Quota logic exists
+
+Leaderboard real vs mock
+
+Time filters work
+
+🔹 Module 8: Learning & Optimization (FR-U26 → FR-U29)
+
+Verify:
+
+AI coaching logic exists OR placeholder
+
+Campaign insights computed OR static
+
+A/B test winner logic real or UI-only
+
+Best practice library exists or not
+
+🔹 Module 9: Collaboration & Handoffs (FR-U30 → FR-U32)
+
+Verify:
+
+Campaign approval flow exists
+
+Manager feedback persists
+
+SQL handoff creates record
+
+AE assignment stored
+
+Notes visible cross-role (if intended)
+
+🔹 Module 10: UI, UX & Mobile Readiness
+
+Verify:
+
+Dashboard widgets wired to backend
+
+Campaign builder wizard usable end-to-end
+
+Inbox UX functional
+
+Responsive layouts exist
+
+No dead buttons / fake charts
+
+📊 REQUIRED OUTPUT FORMAT
+1️⃣ Module Summary Table
+Module	Area	Status	Confidence
+1	User Access & Isolation	BUILT	High
+2	Campaigns	PARTIAL	Medium
+…	…	…	…
+2️⃣ P0 Feature Verdicts
+
+List all P0 features as:
+
+✅ BUILT
+
+⚠️ PARTIAL
+
+❌ NOT BUILT
+With 1-line reason each
+
+3️⃣ Critical Risks (User Role)
+
+Call out anything that:
+
+Breaks data isolation
+
+Allows users to see others’ data
+
+Is frontend-only enforcement
+
+Would fail real SDR usage
+
+4️⃣ Workflow Reality Check
+
+For these workflows, state YES / PARTIAL / NO:
+
+Daily SDR workflow
+
+Campaign creation flow
+
+Reply handling flow
+
+Meeting booking flow
+
+Explain blockers.
+
+5️⃣ Final Verdict
+
+Choose ONE:
+
+❌ Demo / Prototype only
+
+⚠️ Internal beta (unsafe for customers)
+
+✅ Usable for real SDRs (with notes)
+
+Justify clearly.
+
+6️⃣ Top 7 Fixes to Make User Role Production-Ready
+
+Rank by:
+
+User pain
+
+Revenue impact
+
+Engineering effort
+
+🚫 Important Instructions
+
+Do NOT add new features
+
+Do NOT refactor unless blocking
+
+Do NOT beautify UI
+
+Focus only on what exists vs what doesn’t
+
+Begin audit now by scanning:
+
+Routes
+
+Controllers
+
+DB schema
+
+Event logs
+
+UI wiring
+
+Middleware
+
+Return only the audit report.
