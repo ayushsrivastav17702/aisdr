@@ -205,21 +205,46 @@ interface Leaderboard {
 }
 
 export default function ManagerDashboard() {
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   const [searchQuery, setSearchQuery] = useState("");
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [newUser, setNewUser] = useState({ email: "", firstName: "", lastName: "", role: "user" });
-  const [activeTab, setActiveTab] = useState("team");
   const [campaignFilter, setCampaignFilter] = useState<string>("all");
   const [selectedPeriod, setSelectedPeriod] = useState("30d");
-  const [leaderboardPeriod, setLeaderboardPeriod] = useState("30d");
-  const [leaderboardSort, setLeaderboardSort] = useState("emails");
   const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; type: string; userId?: string; campaignId?: string }>({ open: false, type: "" });
   const [performanceModal, setPerformanceModal] = useState<{ open: boolean; userId?: string }>({ open: false });
   const [reassignModal, setReassignModal] = useState<{ open: boolean; campaignId?: string; campaignName?: string }>({ open: false });
   const [selectedNewOwner, setSelectedNewOwner] = useState<string>("");
   const { toast } = useToast();
   const { user } = useAuth();
+
+  // Parse tab from URL query parameter
+  const getTabFromUrl = () => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const tab = urlParams.get('tab');
+    // Valid tabs per Manager PRD: overview (default), team, campaigns, performance, settings
+    if (tab && ['team', 'campaigns', 'performance', 'settings'].includes(tab)) {
+      return tab;
+    }
+    return 'overview'; // Default to Team Dashboard overview
+  };
+
+  const [activeTab, setActiveTab] = useState(getTabFromUrl);
+
+  // Sync tab with URL changes
+  useEffect(() => {
+    setActiveTab(getTabFromUrl());
+  }, [location]);
+
+  // Update URL when tab changes
+  const handleTabChange = (tab: string) => {
+    setActiveTab(tab);
+    if (tab === 'overview') {
+      setLocation('/manager/dashboard');
+    } else {
+      setLocation(`/manager/dashboard?tab=${tab}`);
+    }
+  };
 
   // Queries
   const { data: teamMembers = [], isLoading: teamLoading } = useQuery<TeamMember[]>({
@@ -263,13 +288,6 @@ export default function ManagerDashboard() {
     staleTime: 0,
   });
 
-  const { data: leaderboard, isLoading: leaderboardLoading } = useQuery<Leaderboard>({
-    queryKey: ["/api/manager/team/leaderboard", leaderboardPeriod, leaderboardSort],
-    queryFn: async () => {
-      const res = await apiRequest("GET", `/api/manager/team/leaderboard?period=${leaderboardPeriod}&sortBy=${leaderboardSort}`);
-      return res.json();
-    },
-  });
 
   // Mutations
   const createUserMutation = useMutation({
@@ -504,59 +522,104 @@ export default function ManagerDashboard() {
               </div>
             </CardContent>
           </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                <HardDrive className="w-4 h-4" />
-                Mailboxes
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold" data-testid="stat-mailboxes">
-                {resources?.totals?.totalActiveMailboxes || 0}
-              </div>
-              <p className="text-xs text-muted-foreground">of {resources?.totals?.totalMailboxes || 0}</p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                <FileText className="w-4 h-4" />
-                Total Prospects
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold" data-testid="stat-prospects">
-                {resources?.totals?.totalProspects?.toLocaleString() || "0"}
-              </div>
-            </CardContent>
-          </Card>
         </div>
 
-        {/* Main Tabs */}
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+        {/* Main Tabs - STRICT per Manager PRD */}
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-4">
           <TabsList>
+            <TabsTrigger value="overview" data-testid="tab-overview">
+              <BarChart3 className="w-4 h-4 mr-2" />
+              Team Dashboard
+            </TabsTrigger>
             <TabsTrigger value="team" data-testid="tab-team">
               <Users className="w-4 h-4 mr-2" />
-              Team
+              Team Members
             </TabsTrigger>
             <TabsTrigger value="campaigns" data-testid="tab-campaigns">
               <Target className="w-4 h-4 mr-2" />
               Campaigns
             </TabsTrigger>
-            <TabsTrigger value="analytics" data-testid="tab-analytics">
-              <BarChart3 className="w-4 h-4 mr-2" />
-              Analytics
+            <TabsTrigger value="performance" data-testid="tab-performance">
+              <TrendingUp className="w-4 h-4 mr-2" />
+              Performance
             </TabsTrigger>
-            <TabsTrigger value="leaderboard" data-testid="tab-leaderboard">
-              <Trophy className="w-4 h-4 mr-2" />
-              Leaderboard
-            </TabsTrigger>
-            <TabsTrigger value="resources" data-testid="tab-resources">
+            <TabsTrigger value="settings" data-testid="tab-settings">
               <Settings className="w-4 h-4 mr-2" />
-              Resources
+              Settings
             </TabsTrigger>
           </TabsList>
+
+          {/* Overview Tab - Team Dashboard per Manager PRD */}
+          <TabsContent value="overview" className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                    <Users className="w-4 h-4" />
+                    Total Active Users
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold" data-testid="overview-active-users">
+                    {stats?.activeUsers || 0}
+                  </div>
+                  <p className="text-xs text-muted-foreground">of {stats?.totalUsers || 0} total</p>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                    <Target className="w-4 h-4" />
+                    Active Campaigns
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold" data-testid="overview-active-campaigns">
+                    {stats?.activeCampaigns || 0}
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                    <Mail className="w-4 h-4" />
+                    Emails Sent (Team)
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold" data-testid="overview-emails-sent">
+                    {stats?.totalEmailsSent?.toLocaleString() || 0}
+                  </div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-2">
+                    <MessageSquare className="w-4 h-4" />
+                    Replies (Team)
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold" data-testid="overview-replies">
+                    {analytics?.emailStats?.replied || 0}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {stats?.replyRate || 0}% reply rate
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Read-only notice */}
+            <Card className="border-dashed">
+              <CardContent className="py-6 text-center text-muted-foreground">
+                <BarChart3 className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                <p className="text-sm">
+                  This is a read-only dashboard. Use the tabs above to view team members, campaigns, and performance details.
+                </p>
+              </CardContent>
+            </Card>
+          </TabsContent>
 
           {/* Team Tab */}
           <TabsContent value="team" className="space-y-4">
@@ -876,10 +939,10 @@ export default function ManagerDashboard() {
             </Card>
           </TabsContent>
 
-          {/* Analytics Tab */}
-          <TabsContent value="analytics" className="space-y-4">
+          {/* Performance Tab - Team-level performance per Manager PRD */}
+          <TabsContent value="performance" className="space-y-4">
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold">Team Analytics</h2>
+              <h2 className="text-lg font-semibold">Team Performance</h2>
               <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
                 <SelectTrigger className="w-[150px]" data-testid="select-period">
                   <SelectValue />
@@ -993,193 +1056,44 @@ export default function ManagerDashboard() {
             </div>
           </TabsContent>
 
-          {/* Leaderboard Tab */}
-          <TabsContent value="leaderboard" className="space-y-4">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold flex items-center gap-2">
-                <Trophy className="w-5 h-5 text-yellow-500" />
-                Team Leaderboard
-              </h2>
-              <div className="flex items-center gap-2">
-                <Select value={leaderboardPeriod} onValueChange={setLeaderboardPeriod}>
-                  <SelectTrigger className="w-[140px]" data-testid="select-leaderboard-period">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="7d">Last 7 days</SelectItem>
-                    <SelectItem value="30d">Last 30 days</SelectItem>
-                    <SelectItem value="90d">Last 90 days</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Select value={leaderboardSort} onValueChange={setLeaderboardSort}>
-                  <SelectTrigger className="w-[160px]" data-testid="select-leaderboard-sort">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="emails">By Emails Sent</SelectItem>
-                    <SelectItem value="replies">By Replies</SelectItem>
-                    <SelectItem value="positiveReplies">By Positive Replies</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            <Card>
-              <CardContent className="pt-6">
-                {leaderboardLoading ? (
-                  <div className="text-center py-12 text-muted-foreground">Loading leaderboard...</div>
-                ) : !leaderboard?.leaderboard || leaderboard.leaderboard.length === 0 ? (
-                  <div className="text-center py-12">
-                    <Trophy className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-                    <h3 className="text-lg font-medium mb-2">No Activity Yet</h3>
-                    <p className="text-muted-foreground">Your team hasn't sent any emails during this period</p>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {leaderboard.leaderboard.map((entry, index) => (
-                      <div 
-                        key={entry.id} 
-                        className={`flex items-center justify-between p-4 rounded-lg ${
-                          index === 0 ? "bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800" :
-                          index === 1 ? "bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700" :
-                          index === 2 ? "bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800" :
-                          "bg-muted/30 border"
-                        }`}
-                        data-testid={`leaderboard-entry-${entry.id}`}
-                      >
-                        <div className="flex items-center gap-4">
-                          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold ${
-                            index === 0 ? "bg-yellow-500 text-white" :
-                            index === 1 ? "bg-gray-400 text-white" :
-                            index === 2 ? "bg-orange-500 text-white" :
-                            "bg-muted text-muted-foreground"
-                          }`}>
-                            {entry.rank}
-                          </div>
-                          <div>
-                            <p className="font-medium">{entry.name || entry.email}</p>
-                            <p className="text-sm text-muted-foreground">{entry.email}</p>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-6">
-                          <div className="text-right">
-                            <p className="text-2xl font-bold">{entry.emailsSent}</p>
-                            <p className="text-xs text-muted-foreground">Emails</p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-xl font-semibold">{entry.replies}</p>
-                            <p className="text-xs text-muted-foreground">Replies</p>
-                          </div>
-                          <div className="text-right">
-                            <p className="text-xl font-semibold text-green-600">{entry.positiveReplies}</p>
-                            <p className="text-xs text-muted-foreground">Positive</p>
-                          </div>
-                          <div className="text-right min-w-[60px]">
-                            <p className="text-lg font-semibold">{entry.replyRate}%</p>
-                            <p className="text-xs text-muted-foreground">Rate</p>
-                          </div>
-                          <Button 
-                            variant="outline" 
-                            size="sm"
-                            onClick={() => setPerformanceModal({ open: true, userId: entry.id })}
-                            data-testid={`btn-view-performance-${entry.id}`}
-                          >
-                            View Details
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            {leaderboard?.leaderboard && leaderboard.leaderboard.length > 0 && (
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm">Total Team Emails</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">
-                      {leaderboard.leaderboard.reduce((sum, e) => sum + (e.emailsSent || 0), 0).toLocaleString()}
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm">Total Replies</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">
-                      {leaderboard.leaderboard.reduce((sum, e) => sum + (e.replies || 0), 0)}
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm">Positive Replies</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold text-green-600">
-                      {leaderboard.leaderboard.reduce((sum, e) => sum + (e.positiveReplies || 0), 0)}
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader className="pb-2">
-                    <CardTitle className="text-sm">Team Avg Reply Rate</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-2xl font-bold">
-                      {leaderboard.leaderboard.length > 0 
-                        ? Math.round(leaderboard.leaderboard.reduce((sum, e) => sum + (e.replyRate || 0), 0) / leaderboard.leaderboard.length)
-                        : 0}%
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-            )}
-          </TabsContent>
-
-          {/* Resources Tab */}
-          <TabsContent value="resources" className="space-y-4">
+          {/* Settings Tab - Read-only org info per Manager PRD */}
+          <TabsContent value="settings" className="space-y-4">
             <Card>
               <CardHeader>
-                <CardTitle>Resource Allocation</CardTitle>
-                <CardDescription>View and manage mailbox and prospect allocation across your team</CardDescription>
+                <CardTitle>Organization Settings</CardTitle>
+                <CardDescription>View your organization information (read-only)</CardDescription>
               </CardHeader>
-              <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Team Member</TableHead>
-                      <TableHead>Email</TableHead>
-                      <TableHead>Active Mailboxes</TableHead>
-                      <TableHead>Total Mailboxes</TableHead>
-                      <TableHead>Prospects</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {resources?.teamResources?.map((member) => (
-                      <TableRow key={member.id} data-testid={`row-resource-${member.id}`}>
-                        <TableCell className="font-medium">
-                          {member.firstName && member.lastName
-                            ? `${member.firstName} ${member.lastName}`
-                            : member.email}
-                        </TableCell>
-                        <TableCell>{member.email}</TableCell>
-                        <TableCell>
-                          <Badge variant={member.activeMailboxes > 0 ? "default" : "secondary"}>
-                            {member.activeMailboxes}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>{member.mailboxes || 0}</TableCell>
-                        <TableCell>{(member.prospects || 0).toLocaleString()}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+              <CardContent className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <Label className="text-muted-foreground">Organization Name</Label>
+                    <p className="text-lg font-medium" data-testid="org-name">
+                      Your Organization
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-muted-foreground">Current Plan</Label>
+                    <p className="text-lg font-medium" data-testid="org-plan">Professional</p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-muted-foreground">Seat Usage</Label>
+                    <div className="flex items-center gap-2">
+                      <p className="text-lg font-medium" data-testid="seat-usage">
+                        {stats?.activeUsers || 0} / {stats?.totalUsers || 0} seats
+                      </p>
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-muted-foreground">Your Role</Label>
+                    <Badge variant="secondary" data-testid="user-role">Manager</Badge>
+                  </div>
+                </div>
+
+                <div className="pt-4 border-t">
+                  <p className="text-sm text-muted-foreground">
+                    For billing, integrations, API keys, or other administrative changes, please contact your system administrator.
+                  </p>
+                </div>
               </CardContent>
             </Card>
           </TabsContent>

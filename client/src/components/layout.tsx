@@ -26,7 +26,8 @@ import {
   ChevronRight,
   ChevronLeft,
   Users2,
-  Home
+  Home,
+  TrendingUp
 } from 'lucide-react';
 
 interface LayoutProps {
@@ -97,15 +98,13 @@ export function Layout({ children }: LayoutProps) {
   const pageTitle = getPageTitle(location);
 
   // Manager-specific navigation (shown only to managers)
-  // All manager routes should point to manager dashboard with appropriate tabs
+  // STRICT: Only these 5 items per Manager PRD - no Organization, Workspaces, or SDR features
   const managerNavItems: NavItem[] = [
-    { href: '/manager/dashboard', icon: <Home className="w-4 h-4" />, label: 'Dashboard', requireManager: true },
-    { href: '/manager/dashboard?tab=team', icon: <Users2 className="w-4 h-4" />, label: 'Team Management', requireManager: true },
+    { href: '/manager/dashboard', icon: <BarChart3Icon className="w-4 h-4" />, label: 'Team Dashboard', requireManager: true },
+    { href: '/manager/dashboard?tab=team', icon: <Users2 className="w-4 h-4" />, label: 'Team Members', requireManager: true },
     { href: '/manager/dashboard?tab=campaigns', icon: <ListTodo className="w-4 h-4" />, label: 'Campaigns', requireManager: true },
-    { href: '/manager/dashboard?tab=analytics', icon: <BarChart3Icon className="w-4 h-4" />, label: 'Analytics', requireManager: true },
-    { href: '/organization-settings', icon: <Building2 className="w-4 h-4" />, label: 'Organization', requireManager: true },
-    { href: '/workspace-management', icon: <FolderTree className="w-4 h-4" />, label: 'Workspaces', requireManager: true },
-    { href: '/settings', icon: <SettingsIcon className="w-4 h-4" />, label: 'Settings', requireManager: true },
+    { href: '/manager/dashboard?tab=performance', icon: <TrendingUp className="w-4 h-4" />, label: 'Performance', requireManager: true },
+    { href: '/manager/dashboard?tab=settings', icon: <SettingsIcon className="w-4 h-4" />, label: 'Settings', requireManager: true },
   ];
 
   // Regular user navigation (SDR platform)
