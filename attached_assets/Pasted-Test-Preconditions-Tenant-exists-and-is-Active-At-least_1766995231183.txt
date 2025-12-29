@@ -1,0 +1,165 @@
+Test Preconditions
+
+Tenant exists and is Active
+
+At least:
+
+1 Manager user
+
+1–2 User-role accounts
+
+1 Active campaign (created by User)
+
+Manager account credentials available
+
+1️⃣ Authentication & Role Verification
+Check	Expected Result
+Login using Manager credentials	Login successful
+Role badge shows Manager	Visible in header
+Direct access to /user/* routes	❌ Access denied
+Direct access to /admin/* routes	❌ Access denied
+Refresh session	Role preserved
+2️⃣ Sidebar Navigation Validation (CRITICAL)
+Sidebar MUST contain ONLY:
+
+Team Dashboard
+
+Team Members
+
+Campaigns
+
+Performance
+
+Settings
+
+Menu Item	Visible?
+AI Search	❌
+Prospects	❌
+Import	❌
+Sequences	❌
+Automation	❌
+Mailboxes	❌
+Content	❌
+Enrichment	❌
+Leaderboard	❌
+Best Practices	❌
+AE Handoff	❌
+API Docs	❌
+AI Prospecting	❌
+
+FAIL IF ANY USER-ONLY MODULE APPEARS
+
+3️⃣ Team Dashboard (FR-M1)
+Check	Expected Result
+Dashboard loads	✅
+Total users shown	Correct
+Active campaigns shown	Correct
+Emails sent (team)	Correct
+Replies (team)	Correct
+Clicking any metric	❌ No inbox / prospect drill-down
+4️⃣ Team Members (FR-M0, FR-M0a)
+Visibility
+Check	Expected
+All users visible	✅
+Roles visible	✅
+Status (Active/Disabled)	✅
+Actions
+Action	Allowed?
+Create user	✅
+Edit user	✅
+Disable user	✅
+Enable user	✅
+Reset password	✅
+Assign mailbox	❌
+View inbox	❌
+Send email as user	❌
+5️⃣ Campaign Portfolio (FR-M7)
+Check	Expected
+All campaigns visible	✅
+Campaign owner visible	✅
+Status visible	✅
+Sent / Replies visible	✅
+Restrictions
+Action	Expected
+Edit campaign	❌
+Edit sequence	❌
+Add prospects	❌
+Launch campaign	❌
+Pause campaign	❌ (unless explicitly allowed)
+6️⃣ Performance Screen (FR-M8, FR-M15)
+Check	Expected
+Team-level stats load	✅
+Campaign performance visible	✅
+User performance summary	✅
+Individual inbox access	❌
+Message content view	❌
+Reply handling	❌
+7️⃣ Settings (Limited Access)
+Setting	Access
+Organization name	View only
+Plan details	View only
+Seat usage	View only
+Billing	❌
+Integrations	❌
+API keys	❌
+Mailboxes	❌
+Feature flags	❌
+8️⃣ Execution Capability Tests (NEGATIVE TESTS)
+
+Manager MUST NOT be able to:
+
+Action	Expected
+Create campaign	❌
+Create sequence	❌
+Import prospects	❌
+Search prospects	❌
+Connect mailbox	❌
+Send email	❌
+View unified inbox	❌
+Reply to prospect	❌
+
+Attempt via:
+
+UI
+
+Direct URL
+
+API call (if possible)
+
+Any success = SEV-1 BUG
+
+9️⃣ Route Guard Validation (CRITICAL)
+
+Manually hit routes:
+
+/prospects
+/import
+/sequences
+/automation
+/mailboxes
+/inbox
+/ai-prospecting
+
+Result
+403 / Access denied OR redirect
+🔥 Severity Classification
+Issue	Severity
+User module visible	SEV-1
+Manager can send emails	SEV-1
+Manager can create campaigns	SEV-1
+Analytics incorrect	SEV-2
+UI text mismatch	SEV-3
+✅ PASS CRITERIA
+
+Manager login is VALID only if:
+
+No execution features visible
+
+No user-level routes accessible
+
+Only oversight + user admin allowed
+
+Final Note (Important)
+
+If even one of these fails,
+RBAC is broken — not cosmetic.
