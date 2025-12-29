@@ -1,0 +1,186 @@
+RBAC MIDDLEWARE RULES (SOURCE OF TRUTH)
+A. ROLE DEFINITIONS
+ROLE_SUPER_ADMIN = "SUPER_ADMIN"
+ROLE_MANAGER     = "MANAGER"
+ROLE_USER        = "USER"
+
+B. PERMISSION GROUPS (PRD-ALIGNED)
+🔹 CAMPAIGNS
+CAMPAIGN_CREATE
+CAMPAIGN_EDIT_OWN
+CAMPAIGN_VIEW_OWN
+CAMPAIGN_VIEW_TEAM
+CAMPAIGN_ANALYTICS_BASIC
+CAMPAIGN_ANALYTICS_TEAM
+
+🔹 PROSPECTS
+PROSPECT_VIEW_OWN
+PROSPECT_IMPORT
+PROSPECT_AI_SUGGEST
+
+🔹 USERS & TEAMS
+USER_CREATE
+USER_UPDATE
+USER_DISABLE
+USER_VIEW_TEAM
+
+🔹 TENANT / SYSTEM
+TENANT_CREATE
+TENANT_CONFIGURE
+TENANT_SUSPEND
+TENANT_BILLING_VIEW
+AUDIT_LOG_VIEW
+
+C. ROLE → PERMISSION MAPPING (HARD RULES)
+const RBAC_MATRIX = {
+  USER: [
+    CAMPAIGN_CREATE,
+    CAMPAIGN_EDIT_OWN,
+    CAMPAIGN_VIEW_OWN,
+    CAMPAIGN_ANALYTICS_BASIC,
+    PROSPECT_VIEW_OWN,
+    PROSPECT_IMPORT,
+    PROSPECT_AI_SUGGEST
+  ],
+
+  MANAGER: [
+    CAMPAIGN_VIEW_TEAM,
+    CAMPAIGN_ANALYTICS_TEAM,
+    USER_CREATE,
+    USER_UPDATE,
+    USER_DISABLE,
+    USER_VIEW_TEAM
+  ],
+
+  SUPER_ADMIN: [
+    TENANT_CREATE,
+    TENANT_CONFIGURE,
+    TENANT_SUSPEND,
+    TENANT_BILLING_VIEW,
+    USER_CREATE,
+    USER_UPDATE,
+    USER_DISABLE,
+    AUDIT_LOG_VIEW
+  ]
+}
+
+
+🚫 Important
+
+Managers do NOT inherit User permissions
+
+Super Admin does NOT inherit campaign/prospect permissions
+
+D. BACKEND RBAC MIDDLEWARE (EXPRESS / FASTIFY STYLE)
+function rbac(requiredPermission) {
+  return (req, res, next) => {
+    const role = req.user.role
+
+    if (!RBAC_MATRIX[role]?.includes(requiredPermission)) {
+      return res.status(403).json({
+        error: "FORBIDDEN",
+        message: "Insufficient permissions"
+      })
+    }
+
+    next()
+  }
+}
+
+E. OWNERSHIP CHECK (CRITICAL)
+function requireOwnership(resourceGetter) {
+  return async (req, res, next) => {
+    const resource = await resourceGetter(req)
+
+    if (resource.ownerId !== req.user.id) {
+      return res.status(403).json({ error: "NOT_OWNER" })
+    }
+
+    next()
+  }
+}
+
+
+✅ Used for
+
+Campaign edit
+
+Prospect access
+
+Message actions
+
+F. EXAMPLE ROUTE ENFORCEMENT
+POST /campaigns
+rbac(CAMPAIGN_CREATE)
+
+PUT /campaigns/:id
+rbac(CAMPAIGN_EDIT_OWN),
+requireOwnership(getCampaign)
+
+GET /team/campaigns
+rbac(CAMPAIGN_VIEW_TEAM)
+
+POST /users
+rbac(USER_CREATE)
+
+POST /tenants
+rbac(TENANT_CREATE)
+
+2️⃣ UI VISIBILITY MATRIX (WHAT EACH ROLE SEES)
+
+This is what frontend must strictly follow.
+
+A. SIDEBAR / NAVIGATION
+Module	User	Manager	Super Admin
+My Campaigns	✅	❌	❌
+Campaign Analytics	✅ (Basic)	❌	❌
+Prospects	✅	❌	❌
+Team Dashboard	❌	✅	❌
+Team Members	❌	✅	❌
+Campaign Portfolio	❌	✅	❌
+Tenant Dashboard	❌	❌	✅
+Tenant Settings	❌	❌	✅
+Billing	❌	❌	✅
+Audit Logs	❌	❌	✅
+B. CAMPAIGN SCREENS
+Feature	User	Manager	Super Admin
+Create Campaign	✅	❌	❌
+Edit Campaign	✅ (Own only)	❌	❌
+View Own Campaign	✅	❌	❌
+View Team Campaigns	❌	✅ (Read-only)	❌
+Approve Campaign	❌	❌	❌
+C. PROSPECT MODULE
+Feature	User	Manager	Super Admin
+View Prospects	✅ (Own)	❌	❌
+Import Prospects	✅	❌	❌
+AI Prospecting	✅	❌	❌
+Prospect Scoring	❌	❌	❌
+D. USER MANAGEMENT
+Feature	User	Manager	Super Admin
+Create User	❌	✅	✅
+Disable User	❌	✅	✅
+Assign Roles	❌	❌	✅
+View All Users	❌	Team only	Global
+E. TENANT & SYSTEM
+Feature	User	Manager	Super Admin
+Create Tenant	❌	❌	✅
+Suspend Tenant	❌	❌	✅
+View Billing	❌	❌	✅ (Partial)
+Audit Logs	❌	❌	✅ (Partial)
+3️⃣ NON-NEGOTIABLE VALIDATION RULES
+
+🔥 Must Fail If
+
+Manager sees “Create Campaign”
+
+User sees “Team Dashboard”
+
+Manager sees “Billing”
+
+Super Admin sees “Campaigns”
+
+🔥 Backend must return
+
+403 even if UI is manipulated
+
+Never rely on frontend hiding alone
