@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation, Link } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -68,7 +68,10 @@ import {
   HardDrive,
   MessageSquare,
   FileText,
-  Settings
+  Settings,
+  Trophy,
+  ArrowRightLeft,
+  X
 } from "lucide-react";
 
 interface TeamMember {
@@ -153,6 +156,54 @@ interface ResourceAllocation {
   };
 }
 
+interface UserPerformance {
+  user: {
+    id: string;
+    email: string;
+    name: string;
+    role: string;
+    status: string;
+    lastLogin: string | null;
+    createdAt: string;
+  };
+  period: string;
+  performance: {
+    emailsSent: number;
+    replies: number;
+    positiveReplies: number;
+    replyRate: number;
+    totalCampaigns: number;
+    activeCampaigns: number;
+  };
+  resources: {
+    totalMailboxes: number;
+    activeMailboxes: number;
+    totalProspects: number;
+  };
+  recentCampaigns: Array<{
+    id: string;
+    name: string;
+    status: string;
+    totalProspects: number;
+    createdAt: string;
+  }>;
+}
+
+interface Leaderboard {
+  leaderboard: Array<{
+    id: string;
+    email: string;
+    name: string;
+    emailsSent: number;
+    replies: number;
+    positiveReplies: number;
+    replyRate: number;
+    rank: number;
+  }>;
+  period: string;
+  sortBy: string;
+}
+
 export default function ManagerDashboard() {
   const [, setLocation] = useLocation();
   const [searchQuery, setSearchQuery] = useState("");
@@ -161,7 +212,12 @@ export default function ManagerDashboard() {
   const [activeTab, setActiveTab] = useState("team");
   const [campaignFilter, setCampaignFilter] = useState<string>("all");
   const [selectedPeriod, setSelectedPeriod] = useState("30d");
+  const [leaderboardPeriod, setLeaderboardPeriod] = useState("30d");
+  const [leaderboardSort, setLeaderboardSort] = useState("emails");
   const [confirmDialog, setConfirmDialog] = useState<{ open: boolean; type: string; userId?: string; campaignId?: string }>({ open: false, type: "" });
+  const [performanceModal, setPerformanceModal] = useState<{ open: boolean; userId?: string }>({ open: false });
+  const [reassignModal, setReassignModal] = useState<{ open: boolean; campaignId?: string; campaignName?: string }>({ open: false });
+  const [selectedNewOwner, setSelectedNewOwner] = useState<string>("");
   const { toast } = useToast();
   const { user } = useAuth();
 
@@ -180,7 +236,7 @@ export default function ManagerDashboard() {
       const url = campaignFilter === "all" 
         ? "/api/manager/campaigns" 
         : `/api/manager/campaigns?status=${campaignFilter}`;
-      const res = await fetch(url, { credentials: "include" });
+      const res = await apiRequest("GET", url);
       return res.json();
     },
   });
@@ -188,13 +244,31 @@ export default function ManagerDashboard() {
   const { data: analytics } = useQuery<Analytics>({
     queryKey: ["/api/manager/analytics", selectedPeriod],
     queryFn: async () => {
-      const res = await fetch(`/api/manager/analytics?period=${selectedPeriod}`, { credentials: "include" });
+      const res = await apiRequest("GET", `/api/manager/analytics?period=${selectedPeriod}`);
       return res.json();
     },
   });
 
   const { data: resources } = useQuery<ResourceAllocation>({
     queryKey: ["/api/manager/resources"],
+  });
+
+  const { data: userPerformance, isLoading: performanceLoading, refetch: refetchPerformance } = useQuery<UserPerformance>({
+    queryKey: ["/api/manager/users", performanceModal.userId, "performance", selectedPeriod],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/manager/users/${performanceModal.userId}/performance?period=${selectedPeriod}`);
+      return res.json();
+    },
+    enabled: !!performanceModal.userId && performanceModal.open,
+    staleTime: 0,
+  });
+
+  const { data: leaderboard, isLoading: leaderboardLoading } = useQuery<Leaderboard>({
+    queryKey: ["/api/manager/team/leaderboard", leaderboardPeriod, leaderboardSort],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/manager/team/leaderboard?period=${leaderboardPeriod}&sortBy=${leaderboardSort}`);
+      return res.json();
+    },
   });
 
   // Mutations
@@ -279,6 +353,28 @@ export default function ManagerDashboard() {
       toast({ title: "Error", description: error.message, variant: "destructive" });
     },
   });
+
+  const reassignCampaignMutation = useMutation({
+    mutationFn: async ({ campaignId, newUserId }: { campaignId: string; newUserId: string }) => {
+      return await apiRequest("POST", `/api/manager/campaigns/${campaignId}/reassign`, { newUserId });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/manager/campaigns"] });
+      setReassignModal({ open: false });
+      setSelectedNewOwner("");
+      toast({ title: "Campaign reassigned", description: "The campaign has been reassigned to the new owner." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  // Refetch performance data when modal opens with a different user
+  useEffect(() => {
+    if (performanceModal.open && performanceModal.userId) {
+      refetchPerformance();
+    }
+  }, [performanceModal.open, performanceModal.userId]);
 
   const filteredMembers = teamMembers.filter(member =>
     member.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -452,6 +548,10 @@ export default function ManagerDashboard() {
               <BarChart3 className="w-4 h-4 mr-2" />
               Analytics
             </TabsTrigger>
+            <TabsTrigger value="leaderboard" data-testid="tab-leaderboard">
+              <Trophy className="w-4 h-4 mr-2" />
+              Leaderboard
+            </TabsTrigger>
             <TabsTrigger value="resources" data-testid="tab-resources">
               <Settings className="w-4 h-4 mr-2" />
               Resources
@@ -624,6 +724,7 @@ export default function ManagerDashboard() {
                                 </DropdownMenuItem>
                                 <DropdownMenuItem 
                                   data-testid={`action-performance-${member.id}`}
+                                  onClick={() => setPerformanceModal({ open: true, userId: member.id })}
                                 >
                                   <BarChart3 className="w-4 h-4 mr-2" />
                                   View Performance
@@ -755,6 +856,14 @@ export default function ManagerDashboard() {
                                     Resume Campaign
                                   </DropdownMenuItem>
                                 )}
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem 
+                                  onClick={() => setReassignModal({ open: true, campaignId: campaign.id, campaignName: campaign.name })}
+                                  data-testid={`action-reassign-${campaign.id}`}
+                                >
+                                  <ArrowRightLeft className="w-4 h-4 mr-2" />
+                                  Reassign Campaign
+                                </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
                           </TableCell>
@@ -884,6 +993,155 @@ export default function ManagerDashboard() {
             </div>
           </TabsContent>
 
+          {/* Leaderboard Tab */}
+          <TabsContent value="leaderboard" className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold flex items-center gap-2">
+                <Trophy className="w-5 h-5 text-yellow-500" />
+                Team Leaderboard
+              </h2>
+              <div className="flex items-center gap-2">
+                <Select value={leaderboardPeriod} onValueChange={setLeaderboardPeriod}>
+                  <SelectTrigger className="w-[140px]" data-testid="select-leaderboard-period">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="7d">Last 7 days</SelectItem>
+                    <SelectItem value="30d">Last 30 days</SelectItem>
+                    <SelectItem value="90d">Last 90 days</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select value={leaderboardSort} onValueChange={setLeaderboardSort}>
+                  <SelectTrigger className="w-[160px]" data-testid="select-leaderboard-sort">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="emails">By Emails Sent</SelectItem>
+                    <SelectItem value="replies">By Replies</SelectItem>
+                    <SelectItem value="positiveReplies">By Positive Replies</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            <Card>
+              <CardContent className="pt-6">
+                {leaderboardLoading ? (
+                  <div className="text-center py-12 text-muted-foreground">Loading leaderboard...</div>
+                ) : !leaderboard?.leaderboard || leaderboard.leaderboard.length === 0 ? (
+                  <div className="text-center py-12">
+                    <Trophy className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                    <h3 className="text-lg font-medium mb-2">No Activity Yet</h3>
+                    <p className="text-muted-foreground">Your team hasn't sent any emails during this period</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {leaderboard.leaderboard.map((entry, index) => (
+                      <div 
+                        key={entry.id} 
+                        className={`flex items-center justify-between p-4 rounded-lg ${
+                          index === 0 ? "bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800" :
+                          index === 1 ? "bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700" :
+                          index === 2 ? "bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800" :
+                          "bg-muted/30 border"
+                        }`}
+                        data-testid={`leaderboard-entry-${entry.id}`}
+                      >
+                        <div className="flex items-center gap-4">
+                          <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg font-bold ${
+                            index === 0 ? "bg-yellow-500 text-white" :
+                            index === 1 ? "bg-gray-400 text-white" :
+                            index === 2 ? "bg-orange-500 text-white" :
+                            "bg-muted text-muted-foreground"
+                          }`}>
+                            {entry.rank}
+                          </div>
+                          <div>
+                            <p className="font-medium">{entry.name || entry.email}</p>
+                            <p className="text-sm text-muted-foreground">{entry.email}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-6">
+                          <div className="text-right">
+                            <p className="text-2xl font-bold">{entry.emailsSent}</p>
+                            <p className="text-xs text-muted-foreground">Emails</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xl font-semibold">{entry.replies}</p>
+                            <p className="text-xs text-muted-foreground">Replies</p>
+                          </div>
+                          <div className="text-right">
+                            <p className="text-xl font-semibold text-green-600">{entry.positiveReplies}</p>
+                            <p className="text-xs text-muted-foreground">Positive</p>
+                          </div>
+                          <div className="text-right min-w-[60px]">
+                            <p className="text-lg font-semibold">{entry.replyRate}%</p>
+                            <p className="text-xs text-muted-foreground">Rate</p>
+                          </div>
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            onClick={() => setPerformanceModal({ open: true, userId: entry.id })}
+                            data-testid={`btn-view-performance-${entry.id}`}
+                          >
+                            View Details
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            {leaderboard?.leaderboard && leaderboard.leaderboard.length > 0 && (
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm">Total Team Emails</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">
+                      {leaderboard.leaderboard.reduce((sum, e) => sum + (e.emailsSent || 0), 0).toLocaleString()}
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm">Total Replies</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">
+                      {leaderboard.leaderboard.reduce((sum, e) => sum + (e.replies || 0), 0)}
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm">Positive Replies</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold text-green-600">
+                      {leaderboard.leaderboard.reduce((sum, e) => sum + (e.positiveReplies || 0), 0)}
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm">Team Avg Reply Rate</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">
+                      {leaderboard.leaderboard.length > 0 
+                        ? Math.round(leaderboard.leaderboard.reduce((sum, e) => sum + (e.replyRate || 0), 0) / leaderboard.leaderboard.length)
+                        : 0}%
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+          </TabsContent>
+
           {/* Resources Tab */}
           <TabsContent value="resources" className="space-y-4">
             <Card>
@@ -916,8 +1174,8 @@ export default function ManagerDashboard() {
                             {member.activeMailboxes}
                           </Badge>
                         </TableCell>
-                        <TableCell>{member.mailboxes}</TableCell>
-                        <TableCell>{member.prospects.toLocaleString()}</TableCell>
+                        <TableCell>{member.mailboxes || 0}</TableCell>
+                        <TableCell>{(member.prospects || 0).toLocaleString()}</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -958,6 +1216,194 @@ export default function ManagerDashboard() {
                 {deleteUserMutation.isPending || resetPasswordMutation.isPending 
                   ? "Processing..." 
                   : confirmDialog.type === "delete" ? "Deactivate" : "Reset Password"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Performance Modal */}
+        <Dialog open={performanceModal.open} onOpenChange={(open) => setPerformanceModal({ ...performanceModal, open })}>
+          <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <BarChart3 className="w-5 h-5" />
+                Team Member Performance
+              </DialogTitle>
+              <DialogDescription>
+                Detailed performance metrics and campaign overview
+              </DialogDescription>
+            </DialogHeader>
+            {performanceLoading ? (
+              <div className="text-center py-8 text-muted-foreground">Loading performance data...</div>
+            ) : userPerformance ? (
+              <div className="space-y-6">
+                <div className="flex items-center justify-between border-b pb-4">
+                  <div>
+                    <h3 className="text-lg font-semibold">{userPerformance.user.name || userPerformance.user.email}</h3>
+                    <p className="text-sm text-muted-foreground">{userPerformance.user.email}</p>
+                    <div className="flex items-center gap-2 mt-2">
+                      <Badge variant={userPerformance.user.role === "admin" ? "default" : "secondary"}>
+                        {userPerformance.user.role === "admin" ? "Admin" : "User"}
+                      </Badge>
+                      <Badge variant={userPerformance.user.status === "active" ? "default" : "outline"}>
+                        {userPerformance.user.status}
+                      </Badge>
+                    </div>
+                  </div>
+                  <div className="text-right text-sm text-muted-foreground">
+                    <p>Last login: {userPerformance.user.lastLogin ? new Date(userPerformance.user.lastLogin).toLocaleDateString() : "Never"}</p>
+                    <p>Joined: {new Date(userPerformance.user.createdAt).toLocaleDateString()}</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <Card>
+                    <CardContent className="pt-4">
+                      <div className="text-2xl font-bold">{userPerformance.performance?.emailsSent || 0}</div>
+                      <p className="text-xs text-muted-foreground">Emails Sent</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-4">
+                      <div className="text-2xl font-bold">{userPerformance.performance?.replies || 0}</div>
+                      <p className="text-xs text-muted-foreground">Replies</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-4">
+                      <div className="text-2xl font-bold text-green-600">{userPerformance.performance?.positiveReplies || 0}</div>
+                      <p className="text-xs text-muted-foreground">Positive Replies</p>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="pt-4">
+                      <div className="text-2xl font-bold">{userPerformance.performance?.replyRate || 0}%</div>
+                      <p className="text-xs text-muted-foreground">Reply Rate</p>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm">Resources</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Active Mailboxes</span>
+                        <span className="font-medium">{userPerformance.resources?.activeMailboxes || 0} / {userPerformance.resources?.totalMailboxes || 0}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Total Prospects</span>
+                        <span className="font-medium">{(userPerformance.resources?.totalProspects || 0).toLocaleString()}</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="text-sm">Campaigns</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Active Campaigns</span>
+                        <span className="font-medium text-green-600">{userPerformance.performance?.activeCampaigns || 0}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Total Campaigns</span>
+                        <span className="font-medium">{userPerformance.performance?.totalCampaigns || 0}</span>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {(userPerformance.recentCampaigns?.length || 0) > 0 && (
+                  <div>
+                    <h4 className="font-medium mb-3">Recent Campaigns</h4>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Name</TableHead>
+                          <TableHead>Status</TableHead>
+                          <TableHead>Prospects</TableHead>
+                          <TableHead>Created</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {userPerformance.recentCampaigns.map((campaign) => (
+                          <TableRow key={campaign.id}>
+                            <TableCell className="font-medium">{campaign.name}</TableCell>
+                            <TableCell>
+                              <Badge variant={campaign.status === "active" ? "default" : "secondary"}>
+                                {campaign.status}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>{campaign.totalProspects}</TableCell>
+                            <TableCell>{new Date(campaign.createdAt).toLocaleDateString()}</TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-muted-foreground">No performance data available</div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setPerformanceModal({ open: false })}>
+                Close
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Campaign Reassign Modal */}
+        <Dialog open={reassignModal.open} onOpenChange={(open) => setReassignModal({ ...reassignModal, open })}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <ArrowRightLeft className="w-5 h-5" />
+                Reassign Campaign
+              </DialogTitle>
+              <DialogDescription>
+                Transfer "{reassignModal.campaignName}" to another team member
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label>Select New Owner</Label>
+                <Select value={selectedNewOwner} onValueChange={setSelectedNewOwner}>
+                  <SelectTrigger data-testid="select-new-owner">
+                    <SelectValue placeholder="Choose a team member" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {teamMembers
+                      .filter(m => m.isActive && m.status === "active")
+                      .map((member) => (
+                        <SelectItem key={member.id} value={member.id}>
+                          {member.firstName && member.lastName 
+                            ? `${member.firstName} ${member.lastName} (${member.email})`
+                            : member.email}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { setReassignModal({ open: false }); setSelectedNewOwner(""); }}>
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  if (reassignModal.campaignId && selectedNewOwner) {
+                    reassignCampaignMutation.mutate({ campaignId: reassignModal.campaignId, newUserId: selectedNewOwner });
+                  }
+                }}
+                disabled={!selectedNewOwner || reassignCampaignMutation.isPending}
+                data-testid="btn-confirm-reassign"
+              >
+                {reassignCampaignMutation.isPending ? "Reassigning..." : "Reassign Campaign"}
               </Button>
             </DialogFooter>
           </DialogContent>

@@ -756,6 +756,29 @@ router.get("/api/manager/users/:userId/performance", authenticate, requireManage
     .from(sequences)
     .where(eq(sequences.userId, userId));
 
+    const userCampaigns = await db.select({
+      id: sequences.id,
+      name: sequences.name,
+      status: sequences.status,
+      totalProspects: sequences.totalProspects,
+      createdAt: sequences.createdAt,
+    })
+    .from(sequences)
+    .where(eq(sequences.userId, userId))
+    .orderBy(sql`${sequences.createdAt} desc`)
+    .limit(10);
+
+    const [mailboxStats] = await db.select({
+      total: count(),
+      active: sql<number>`count(*) filter (where ${emailMailboxes.status} = 'active')`,
+    })
+    .from(emailMailboxes)
+    .where(eq(emailMailboxes.userId, userId));
+
+    const [prospectStats] = await db.select({ total: count() })
+      .from(prospects)
+      .where(eq(prospects.userId, userId));
+
     const sent = emailStats?.sent || 0;
 
     res.json({
@@ -763,6 +786,10 @@ router.get("/api/manager/users/:userId/performance", authenticate, requireManage
         id: targetUser.id,
         email: targetUser.email,
         name: `${targetUser.firstName || ''} ${targetUser.lastName || ''}`.trim(),
+        role: targetUser.role,
+        status: targetUser.status,
+        lastLogin: targetUser.lastLogin,
+        createdAt: targetUser.createdAt,
       },
       period,
       performance: {
@@ -772,11 +799,213 @@ router.get("/api/manager/users/:userId/performance", authenticate, requireManage
         replyRate: sent > 0 ? Math.round((replyTotal / sent) * 100) : 0,
         totalCampaigns: campaignStats?.total || 0,
         activeCampaigns: campaignStats?.active || 0,
-      }
+      },
+      resources: {
+        totalMailboxes: mailboxStats?.total || 0,
+        activeMailboxes: mailboxStats?.active || 0,
+        totalProspects: prospectStats?.total || 0,
+      },
+      recentCampaigns: userCampaigns,
     });
   } catch (error) {
     console.error("Error fetching user performance:", error);
     res.status(500).json({ error: "Failed to fetch user performance" });
+  }
+});
+
+router.get("/api/manager/users/:userId/campaigns", authenticate, requireManager, async (req, res) => {
+  try {
+    const userContext = req.userContext;
+    if (!userContext?.organizationId) {
+      return res.status(403).json({ error: "Organization context required" });
+    }
+
+    const { userId } = req.params;
+
+    const targetUser = await verifyUserBelongsToOrg(userId, userContext.organizationId);
+    if (!targetUser) {
+      return res.status(404).json({ error: "User not found in your organization" });
+    }
+
+    const userCampaigns = await db.select({
+      id: sequences.id,
+      name: sequences.name,
+      status: sequences.status,
+      totalProspects: sequences.totalProspects,
+      activeProspects: sequences.activeProspects,
+      completedProspects: sequences.completedProspects,
+      createdAt: sequences.createdAt,
+      updatedAt: sequences.updatedAt,
+    })
+    .from(sequences)
+    .where(eq(sequences.userId, userId))
+    .orderBy(sql`${sequences.createdAt} desc`);
+
+    const campaignsWithStats = await Promise.all(userCampaigns.map(async (campaign) => {
+      const [stats] = await db.select({ sentCount: count() })
+        .from(emailQueue)
+        .where(and(
+          eq(emailQueue.sequenceId, campaign.id),
+          eq(emailQueue.status, 'sent')
+        ));
+
+      const [replyCount] = await db.select({ replies: count() })
+        .from(emailReplies)
+        .where(eq(emailReplies.sequenceId, campaign.id));
+
+      const sent = stats?.sentCount || 0;
+      const replies = replyCount?.replies || 0;
+
+      return {
+        ...campaign,
+        stats: {
+          sent,
+          replies,
+          replyRate: sent > 0 ? Math.round((replies / sent) * 100) : 0,
+        }
+      };
+    }));
+
+    res.json({ campaigns: campaignsWithStats, total: campaignsWithStats.length });
+  } catch (error) {
+    console.error("Error fetching user campaigns:", error);
+    res.status(500).json({ error: "Failed to fetch user campaigns" });
+  }
+});
+
+router.post("/api/manager/campaigns/:campaignId/reassign", authenticate, requireManager, async (req, res) => {
+  try {
+    const userContext = req.userContext;
+    if (!userContext?.organizationId) {
+      return res.status(403).json({ error: "Organization context required" });
+    }
+
+    const { campaignId } = req.params;
+    const { newUserId } = req.body;
+
+    if (!newUserId) {
+      return res.status(400).json({ error: "New user ID is required" });
+    }
+
+    const campaign = await verifyCampaignBelongsToOrg(campaignId, userContext.organizationId);
+    if (!campaign) {
+      return res.status(404).json({ error: "Campaign not found in your organization" });
+    }
+
+    const newOwner = await verifyUserBelongsToOrg(newUserId, userContext.organizationId);
+    if (!newOwner) {
+      return res.status(404).json({ error: "Target user not found in your organization" });
+    }
+
+    await db.update(sequences)
+      .set({ userId: newUserId, updatedAt: new Date() })
+      .where(eq(sequences.id, campaignId));
+
+    auditService.logFromRequest(req, 'CAMPAIGN_REASSIGNED', 'manager', {
+      campaignId,
+      campaignName: campaign.name,
+      previousOwner: campaign.userId,
+      newOwner: newUserId,
+    });
+
+    res.json({ 
+      message: "Campaign reassigned successfully",
+      campaignId,
+      newOwnerId: newUserId,
+    });
+  } catch (error) {
+    console.error("Error reassigning campaign:", error);
+    res.status(500).json({ error: "Failed to reassign campaign" });
+  }
+});
+
+router.get("/api/manager/team/leaderboard", authenticate, requireManager, async (req, res) => {
+  try {
+    const userContext = req.userContext;
+    if (!userContext?.organizationId) {
+      return res.status(403).json({ error: "Organization context required" });
+    }
+
+    const { period = "30d", sortBy = "emails" } = req.query;
+    
+    let daysBack = 30;
+    if (period === "7d") daysBack = 7;
+    else if (period === "90d") daysBack = 90;
+    
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - daysBack);
+
+    const memberIds = await getTeamMemberIds(userContext.organizationId);
+
+    if (memberIds.length === 0) {
+      return res.json({ leaderboard: [], period });
+    }
+
+    const teamStats = await Promise.all(memberIds.map(async (memberId) => {
+      const [user] = await db.select({
+        id: users.id,
+        email: users.email,
+        firstName: users.firstName,
+        lastName: users.lastName,
+      })
+      .from(users)
+      .where(eq(users.id, memberId))
+      .limit(1);
+
+      const [emailStats] = await db.select({ sent: count() })
+        .from(emailQueue)
+        .where(and(
+          eq(emailQueue.userId, memberId),
+          eq(emailQueue.status, 'sent'),
+          gte(emailQueue.sentAt, startDate)
+        ));
+
+      const userSequenceIds = await db.select({ id: sequences.id })
+        .from(sequences)
+        .where(eq(sequences.userId, memberId));
+      
+      const seqIds = userSequenceIds.map(s => s.id);
+      let replies = 0;
+      let positiveReplies = 0;
+      
+      if (seqIds.length > 0) {
+        const [replyStats] = await db.select({
+          total: count(),
+          positive: sql<number>`count(*) filter (where ${emailReplies.sentiment} = 'positive')`,
+        })
+        .from(emailReplies)
+        .where(and(
+          inArray(emailReplies.sequenceId, seqIds),
+          gte(emailReplies.receivedAt, startDate)
+        ));
+        replies = replyStats?.total || 0;
+        positiveReplies = replyStats?.positive || 0;
+      }
+
+      const sent = emailStats?.sent || 0;
+
+      return {
+        id: user?.id || memberId,
+        email: user?.email || 'Unknown',
+        name: `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || user?.email || 'Unknown',
+        emailsSent: sent,
+        replies,
+        positiveReplies,
+        replyRate: sent > 0 ? Math.round((replies / sent) * 100) : 0,
+      };
+    }));
+
+    const sortField = sortBy === 'replies' ? 'replies' : sortBy === 'positiveReplies' ? 'positiveReplies' : 'emailsSent';
+    const sortedStats = teamStats.sort((a, b) => (b as any)[sortField] - (a as any)[sortField]);
+
+    res.json({
+      leaderboard: sortedStats.map((s, i) => ({ ...s, rank: i + 1 })),
+      period,
+      sortBy: sortField,
+    });
+  } catch (error) {
+    console.error("Error fetching leaderboard:", error);
+    res.status(500).json({ error: "Failed to fetch leaderboard" });
   }
 });
 
