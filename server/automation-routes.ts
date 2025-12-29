@@ -5,7 +5,7 @@ import automationSchedulerService from "./services/automation-scheduler.service"
 import { db } from "./db";
 import { sequences } from "@shared/schema";
 import { eq } from "drizzle-orm";
-import { authenticate } from "./middleware/auth.middleware";
+import { authenticate, forbidManager } from "./middleware/auth.middleware";
 
 // Request schemas
 const startAutomationSchema = z.object({
@@ -42,7 +42,7 @@ export function registerAutomationRoutes(app: Express) {
    * POST /api/automation/start
    * Start a new automation run (PROTECTED: requires authentication)
    */
-  app.post("/api/automation/start", authenticate, async (req: Request, res: Response) => {
+  app.post("/api/automation/start", authenticate, forbidManager, async (req: Request, res: Response) => {
     try {
       // Ensure userId is available for multi-tenant security
       if (!req.userContext?.userId) {
@@ -218,7 +218,7 @@ export function registerAutomationRoutes(app: Express) {
    * POST /api/automation/:id/pause
    * Pause a running automation
    */
-  app.post("/api/automation/:id/pause", authenticate, async (req: Request, res: Response) => {
+  app.post("/api/automation/:id/pause", authenticate, forbidManager, async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       await automationService.pauseAutomation(id);
@@ -239,7 +239,7 @@ export function registerAutomationRoutes(app: Express) {
    * POST /api/automation/:id/resume
    * Resume a paused automation
    */
-  app.post("/api/automation/:id/resume", authenticate, async (req: Request, res: Response) => {
+  app.post("/api/automation/:id/resume", authenticate, forbidManager, async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       await automationService.resumeAutomation(id);
@@ -260,7 +260,7 @@ export function registerAutomationRoutes(app: Express) {
    * POST /api/automation/:id/stop
    * Stop an automation permanently
    */
-  app.post("/api/automation/:id/stop", authenticate, async (req: Request, res: Response) => {
+  app.post("/api/automation/:id/stop", authenticate, forbidManager, async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       await automationService.stopAutomation(id);
@@ -299,7 +299,7 @@ export function registerAutomationRoutes(app: Express) {
    * POST /api/automation/:id/retry
    * Retry failed prospects in automation
    */
-  app.post("/api/automation/:id/retry", authenticate, async (req: Request, res: Response) => {
+  app.post("/api/automation/:id/retry", authenticate, forbidManager, async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       await automationService.retryFailedProspects(id);
@@ -356,7 +356,7 @@ export function registerAutomationRoutes(app: Express) {
    * POST /api/automation/:id/cancel
    * Cancel a scheduled automation
    */
-  app.post("/api/automation/:id/cancel", authenticate, async (req: Request, res: Response) => {
+  app.post("/api/automation/:id/cancel", authenticate, forbidManager, async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       await automationSchedulerService.cancelScheduledAutomation(id);
@@ -377,7 +377,7 @@ export function registerAutomationRoutes(app: Express) {
    * POST /api/automation/:id/reschedule
    * Reschedule a failed or cancelled automation
    */
-  app.post("/api/automation/:id/reschedule", authenticate, async (req: Request, res: Response) => {
+  app.post("/api/automation/:id/reschedule", authenticate, forbidManager, async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       const { scheduledFor } = req.body;
@@ -422,7 +422,7 @@ export function registerAutomationRoutes(app: Express) {
    * DELETE /api/automation/:id
    * Delete an automation run (PROTECTED: requires authentication)
    */
-  app.delete("/api/automation/:id", authenticate, async (req: Request, res: Response) => {
+  app.delete("/api/automation/:id", authenticate, forbidManager, async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       const userId = req.userContext?.userId;

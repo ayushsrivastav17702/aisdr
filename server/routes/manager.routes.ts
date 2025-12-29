@@ -450,71 +450,22 @@ router.get("/api/manager/campaigns", authenticate, requireManager, async (req, r
   }
 });
 
+// PRD REQUIREMENT: Managers cannot approve/activate campaigns (read-only oversight)
 router.post("/api/manager/campaigns/:campaignId/approve", authenticate, requireManager, async (req, res) => {
-  try {
-    const userContext = req.userContext;
-    if (!userContext?.organizationId) {
-      return res.status(403).json({ error: "Organization context required" });
-    }
-
-    const { campaignId } = req.params;
-    const { approved, comment } = req.body;
-
-    const campaign = await verifyCampaignBelongsToOrg(campaignId, userContext.organizationId);
-    if (!campaign) {
-      return res.status(404).json({ error: "Campaign not found in your organization" });
-    }
-
-    const newStatus = approved ? 'active' : 'draft';
-    
-    await db.update(sequences)
-      .set({ status: newStatus, updatedAt: new Date() })
-      .where(eq(sequences.id, campaignId));
-
-    auditService.logFromRequest(req, approved ? 'CAMPAIGN_APPROVED' : 'CAMPAIGN_REJECTED', 'manager', {
-      campaignId,
-      campaignName: campaign.name,
-      comment,
-    });
-
-    res.json({ 
-      message: approved ? "Campaign approved and activated" : "Campaign returned to draft",
-      status: newStatus 
-    });
-  } catch (error) {
-    console.error("Error approving campaign:", error);
-    res.status(500).json({ error: "Failed to approve campaign" });
-  }
+  console.warn(`🚫 RBAC: Manager ${req.user?.email} attempted to approve campaign ${req.params.campaignId} - DENIED`);
+  return res.status(403).json({ 
+    error: "FORBIDDEN",
+    message: "Managers cannot approve campaigns. This is a read-only oversight feature." 
+  });
 });
 
+// PRD REQUIREMENT: Managers cannot pause campaigns (read-only oversight)
 router.post("/api/manager/campaigns/:campaignId/pause", authenticate, requireManager, async (req, res) => {
-  try {
-    const userContext = req.userContext;
-    if (!userContext?.organizationId) {
-      return res.status(403).json({ error: "Organization context required" });
-    }
-
-    const { campaignId } = req.params;
-
-    const campaign = await verifyCampaignBelongsToOrg(campaignId, userContext.organizationId);
-    if (!campaign) {
-      return res.status(404).json({ error: "Campaign not found in your organization" });
-    }
-
-    await db.update(sequences)
-      .set({ status: 'paused', updatedAt: new Date() })
-      .where(eq(sequences.id, campaignId));
-
-    auditService.logFromRequest(req, 'CAMPAIGN_PAUSED_BY_MANAGER', 'manager', {
-      campaignId,
-      campaignName: campaign.name,
-    });
-
-    res.json({ message: "Campaign paused", status: 'paused' });
-  } catch (error) {
-    console.error("Error pausing campaign:", error);
-    res.status(500).json({ error: "Failed to pause campaign" });
-  }
+  console.warn(`🚫 RBAC: Manager ${req.user?.email} attempted to pause campaign ${req.params.campaignId} - DENIED`);
+  return res.status(403).json({ 
+    error: "FORBIDDEN",
+    message: "Managers cannot pause campaigns. This is a read-only oversight feature." 
+  });
 });
 
 router.get("/api/manager/analytics", authenticate, requireManager, async (req, res) => {
@@ -873,50 +824,13 @@ router.get("/api/manager/users/:userId/campaigns", authenticate, requireManager,
   }
 });
 
+// PRD REQUIREMENT: Managers cannot reassign campaigns (read-only oversight)
 router.post("/api/manager/campaigns/:campaignId/reassign", authenticate, requireManager, async (req, res) => {
-  try {
-    const userContext = req.userContext;
-    if (!userContext?.organizationId) {
-      return res.status(403).json({ error: "Organization context required" });
-    }
-
-    const { campaignId } = req.params;
-    const { newUserId } = req.body;
-
-    if (!newUserId) {
-      return res.status(400).json({ error: "New user ID is required" });
-    }
-
-    const campaign = await verifyCampaignBelongsToOrg(campaignId, userContext.organizationId);
-    if (!campaign) {
-      return res.status(404).json({ error: "Campaign not found in your organization" });
-    }
-
-    const newOwner = await verifyUserBelongsToOrg(newUserId, userContext.organizationId);
-    if (!newOwner) {
-      return res.status(404).json({ error: "Target user not found in your organization" });
-    }
-
-    await db.update(sequences)
-      .set({ userId: newUserId, updatedAt: new Date() })
-      .where(eq(sequences.id, campaignId));
-
-    auditService.logFromRequest(req, 'CAMPAIGN_REASSIGNED', 'manager', {
-      campaignId,
-      campaignName: campaign.name,
-      previousOwner: campaign.userId,
-      newOwner: newUserId,
-    });
-
-    res.json({ 
-      message: "Campaign reassigned successfully",
-      campaignId,
-      newOwnerId: newUserId,
-    });
-  } catch (error) {
-    console.error("Error reassigning campaign:", error);
-    res.status(500).json({ error: "Failed to reassign campaign" });
-  }
+  console.warn(`🚫 RBAC: Manager ${req.user?.email} attempted to reassign campaign ${req.params.campaignId} - DENIED`);
+  return res.status(403).json({ 
+    error: "FORBIDDEN",
+    message: "Managers cannot reassign campaigns. This is a read-only oversight feature." 
+  });
 });
 
 router.get("/api/manager/team/leaderboard", authenticate, requireManager, async (req, res) => {
