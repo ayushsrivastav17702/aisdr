@@ -11,6 +11,7 @@ import {
 import { eq, and, or, like, desc, asc, count, sql, isNull } from "drizzle-orm";
 import { authenticate, requireAdmin } from "../middleware/auth.middleware";
 import { auditService } from "../services/audit.service";
+import { checkQuota } from "../middleware/quota-enforcement.middleware";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
 
@@ -348,6 +349,20 @@ router.post("/api/admin/users/bulk-invite", authenticate, requireAdmin, async (r
 
     if (emails.length > 100) {
       return res.status(400).json({ error: "Maximum 100 invitations at a time" });
+    }
+
+    const quotaCheck = await checkQuota(organizationId, 'users', emails.length);
+    if (!quotaCheck.allowed) {
+      return res.status(429).json({
+        error: quotaCheck.message,
+        code: 'QUOTA_EXCEEDED',
+        details: {
+          resource: 'users',
+          current: quotaCheck.current,
+          limit: quotaCheck.limit,
+          requested: emails.length,
+        }
+      });
     }
 
     const results = {

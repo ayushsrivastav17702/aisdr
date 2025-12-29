@@ -370,6 +370,75 @@ export class EmailService {
       </html>
     `;
   }
+
+  async sendGenericEmail(data: { to: string; subject: string; html: string }): Promise<void> {
+    const { to, subject, html } = data;
+
+    try {
+      await resend.emails.send({
+        from: this.fromEmail,
+        to,
+        subject,
+        html,
+      });
+    } catch (error) {
+      console.error('Failed to send generic email:', error);
+      throw new Error('Failed to send email');
+    }
+  }
+
+  async sendBroadcastEmail(data: { 
+    to: string; 
+    subject: string; 
+    body: string;
+    tenantName?: string;
+  }): Promise<void> {
+    const { to, subject, body, tenantName } = data;
+
+    try {
+      await resend.emails.send({
+        from: this.fromEmail,
+        to,
+        subject,
+        html: this.generateBroadcastEmailHTML(subject, body, tenantName),
+      });
+    } catch (error) {
+      console.error('Failed to send broadcast email:', error);
+      throw new Error('Failed to send broadcast email');
+    }
+  }
+
+  private generateBroadcastEmailHTML(subject: string, body: string, tenantName?: string): string {
+    return `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>${subject}</title>
+        </head>
+        <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; border-radius: 10px 10px 0 0; text-align: center;">
+            <h1 style="color: white; margin: 0; font-size: 24px;">${this.productName}</h1>
+          </div>
+          
+          <div style="background: #ffffff; padding: 40px; border-radius: 0 0 10px 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+            ${tenantName ? `<p style="font-size: 14px; color: #6b7280; margin-bottom: 20px;">Hello ${tenantName},</p>` : ''}
+            
+            <h2 style="color: #1f2937; font-size: 20px; margin-bottom: 20px;">${subject}</h2>
+            
+            <div style="font-size: 16px; color: #374151; white-space: pre-wrap;">${body}</div>
+            
+            <hr style="border: none; border-top: 1px solid #e5e7eb; margin: 30px 0;">
+            
+            <p style="font-size: 12px; color: #9ca3af; margin: 0;">
+              This email was sent by the ${this.productName} team.
+            </p>
+          </div>
+        </body>
+      </html>
+    `;
+  }
 }
 
 export const emailService = new EmailService();
