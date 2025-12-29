@@ -12,6 +12,7 @@ import {
 import { eq, and, count, sql, isNull, inArray, gte } from "drizzle-orm";
 import { authenticate, requireManager } from "../middleware/auth.middleware";
 import { auditService } from "../services/audit.service";
+import { cacheService } from "../services/cache.service";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
 
@@ -62,26 +63,70 @@ router.get("/api/manager/team", authenticate, requireManager, async (req, res) =
       return res.status(403).json({ error: "Organization context required" });
     }
 
-    const teamMembers = await db.select({
-      id: users.id,
-      email: users.email,
-      firstName: users.firstName,
-      lastName: users.lastName,
-      role: users.role,
-      status: users.status,
-      isActive: users.isActive,
-      lastLogin: users.lastLogin,
-      createdAt: users.createdAt,
-      onboardingCompleted: users.onboardingCompleted,
-    })
-    .from(users)
-    .where(and(
+    const { page = "1", limit = "50", search, status: statusFilter, sortBy = "createdAt", sortOrder = "desc" } = req.query;
+    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
+    const limitNum = Math.min(Math.max(1, parseInt(limit as string, 10) || 50), 100);
+    const offset = (pageNum - 1) * limitNum;
+
+    const conditions: any[] = [
       eq(users.organizationId, userContext.organizationId),
       isNull(users.deletedAt)
-    ))
-    .orderBy(sql`${users.createdAt} desc`);
+    ];
+    
+    if (search && typeof search === 'string' && search.trim()) {
+      const searchTerm = `%${search.trim().toLowerCase()}%`;
+      conditions.push(sql`(lower(${users.email}) like ${searchTerm} OR lower(${users.firstName}) like ${searchTerm} OR lower(${users.lastName}) like ${searchTerm})`);
+    }
+    
+    if (statusFilter && statusFilter !== 'all') {
+      if (statusFilter === 'active') {
+        conditions.push(eq(users.isActive, true));
+      } else if (statusFilter === 'inactive') {
+        conditions.push(eq(users.isActive, false));
+      }
+    }
 
-    res.json(teamMembers);
+    const getOrderColumn = () => {
+      switch (sortBy) {
+        case 'lastLogin': return users.lastLogin;
+        case 'email': return users.email;
+        default: return users.createdAt;
+      }
+    };
+    const orderColumn = getOrderColumn();
+
+    const [teamMembers, totalResult] = await Promise.all([
+      db.select({
+        id: users.id,
+        email: users.email,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        role: users.role,
+        status: users.status,
+        isActive: users.isActive,
+        lastLogin: users.lastLogin,
+        createdAt: users.createdAt,
+        onboardingCompleted: users.onboardingCompleted,
+      })
+      .from(users)
+      .where(and(...conditions))
+      .orderBy(sortOrder === 'asc' ? sql`${orderColumn} asc nulls last` : sql`${orderColumn} desc nulls last`)
+      .limit(limitNum)
+      .offset(offset),
+      
+      db.select({ total: count() })
+        .from(users)
+        .where(and(...conditions))
+        .then(r => r[0]?.total || 0)
+    ]);
+
+    res.json({
+      members: teamMembers,
+      total: totalResult,
+      page: pageNum,
+      limit: limitNum,
+      pages: Math.ceil(totalResult / limitNum),
+    });
   } catch (error) {
     console.error("Error fetching team members:", error);
     res.status(500).json({ error: "Failed to fetch team members" });
@@ -95,69 +140,77 @@ router.get("/api/manager/stats", authenticate, requireManager, async (req, res) 
       return res.status(403).json({ error: "Organization context required" });
     }
 
-    const memberIds = await getTeamMemberIds(userContext.organizationId);
-
-    const [userCounts] = await db.select({
-      totalUsers: count(),
-      activeUsers: sql<number>`count(*) filter (where ${users.isActive} = true)`,
-    })
-    .from(users)
-    .where(and(
-      eq(users.organizationId, userContext.organizationId),
-      isNull(users.deletedAt)
-    ));
-
-    let totalEmailsSent = 0;
-    let totalMeetingsBooked = 0;
-    let replyRate = 0;
-    let activeCampaigns = 0;
+    const cacheKey = cacheService.buildKey(userContext.organizationId, 'stats');
     
-    if (memberIds.length > 0) {
-      const [emailStats] = await db.select({ sent: count() })
-        .from(emailQueue)
-        .where(and(
-          inArray(emailQueue.userId, memberIds),
-          eq(emailQueue.status, 'sent')
-        ));
-      totalEmailsSent = emailStats?.sent || 0;
-
-      const teamSequenceIds = await db.select({ id: sequences.id })
-        .from(sequences)
-        .where(inArray(sequences.userId, memberIds));
-      
-      const seqIds = teamSequenceIds.map(s => s.id);
-      if (seqIds.length > 0) {
-        const [replyStats] = await db.select({
-          total: count(),
-          positive: sql<number>`count(*) filter (where ${emailReplies.sentiment} = 'positive')`,
+    const stats = await cacheService.getOrSet(cacheKey, async () => {
+      const [memberIds, userCounts] = await Promise.all([
+        getTeamMemberIds(userContext.organizationId),
+        db.select({
+          totalUsers: count(),
+          activeUsers: sql<number>`count(*) filter (where ${users.isActive} = true)`,
         })
-        .from(emailReplies)
-        .where(inArray(emailReplies.sequenceId, seqIds));
-        totalMeetingsBooked = replyStats?.positive || 0;
+        .from(users)
+        .where(and(
+          eq(users.organizationId, userContext.organizationId),
+          isNull(users.deletedAt)
+        ))
+        .then(r => r[0])
+      ]);
+
+      let totalEmailsSent = 0;
+      let totalMeetingsBooked = 0;
+      let replyRate = 0;
+      let activeCampaigns = 0;
+      
+      if (memberIds.length > 0) {
+        const [emailStatsResult, campaignStatsResult, replyStatsResult] = await Promise.all([
+          db.select({ sent: count() })
+            .from(emailQueue)
+            .where(and(
+              inArray(emailQueue.userId, memberIds),
+              eq(emailQueue.status, 'sent')
+            ))
+            .then(r => r[0]),
+          
+          db.select({ active: count() })
+            .from(sequences)
+            .where(and(
+              inArray(sequences.userId, memberIds),
+              eq(sequences.status, 'active')
+            ))
+            .then(r => r[0]),
+          
+          db.select({
+            total: count(),
+            positive: sql<number>`count(*) filter (where ${emailReplies.sentiment} = 'positive')`,
+          })
+          .from(emailReplies)
+          .innerJoin(sequences, eq(emailReplies.sequenceId, sequences.id))
+          .where(inArray(sequences.userId, memberIds))
+          .then(r => r[0])
+        ]);
+
+        totalEmailsSent = emailStatsResult?.sent || 0;
+        activeCampaigns = campaignStatsResult?.active || 0;
+        totalMeetingsBooked = replyStatsResult?.positive || 0;
         
         if (totalEmailsSent > 0) {
-          replyRate = Math.round(((replyStats?.total || 0) / totalEmailsSent) * 100);
+          replyRate = Math.round(((replyStatsResult?.total || 0) / totalEmailsSent) * 100);
         }
       }
 
-      const [campaignStats] = await db.select({ active: count() })
-        .from(sequences)
-        .where(and(
-          inArray(sequences.userId, memberIds),
-          eq(sequences.status, 'active')
-        ));
-      activeCampaigns = campaignStats?.active || 0;
-    }
+      return {
+        totalUsers: userCounts?.totalUsers || 0,
+        activeUsers: userCounts?.activeUsers || 0,
+        totalEmailsSent,
+        totalMeetingsBooked,
+        replyRate,
+        openRate: 0,
+        activeCampaigns,
+      };
+    }, { ttl: 30 });
 
-    res.json({
-      totalUsers: userCounts?.totalUsers || 0,
-      activeUsers: userCounts?.activeUsers || 0,
-      totalEmailsSent,
-      totalMeetingsBooked,
-      replyRate,
-      openRate: 0,
-      activeCampaigns,
-    });
+    res.json(stats);
   } catch (error) {
     console.error("Error fetching team stats:", error);
     res.status(500).json({ error: "Failed to fetch team statistics" });
@@ -216,6 +269,8 @@ router.post("/api/manager/users", authenticate, requireManager, async (req, res)
       role,
     });
 
+    await cacheService.invalidateOrg(userContext.organizationId);
+
     const { passwordHash: _, ...safeUser } = newUser;
     res.status(201).json({
       ...safeUser,
@@ -258,6 +313,8 @@ router.patch("/api/manager/users/:userId", authenticate, requireManager, async (
       targetUserId: userId,
       changes: Object.keys(updateData).filter(k => k !== 'updatedAt'),
     });
+
+    await cacheService.invalidateOrg(userContext.organizationId);
 
     const { passwordHash: _, ...safeUser } = updatedUser;
     res.json(safeUser);
@@ -388,7 +445,7 @@ router.get("/api/manager/campaigns", authenticate, requireManager, async (req, r
       id: sequences.id,
       name: sequences.name,
       status: sequences.status,
-      userId: sequences.userId,
+      sequenceUserId: sequences.userId,
       totalProspects: sequences.totalProspects,
       activeProspects: sequences.activeProspects,
       completedProspects: sequences.completedProspects,
@@ -410,23 +467,43 @@ router.get("/api/manager/campaigns", authenticate, requireManager, async (req, r
       .innerJoin(users, eq(sequences.userId, users.id))
       .where(and(...baseConditions, ...statusConditions));
 
-    const campaignsWithStats = await Promise.all(campaignList.map(async (campaign) => {
-      const [stats] = await db.select({ sentCount: count() })
-        .from(emailQueue)
-        .where(and(
-          eq(emailQueue.sequenceId, campaign.id),
-          eq(emailQueue.status, 'sent')
-        ));
+    const campaignIds = campaignList.map(c => c.id);
+    
+    let emailStatsMap: Record<string, number> = {};
+    let replyStatsMap: Record<string, number> = {};
+    
+    if (campaignIds.length > 0) {
+      const emailStats = await db.select({
+        sequenceId: emailQueue.sequenceId,
+        sentCount: count(),
+      })
+      .from(emailQueue)
+      .where(and(
+        inArray(emailQueue.sequenceId, campaignIds),
+        eq(emailQueue.status, 'sent')
+      ))
+      .groupBy(emailQueue.sequenceId);
+      
+      emailStatsMap = Object.fromEntries(emailStats.map(s => [s.sequenceId, s.sentCount]));
+      
+      const replyStats = await db.select({
+        sequenceId: emailReplies.sequenceId,
+        replyCount: count(),
+      })
+      .from(emailReplies)
+      .where(inArray(emailReplies.sequenceId, campaignIds))
+      .groupBy(emailReplies.sequenceId);
+      
+      replyStatsMap = Object.fromEntries(replyStats.map(s => [s.sequenceId, s.replyCount]));
+    }
 
-      const [replyCount] = await db.select({ replies: count() })
-        .from(emailReplies)
-        .where(eq(emailReplies.sequenceId, campaign.id));
-
-      const sent = stats?.sentCount || 0;
-      const replies = replyCount?.replies || 0;
-
+    const campaignsWithStats = campaignList.map(campaign => {
+      const sent = emailStatsMap[campaign.id] || 0;
+      const replies = replyStatsMap[campaign.id] || 0;
+      
       return {
         ...campaign,
+        userId: campaign.sequenceUserId,
         ownerName: `${campaign.ownerFirstName || ''} ${campaign.ownerLastName || ''}`.trim() || campaign.ownerEmail,
         stats: {
           totalProspects: campaign.totalProspects || 0,
@@ -435,7 +512,7 @@ router.get("/api/manager/campaigns", authenticate, requireManager, async (req, r
           replyRate: sent > 0 ? Math.round((replies / sent) * 100) : 0,
         }
       };
-    }));
+    });
 
     res.json({
       campaigns: campaignsWithStats,
@@ -481,103 +558,104 @@ router.get("/api/manager/analytics", authenticate, requireManager, async (req, r
     if (period === "7d") daysBack = 7;
     else if (period === "90d") daysBack = 90;
     
-    const startDate = new Date();
-    startDate.setDate(startDate.getDate() - daysBack);
-
-    const memberIds = await getTeamMemberIds(userContext.organizationId);
-
-    if (memberIds.length === 0) {
-      return res.json({
-        period,
-        emailStats: { sent: 0, replied: 0, positiveReplies: 0, replyRate: 0 },
-        campaignStats: { active: 0, paused: 0, completed: 0, draft: 0 },
-        topPerformers: [],
-      });
-    }
-
-    const [emailStats] = await db.select({ sent: count() })
-      .from(emailQueue)
-      .where(and(
-        inArray(emailQueue.userId, memberIds),
-        eq(emailQueue.status, 'sent'),
-        gte(emailQueue.sentAt, startDate)
-      ));
-
-    const teamSequenceIds = await db.select({ id: sequences.id })
-      .from(sequences)
-      .where(inArray(sequences.userId, memberIds));
+    const cacheKey = cacheService.buildKey(userContext.organizationId, 'analytics', { period });
     
-    const seqIds = teamSequenceIds.map(s => s.id);
+    const result = await cacheService.getOrSet(cacheKey, async () => {
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - daysBack);
 
-    let replyTotal = 0;
-    let positiveReplies = 0;
-    if (seqIds.length > 0) {
-      const [replyStats] = await db.select({
-        total: count(),
-        positive: sql<number>`count(*) filter (where ${emailReplies.sentiment} = 'positive')`,
-      })
-      .from(emailReplies)
-      .where(and(
-        inArray(emailReplies.sequenceId, seqIds),
-        gte(emailReplies.receivedAt, startDate)
-      ));
-      replyTotal = replyStats?.total || 0;
-      positiveReplies = replyStats?.positive || 0;
-    }
+      const memberIds = await getTeamMemberIds(userContext.organizationId);
 
-    const campaignStatusCounts = await db.select({
-      status: sequences.status,
-      count: count(),
-    })
-    .from(sequences)
-    .where(inArray(sequences.userId, memberIds))
-    .groupBy(sequences.status);
-
-    const campaignStats: Record<string, number> = { active: 0, paused: 0, completed: 0, draft: 0 };
-    campaignStatusCounts.forEach(s => {
-      if (s.status && s.status in campaignStats) {
-        campaignStats[s.status] = s.count;
+      if (memberIds.length === 0) {
+        return {
+          period,
+          emailStats: { sent: 0, replied: 0, positiveReplies: 0, replyRate: 0 },
+          campaignStats: { active: 0, paused: 0, completed: 0, draft: 0 },
+          topPerformers: [],
+        };
       }
-    });
 
-    const topPerformers = await db.select({
-      userId: users.id,
-      email: users.email,
-      firstName: users.firstName,
-      lastName: users.lastName,
-      emailsSent: sql<number>`count(${emailQueue.id}) filter (where ${emailQueue.status} = 'sent')`,
-    })
-    .from(users)
-    .leftJoin(emailQueue, and(
-      eq(users.id, emailQueue.userId),
-      gte(emailQueue.sentAt, startDate)
-    ))
-    .where(and(
-      eq(users.organizationId, userContext.organizationId),
-      isNull(users.deletedAt)
-    ))
-    .groupBy(users.id, users.email, users.firstName, users.lastName)
-    .orderBy(sql`count(${emailQueue.id}) filter (where ${emailQueue.status} = 'sent') desc`)
-    .limit(5);
+      const [emailStatsResult, campaignStatusCounts, topPerformersResult, replyStatsResult] = await Promise.all([
+        db.select({ sent: count() })
+          .from(emailQueue)
+          .where(and(
+            inArray(emailQueue.userId, memberIds),
+            eq(emailQueue.status, 'sent'),
+            gte(emailQueue.sentAt, startDate)
+          ))
+          .then(r => r[0]),
+        
+        db.select({
+          status: sequences.status,
+          count: count(),
+        })
+        .from(sequences)
+        .where(inArray(sequences.userId, memberIds))
+        .groupBy(sequences.status),
+        
+        db.select({
+          odUserId: users.id,
+          email: users.email,
+          firstName: users.firstName,
+          lastName: users.lastName,
+          emailsSent: sql<number>`count(${emailQueue.id}) filter (where ${emailQueue.status} = 'sent')`,
+        })
+        .from(users)
+        .leftJoin(emailQueue, and(
+          eq(users.id, emailQueue.userId),
+          gte(emailQueue.sentAt, startDate)
+        ))
+        .where(and(
+          eq(users.organizationId, userContext.organizationId),
+          isNull(users.deletedAt)
+        ))
+        .groupBy(users.id, users.email, users.firstName, users.lastName)
+        .orderBy(sql`count(${emailQueue.id}) filter (where ${emailQueue.status} = 'sent') desc`)
+        .limit(5),
+        
+        db.select({
+          total: count(),
+          positive: sql<number>`count(*) filter (where ${emailReplies.sentiment} = 'positive')`,
+        })
+        .from(emailReplies)
+        .innerJoin(sequences, eq(emailReplies.sequenceId, sequences.id))
+        .where(and(
+          inArray(sequences.userId, memberIds),
+          gte(emailReplies.receivedAt, startDate)
+        ))
+        .then(r => r[0])
+      ]);
 
-    const sent = emailStats?.sent || 0;
+      const campaignStats: Record<string, number> = { active: 0, paused: 0, completed: 0, draft: 0 };
+      campaignStatusCounts.forEach(s => {
+        if (s.status && s.status in campaignStats) {
+          campaignStats[s.status] = s.count;
+        }
+      });
 
-    res.json({
-      period,
-      emailStats: {
-        sent,
-        replied: replyTotal,
-        positiveReplies,
-        replyRate: sent > 0 ? Math.round((replyTotal / sent) * 100) : 0,
-      },
-      campaignStats,
-      topPerformers: topPerformers.map(p => ({
-        id: p.userId,
-        email: p.email,
-        name: `${p.firstName || ''} ${p.lastName || ''}`.trim() || p.email,
-        emailsSent: p.emailsSent || 0,
-      })),
-    });
+      const sent = emailStatsResult?.sent || 0;
+      const replyTotal = replyStatsResult?.total || 0;
+      const positiveReplies = replyStatsResult?.positive || 0;
+
+      return {
+        period,
+        emailStats: {
+          sent,
+          replied: replyTotal,
+          positiveReplies,
+          replyRate: sent > 0 ? Math.round((replyTotal / sent) * 100) : 0,
+        },
+        campaignStats,
+        topPerformers: topPerformersResult.map(p => ({
+          id: p.odUserId,
+          email: p.email,
+          name: `${p.firstName || ''} ${p.lastName || ''}`.trim() || p.email,
+          emailsSent: p.emailsSent || 0,
+        })),
+      };
+    }, { ttl: 60 });
+
+    res.json(result);
   } catch (error) {
     console.error("Error fetching analytics:", error);
     res.status(500).json({ error: "Failed to fetch analytics" });
