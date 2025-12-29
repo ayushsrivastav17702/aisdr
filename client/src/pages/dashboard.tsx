@@ -12,7 +12,7 @@ import ProspectsTable from "@/components/prospects-table";
 import ImportWizard from "@/components/import-wizard";
 import JobDrawer from "@/components/job-drawer";
 import { EmailVerificationBanner } from "@/components/email-verification-banner";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { 
   BrainIcon, 
   UsersIcon, 
@@ -44,6 +44,7 @@ export default function Dashboard() {
   const [isJobDrawerOpen, setIsJobDrawerOpen] = useState(false);
   const { toast } = useToast();
   const { user, logout } = useAuth();
+  const [, setLocation] = useLocation();
 
   // Get active jobs for the jobs button badge
   const { data: activeJobs = [] } = useQuery<any[]>({
@@ -116,49 +117,45 @@ export default function Dashboard() {
             <span>Import</span>
           </Button>
           
-          <Link href="/sequences">
-            <Button
-              variant="ghost"
-              className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
-              data-testid="nav-sequences"
-            >
-              <Mail className="w-4 h-4" />
-              <span>Sequences</span>
-            </Button>
-          </Link>
+          <Button
+            variant="ghost"
+            className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
+            onClick={() => setLocation("/sequences")}
+            data-testid="nav-sequences"
+          >
+            <Mail className="w-4 h-4" />
+            <span>Sequences</span>
+          </Button>
 
-          <Link href="/automation-dashboard">
-            <Button
-              variant="ghost"
-              className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
-              data-testid="nav-automation"
-            >
-              <Zap className="w-4 h-4" />
-              <span>Automation</span>
-            </Button>
-          </Link>
+          <Button
+            variant="ghost"
+            className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
+            onClick={() => setLocation("/automation-dashboard")}
+            data-testid="nav-automation"
+          >
+            <Zap className="w-4 h-4" />
+            <span>Automation</span>
+          </Button>
 
-          <Link href="/mailboxes">
-            <Button
-              variant="ghost"
-              className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
-              data-testid="nav-mailboxes"
-            >
-              <Inbox className="w-4 h-4" />
-              <span>Mailboxes</span>
-            </Button>
-          </Link>
+          <Button
+            variant="ghost"
+            className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
+            onClick={() => setLocation("/mailboxes")}
+            data-testid="nav-mailboxes"
+          >
+            <Inbox className="w-4 h-4" />
+            <span>Mailboxes</span>
+          </Button>
 
-          <Link href="/content-management">
-            <Button
-              variant="ghost"
-              className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
-              data-testid="nav-content"
-            >
-              <FileText className="w-4 h-4" />
-              <span>Content</span>
-            </Button>
-          </Link>
+          <Button
+            variant="ghost"
+            className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
+            onClick={() => setLocation("/content-management")}
+            data-testid="nav-content"
+          >
+            <FileText className="w-4 h-4" />
+            <span>Content</span>
+          </Button>
           
           <Button
             variant="ghost"
@@ -170,138 +167,130 @@ export default function Dashboard() {
             <span>Enrichment</span>
           </Button>
           
-          <Link href="/analytics">
-            <Button
-              variant="ghost"
-              className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
-              data-testid="nav-analytics"
-            >
-              <BarChart3Icon className="w-4 h-4" />
-              <span>Analytics</span>
-            </Button>
-          </Link>
+          <Button
+            variant="ghost"
+            className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
+            onClick={() => setLocation("/analytics")}
+            data-testid="nav-analytics"
+          >
+            <BarChart3Icon className="w-4 h-4" />
+            <span>Analytics</span>
+          </Button>
 
-          <Link href="/leaderboard">
-            <Button
-              variant="ghost"
-              className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
-              data-testid="nav-leaderboard"
-            >
-              <Trophy className="w-4 h-4" />
-              <span>Leaderboard</span>
-            </Button>
-          </Link>
+          <Button
+            variant="ghost"
+            className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
+            onClick={() => setLocation("/leaderboard")}
+            data-testid="nav-leaderboard"
+          >
+            <Trophy className="w-4 h-4" />
+            <span>Leaderboard</span>
+          </Button>
 
-          <Link href="/best-practices">
-            <Button
-              variant="ghost"
-              className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
-              data-testid="nav-best-practices"
-            >
-              <BookOpen className="w-4 h-4" />
-              <span>Best Practices</span>
-            </Button>
-          </Link>
+          <Button
+            variant="ghost"
+            className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
+            onClick={() => setLocation("/best-practices")}
+            data-testid="nav-best-practices"
+          >
+            <BookOpen className="w-4 h-4" />
+            <span>Best Practices</span>
+          </Button>
 
-          <Link href="/ae-handoff">
-            <Button
-              variant="ghost"
-              className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
-              data-testid="nav-ae-handoff"
-            >
-              <ArrowRightLeft className="w-4 h-4" />
-              <span>AE Handoff</span>
-            </Button>
-          </Link>
+          <Button
+            variant="ghost"
+            className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
+            onClick={() => setLocation("/ae-handoff")}
+            data-testid="nav-ae-handoff"
+          >
+            <ArrowRightLeft className="w-4 h-4" />
+            <span>AE Handoff</span>
+          </Button>
 
-          <Link href="/ai-prospecting">
-            <Button
-              variant="ghost"
-              className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
-              data-testid="nav-ai-prospecting"
-            >
-              <SparklesIcon className="w-4 h-4" />
-              <span>AI Prospecting</span>
-            </Button>
-          </Link>
+          <Button
+            variant="ghost"
+            className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
+            onClick={() => setLocation("/ai-prospecting")}
+            data-testid="nav-ai-prospecting"
+          >
+            <SparklesIcon className="w-4 h-4" />
+            <span>AI Prospecting</span>
+          </Button>
           
-          <Link href="/api-docs">
-            <Button
-              variant="ghost"
-              className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
-              data-testid="nav-api-docs"
-            >
-              <Code className="w-4 h-4" />
-              <span>API Docs</span>
-            </Button>
-          </Link>
+          <Button
+            variant="ghost"
+            className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
+            onClick={() => setLocation("/api-docs")}
+            data-testid="nav-api-docs"
+          >
+            <Code className="w-4 h-4" />
+            <span>API Docs</span>
+          </Button>
           
           <Separator className="my-4" />
           
           {user?.role === 'admin' && (
             <>
-              <Link href="/users">
-                <Button
-                  variant="ghost"
-                  className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
-                  data-testid="nav-users"
-                >
-                  <Shield className="w-4 h-4" />
-                  <span>User Management</span>
-                </Button>
-              </Link>
-              <Link href="/organization-settings">
-                <Button
-                  variant="ghost"
-                  className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
-                  data-testid="nav-org-settings"
-                >
-                  <Building2 className="w-4 h-4" />
-                  <span>Organization</span>
-                </Button>
-              </Link>
-              <Link href="/workspace-management">
-                <Button
-                  variant="ghost"
-                  className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
-                  data-testid="nav-workspaces"
-                >
-                  <FolderTree className="w-4 h-4" />
-                  <span>Workspaces</span>
-                </Button>
-              </Link>
+              <Button
+                variant="ghost"
+                className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
+                onClick={() => setLocation("/users")}
+                data-testid="nav-users"
+              >
+                <Shield className="w-4 h-4" />
+                <span>User Management</span>
+              </Button>
+              <Button
+                variant="ghost"
+                className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
+                onClick={() => setLocation("/organization-settings")}
+                data-testid="nav-org-settings"
+              >
+                <Building2 className="w-4 h-4" />
+                <span>Organization</span>
+              </Button>
+              <Button
+                variant="ghost"
+                className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
+                onClick={() => setLocation("/workspace-management")}
+                data-testid="nav-workspaces"
+              >
+                <FolderTree className="w-4 h-4" />
+                <span>Workspaces</span>
+              </Button>
             </>
           )}
           
-          <Link href="/settings">
-            <Button
-              variant="ghost"
-              className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
-              data-testid="nav-settings"
-            >
-              <SettingsIcon className="w-4 h-4" />
-              <span>Settings</span>
-            </Button>
-          </Link>
+          <Button
+            variant="ghost"
+            className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
+            onClick={() => setLocation("/settings")}
+            data-testid="nav-settings"
+          >
+            <SettingsIcon className="w-4 h-4" />
+            <span>Settings</span>
+          </Button>
         </nav>
 
         {/* User Profile */}
         <div className="p-4 border-t border-border space-y-2">
-          <Link href="/profile">
-            <div className="flex items-center gap-3 px-3 py-2.5 rounded-md hover:bg-muted cursor-pointer transition-colors" data-testid="link-user-profile">
-              <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-medium">
-                {user?.firstName?.[0] || user?.email?.[0]?.toUpperCase() || 'U'}
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate" data-testid="text-user-name">
-                  {user?.firstName || 'User'}
-                </p>
-                <p className="text-xs text-muted-foreground truncate" data-testid="text-user-email">
-                  {user?.email || 'user@company.com'}
-                </p>
-              </div>
+          <div 
+            className="flex items-center gap-3 px-3 py-2.5 rounded-md hover:bg-muted cursor-pointer transition-colors" 
+            data-testid="link-user-profile"
+            onClick={() => setLocation("/profile")}
+          >
+            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center text-primary-foreground font-medium">
+              {user?.firstName?.[0] || user?.email?.[0]?.toUpperCase() || 'U'}
             </div>
-          </Link>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium truncate" data-testid="text-user-name">
+                {user?.firstName || 'User'}
+              </p>
+              <p className="text-xs text-muted-foreground truncate" data-testid="text-user-email">
+                {user?.email || 'user@company.com'}
+              </p>
+            </div>
+          </div>
           <Button
             variant="ghost"
             className="w-full justify-start gap-3 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
