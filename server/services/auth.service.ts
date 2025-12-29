@@ -2,7 +2,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { db } from '../db';
-import { users, userSessions, userInvitations, auditLogs, passwordResetTokens, emailVerificationTokens } from '@shared/schema';
+import { users, userSessions, userInvitations, auditLogs, passwordResetTokens, emailVerificationTokens, managerAccounts } from '@shared/schema';
 import { eq, and, gt, isNull } from 'drizzle-orm';
 
 const SALT_ROUNDS = 12;
@@ -29,6 +29,7 @@ export interface AuthUser {
   role: 'admin' | 'user';
   status: 'active' | 'inactive' | 'suspended';
   organizationId: string | null;
+  isManager: boolean;
 }
 
 export interface SessionData {
@@ -194,6 +195,13 @@ export class AuthService {
         .where(eq(userSessions.id, session.id));
     }
 
+    // Check if user is a manager (has a manager account)
+    const [managerAccount] = await db
+      .select({ id: managerAccounts.id })
+      .from(managerAccounts)
+      .where(eq(managerAccounts.userId, user.id))
+      .limit(1);
+
     return {
       id: user.id,
       email: user.email,
@@ -203,6 +211,7 @@ export class AuthService {
       role: user.role as 'admin' | 'user',
       status: user.status as 'active' | 'inactive' | 'suspended',
       organizationId: user.organizationId,
+      isManager: !!managerAccount,
     };
   }
 
@@ -358,6 +367,7 @@ export class AuthService {
       status: user.status as 'active' | 'inactive' | 'suspended',
       emailVerified: user.emailVerified || false,
       organizationId: user.organizationId,
+      isManager: false, // Newly invited users are not managers
     };
   }
 
