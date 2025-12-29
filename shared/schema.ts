@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, jsonb, timestamp, boolean, integer, pgEnum, index, real, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, jsonb, timestamp, boolean, integer, pgEnum, index, real, uniqueIndex, date } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { relations } from "drizzle-orm";
@@ -346,6 +346,102 @@ export const contentLibrary = pgTable("content_library", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Message templates table - for saving successful email templates
+export const messageTemplates = pgTable("message_templates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id"),
+  userId: varchar("user_id").notNull(),
+  name: varchar("name", { length: 255 }).notNull(),
+  subjectLine: varchar("subject_line", { length: 255 }),
+  body: text("body").notNull(),
+  type: varchar("type", { length: 50 }).default("personal"), // personal, team, company
+  tone: varchar("tone", { length: 50 }).default("professional"), // professional, casual, consultative, direct
+  category: varchar("category", { length: 100 }), // cold_outreach, follow_up, breakup, meeting_request
+  variables: jsonb("variables"), // Available variables like {{FirstName}}, {{Company}}
+  useCount: integer("use_count").default(0),
+  totalSent: integer("total_sent").default(0),
+  totalOpens: integer("total_opens").default(0),
+  totalReplies: integer("total_replies").default(0),
+  avgReplyRate: real("avg_reply_rate"),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// AI generations tracking table - for tracking AI usage and costs
+export const aiGenerations = pgTable("ai_generations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id"),
+  userId: varchar("user_id").notNull(),
+  generationType: varchar("generation_type", { length: 100 }).notNull(), // email, subject_line, reply_suggestion, sentiment_analysis
+  prompt: text("prompt"),
+  response: text("response"),
+  model: varchar("model", { length: 100 }), // gpt-4o, claude-sonnet-4, etc.
+  provider: varchar("provider", { length: 50 }), // openai, anthropic, openrouter
+  promptTokens: integer("prompt_tokens"),
+  completionTokens: integer("completion_tokens"),
+  totalTokens: integer("total_tokens"),
+  costUsd: real("cost_usd"),
+  latencyMs: integer("latency_ms"),
+  success: boolean("success").default(true),
+  errorMessage: text("error_message"),
+  metadata: jsonb("metadata"), // Additional context like prospectId, sequenceId
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Daily metrics aggregation table
+export const metricsDaily = pgTable("metrics_daily", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id"),
+  userId: varchar("user_id").notNull(),
+  date: date("date").notNull(),
+  emailsSent: integer("emails_sent").default(0),
+  emailsOpened: integer("emails_opened").default(0),
+  emailsClicked: integer("emails_clicked").default(0),
+  repliesReceived: integer("replies_received").default(0),
+  positiveReplies: integer("positive_replies").default(0),
+  negativeReplies: integer("negative_replies").default(0),
+  meetingsBooked: integer("meetings_booked").default(0),
+  bounces: integer("bounces").default(0),
+  unsubscribes: integer("unsubscribes").default(0),
+  aiCreditsUsed: integer("ai_credits_used").default(0),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// User quotas table for tracking usage limits
+export const userQuotas = pgTable("user_quotas", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id"),
+  userId: varchar("user_id").notNull(),
+  period: varchar("period", { length: 50 }).notNull(), // daily, weekly, monthly, quarterly
+  quotaType: varchar("quota_type", { length: 50 }).notNull(), // emails, meetings, replies, ai_credits
+  quotaValue: integer("quota_value").notNull(),
+  currentValue: integer("current_value").default(0),
+  startDate: date("start_date"),
+  endDate: date("end_date"),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Conversations table for threading replies
+export const conversations = pgTable("conversations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tenantId: varchar("tenant_id"),
+  userId: varchar("user_id").notNull(),
+  prospectId: varchar("prospect_id").notNull().references(() => prospects.id, { onDelete: "cascade" }),
+  subject: varchar("subject", { length: 255 }),
+  lastMessageAt: timestamp("last_message_at"),
+  messageCount: integer("message_count").default(0),
+  status: varchar("status", { length: 50 }).default("active"), // active, archived, qualified, lost
+  priority: integer("priority").default(5), // 1-10 scale
+  assignedTo: varchar("assigned_to"),
+  tags: jsonb("tags"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
 // Sequence module relations
 export const sequencesRelations = relations(sequences, ({ many }) => ({
   steps: many(sequenceSteps),
@@ -418,6 +514,16 @@ export type PersonalizationResult = typeof personalizationResults.$inferSelect;
 export type InsertPersonalizationResult = typeof personalizationResults.$inferInsert;
 export type ContentLibraryItem = typeof contentLibrary.$inferSelect;
 export type InsertContentLibraryItem = typeof contentLibrary.$inferInsert;
+export type MessageTemplate = typeof messageTemplates.$inferSelect;
+export type InsertMessageTemplate = typeof messageTemplates.$inferInsert;
+export type AIGeneration = typeof aiGenerations.$inferSelect;
+export type InsertAIGeneration = typeof aiGenerations.$inferInsert;
+export type MetricsDaily = typeof metricsDaily.$inferSelect;
+export type InsertMetricsDaily = typeof metricsDaily.$inferInsert;
+export type UserQuota = typeof userQuotas.$inferSelect;
+export type InsertUserQuota = typeof userQuotas.$inferInsert;
+export type Conversation = typeof conversations.$inferSelect;
+export type InsertConversation = typeof conversations.$inferInsert;
 
 // Sequence module schemas
 export const insertSequenceSchema = createInsertSchema(sequences).omit({
