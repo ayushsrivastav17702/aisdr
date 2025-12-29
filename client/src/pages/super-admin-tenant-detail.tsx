@@ -50,7 +50,10 @@ import {
   BarChart3,
   Clock,
   TrendingUp,
-  AlertCircle
+  AlertCircle,
+  Copy,
+  Check,
+  Send
 } from "lucide-react";
 
 interface TenantDetails {
@@ -245,6 +248,13 @@ export default function SuperAdminTenantDetail() {
   const [addManagerDialogOpen, setAddManagerDialogOpen] = useState(false);
   const [editManagerDialogOpen, setEditManagerDialogOpen] = useState(false);
   const [resetPasswordDialogOpen, setResetPasswordDialogOpen] = useState(false);
+  const [credentialsModalOpen, setCredentialsModalOpen] = useState(false);
+  const [credentialsData, setCredentialsData] = useState<{
+    email: string;
+    tempPassword: string;
+    type: "new_manager" | "password_reset" | "resend_invite";
+  } | null>(null);
+  const [copiedPassword, setCopiedPassword] = useState(false);
   const [selectedManagerForEdit, setSelectedManagerForEdit] = useState<{
     id: string;
     email: string;
@@ -324,11 +334,14 @@ export default function SuperAdminTenantDetail() {
       queryClient.invalidateQueries({ queryKey: ["/api/super-admin/tenants", tenantId, "details"] });
       queryClient.invalidateQueries({ queryKey: ["/api/super-admin/tenants"] });
       setAddManagerDialogOpen(false);
-      setNewManagerData({ email: "", firstName: "", lastName: "", managerRole: "secondary", sendInviteEmail: true });
-      toast({ 
-        title: "Manager created successfully",
-        description: `Temporary password: ${result.tempPassword}`,
+      setCredentialsData({
+        email: newManagerData.email,
+        tempPassword: result.tempPassword,
+        type: "new_manager",
       });
+      setCopiedPassword(false);
+      setCredentialsModalOpen(true);
+      setNewManagerData({ email: "", firstName: "", lastName: "", managerRole: "secondary", sendInviteEmail: true });
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -361,11 +374,36 @@ export default function SuperAdminTenantDetail() {
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["/api/super-admin/tenants", tenantId, "details"] });
       setResetPasswordDialogOpen(false);
-      setSelectedManagerForEdit(null);
-      toast({ 
-        title: "Password reset successfully",
-        description: `New temporary password: ${result.tempPassword}`,
+      setCredentialsData({
+        email: selectedManagerForEdit?.email || "",
+        tempPassword: result.tempPassword,
+        type: "password_reset",
       });
+      setCopiedPassword(false);
+      setCredentialsModalOpen(true);
+      setSelectedManagerForEdit(null);
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const resendInviteMutation = useMutation({
+    mutationFn: (userId: string) =>
+      superAdminFetch(`/api/super-admin/managers/${userId}/resend-invite`, {
+        method: "POST",
+      }),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/tenants", tenantId, "details"] });
+      setCredentialsData({
+        email: selectedManagerForEdit?.email || "",
+        tempPassword: result.tempPassword,
+        type: "resend_invite",
+      });
+      setCopiedPassword(false);
+      setCredentialsModalOpen(true);
+      setSelectedManagerForEdit(null);
+      toast({ title: "Invite email sent successfully" });
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -917,6 +955,7 @@ export default function SuperAdminTenantDetail() {
                               <Button 
                                 variant="ghost" 
                                 size="icon" 
+                                title="Edit Manager"
                                 data-testid={`button-edit-manager-${manager.id}`}
                                 onClick={() => {
                                   setSelectedManagerForEdit(manager);
@@ -934,6 +973,7 @@ export default function SuperAdminTenantDetail() {
                               <Button 
                                 variant="ghost" 
                                 size="icon" 
+                                title="Reset Password"
                                 data-testid={`button-reset-password-${manager.id}`}
                                 onClick={() => {
                                   setSelectedManagerForEdit(manager);
@@ -941,6 +981,19 @@ export default function SuperAdminTenantDetail() {
                                 }}
                               >
                                 <Key className="h-4 w-4" />
+                              </Button>
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                title="Resend Invite"
+                                data-testid={`button-resend-invite-${manager.id}`}
+                                disabled={resendInviteMutation.isPending}
+                                onClick={() => {
+                                  setSelectedManagerForEdit(manager);
+                                  resendInviteMutation.mutate(manager.id);
+                                }}
+                              >
+                                <Send className="h-4 w-4" />
                               </Button>
                             </div>
                           </TableCell>
@@ -1220,6 +1273,85 @@ export default function SuperAdminTenantDetail() {
               data-testid="button-confirm-reset-password"
             >
               {resetPasswordMutation.isPending ? "Resetting..." : "Reset Password"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={credentialsModalOpen} onOpenChange={setCredentialsModalOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CheckCircle className="h-5 w-5 text-green-500" />
+              {credentialsData?.type === "new_manager" && "Manager Created Successfully"}
+              {credentialsData?.type === "password_reset" && "Password Reset Successfully"}
+              {credentialsData?.type === "resend_invite" && "Invite Sent Successfully"}
+            </DialogTitle>
+            <DialogDescription>
+              {credentialsData?.type === "resend_invite" 
+                ? "An email with login credentials has been sent to the manager."
+                : "Please save the temporary password below. The manager will need it to log in."
+              }
+            </DialogDescription>
+          </DialogHeader>
+          {credentialsData && (
+            <div className="space-y-4 py-4">
+              <div className="space-y-2">
+                <Label className="text-sm text-slate-500">Email</Label>
+                <div className="font-medium" data-testid="text-credentials-email">
+                  {credentialsData.email}
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label className="text-sm text-slate-500">Temporary Password</Label>
+                <div className="flex items-center gap-2">
+                  <div 
+                    className="flex-1 font-mono text-lg bg-slate-100 dark:bg-slate-800 px-3 py-2 rounded-md border"
+                    data-testid="text-credentials-password"
+                  >
+                    {credentialsData.tempPassword}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    data-testid="button-copy-password"
+                    onClick={() => {
+                      navigator.clipboard.writeText(credentialsData.tempPassword);
+                      setCopiedPassword(true);
+                      setTimeout(() => setCopiedPassword(false), 2000);
+                    }}
+                  >
+                    {copiedPassword ? (
+                      <Check className="h-4 w-4 text-green-500" />
+                    ) : (
+                      <Copy className="h-4 w-4" />
+                    )}
+                  </Button>
+                </div>
+                {copiedPassword && (
+                  <p className="text-sm text-green-600">Password copied to clipboard!</p>
+                )}
+              </div>
+              <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-md p-3">
+                <div className="flex gap-2">
+                  <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div className="text-sm text-amber-700 dark:text-amber-300">
+                    <p className="font-medium">Important:</p>
+                    <p>This password is shown only once. Make sure to copy it and share it securely with the manager.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button 
+              onClick={() => {
+                setCredentialsModalOpen(false);
+                setCredentialsData(null);
+              }}
+              data-testid="button-close-credentials-modal"
+            >
+              I've Saved the Password
             </Button>
           </DialogFooter>
         </DialogContent>

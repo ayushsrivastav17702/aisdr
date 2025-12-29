@@ -572,6 +572,24 @@ router.post('/managers/:userId/reset-password', authenticateSuperAdmin, async (r
   }
 });
 
+// Phase 2: Resend invite email to manager
+router.post('/managers/:userId/resend-invite', authenticateSuperAdmin, async (req, res) => {
+  try {
+    const result = await superAdminService.resendManagerInvite(
+      req.superAdmin!.id,
+      req.params.userId
+    );
+
+    res.json({
+      message: 'Invite email sent successfully',
+      tempPassword: result.tempPassword,
+    });
+  } catch (error: any) {
+    console.error('Error resending invite:', error);
+    res.status(400).json({ error: error.message || 'Failed to resend invite' });
+  }
+});
+
 // Phase 2: Log manager activity (internal use)
 router.post('/tenants/:id/activity', authenticateSuperAdmin, async (req, res) => {
   try {
