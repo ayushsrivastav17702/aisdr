@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { authenticate } from '../middleware/auth.middleware';
+import { authenticate, forbidManager } from '../middleware/auth.middleware';
 import { db } from '../db';
 import { 
   prospects, 
@@ -21,7 +21,7 @@ import { getEffectiveUserId } from '../storage';
 const router = Router();
 
 // Export prospects as CSV
-router.get('/api/export/prospects/csv', authenticate, async (req, res) => {
+router.get('/api/export/prospects/csv', authenticate, forbidManager, async (req, res) => {
   try {
     if (!req.userContext?.userId) {
       return res.status(401).json({ error: 'Authentication required' });
@@ -60,7 +60,7 @@ router.get('/api/export/prospects/csv', authenticate, async (req, res) => {
 });
 
 // Export prospects as JSON
-router.get('/api/export/prospects/json', authenticate, async (req, res) => {
+router.get('/api/export/prospects/json', authenticate, forbidManager, async (req, res) => {
   try {
     if (!req.userContext?.userId) {
       return res.status(401).json({ error: 'Authentication required' });
@@ -83,7 +83,7 @@ router.get('/api/export/prospects/json', authenticate, async (req, res) => {
 });
 
 // Export sequences as CSV
-router.get('/api/export/sequences/csv', authenticate, async (req, res) => {
+router.get('/api/export/sequences/csv', authenticate, forbidManager, async (req, res) => {
   try {
     if (!req.userContext?.userId) {
       return res.status(401).json({ error: 'Authentication required' });
@@ -119,7 +119,7 @@ router.get('/api/export/sequences/csv', authenticate, async (req, res) => {
 });
 
 // Export sequences as JSON (with steps)
-router.get('/api/export/sequences/json', authenticate, async (req, res) => {
+router.get('/api/export/sequences/json', authenticate, forbidManager, async (req, res) => {
   try {
     if (!req.userContext?.userId) {
       return res.status(401).json({ error: 'Authentication required' });
@@ -156,7 +156,7 @@ router.get('/api/export/sequences/json', authenticate, async (req, res) => {
 });
 
 // Export email activity as CSV
-router.get('/api/export/emails/csv', authenticate, async (req, res) => {
+router.get('/api/export/emails/csv', authenticate, forbidManager, async (req, res) => {
   try {
     if (!req.userContext?.userId) {
       return res.status(401).json({ error: 'Authentication required' });
@@ -192,7 +192,7 @@ router.get('/api/export/emails/csv', authenticate, async (req, res) => {
 });
 
 // Export email replies as CSV
-router.get('/api/export/replies/csv', authenticate, async (req, res) => {
+router.get('/api/export/replies/csv', authenticate, forbidManager, async (req, res) => {
   try {
     if (!req.userContext?.userId) {
       return res.status(401).json({ error: 'Authentication required' });
@@ -241,7 +241,7 @@ router.get('/api/export/replies/csv', authenticate, async (req, res) => {
 });
 
 // Export searches/analytics as CSV
-router.get('/api/export/analytics/csv', authenticate, async (req, res) => {
+router.get('/api/export/analytics/csv', authenticate, forbidManager, async (req, res) => {
   try {
     if (!req.userContext?.userId) {
       return res.status(401).json({ error: 'Authentication required' });
@@ -277,7 +277,7 @@ router.get('/api/export/analytics/csv', authenticate, async (req, res) => {
 });
 
 // Export full account data as JSON (GDPR complete data export)
-router.get('/api/export/account/full', authenticate, async (req, res) => {
+router.get('/api/export/account/full', authenticate, forbidManager, async (req, res) => {
   try {
     if (!req.userContext?.userId) {
       return res.status(401).json({ error: 'Authentication required' });

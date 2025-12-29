@@ -74,8 +74,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  // Email volume configuration endpoint
-  app.get("/api/email-volume-config", authenticate, async (req, res) => {
+  // Email volume configuration endpoint (SDR-only)
+  app.get("/api/email-volume-config", authenticate, forbidManager, async (req, res) => {
     try {
       const activePreset = process.env.EMAIL_VOLUME_PRESET || 'medium';
       const dailyLimit = Math.min(
@@ -713,7 +713,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get prospects by IDs (for export)
-  app.post("/api/prospects/by-ids", authenticate, async (req, res) => {
+  app.post("/api/prospects/by-ids", authenticate, forbidManager, async (req, res) => {
     try {
       const { prospectIds } = req.body;
       
@@ -1682,7 +1682,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get jobs
-  app.get("/api/jobs", authenticate, async (req, res) => {
+  app.get("/api/jobs", authenticate, forbidManager, async (req, res) => {
     try {
       const { status, limit = "20" } = req.query;
       const jobs = await storage.getJobs(req.userContext!, status as string, parseInt(limit as string));
@@ -1696,7 +1696,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get active jobs
-  app.get("/api/jobs/active", authenticate, async (req, res) => {
+  app.get("/api/jobs/active", authenticate, forbidManager, async (req, res) => {
     try {
       const jobs = await storage.getActiveJobs(req.userContext!);
       res.json(jobs);
@@ -1709,7 +1709,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get job status
-  app.get("/api/jobs/:id", authenticate, async (req, res) => {
+  app.get("/api/jobs/:id", authenticate, forbidManager, async (req, res) => {
     try {
       const { id } = req.params;
       const job = await storage.getJob(req.userContext!, id);
@@ -1742,7 +1742,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get searches
-  app.get("/api/searches", authenticate, async (req, res) => {
+  app.get("/api/searches", authenticate, forbidManager, async (req, res) => {
     try {
       const { limit = "20" } = req.query;
       const searches = await storage.getSearches(req.userContext!, parseInt(limit as string));
@@ -2495,7 +2495,7 @@ Return ONLY the email body text, no subject line needed.`;
   });
 
   // Content Library - Get all items
-  app.get("/api/content-library", authenticate, async (req, res) => {
+  app.get("/api/content-library", authenticate, forbidManager, async (req, res) => {
     try {
       const items = await contentManagementService.getContentLibraryItems(req.userContext!);
       res.json(items);
@@ -2508,7 +2508,7 @@ Return ONLY the email body text, no subject line needed.`;
   });
 
   // Content Library - Get templates
-  app.get("/api/content-library/templates", authenticate, async (req, res) => {
+  app.get("/api/content-library/templates", authenticate, forbidManager, async (req, res) => {
     try {
       const { category } = req.query;
       const templates = category 
@@ -2892,7 +2892,7 @@ Respond in JSON format:
   });
   
   // Get email performance metrics
-  app.get("/api/email-analytics/performance", authenticate, async (req, res) => {
+  app.get("/api/email-analytics/performance", authenticate, forbidManager, async (req, res) => {
     try {
       const userId = req.userContext!.userId;
       const days = parseInt(req.query.days as string) || 30;
@@ -2906,7 +2906,7 @@ Respond in JSON format:
   });
   
   // Get sequence step performance
-  app.get("/api/email-analytics/sequence/:sequenceId/steps", authenticate, async (req, res) => {
+  app.get("/api/email-analytics/sequence/:sequenceId/steps", authenticate, forbidManager, async (req, res) => {
     try {
       const userId = req.userContext!.userId;
       const { sequenceId } = req.params;
@@ -2920,7 +2920,7 @@ Respond in JSON format:
   });
   
   // Get domain health
-  app.get("/api/email-analytics/domain-health", authenticate, async (req, res) => {
+  app.get("/api/email-analytics/domain-health", authenticate, forbidManager, async (req, res) => {
     try {
       const userId = req.userContext!.userId;
       
@@ -2933,7 +2933,7 @@ Respond in JSON format:
   });
   
   // Get top performing content
-  app.get("/api/email-analytics/top-content", authenticate, async (req, res) => {
+  app.get("/api/email-analytics/top-content", authenticate, forbidManager, async (req, res) => {
     try {
       const userId = req.userContext!.userId;
       const limit = parseInt(req.query.limit as string) || 5;
@@ -2947,7 +2947,7 @@ Respond in JSON format:
   });
   
   // Get daily summary
-  app.get("/api/email-analytics/daily-summary", authenticate, async (req, res) => {
+  app.get("/api/email-analytics/daily-summary", authenticate, forbidManager, async (req, res) => {
     try {
       const userId = req.userContext!.userId;
       const date = req.query.date ? new Date(req.query.date as string) : new Date();
@@ -2961,7 +2961,7 @@ Respond in JSON format:
   });
   
   // Get weekly summary
-  app.get("/api/email-analytics/weekly-summary", authenticate, async (req, res) => {
+  app.get("/api/email-analytics/weekly-summary", authenticate, forbidManager, async (req, res) => {
     try {
       const userId = req.userContext!.userId;
       
