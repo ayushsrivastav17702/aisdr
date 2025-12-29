@@ -2,6 +2,7 @@ import { useLocation, Link } from 'wouter';
 import { useAuth } from '@/contexts/auth-context';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { useState, useEffect } from 'react';
 import {
   BrainIcon,
   UsersIcon,
@@ -23,7 +24,9 @@ import {
   BookOpen,
   ArrowRightLeft,
   ChevronRight,
-  Users2
+  ChevronLeft,
+  Users2,
+  Home
 } from 'lucide-react';
 
 interface LayoutProps {
@@ -38,9 +41,59 @@ interface NavItem {
   requireAdmin?: boolean;
 }
 
+const routeLabels: Record<string, string> = {
+  '/': 'AI Search',
+  '/prospects': 'Prospects',
+  '/import': 'Import',
+  '/sequences': 'Sequences',
+  '/automation-dashboard': 'Automation',
+  '/mailboxes': 'Mailboxes',
+  '/content-management': 'Content',
+  '/enrichment': 'Enrichment',
+  '/analytics': 'Analytics',
+  '/leaderboard': 'Leaderboard',
+  '/best-practices': 'Best Practices',
+  '/ae-handoff': 'AE Handoff',
+  '/ai-prospecting': 'AI Prospecting',
+  '/api-docs': 'API Docs',
+  '/admin/users': 'User Management',
+  '/organization-settings': 'Organization',
+  '/workspace-management': 'Workspaces',
+  '/admin-infrastructure': 'Infrastructure',
+  '/settings': 'Settings',
+  '/profile': 'Profile',
+  '/manager/dashboard': 'Manager Dashboard',
+};
+
+function getPageTitle(path: string): string {
+  if (routeLabels[path]) return routeLabels[path];
+  
+  for (const [route, label] of Object.entries(routeLabels)) {
+    if (path.startsWith(route) && route !== '/') {
+      return label;
+    }
+  }
+  return 'Dashboard';
+}
+
 export function Layout({ children }: LayoutProps) {
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
   const { user, logout } = useAuth();
+  const [canGoBack, setCanGoBack] = useState(false);
+
+  useEffect(() => {
+    setCanGoBack(window.history.length > 1);
+  }, [location]);
+
+  const handleGoBack = () => {
+    if (window.history.length > 1) {
+      window.history.back();
+    } else {
+      setLocation('/');
+    }
+  };
+
+  const pageTitle = getPageTitle(location);
 
   const mainNavItems: NavItem[] = [
     { href: '/', icon: <SparklesIcon className="w-4 h-4" />, label: 'AI Search' },
@@ -170,8 +223,33 @@ export function Layout({ children }: LayoutProps) {
         </div>
       </aside>
 
-      <main className="flex-1 overflow-auto">
-        {children}
+      <main className="flex-1 overflow-auto flex flex-col">
+        <header className="sticky top-0 z-10 bg-background border-b border-border px-6 py-3 flex items-center gap-4">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleGoBack}
+            className="flex items-center gap-1 text-muted-foreground hover:text-foreground"
+            data-testid="btn-go-back"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            <span className="hidden sm:inline">Back</span>
+          </Button>
+          
+          <div className="flex items-center gap-2 text-sm">
+            <Link href="/">
+              <Button variant="ghost" size="sm" className="p-1 h-auto" data-testid="btn-home">
+                <Home className="w-4 h-4 text-muted-foreground hover:text-foreground" />
+              </Button>
+            </Link>
+            <ChevronRight className="w-3 h-3 text-muted-foreground" />
+            <span className="font-medium text-foreground" data-testid="text-page-title">{pageTitle}</span>
+          </div>
+        </header>
+        
+        <div className="flex-1 overflow-auto">
+          {children}
+        </div>
       </main>
     </div>
   );
