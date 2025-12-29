@@ -7,7 +7,7 @@ import {
   users
 } from "@shared/schema";
 import { eq, and, desc, sql, like, or, ilike } from "drizzle-orm";
-import { authenticate, requireAdmin } from "../middleware/auth.middleware";
+import { authenticate, forbidManager, blockSuperAdminFromSDR, requireAdmin } from "../middleware/auth.middleware";
 import { z } from "zod";
 
 const router = Router();
@@ -178,7 +178,7 @@ Never burn bridges. A "not interested" today doesn't mean "never interested."
   },
 ];
 
-router.get("/api/best-practices/categories", authenticate, async (req, res) => {
+router.get("/api/best-practices/categories", authenticate, blockSuperAdminFromSDR, async (req, res) => {
   try {
     let categories = await db.select().from(bestPracticeCategories).orderBy(bestPracticeCategories.sortOrder);
 
@@ -201,7 +201,7 @@ router.get("/api/best-practices/categories", authenticate, async (req, res) => {
   }
 });
 
-router.get("/api/best-practices", authenticate, async (req, res) => {
+router.get("/api/best-practices", authenticate, blockSuperAdminFromSDR, async (req, res) => {
   try {
     const { category, contentType, search, featured } = req.query;
 
@@ -261,7 +261,7 @@ router.get("/api/best-practices", authenticate, async (req, res) => {
   }
 });
 
-router.get("/api/best-practices/:slug", authenticate, async (req, res) => {
+router.get("/api/best-practices/:slug", authenticate, blockSuperAdminFromSDR, async (req, res) => {
   try {
     const { slug } = req.params;
 
@@ -290,7 +290,7 @@ router.get("/api/best-practices/:slug", authenticate, async (req, res) => {
   }
 });
 
-router.post("/api/best-practices/:id/use", authenticate, async (req, res) => {
+router.post("/api/best-practices/:id/use", authenticate, forbidManager, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -318,7 +318,7 @@ router.post("/api/best-practices/:id/use", authenticate, async (req, res) => {
   }
 });
 
-router.post("/api/best-practices/:id/rate", authenticate, async (req, res) => {
+router.post("/api/best-practices/:id/rate", authenticate, forbidManager, async (req, res) => {
   try {
     const userContext = req.userContext;
     if (!userContext?.userId) {
