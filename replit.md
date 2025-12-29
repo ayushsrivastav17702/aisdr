@@ -30,7 +30,12 @@ The platform is built on a modern web stack, featuring a multi-tenant architectu
 - **Email Sequence Management**: Multi-step sequences, prospect enrollment, tracking, AI personalization, multi-mailbox sending with round-robin rotation.
 - **Data Security**: Secure credential encryption (AES-256-CBC) for mailboxes.
 - **Reply Detection**: IMAP-based polling for automatic reply detection, OOO detection, bounce handling, and unsubscribe processing.
+- **Reply Classification**: AI-powered sentiment and intent analysis for incoming replies with automatic sequence adjustments.
 - **Email Threading**: Follow-up emails properly thread using RFC 5322 Message-ID headers.
+- **Unified Inbox**: Centralized reply management with AI summaries, filtering by sentiment/intent, and quick actions.
+- **Template Management**: Message template library with performance tracking, variable replacement, and AI-powered template generation.
+- **AI Usage Tracking**: Comprehensive token usage tracking with cost calculation across multiple AI providers.
+- **Campaign Execution**: Automated sequence execution with AI personalization, daily limits, and progress tracking.
 - **Automation Layer**: Background automation for autonomous prospect imports and sequence enrollment.
 - **Email Tracking & Analytics**: Comprehensive email engagement tracking (open, click, reply rates) with HMAC-signed URL wrapping.
 - **Duplicate Detection**: Intelligent checks by email, Apollo ID, LinkedIn URL, and name+company.
