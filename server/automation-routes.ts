@@ -156,9 +156,9 @@ export function registerAutomationRoutes(app: Express) {
 
   /**
    * GET /api/automation/list
-   * Get all automation runs (PROTECTED: user-scoped)
+   * Get all automation runs (PROTECTED: user-scoped, SDR-only)
    */
-  app.get("/api/automation/list", authenticate, async (req: Request, res: Response) => {
+  app.get("/api/automation/list", authenticate, forbidManager, async (req: Request, res: Response) => {
     try {
       if (!req.userContext?.userId) {
         return res.status(401).json({ error: "Authentication required" });
@@ -180,9 +180,9 @@ export function registerAutomationRoutes(app: Express) {
 
   /**
    * GET /api/automation/:id
-   * Get specific automation details (PROTECTED: user-scoped)
+   * Get specific automation details (PROTECTED: user-scoped, SDR-only)
    */
-  app.get("/api/automation/:id", authenticate, async (req: Request, res: Response) => {
+  app.get("/api/automation/:id", authenticate, forbidManager, async (req: Request, res: Response) => {
     try {
       if (!req.userContext?.userId) {
         return res.status(401).json({ error: "Authentication required" });
@@ -281,7 +281,7 @@ export function registerAutomationRoutes(app: Express) {
    * GET /api/automation/:id/errors
    * Get error logs for automation
    */
-  app.get("/api/automation/:id/errors", authenticate, async (req: Request, res: Response) => {
+  app.get("/api/automation/:id/errors", authenticate, forbidManager, async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       const errors = await automationService.getAutomationErrors(id);
@@ -320,7 +320,7 @@ export function registerAutomationRoutes(app: Express) {
    * GET /api/automation/:id/prospects
    * Get enrolled prospects for automation
    */
-  app.get("/api/automation/:id/prospects", authenticate, async (req: Request, res: Response) => {
+  app.get("/api/automation/:id/prospects", authenticate, forbidManager, async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       const prospectIds = await automationService.getEnrolledProspects(id);
@@ -338,7 +338,7 @@ export function registerAutomationRoutes(app: Express) {
    * GET /api/automation/:id/rate-limit
    * Get rate limit status for automation
    */
-  app.get("/api/automation/:id/rate-limit", authenticate, async (req: Request, res: Response) => {
+  app.get("/api/automation/:id/rate-limit", authenticate, forbidManager, async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       const status = await automationService.getRateLimitStatus(id);
@@ -404,7 +404,7 @@ export function registerAutomationRoutes(app: Express) {
    * GET /api/automation/:id/job-status
    * Get BullMQ job status for automation
    */
-  app.get("/api/automation/:id/job-status", authenticate, async (req: Request, res: Response) => {
+  app.get("/api/automation/:id/job-status", authenticate, forbidManager, async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
       const jobStatus = await automationSchedulerService.getJobStatus(id);

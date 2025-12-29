@@ -247,9 +247,10 @@ export default function ManagerDashboard() {
   };
 
   // Queries
-  const { data: teamMembers = [], isLoading: teamLoading } = useQuery<TeamMember[]>({
+  const { data: teamData, isLoading: teamLoading } = useQuery<{ members: TeamMember[]; total: number; page: number; limit: number; totalPages: number }>({
     queryKey: ["/api/manager/team"],
   });
+  const teamMembers = teamData?.members ?? [];
 
   const { data: stats } = useQuery<TeamStats>({
     queryKey: ["/api/manager/stats"],
@@ -423,7 +424,7 @@ export default function ManagerDashboard() {
   const getRoleBadge = (role: string) => {
     return (
       <Badge variant={role === "admin" ? "default" : "secondary"}>
-        {role === "admin" ? "Admin" : "User"}
+        {role === "admin" ? "Manager" : "SDR"}
       </Badge>
     );
   };
@@ -696,8 +697,8 @@ export default function ManagerDashboard() {
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>
-                                <SelectItem value="user">User (SDR/BDR)</SelectItem>
-                                <SelectItem value="admin">Admin (Manager)</SelectItem>
+                                <SelectItem value="user">SDR / BDR</SelectItem>
+                                <SelectItem value="admin">Team Manager</SelectItem>
                               </SelectContent>
                             </Select>
                           </div>
@@ -1113,7 +1114,7 @@ export default function ManagerDashboard() {
                     <p className="text-sm text-muted-foreground">{userPerformance.user.email}</p>
                     <div className="flex items-center gap-2 mt-2">
                       <Badge variant={userPerformance.user.role === "admin" ? "default" : "secondary"}>
-                        {userPerformance.user.role === "admin" ? "Admin" : "User"}
+                        {userPerformance.user.role === "admin" ? "Manager" : "SDR"}
                       </Badge>
                       <Badge variant={userPerformance.user.status === "active" ? "default" : "outline"}>
                         {userPerformance.user.status}

@@ -125,7 +125,7 @@ router.get("/api/manager/team", authenticate, requireManager, async (req, res) =
       total: totalResult,
       page: pageNum,
       limit: limitNum,
-      pages: Math.ceil(totalResult / limitNum),
+      totalPages: Math.ceil(totalResult / limitNum),
     });
   } catch (error) {
     console.error("Error fetching team members:", error);
@@ -519,7 +519,7 @@ router.get("/api/manager/campaigns", authenticate, requireManager, async (req, r
       total,
       page: pageNum,
       limit: limitNum,
-      pages: Math.ceil(total / limitNum),
+      totalPages: Math.ceil(total / limitNum),
     });
   } catch (error) {
     console.error("Error fetching campaigns:", error);
