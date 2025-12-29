@@ -1465,6 +1465,7 @@ class SuperAdminService {
 
     // Send welcome email with new credentials
     try {
+      console.log(`📤 Sending manager invite email to: ${user.email}`);
       const { emailService } = await import('./email.service');
       const baseUrl = process.env.APP_URL || 'https://increff-aisdr.replit.app';
       await emailService.sendWelcomeCredentialsEmail({
@@ -1476,8 +1477,9 @@ class SuperAdminService {
         organizationName: orgName,
         role: 'Manager',
       });
+      console.log(`✅ Manager invite email sent successfully to: ${user.email}`);
     } catch (emailError) {
-      console.error('Failed to send invite email:', emailError);
+      console.error(`❌ Failed to send manager invite email to ${user.email}:`, emailError);
       // Still return the password so super admin can share it manually
     }
 
