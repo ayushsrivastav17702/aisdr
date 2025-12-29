@@ -43,7 +43,7 @@ import aeHandoffRoutes from "./routes/ae-handoff.routes";
 import waterfallSearchRoutes from "./routes/waterfall-search.routes";
 import managerRoutes from "./routes/manager.routes";
 import { inboxRouter } from "./inbox-routes";
-import { authenticate } from "./middleware/auth.middleware";
+import { authenticate, forbidManager } from "./middleware/auth.middleware";
 import { emailVolumeConfig, getCapacityReport, getEstimatedTimeForEmails, EMAIL_VOLUME_PRESETS } from "./config/email-volume.config";
 
 const upload = multer({ 
@@ -119,7 +119,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // AI Search endpoint
-  app.post("/api/ai-search", authenticate, async (req, res) => {
+  app.post("/api/ai-search", authenticate, forbidManager, async (req, res) => {
     try {
       const validatedBody = aiSearchSchema.extend({ 
         includeLocalProspects: z.boolean().default(true) 
@@ -181,7 +181,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Direct Apollo search (for immediate results)
-  app.post("/api/apollo-search", authenticate, async (req, res) => {
+  app.post("/api/apollo-search", authenticate, forbidManager, async (req, res) => {
     try {
       const { apolloFilters, page = 1, per_page = 50 } = req.body;
       
@@ -264,7 +264,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Apollo search and save to database (synchronous alternative to job queue)
   // Supports useWaterfall: true to try Perplexity first for better email coverage
-  app.post("/api/apollo-search-and-save", authenticate, async (req, res) => {
+  app.post("/api/apollo-search-and-save", authenticate, forbidManager, async (req, res) => {
     try {
       const { apolloFilters, page = 1, per_page = 50, extractionName, tag, useWaterfall = true } = req.body;
       
@@ -751,7 +751,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Create prospect
-  app.post("/api/prospects", authenticate, async (req, res) => {
+  app.post("/api/prospects", authenticate, forbidManager, async (req, res) => {
     try {
       const prospectData = insertProspectSchema.parse(req.body);
       const prospect = await storage.createProspect(req.userContext!, prospectData);
@@ -765,7 +765,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Update prospect
-  app.patch("/api/prospects/:id", authenticate, async (req, res) => {
+  app.patch("/api/prospects/:id", authenticate, forbidManager, async (req, res) => {
     try {
       const { id } = req.params;
       const updates = insertProspectSchema.partial().parse(req.body);
@@ -780,7 +780,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Delete prospect
-  app.delete("/api/prospects/:id", authenticate, async (req, res) => {
+  app.delete("/api/prospects/:id", authenticate, forbidManager, async (req, res) => {
     try {
       const { id } = req.params;
       await storage.deleteProspect(req.userContext!, id);
@@ -794,7 +794,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Bulk delete prospects
-  app.post("/api/prospects/bulk-delete", authenticate, async (req, res) => {
+  app.post("/api/prospects/bulk-delete", authenticate, forbidManager, async (req, res) => {
     try {
       const { prospectIds } = req.body;
       
@@ -824,7 +824,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Enrich prospects (uses job queue if Redis available, otherwise direct enrichment)
-  app.post("/api/enrich", authenticate, async (req, res) => {
+  app.post("/api/enrich", authenticate, forbidManager, async (req, res) => {
     try {
       const { prospectIds } = enrichmentRequestSchema.parse(req.body);
       
@@ -949,7 +949,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Lusha email enrichment
-  app.post("/api/lusha-enrich", authenticate, async (req, res) => {
+  app.post("/api/lusha-enrich", authenticate, forbidManager, async (req, res) => {
     try {
       const { prospectIds } = z.object({ 
         prospectIds: z.array(z.string()).min(1) 
@@ -1048,7 +1048,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Waterfall enrichment - tries Apollo → Lusha → Email pattern guessing
-  app.post("/api/waterfall-enrich", authenticate, async (req, res) => {
+  app.post("/api/waterfall-enrich", authenticate, forbidManager, async (req, res) => {
     try {
       const { enrichmentWaterfallService } = await import('./services/enrichment-waterfall.service');
       
@@ -1158,7 +1158,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Enrich all unenriched prospects (works without Redis)
-  app.post("/api/prospects/enrich-all-new", authenticate, async (req, res) => {
+  app.post("/api/prospects/enrich-all-new", authenticate, forbidManager, async (req, res) => {
     try {
       const { limit = 50 } = req.body;
       const maxLimit = Math.min(limit, 100);
@@ -1294,7 +1294,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Apollo bulk enrichment
-  app.post("/api/apollo-bulk-enrich", authenticate, async (req, res) => {
+  app.post("/api/apollo-bulk-enrich", authenticate, forbidManager, async (req, res) => {
     try {
       const { prospectIds } = z.object({ 
         prospectIds: z.array(z.string()).min(1) 
@@ -1416,7 +1416,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // CSV upload and import
-  app.post("/api/import/csv", authenticate, upload.single('file'), async (req, res) => {
+  app.post("/api/import/csv", authenticate, forbidManager, upload.single('file'), async (req, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ error: "No file uploaded" });
@@ -1598,7 +1598,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Validate CSV data (for field mapping preview)
-  app.post("/api/import/validate-csv", authenticate, upload.single('file'), async (req, res) => {
+  app.post("/api/import/validate-csv", authenticate, forbidManager, upload.single('file'), async (req, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ error: "No file uploaded" });
@@ -1728,7 +1728,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Cancel job
-  app.post("/api/jobs/:id/cancel", authenticate, async (req, res) => {
+  app.post("/api/jobs/:id/cancel", authenticate, forbidManager, async (req, res) => {
     try {
       const { id } = req.params;
       await jobService.cancelJob(req.userContext!, id);
@@ -1825,7 +1825,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   registerAutomationRoutes(app);
 
   // Intelligent Personalization - Deep AI prospect analysis
-  app.post("/api/personalization/analyze", authenticate, async (req, res) => {
+  app.post("/api/personalization/analyze", authenticate, forbidManager, async (req, res) => {
     try {
       const { prospectId, includeWebScraping = false } = req.body;
       
@@ -1879,7 +1879,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Advanced AI analysis - Enhanced version with scoring and variables
-  app.post("/api/personalization/advanced-analyze", authenticate, async (req, res) => {
+  app.post("/api/personalization/advanced-analyze", authenticate, forbidManager, async (req, res) => {
     try {
       const { prospectId } = req.body;
       
@@ -1974,7 +1974,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Generate personalized email with AI
-  app.post("/api/personalization/generate-email", authenticate, async (req, res) => {
+  app.post("/api/personalization/generate-email", authenticate, forbidManager, async (req, res) => {
     try {
       const { prospectId, personalizationData, settings, customPrompt, useAdvanced, contentItemIds, sequenceId, sequenceStep } = req.body;
       
@@ -2292,7 +2292,7 @@ Subject: [Your subject line here]
   });
 
   // Generate AI reply to prospect response
-  app.post("/api/sequences/:sequenceId/generate-reply", authenticate, async (req, res) => {
+  app.post("/api/sequences/:sequenceId/generate-reply", authenticate, forbidManager, async (req, res) => {
     try {
       const { replyId, prospectId, replyContent } = req.body;
       
@@ -2338,7 +2338,7 @@ Return ONLY the email body text, no subject line needed.`;
   });
 
   // Company enrichment via web scraping
-  app.post("/api/personalization/company-enrichment", authenticate, async (req, res) => {
+  app.post("/api/personalization/company-enrichment", authenticate, forbidManager, async (req, res) => {
     try {
       const { companyWebsite } = req.body;
       
@@ -2357,7 +2357,7 @@ Return ONLY the email body text, no subject line needed.`;
   });
 
   // Save batch personalized emails for prospects
-  app.post("/api/personalization/save-batch", authenticate, async (req, res) => {
+  app.post("/api/personalization/save-batch", authenticate, forbidManager, async (req, res) => {
     try {
       const { emails, sequenceId } = req.body;
       
@@ -2434,7 +2434,7 @@ Return ONLY the email body text, no subject line needed.`;
   });
 
   // Apollo company search
-  app.post("/api/apollo/company-search", authenticate, async (req, res) => {
+  app.post("/api/apollo/company-search", authenticate, forbidManager, async (req, res) => {
     try {
       const { query, filters = {} } = req.body;
       
@@ -2457,7 +2457,7 @@ Return ONLY the email body text, no subject line needed.`;
   });
 
   // Enhanced enrichment with automatic Lusha fallback
-  app.post("/api/prospects/enrich-with-fallback", authenticate, async (req, res) => {
+  app.post("/api/prospects/enrich-with-fallback", authenticate, forbidManager, async (req, res) => {
     try {
       const { prospectId } = req.body;
       
@@ -2524,7 +2524,7 @@ Return ONLY the email body text, no subject line needed.`;
   });
 
   // Content Library - Create item
-  app.post("/api/content-library", authenticate, async (req, res) => {
+  app.post("/api/content-library", authenticate, forbidManager, async (req, res) => {
     try {
       const item = await contentManagementService.addContentItem(req.userContext!, req.body);
       res.json(item);
@@ -2537,7 +2537,7 @@ Return ONLY the email body text, no subject line needed.`;
   });
 
   // Content Library - Update item
-  app.put("/api/content-library/:id", authenticate, async (req, res) => {
+  app.put("/api/content-library/:id", authenticate, forbidManager, async (req, res) => {
     try {
       const { id } = req.params;
       const item = await contentManagementService.updateContentItem(req.userContext!, id, req.body);
@@ -2551,7 +2551,7 @@ Return ONLY the email body text, no subject line needed.`;
   });
 
   // Content Library - Delete item
-  app.delete("/api/content-library/:id", authenticate, async (req, res) => {
+  app.delete("/api/content-library/:id", authenticate, forbidManager, async (req, res) => {
     try {
       const { id } = req.params;
       await contentManagementService.deleteContentItem(req.userContext!, id);
@@ -2610,7 +2610,7 @@ Return ONLY the email body text, no subject line needed.`;
   });
 
   // ICP Templates - Create
-  app.post("/api/icp-templates", authenticate, async (req, res) => {
+  app.post("/api/icp-templates", authenticate, forbidManager, async (req, res) => {
     try {
       const { icpTemplateService } = await import("./services/icp-template.service");
       const template = await icpTemplateService.createTemplate(req.body);
@@ -2624,7 +2624,7 @@ Return ONLY the email body text, no subject line needed.`;
   });
 
   // ICP Templates - Update
-  app.put("/api/icp-templates/:id", authenticate, async (req, res) => {
+  app.put("/api/icp-templates/:id", authenticate, forbidManager, async (req, res) => {
     try {
       const { icpTemplateService } = await import("./services/icp-template.service");
       const template = await icpTemplateService.updateTemplate(req.params.id, req.body);
@@ -2638,7 +2638,7 @@ Return ONLY the email body text, no subject line needed.`;
   });
 
   // ICP Templates - Delete
-  app.delete("/api/icp-templates/:id", authenticate, async (req, res) => {
+  app.delete("/api/icp-templates/:id", authenticate, forbidManager, async (req, res) => {
     try {
       const { icpTemplateService } = await import("./services/icp-template.service");
       await icpTemplateService.deleteTemplate(req.params.id);
@@ -2652,7 +2652,7 @@ Return ONLY the email body text, no subject line needed.`;
   });
 
   // Generate email from template
-  app.post("/api/content-library/generate-email", authenticate, async (req, res) => {
+  app.post("/api/content-library/generate-email", authenticate, forbidManager, async (req, res) => {
     try {
       const { templateId, prospectId, customVariables } = req.body;
       
@@ -2686,7 +2686,7 @@ Return ONLY the email body text, no subject line needed.`;
   });
 
   // AI Email Template Generator - Generate template from content library
-  app.post("/api/content-library/ai-generate-template", authenticate, async (req, res) => {
+  app.post("/api/content-library/ai-generate-template", authenticate, forbidManager, async (req, res) => {
     try {
       const { prompt, contentItemIds, settings } = req.body;
       

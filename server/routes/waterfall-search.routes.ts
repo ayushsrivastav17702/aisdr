@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { authenticate } from "../middleware/auth.middleware";
+import { authenticate, forbidManager } from "../middleware/auth.middleware";
 import { waterfallSearchService } from "../services/waterfall-search.service";
 import { checkQuota } from "../middleware/quota-enforcement.middleware";
 import { db } from "../db";
@@ -46,7 +46,7 @@ const waterfallSearchSchema = z.object({
   }).optional()
 });
 
-router.post("/search", authenticate, async (req, res) => {
+router.post("/search", authenticate, forbidManager, async (req, res) => {
   try {
     const criteria = waterfallSearchSchema.parse(req.body);
     
@@ -94,7 +94,7 @@ router.post("/search", authenticate, async (req, res) => {
   }
 });
 
-router.post("/search-and-save", authenticate, async (req, res) => {
+router.post("/search-and-save", authenticate, forbidManager, async (req, res) => {
   try {
     const { criteria: rawCriteria, extractionName, tag, autoEnrich } = z.object({
       criteria: waterfallSearchSchema,

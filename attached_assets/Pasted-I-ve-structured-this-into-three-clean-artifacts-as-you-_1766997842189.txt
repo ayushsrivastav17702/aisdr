@@ -1,0 +1,296 @@
+I’ve structured this into three clean artifacts (as you requested):
+
+1️⃣ RBAC Middleware Rules (Authoritative)
+2️⃣ UI Visibility Matrix (what appears / never appears)
+3️⃣ End-to-End Role Definition (every module, tab, action)
+
+No future features. Only what exists or is allowed per PRD.
+
+1️⃣ RBAC MIDDLEWARE RULES (SOURCE OF TRUTH)
+🎭 Roles
+'user'        // SDR / IC
+'manager'     // Team manager (read-only on execution)
+'super_admin' // Platform admin
+
+🔐 Route-Level RBAC Rules
+USER (SDR)
+
+✅ Allowed:
+
+Campaign CRUD
+
+Sequence execution
+
+Email sending
+
+AI writing
+
+Prospect import & scoring
+
+Analytics (self)
+
+❌ Blocked:
+
+Team stats
+
+User creation
+
+Tenant / platform access
+
+requireAuth
+requireUser
+
+MANAGER
+
+✅ Allowed:
+
+Team dashboards
+
+Campaign read-only
+
+User creation/edit
+
+Team analytics
+
+❌ Blocked (SEV-1 if violated):
+
+Campaign creation/edit
+
+Sending emails
+
+Automation triggers
+
+AI execution
+
+Prospect mutation
+
+requireAuth
+requireManager
+blockManager (on SDR routes)
+
+SUPER ADMIN
+
+✅ Allowed:
+
+Tenant provisioning
+
+Tenant config
+
+Manager creation
+
+Audit logs
+
+Impersonation
+
+Platform stats
+
+❌ Blocked:
+
+Campaigns
+
+Prospects
+
+Emails
+
+Sequences
+
+requireSuperAdmin
+(block everything else)
+
+2️⃣ UI VISIBILITY MATRIX (WHAT EACH ROLE SEES)
+📊 Sidebar / Navigation
+Module / Tab	User	Manager	Super Admin
+Campaigns	✅ Full	👀 Read-only	❌
+Sequences	✅ Full	👀 View	❌
+Prospects	✅ Full	👀 View	❌
+AI Prospecting	✅	❌	❌
+Inbox	❌ (Phase 8)	❌	❌
+Analytics	✅ Personal	✅ Team	❌
+Team Members	❌	✅	❌
+Manager Dashboard	❌	✅	❌
+Tenant Dashboard	❌	❌	✅
+System Settings	❌	❌	✅
+Audit Logs	❌	❌	✅
+🧨 UI ACTION VISIBILITY (BUTTON-LEVEL)
+Action	User	Manager	Super Admin
+Create Campaign	✅	❌	❌
+Edit Campaign	✅	❌	❌
+Pause / Resume	✅	❌	❌
+Send Email	✅	❌	❌
+AI Compose	✅	❌	❌
+Import Prospects	✅	❌	❌
+View Campaign Stats	✅	✅	❌
+Create User	❌	✅	✅
+Edit User	❌	✅	✅
+Suspend Tenant	❌	❌	✅
+Impersonate	❌	❌	✅
+3️⃣ END-TO-END ROLE DEFINITIONS (PRD-ACCURATE)
+🟢 USER ROLE (SDR / INDIVIDUAL CONTRIBUTOR)
+🔹 Campaigns
+
+Create campaign
+
+Configure settings
+
+Build sequences
+
+Start / pause / resume
+
+View analytics (basic)
+
+Run A/B tests (future)
+
+🔹 Sequences
+
+Add steps
+
+Edit steps
+
+Delete steps
+
+Personalize messages
+
+Use AI writer
+
+🔹 Prospects
+
+Import CSV
+
+AI Prospecting
+
+View prospect profile
+
+Edit prospect data
+
+View lead score
+
+🔹 AI
+
+AI Message Composer
+
+Subject line generation (partial)
+
+Writing assistant
+
+Personalization tokens
+
+🔹 Analytics
+
+Self performance
+
+Campaign metrics
+
+Send / reply counts
+
+🚫 User cannot:
+
+View team stats
+
+Manage users
+
+Access tenant data
+
+🟡 MANAGER ROLE (TEAM GOVERNANCE ONLY)
+🔹 Team Dashboard
+
+Total campaigns (read-only)
+
+Team sends / replies
+
+Performance snapshot
+
+🔹 Campaign Portfolio (READ-ONLY)
+
+View all team campaigns
+
+View status
+
+View analytics
+
+❌ Cannot edit / pause / resume
+
+🔹 Team Member Management
+
+Create users
+
+Edit users
+
+Reset passwords
+
+Enable / disable users
+
+🔹 Analytics
+
+Team performance
+
+Campaign performance (aggregate)
+
+SDR comparison (basic)
+
+🚫 Manager cannot:
+
+Create or edit campaigns
+
+Send emails
+
+Trigger automation
+
+Use AI writer
+
+Import prospects
+
+Manager is GOVERNANCE, not EXECUTION
+
+🔴 SUPER ADMIN ROLE (PLATFORM OWNER)
+🔹 Tenant Management
+
+View all tenants
+
+Provision tenant
+
+Suspend / activate tenant
+
+Assign plans
+
+🔹 Manager Creation
+
+Create manager users
+
+Reset manager credentials
+
+🔹 Platform Dashboard
+
+Tenant count
+
+User count
+
+Platform health
+
+🔹 Audit Logs
+
+Login activity
+
+Impersonation logs
+
+Security events
+
+🔹 Impersonation
+
+Login as manager (read-only)
+
+🚫 Super Admin cannot:
+
+See campaigns
+
+See prospects
+
+Send emails
+
+Execute SDR actions
+
+🧠 FINAL AUTHORITY RULE (IMPORTANT)
+
+UI ≠ SECURITY
+
+Every restriction above MUST exist in backend middleware
+UI hiding is only cosmetic.

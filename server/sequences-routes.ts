@@ -6,7 +6,7 @@ import { db } from "./db";
 import { sequenceProspects, emailReplies, emailQueue, emails, prospects, personalizationResults } from "@shared/schema";
 import { eq, and, sql, desc } from "drizzle-orm";
 import { z } from "zod";
-import { authenticate } from "./middleware/auth.middleware";
+import { authenticate, forbidManager } from "./middleware/auth.middleware";
 
 const router = Router();
 
@@ -185,7 +185,7 @@ router.get("/sequences/:id", authenticate, async (req, res) => {
 });
 
 // Create sequence
-router.post("/sequences", authenticate, async (req, res) => {
+router.post("/sequences", authenticate, forbidManager, async (req, res) => {
   try {
     const { name, description, type } = req.body;
     
@@ -214,7 +214,7 @@ router.post("/sequences", authenticate, async (req, res) => {
 });
 
 // Generate sequence with AI
-router.post("/sequences/generate-with-ai", authenticate, async (req, res) => {
+router.post("/sequences/generate-with-ai", authenticate, forbidManager, async (req, res) => {
   try {
     const { prompt, name, method } = req.body;
     
@@ -365,7 +365,7 @@ const SEQUENCE_TEMPLATES = [
 ];
 
 // Create sequence from template
-router.post("/sequences/from-template", authenticate, async (req, res) => {
+router.post("/sequences/from-template", authenticate, forbidManager, async (req, res) => {
   try {
     const { templateId } = req.body;
     
@@ -423,7 +423,7 @@ router.post("/sequences/from-template", authenticate, async (req, res) => {
 });
 
 // Update sequence
-router.put("/sequences/:id", authenticate, async (req, res) => {
+router.put("/sequences/:id", authenticate, forbidManager, async (req, res) => {
   try {
     const sequence = await storage.updateSequence(req.userContext!, req.params.id, req.body);
     
@@ -440,7 +440,7 @@ router.put("/sequences/:id", authenticate, async (req, res) => {
 });
 
 // Update sequence (PATCH)
-router.patch("/sequences/:id", authenticate, async (req, res) => {
+router.patch("/sequences/:id", authenticate, forbidManager, async (req, res) => {
   try {
     const sequence = await storage.updateSequence(req.userContext!, req.params.id, req.body);
     
@@ -457,7 +457,7 @@ router.patch("/sequences/:id", authenticate, async (req, res) => {
 });
 
 // Delete sequence
-router.delete("/sequences/:id", authenticate, async (req, res) => {
+router.delete("/sequences/:id", authenticate, forbidManager, async (req, res) => {
   try {
     await storage.deleteSequence(req.userContext!, req.params.id);
     res.json({ success: true });
@@ -468,7 +468,7 @@ router.delete("/sequences/:id", authenticate, async (req, res) => {
 });
 
 // Add step to sequence
-router.post("/sequences/:id/steps", authenticate, async (req, res) => {
+router.post("/sequences/:id/steps", authenticate, forbidManager, async (req, res) => {
   try {
     const { subject, body, stepOrder, delayDays } = req.body;
     
@@ -495,7 +495,7 @@ router.post("/sequences/:id/steps", authenticate, async (req, res) => {
 });
 
 // Delete sequence step
-router.delete("/sequences/:id/steps/:stepId", authenticate, async (req, res) => {
+router.delete("/sequences/:id/steps/:stepId", authenticate, forbidManager, async (req, res) => {
   try {
     const sequenceId = req.params.id;
     const stepId = req.params.stepId;
@@ -522,7 +522,7 @@ router.delete("/sequences/:id/steps/:stepId", authenticate, async (req, res) => 
 });
 
 // Update sequence step
-router.put("/sequences/:id/steps/:stepId", authenticate, async (req, res) => {
+router.put("/sequences/:id/steps/:stepId", authenticate, forbidManager, async (req, res) => {
   try {
     const sequenceId = req.params.id;
     const stepId = req.params.stepId;
@@ -567,7 +567,7 @@ router.get("/sequences/:id/prospects", authenticate, async (req, res) => {
 });
 
 // Add prospects to sequence
-router.post("/sequences/:id/prospects", authenticate, async (req, res) => {
+router.post("/sequences/:id/prospects", authenticate, forbidManager, async (req, res) => {
   try {
     const { prospectIds } = req.body;
     
@@ -692,7 +692,7 @@ router.get("/sequences/:id/emails", authenticate, async (req, res) => {
 });
 
 // Manual LinkedIn personalization
-router.post("/personalization/manual-linkedin", authenticate, async (req, res) => {
+router.post("/personalization/manual-linkedin", authenticate, forbidManager, async (req, res) => {
   try {
     const { prospectId, linkedInData } = req.body;
     
@@ -758,7 +758,7 @@ router.post("/webhooks/email-opened", async (req, res) => {
 });
 
 // AI Email Generation
-router.post("/sequences/ai-generate-email", authenticate, async (req, res) => {
+router.post("/sequences/ai-generate-email", authenticate, forbidManager, async (req, res) => {
   try {
     const { emailGenerationService } = await import("./services/ai-email-generator.service");
     const { prospectId, emailType, sequenceStep, previousEmails, tone, sequenceId } = req.body;
@@ -808,7 +808,7 @@ router.post("/sequences/ai-generate-email", authenticate, async (req, res) => {
 });
 
 // Generate Email Variants (A/B Testing)
-router.post("/sequences/ai-generate-variants", authenticate, async (req, res) => {
+router.post("/sequences/ai-generate-variants", authenticate, forbidManager, async (req, res) => {
   try {
     const { generateEmailVariants } = await import("./services/ai-email-generator.service");
     const { prospectId, emailType, variantCount } = req.body;
@@ -832,7 +832,7 @@ router.post("/sequences/ai-generate-variants", authenticate, async (req, res) =>
 });
 
 // Enhanced Personalization
-router.post("/sequences/enhanced-personalization", authenticate, async (req, res) => {
+router.post("/sequences/enhanced-personalization", authenticate, forbidManager, async (req, res) => {
   try {
     const { generateEnhancedPersonalizedEmail } = await import("./services/enhanced-personalization.service");
     const { prospectId, includeLinkedInData, customPrompt, emailSettings, sequenceId, sequenceStep } = req.body;
@@ -882,7 +882,7 @@ router.post("/sequences/enhanced-personalization", authenticate, async (req, res
 });
 
 // Analyze Email Response
-router.post("/sequences/analyze-response", authenticate, async (req, res) => {
+router.post("/sequences/analyze-response", authenticate, forbidManager, async (req, res) => {
   try {
     const { analyzeEmailResponse } = await import("./services/enhanced-personalization.service");
     const { originalEmail, prospectResponse, prospectId } = req.body;
@@ -903,7 +903,7 @@ router.post("/sequences/analyze-response", authenticate, async (req, res) => {
 });
 
 // Generate Follow-up Preview
-router.post("/sequences/followup-preview", authenticate, async (req, res) => {
+router.post("/sequences/followup-preview", authenticate, forbidManager, async (req, res) => {
   try {
     const { aiFollowUpScheduler } = await import("./services/ai-followup-scheduler.service");
     const { prospectId, emailHistory, followUpType, followUpNumber } = req.body;
@@ -971,7 +971,7 @@ router.post("/sequences/followup-preview", authenticate, async (req, res) => {
 });
 
 // AI Email Generation - Main endpoint
-router.post("/sequences/ai-generate-email", authenticate, async (req, res) => {
+router.post("/sequences/ai-generate-email", authenticate, forbidManager, async (req, res) => {
   try {
     const { generateEmail } = await import("./services/ai-email-generator.service");
     const { prospectId, emailType, sequenceStep, tone } = req.body;
@@ -999,7 +999,7 @@ router.post("/sequences/ai-generate-email", authenticate, async (req, res) => {
 });
 
 // AI Email Variants - A/B testing
-router.post("/sequences/ai-generate-variants", authenticate, async (req, res) => {
+router.post("/sequences/ai-generate-variants", authenticate, forbidManager, async (req, res) => {
   try {
     const { generateEmailVariants } = await import("./services/ai-email-generator.service");
     const { prospectId, emailType, sequenceStep, variantCount } = req.body;
@@ -1027,7 +1027,7 @@ router.post("/sequences/ai-generate-variants", authenticate, async (req, res) =>
 });
 
 // Enhanced Personalization - Deep research
-router.post("/sequences/enhanced-personalization", authenticate, async (req, res) => {
+router.post("/sequences/enhanced-personalization", authenticate, forbidManager, async (req, res) => {
   try {
     const { generateEnhancedPersonalizedEmail } = await import("./services/enhanced-personalization.service");
     const { prospectId } = req.body;
@@ -1108,7 +1108,7 @@ router.get("/sequences/ai-followup-preview/:prospectId", authenticate, async (re
 });
 
 // Send reply to prospect
-router.post("/sequences/send-reply", authenticate, async (req, res) => {
+router.post("/sequences/send-reply", authenticate, forbidManager, async (req, res) => {
   try {
     const { prospectId, sequenceId, subject, body } = req.body;
     

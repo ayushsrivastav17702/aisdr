@@ -4,7 +4,7 @@ import { emailSendingService } from "./services/email-sending.service";
 import { emailQueueService } from "./services/email-queue.service";
 import { insertEmailMailboxSchema } from "@shared/schema";
 import { z } from "zod";
-import { authenticate } from "./middleware/auth.middleware";
+import { authenticate, forbidManager } from "./middleware/auth.middleware";
 
 const router = Router();
 
@@ -64,7 +64,7 @@ router.get("/mailboxes/:id", authenticate, async (req, res) => {
   }
 });
 
-router.post("/mailboxes", authenticate, async (req, res) => {
+router.post("/mailboxes", authenticate, forbidManager, async (req, res) => {
   try {
     // SECURITY: Only allow authenticated users to create mailboxes
     if (!req.userContext?.userId) {
@@ -106,7 +106,7 @@ router.post("/mailboxes", authenticate, async (req, res) => {
   }
 });
 
-router.patch("/mailboxes/:id", authenticate, async (req, res) => {
+router.patch("/mailboxes/:id", authenticate, forbidManager, async (req, res) => {
   try {
     if (!req.userContext?.userId) {
       return res.status(401).json({ error: "Authentication required" });
@@ -148,7 +148,7 @@ router.patch("/mailboxes/:id", authenticate, async (req, res) => {
   }
 });
 
-router.put("/mailboxes/:id/status", authenticate, async (req, res) => {
+router.put("/mailboxes/:id/status", authenticate, forbidManager, async (req, res) => {
   try {
     if (!req.userContext?.userId) {
       return res.status(401).json({ error: "Authentication required" });
@@ -177,7 +177,7 @@ router.put("/mailboxes/:id/status", authenticate, async (req, res) => {
   }
 });
 
-router.delete("/mailboxes/:id", authenticate, async (req, res) => {
+router.delete("/mailboxes/:id", authenticate, forbidManager, async (req, res) => {
   try {
     if (!req.userContext?.userId) {
       return res.status(401).json({ error: "Authentication required" });
@@ -200,7 +200,7 @@ router.delete("/mailboxes/:id", authenticate, async (req, res) => {
   }
 });
 
-router.post("/mailboxes/:id/test", authenticate, async (req, res) => {
+router.post("/mailboxes/:id/test", authenticate, forbidManager, async (req, res) => {
   try {
     if (!req.userContext?.userId) {
       return res.status(401).json({ error: "Authentication required" });
@@ -284,7 +284,7 @@ router.get("/mailboxes/health/all", authenticate, async (req, res) => {
   }
 });
 
-router.post("/mailboxes/:id/set-default", authenticate, async (req, res) => {
+router.post("/mailboxes/:id/set-default", authenticate, forbidManager, async (req, res) => {
   try {
     if (!req.userContext?.userId) {
       return res.status(401).json({ error: "Authentication required" });
@@ -328,7 +328,7 @@ router.get("/email-queue/stats", authenticate, async (req, res) => {
   }
 });
 
-router.post("/email-queue/process", authenticate, async (req, res) => {
+router.post("/email-queue/process", authenticate, forbidManager, async (req, res) => {
   try {
     if (!req.userContext?.userId) {
       return res.status(401).json({ error: "Authentication required" });
@@ -343,7 +343,7 @@ router.post("/email-queue/process", authenticate, async (req, res) => {
   }
 });
 
-router.post("/email-queue/:id/cancel", authenticate, async (req, res) => {
+router.post("/email-queue/:id/cancel", authenticate, forbidManager, async (req, res) => {
   try {
     if (!req.userContext?.userId) {
       return res.status(401).json({ error: "Authentication required" });
