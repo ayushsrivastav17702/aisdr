@@ -96,89 +96,90 @@ function Router() {
           <AdminInfrastructure />
         </ProtectedRoute>
       </Route>
+      {/* SDR Routes - blocked for managers */}
       <Route path="/">
-        <ProtectedRoute>
+        <ProtectedRoute blockManager>
           <Dashboard />
         </ProtectedRoute>
       </Route>
       <Route path="/prospects">
-        <ProtectedRoute>
+        <ProtectedRoute blockManager>
           <Dashboard />
         </ProtectedRoute>
       </Route>
       <Route path="/sequences">
-        <ProtectedRoute>
+        <ProtectedRoute blockManager>
           <Sequences />
         </ProtectedRoute>
       </Route>
       <Route path="/sequences/:id">
-        <ProtectedRoute>
+        <ProtectedRoute blockManager>
           <Sequences />
         </ProtectedRoute>
       </Route>
       <Route path="/mailboxes">
-        <ProtectedRoute>
+        <ProtectedRoute blockManager>
           <Mailboxes />
         </ProtectedRoute>
       </Route>
       <Route path="/inbox">
-        <ProtectedRoute>
+        <ProtectedRoute blockManager>
           <InboxPage />
         </ProtectedRoute>
       </Route>
       <Route path="/content-management">
-        <ProtectedRoute>
+        <ProtectedRoute blockManager>
           <ContentManagement />
         </ProtectedRoute>
       </Route>
       <Route path="/automation-dashboard">
-        <ProtectedRoute>
+        <ProtectedRoute blockManager>
           <AutomationDashboard />
         </ProtectedRoute>
       </Route>
       <Route path="/automation">
-        <ProtectedRoute>
+        <ProtectedRoute blockManager>
           <AutomationDashboard />
         </ProtectedRoute>
       </Route>
       <Route path="/analytics">
-        <ProtectedRoute>
+        <ProtectedRoute blockManager>
           <AnalyticsPage />
         </ProtectedRoute>
       </Route>
       <Route path="/api-docs">
-        <ProtectedRoute>
+        <ProtectedRoute blockManager>
           <APIDocumentationPage />
         </ProtectedRoute>
       </Route>
       <Route path="/leaderboard">
-        <ProtectedRoute>
+        <ProtectedRoute blockManager>
           <LeaderboardPage />
         </ProtectedRoute>
       </Route>
       <Route path="/best-practices">
-        <ProtectedRoute>
+        <ProtectedRoute blockManager>
           <BestPracticesPage />
         </ProtectedRoute>
       </Route>
       <Route path="/ae-handoff">
-        <ProtectedRoute>
+        <ProtectedRoute blockManager>
           <AEHandoffPage />
         </ProtectedRoute>
       </Route>
       <Route path="/ai-prospecting">
-        <ProtectedRoute>
+        <ProtectedRoute blockManager>
           <AIProspectingPage />
         </ProtectedRoute>
       </Route>
-      {/* Campaign Routes */}
+      {/* Campaign Routes - blocked for managers */}
       <Route path="/campaigns">
-        <ProtectedRoute>
+        <ProtectedRoute blockManager>
           <CampaignDashboard />
         </ProtectedRoute>
       </Route>
       <Route path="/campaigns/new">
-        <ProtectedRoute>
+        <ProtectedRoute blockManager>
           <CreateCampaign />
         </ProtectedRoute>
       </Route>

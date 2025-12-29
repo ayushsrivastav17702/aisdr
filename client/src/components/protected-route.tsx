@@ -6,9 +6,10 @@ import { Loader2 } from 'lucide-react';
 interface ProtectedRouteProps {
   children: React.ReactNode;
   requireAdmin?: boolean;
+  blockManager?: boolean; // If true, managers will be redirected to manager dashboard
 }
 
-export function ProtectedRoute({ children, requireAdmin = false }: ProtectedRouteProps) {
+export function ProtectedRoute({ children, requireAdmin = false, blockManager = false }: ProtectedRouteProps) {
   const { user, isLoading, isAuthenticated } = useAuth();
   const [, setLocation] = useLocation();
 
@@ -24,6 +25,13 @@ export function ProtectedRoute({ children, requireAdmin = false }: ProtectedRout
     }
   }, [isLoading, isAuthenticated, requireAdmin, user, setLocation]);
 
+  // Block managers from accessing SDR-only routes
+  useEffect(() => {
+    if (!isLoading && isAuthenticated && blockManager && user?.isManager) {
+      setLocation('/manager/dashboard');
+    }
+  }, [isLoading, isAuthenticated, blockManager, user?.isManager, setLocation]);
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -37,6 +45,11 @@ export function ProtectedRoute({ children, requireAdmin = false }: ProtectedRout
   }
 
   if (requireAdmin && user?.role !== 'admin') {
+    return null;
+  }
+
+  // Block managers from SDR routes
+  if (blockManager && user?.isManager) {
     return null;
   }
 

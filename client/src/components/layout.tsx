@@ -97,11 +97,12 @@ export function Layout({ children }: LayoutProps) {
   const pageTitle = getPageTitle(location);
 
   // Manager-specific navigation (shown only to managers)
+  // All manager routes should point to manager dashboard with appropriate tabs
   const managerNavItems: NavItem[] = [
     { href: '/manager/dashboard', icon: <Home className="w-4 h-4" />, label: 'Dashboard', requireManager: true },
-    { href: '/admin/users', icon: <Users2 className="w-4 h-4" />, label: 'Team Management', requireManager: true },
-    { href: '/sequences', icon: <ListTodo className="w-4 h-4" />, label: 'Campaigns', requireManager: true },
-    { href: '/analytics', icon: <BarChart3Icon className="w-4 h-4" />, label: 'Analytics', requireManager: true },
+    { href: '/manager/dashboard?tab=team', icon: <Users2 className="w-4 h-4" />, label: 'Team Management', requireManager: true },
+    { href: '/manager/dashboard?tab=campaigns', icon: <ListTodo className="w-4 h-4" />, label: 'Campaigns', requireManager: true },
+    { href: '/manager/dashboard?tab=analytics', icon: <BarChart3Icon className="w-4 h-4" />, label: 'Analytics', requireManager: true },
     { href: '/organization-settings', icon: <Building2 className="w-4 h-4" />, label: 'Organization', requireManager: true },
     { href: '/workspace-management', icon: <FolderTree className="w-4 h-4" />, label: 'Workspaces', requireManager: true },
     { href: '/settings', icon: <SettingsIcon className="w-4 h-4" />, label: 'Settings', requireManager: true },
@@ -138,7 +139,19 @@ export function Layout({ children }: LayoutProps) {
 
   const isActive = (href: string) => {
     if (href === '/') return location === '/';
-    return location.startsWith(href);
+    // Handle query parameters in manager navigation
+    const [hrefPath, hrefQuery] = href.split('?');
+    const [locationPath, locationQuery] = location.split('?');
+    
+    // If href has query params, check both path and query
+    if (hrefQuery) {
+      return locationPath === hrefPath && locationQuery?.includes(hrefQuery);
+    }
+    // For base manager dashboard, only active if no tab is selected
+    if (href === '/manager/dashboard' && locationPath === '/manager/dashboard') {
+      return !locationQuery || !locationQuery.includes('tab=');
+    }
+    return locationPath.startsWith(hrefPath);
   };
 
   const renderNavItem = (item: NavItem) => {
