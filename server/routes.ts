@@ -43,7 +43,7 @@ import aeHandoffRoutes from "./routes/ae-handoff.routes";
 import waterfallSearchRoutes from "./routes/waterfall-search.routes";
 import managerRoutes from "./routes/manager.routes";
 import { inboxRouter } from "./inbox-routes";
-import { authenticate, forbidManager } from "./middleware/auth.middleware";
+import { authenticate, forbidManager, blockSuperAdminFromSDR } from "./middleware/auth.middleware";
 import { emailVolumeConfig, getCapacityReport, getEstimatedTimeForEmails, EMAIL_VOLUME_PRESETS } from "./config/email-volume.config";
 
 const upload = multer({ 
@@ -643,7 +643,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get unique filter values for dropdowns
-  app.get("/api/prospects/filters", authenticate, async (req, res) => {
+  app.get("/api/prospects/filters", authenticate, blockSuperAdminFromSDR, async (req, res) => {
     try {
       const filterValues = await storage.getUniqueFilterValues(req.userContext!);
       res.json(filterValues);
@@ -656,7 +656,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get all prospect IDs (for bulk selection)
-  app.get("/api/prospects/all-ids", authenticate, async (req, res) => {
+  app.get("/api/prospects/all-ids", authenticate, blockSuperAdminFromSDR, async (req, res) => {
     try {
       const allProspects = await storage.getAllProspectIds(req.userContext!);
       
@@ -673,7 +673,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get prospects with filters
-  app.get("/api/prospects", authenticate, async (req, res) => {
+  app.get("/api/prospects", authenticate, blockSuperAdminFromSDR, async (req, res) => {
     try {
       const { 
         search, 
@@ -732,7 +732,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get single prospect
-  app.get("/api/prospects/:id", authenticate, async (req, res) => {
+  app.get("/api/prospects/:id", authenticate, blockSuperAdminFromSDR, async (req, res) => {
     try {
       const { id } = req.params;
       const prospect = await storage.getProspect(req.userContext!, id);

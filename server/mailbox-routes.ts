@@ -4,11 +4,11 @@ import { emailSendingService } from "./services/email-sending.service";
 import { emailQueueService } from "./services/email-queue.service";
 import { insertEmailMailboxSchema } from "@shared/schema";
 import { z } from "zod";
-import { authenticate, forbidManager } from "./middleware/auth.middleware";
+import { authenticate, forbidManager, blockSuperAdminFromSDR } from "./middleware/auth.middleware";
 
 const router = Router();
 
-router.get("/mailboxes", authenticate, async (req, res) => {
+router.get("/mailboxes", authenticate, blockSuperAdminFromSDR, async (req, res) => {
   try {
     // SECURITY: Only show mailboxes owned by the authenticated user
     if (!req.userContext?.userId) {
@@ -32,7 +32,7 @@ router.get("/mailboxes", authenticate, async (req, res) => {
   }
 });
 
-router.get("/mailboxes/:id", authenticate, async (req, res) => {
+router.get("/mailboxes/:id", authenticate, blockSuperAdminFromSDR, async (req, res) => {
   try {
     if (!req.userContext?.userId) {
       return res.status(401).json({ error: "Authentication required" });
@@ -226,7 +226,7 @@ router.post("/mailboxes/:id/test", authenticate, forbidManager, async (req, res)
   }
 });
 
-router.get("/mailboxes/:id/health", authenticate, async (req, res) => {
+router.get("/mailboxes/:id/health", authenticate, blockSuperAdminFromSDR, async (req, res) => {
   try {
     if (!req.userContext?.userId) {
       return res.status(401).json({ error: "Authentication required" });
@@ -251,7 +251,7 @@ router.get("/mailboxes/:id/health", authenticate, async (req, res) => {
   }
 });
 
-router.get("/mailboxes/health/all", authenticate, async (req, res) => {
+router.get("/mailboxes/health/all", authenticate, blockSuperAdminFromSDR, async (req, res) => {
   try {
     if (!req.userContext?.userId) {
       return res.status(401).json({ error: "Authentication required" });
@@ -313,7 +313,7 @@ router.post("/mailboxes/:id/set-default", authenticate, forbidManager, async (re
   }
 });
 
-router.get("/email-queue/stats", authenticate, async (req, res) => {
+router.get("/email-queue/stats", authenticate, blockSuperAdminFromSDR, async (req, res) => {
   try {
     if (!req.userContext?.userId) {
       return res.status(401).json({ error: "Authentication required" });

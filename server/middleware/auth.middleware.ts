@@ -84,6 +84,18 @@ export const RBAC_MATRIX: Record<string, Permission[]> = {
     PERMISSIONS.USER_DISABLE,
     PERMISSIONS.USER_VIEW_TEAM,
   ],
+  
+  // Super Admin role: Platform governance only, NO SDR execution or tenant data access
+  super_admin: [
+    PERMISSIONS.TENANT_CREATE,
+    PERMISSIONS.TENANT_CONFIGURE,
+    PERMISSIONS.TENANT_SUSPEND,
+    PERMISSIONS.TENANT_BILLING_VIEW,
+    PERMISSIONS.AUDIT_LOG_VIEW,
+    PERMISSIONS.USER_CREATE,
+    PERMISSIONS.USER_UPDATE,
+    PERMISSIONS.USER_DISABLE,
+  ],
 };
 
 // Check if a role has a specific permission
@@ -95,9 +107,25 @@ export function hasPermission(role: string, permission: Permission): boolean {
 // Manager role variants that should be blocked from SDR execution
 const MANAGER_ROLES = ['admin', 'manager', 'tenant_admin', 'org_admin'];
 
+// Super Admin role - platform owner (blocked from ALL SDR execution)
+const SUPER_ADMIN_ROLE = 'super_admin';
+
+// Roles blocked from SDR execution (managers AND super_admin per PRD)
+const SDR_BLOCKED_ROLES = [...MANAGER_ROLES, SUPER_ADMIN_ROLE];
+
 // Check if a role is a manager (admin role in org context)
 export function isManagerRole(role: string): boolean {
   return MANAGER_ROLES.includes(role);
+}
+
+// Check if a role is super admin
+export function isSuperAdminRole(role: string): boolean {
+  return role === SUPER_ADMIN_ROLE;
+}
+
+// Check if a role is blocked from SDR execution (managers OR super_admin)
+export function isBlockedFromSDR(role: string): boolean {
+  return SDR_BLOCKED_ROLES.includes(role);
 }
 
 // Check if a role is a regular user (SDR)
@@ -259,17 +287,62 @@ export function requireManager(req: Request, res: Response, next: NextFunction) 
   next();
 }
 
+/**
+ * Require Super Admin role for platform governance routes.
+ * Super Admin can: Tenant provisioning, config, manager creation, audit logs, impersonation
+ * Super Admin cannot: Campaigns, Prospects, Emails, Sequences (SDR execution)
+ */
+export function requireSuperAdmin(req: Request, res: Response, next: NextFunction) {
+  if (!req.user) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  if (!isSuperAdminRole(req.user.role)) {
+    console.warn(`🚫 RBAC: Non-super-admin ${req.user.email} (${req.user.role}) attempted super-admin route: ${req.method} ${req.path}`);
+    return res.status(403).json({ 
+      error: 'FORBIDDEN',
+      message: 'Super Admin access required' 
+    });
+  }
+
+  next();
+}
+
 // ============================================================================
 // RBAC ENFORCEMENT MIDDLEWARE (SEV-1 FIX)
 // ============================================================================
 
 /**
- * Forbid managers from accessing SDR execution routes.
- * Managers (role='admin' and variants) cannot create/edit campaigns, sequences, send emails, etc.
- * Only regular users (role='user') have SDR execution capabilities.
+ * Block Super Admin from ALL SDR routes (both read and write).
+ * Per PRD: Super Admin cannot see campaigns, prospects, emails, or sequences.
+ * Managers CAN read SDR data (read-only), but Super Admin is completely blocked.
+ */
+export function blockSuperAdminFromSDR(req: Request, res: Response, next: NextFunction) {
+  if (!req.user) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  if (isSuperAdminRole(req.user.role)) {
+    console.warn(`🚫 RBAC: Super Admin ${req.user.email} blocked from SDR data access: ${req.method} ${req.path}`);
+    return res.status(403).json({ 
+      error: 'FORBIDDEN',
+      message: 'Super Admins cannot access SDR data. Platform governance features are available at /super-admin.' 
+    });
+  }
+
+  next();
+}
+
+/**
+ * Forbid managers AND super_admins from accessing SDR execution routes.
+ * Per PRD: Only regular users (role='user') have SDR execution capabilities.
+ * 
+ * BLOCKED ROLES:
+ * - Managers (role='admin' and variants): Team oversight only
+ * - Super Admin (role='super_admin'): Platform governance only
  * 
  * IMPORTANT: This check uses the ORIGINAL user's role, not impersonated context.
- * Managers cannot bypass RBAC via actingAs impersonation.
+ * Non-user roles cannot bypass RBAC via actingAs impersonation.
  */
 export function forbidManager(req: Request, res: Response, next: NextFunction) {
   if (!req.user) {
@@ -277,21 +350,22 @@ export function forbidManager(req: Request, res: Response, next: NextFunction) {
   }
 
   // CRITICAL: Check the ORIGINAL user's role, not impersonated context
-  // Managers cannot bypass RBAC by impersonating a user
+  // Managers/Super Admins cannot bypass RBAC by impersonating a user
   const originalRole = req.user.role;
   
-  // If original user is a manager (any manager-class role), block access to SDR routes
-  if (isManagerRole(originalRole)) {
+  // If original user is blocked from SDR (manager OR super_admin), deny access
+  if (isBlockedFromSDR(originalRole)) {
     // Check if they're trying to use impersonation to bypass
     const isImpersonating = req.userContext?.actingAs !== undefined;
+    const roleType = isSuperAdminRole(originalRole) ? 'Super Admin' : 'Manager';
     const logMessage = isImpersonating 
-      ? `Manager ${req.user.email} attempted to bypass RBAC via impersonation`
-      : `Manager ${req.user.email} blocked from SDR route`;
+      ? `${roleType} ${req.user.email} attempted to bypass RBAC via impersonation`
+      : `${roleType} ${req.user.email} blocked from SDR route`;
     
     console.warn(`🚫 RBAC: ${logMessage}: ${req.method} ${req.path}`);
     return res.status(403).json({ 
       error: 'FORBIDDEN',
-      message: 'Managers cannot access SDR execution features. This action is only available to users.' 
+      message: `${roleType}s cannot access SDR execution features. This action is only available to users.` 
     });
   }
 
