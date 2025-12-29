@@ -1,0 +1,99 @@
+What to Build:
+Backend:
+
+Email Domain Management
+
+Domain verification
+DNS record configuration (SPF, DKIM, DMARC)
+Domain health monitoring
+Multiple domains per tenant
+
+
+Mailbox Management
+
+Mailbox provisioning
+Mailbox warm-up automation
+Daily send limit tracking
+Mailbox rotation logic
+Health score monitoring
+
+
+Email Sending Service
+
+SendGrid API integration
+AWS SES API integration
+Email queue management
+Retry logic for failures
+Bounce detection and handling
+
+
+Deliverability Monitoring
+
+Track bounce rates
+Monitor sender reputation
+Blacklist checking
+Spam complaint tracking
+Email verification before sending
+
+
+
+Database Tables:
+sqlCREATE TABLE email_domains (
+    id UUID PRIMARY KEY,
+    tenant_id UUID REFERENCES tenants(id),
+    domain VARCHAR(255) NOT NULL,
+    status VARCHAR(50), -- verified, pending, failed
+    dns_verified BOOLEAN DEFAULT false,
+    spf_record TEXT,
+    dkim_record TEXT,
+    dmarc_record TEXT,
+    health_score INTEGER DEFAULT 100,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE mailboxes (
+    id UUID PRIMARY KEY,
+    tenant_id UUID REFERENCES tenants(id),
+    email_address VARCHAR(255) NOT NULL,
+    domain_id UUID REFERENCES email_domains(id),
+    status VARCHAR(50), -- active, warming, suspended
+    daily_limit INTEGER DEFAULT 50,
+    sent_today INTEGER DEFAULT 0,
+    health_score INTEGER DEFAULT 100,
+    warmup_stage INTEGER DEFAULT 1,
+    last_sent TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE email_queue (
+    id UUID PRIMARY KEY,
+    tenant_id UUID REFERENCES tenants(id),
+    campaign_id UUID REFERENCES campaigns(id),
+    prospect_id UUID REFERENCES prospects(id),
+    mailbox_id UUID REFERENCES mailboxes(id),
+    subject VARCHAR(255),
+    body TEXT,
+    status VARCHAR(50), -- pending, sent, failed, bounced
+    scheduled_at TIMESTAMP,
+    sent_at TIMESTAMP,
+    error_message TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+Key Features:
+
+Email verification (syntax, MX record, deliverability)
+Automatic mailbox rotation
+Warm-up scheduling (gradual increase)
+Bounce handling (hard/soft)
+Unsubscribe management
+Email footer compliance
+
+Files to Create:
+
+backend/services/emailService.js
+backend/services/sendgridService.js or backend/services/sesService.js
+backend/models/EmailDomain.js
+backend/models/Mailbox.js
+backend/controllers/emailController.js
+backend/routes/email.js
+frontend/src/pages/Manager/EmailSettings.jsx
