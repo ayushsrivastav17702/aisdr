@@ -1144,6 +1144,32 @@ class SuperAdminService {
       'normal'
     );
 
+    // Send welcome email with credentials if requested
+    if (managerData.sendWelcomeEmail) {
+      try {
+        const { emailService } = await import('./email.service');
+        const baseUrl = process.env.APP_URL || 'https://increff-aisdr.replit.app';
+        await emailService.sendWelcomeCredentialsEmail({
+          to: managerData.email,
+          userName: managerData.firstName ? `${managerData.firstName} ${managerData.lastName || ''}`.trim() : undefined,
+          email: managerData.email,
+          tempPassword,
+          loginUrl: `${baseUrl}/login`,
+          organizationName: tenant.name,
+          role: 'Manager',
+        });
+
+        // Update welcome email sent flag
+        await db
+          .update(managerAccounts)
+          .set({ welcomeEmailSent: true })
+          .where(eq(managerAccounts.id, managerAccount.id));
+      } catch (emailError) {
+        console.error('Failed to send welcome email:', emailError);
+        // Don't throw - account was created successfully
+      }
+    }
+
     return { user: { ...user, passwordHash: undefined } as any, managerAccount, tempPassword };
   }
 
@@ -1291,7 +1317,7 @@ class SuperAdminService {
 
     // Update manager account if managerRole is specified
     let managerAccount: ManagerAccount | null = null;
-    if (updates.managerRole) {
+    if (updates.managerRole && user.organizationId) {
       const [existing] = await db
         .select()
         .from(managerAccounts)
