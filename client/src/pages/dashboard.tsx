@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -12,7 +12,7 @@ import ProspectsTable from "@/components/prospects-table";
 import ImportWizard from "@/components/import-wizard";
 import JobDrawer from "@/components/job-drawer";
 import { EmailVerificationBanner } from "@/components/email-verification-banner";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { 
   BrainIcon, 
   UsersIcon, 
@@ -44,6 +44,14 @@ export default function Dashboard() {
   const [isJobDrawerOpen, setIsJobDrawerOpen] = useState(false);
   const { toast } = useToast();
   const { user, logout } = useAuth();
+  const [, setLocation] = useLocation();
+
+  // Redirect managers to manager dashboard
+  useEffect(() => {
+    if (user?.isManager) {
+      setLocation('/manager/dashboard');
+    }
+  }, [user?.isManager, setLocation]);
 
   // Get active jobs for the jobs button badge
   const { data: activeJobs = [] } = useQuery<any[]>({

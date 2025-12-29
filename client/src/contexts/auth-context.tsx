@@ -9,6 +9,7 @@ interface AuthUser {
   lastName: string | null;
   role: 'admin' | 'user';
   status: 'active' | 'inactive' | 'suspended';
+  isManager: boolean;
 }
 
 interface AuthContextType {

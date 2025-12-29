@@ -39,6 +39,7 @@ interface NavItem {
   label: string;
   badge?: string | number;
   requireAdmin?: boolean;
+  requireManager?: boolean;
 }
 
 const routeLabels: Record<string, string> = {
@@ -95,6 +96,18 @@ export function Layout({ children }: LayoutProps) {
 
   const pageTitle = getPageTitle(location);
 
+  // Manager-specific navigation (shown only to managers)
+  const managerNavItems: NavItem[] = [
+    { href: '/manager/dashboard', icon: <Home className="w-4 h-4" />, label: 'Dashboard', requireManager: true },
+    { href: '/admin/users', icon: <Users2 className="w-4 h-4" />, label: 'Team Management', requireManager: true },
+    { href: '/sequences', icon: <ListTodo className="w-4 h-4" />, label: 'Campaigns', requireManager: true },
+    { href: '/analytics', icon: <BarChart3Icon className="w-4 h-4" />, label: 'Analytics', requireManager: true },
+    { href: '/organization-settings', icon: <Building2 className="w-4 h-4" />, label: 'Organization', requireManager: true },
+    { href: '/workspace-management', icon: <FolderTree className="w-4 h-4" />, label: 'Workspaces', requireManager: true },
+    { href: '/settings', icon: <SettingsIcon className="w-4 h-4" />, label: 'Settings', requireManager: true },
+  ];
+
+  // Regular user navigation (SDR platform)
   const mainNavItems: NavItem[] = [
     { href: '/', icon: <SparklesIcon className="w-4 h-4" />, label: 'AI Search' },
     { href: '/prospects', icon: <UsersIcon className="w-4 h-4" />, label: 'Prospects' },
@@ -119,6 +132,9 @@ export function Layout({ children }: LayoutProps) {
     { href: '/admin-infrastructure', icon: <SettingsIcon className="w-4 h-4" />, label: 'Infrastructure', requireAdmin: true },
     { href: '/api-docs', icon: <Code className="w-4 h-4" />, label: 'API Docs' },
   ];
+
+  // Check if user is a manager (has isManager flag)
+  const isUserManager = user?.isManager === true;
 
   const isActive = (href: string) => {
     if (href === '/') return location === '/';
@@ -168,24 +184,37 @@ export function Layout({ children }: LayoutProps) {
         </div>
 
         <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
-          <div className="space-y-1">
-            {mainNavItems.map(renderNavItem)}
-          </div>
-
-          <div className="pt-4">
-            <p className="px-3 text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-              Engagement
-            </p>
-            {engagementNavItems.map(renderNavItem)}
-          </div>
-
-          {user?.role === 'admin' && (
-            <div className="pt-4">
+          {isUserManager ? (
+            /* Manager-specific navigation */
+            <div className="space-y-1">
               <p className="px-3 text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
-                Admin
+                Manager
               </p>
-              {adminNavItems.map(renderNavItem)}
+              {managerNavItems.map(renderNavItem)}
             </div>
+          ) : (
+            /* Regular user/admin navigation */
+            <>
+              <div className="space-y-1">
+                {mainNavItems.map(renderNavItem)}
+              </div>
+
+              <div className="pt-4">
+                <p className="px-3 text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                  Engagement
+                </p>
+                {engagementNavItems.map(renderNavItem)}
+              </div>
+
+              {user?.role === 'admin' && (
+                <div className="pt-4">
+                  <p className="px-3 text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">
+                    Admin
+                  </p>
+                  {adminNavItems.map(renderNavItem)}
+                </div>
+              )}
+            </>
           )}
         </nav>
 
@@ -199,7 +228,7 @@ export function Layout({ children }: LayoutProps) {
                 {user?.firstName && user?.lastName ? `${user.firstName} ${user.lastName}` : user?.email}
               </p>
               <p className="text-xs text-muted-foreground truncate">
-                {user?.role === 'admin' ? 'Administrator' : 'User'}
+                {isUserManager ? 'Manager' : user?.role === 'admin' ? 'Administrator' : 'User'}
               </p>
             </div>
           </div>
