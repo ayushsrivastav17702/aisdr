@@ -257,6 +257,7 @@ export default function SuperAdminTenantDetail() {
   const [copiedPassword, setCopiedPassword] = useState(false);
   const [selectedManagerForEdit, setSelectedManagerForEdit] = useState<{
     id: string;
+    userId: string;
     email: string;
     firstName: string | null;
     lastName: string | null;
@@ -389,20 +390,21 @@ export default function SuperAdminTenantDetail() {
   });
 
   const resendInviteMutation = useMutation({
-    mutationFn: (userId: string) =>
-      superAdminFetch(`/api/super-admin/managers/${userId}/resend-invite`, {
+    mutationFn: async (data: { userId: string; email: string }) => {
+      const result = await superAdminFetch(`/api/super-admin/managers/${data.userId}/resend-invite`, {
         method: "POST",
-      }),
+      });
+      return { ...result, email: data.email };
+    },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: ["/api/super-admin/tenants", tenantId, "details"] });
       setCredentialsData({
-        email: selectedManagerForEdit?.email || "",
+        email: result.email,
         tempPassword: result.tempPassword,
         type: "resend_invite",
       });
       setCopiedPassword(false);
       setCredentialsModalOpen(true);
-      setSelectedManagerForEdit(null);
       toast({ title: "Invite email sent successfully" });
     },
     onError: (error: Error) => {
@@ -989,8 +991,10 @@ export default function SuperAdminTenantDetail() {
                                 data-testid={`button-resend-invite-${manager.id}`}
                                 disabled={resendInviteMutation.isPending}
                                 onClick={() => {
-                                  setSelectedManagerForEdit(manager);
-                                  resendInviteMutation.mutate(manager.id);
+                                  resendInviteMutation.mutate({ 
+                                    userId: manager.userId, 
+                                    email: manager.email 
+                                  });
                                 }}
                               >
                                 <Send className="h-4 w-4" />
@@ -1236,7 +1240,7 @@ export default function SuperAdminTenantDetail() {
               onClick={() => {
                 if (selectedManagerForEdit) {
                   updateManagerMutation.mutate({
-                    userId: selectedManagerForEdit.id,
+                    userId: selectedManagerForEdit.userId,
                     updates: editManagerData,
                   });
                 }
@@ -1266,7 +1270,7 @@ export default function SuperAdminTenantDetail() {
             <Button
               onClick={() => {
                 if (selectedManagerForEdit) {
-                  resetPasswordMutation.mutate(selectedManagerForEdit.id);
+                  resetPasswordMutation.mutate(selectedManagerForEdit.userId);
                 }
               }}
               disabled={resetPasswordMutation.isPending}
