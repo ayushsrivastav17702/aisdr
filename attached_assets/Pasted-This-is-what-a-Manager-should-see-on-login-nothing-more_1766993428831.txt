@@ -1,0 +1,231 @@
+This is what a Manager should see on login — nothing more, nothing less.
+
+1️⃣ Global Layout (Manager)
+--------------------------------------------------
+Top Bar
+- Org Name
+- Role: Manager
+- Notifications (read-only)
+- Profile (logout only)
+--------------------------------------------------
+Left Sidebar (Manager-only)
+--------------------------------------------------
+Main Content Area
+--------------------------------------------------
+
+2️⃣ Sidebar Navigation (STRICT)
+✅ Allowed (from Manager PRD only)
+📊 Team Dashboard
+👥 Team Members
+📁 Campaigns
+📈 Performance
+⚙️ Settings
+
+❌ Must NOT exist
+
+AI Search
+
+Prospects
+
+Import
+
+Sequences
+
+Automation
+
+Mailboxes
+
+Content
+
+Enrichment
+
+Leaderboard
+
+Best Practices
+
+AE Handoff
+
+API Docs
+
+AI Prospecting
+
+3️⃣ Screen 1: Team Dashboard (FR-M1)
+
+Purpose: High-level visibility only
+
+Widgets (Read-only)
+[ Total Active Users ]
+[ Active Campaigns ]
+[ Emails Sent (team) ]
+[ Replies (team) ]
+
+Charts
+
+Emails sent (last 7 / 30 days)
+
+Campaign status distribution
+
+🚫 No drill-down into inboxes
+🚫 No prospect visibility
+
+4️⃣ Screen 2: Team Members (FR-M0, FR-M0a)
+
+Purpose: User administration only
+
+Table
+Name	Role	Status	Campaigns Assigned	Actions
+John	User	Active	3	Edit / Disable
+Sara	User	Disabled	0	Enable
+Allowed Actions
+
+✅ Create user
+
+✅ Edit user
+
+✅ Disable / Enable
+
+✅ Reset password
+
+🚫 Cannot:
+
+Send emails
+
+Assign mailboxes
+
+Access inbox
+
+View prospect lists
+
+5️⃣ Screen 3: Campaign Portfolio (FR-M7)
+
+Purpose: Oversight, not execution
+
+Table
+Campaign	Owner	Status	Sent	Replies	Last Active
+Allowed
+
+✅ View all campaigns
+
+✅ Filter by status / owner
+
+Restricted
+
+❌ Edit campaign
+
+❌ Edit sequence
+
+❌ Add prospects
+
+❌ Launch new campaign
+
+(Phase-correct — Campaign Approval is NOT built yet)
+
+6️⃣ Screen 4: Performance (FR-M8, FR-M15)
+
+Purpose: Team-level performance only
+
+Sections
+Campaign Performance
+
+Sent
+
+Opens (if available)
+
+Replies
+
+Team Stats
+User	Emails Sent	Replies
+
+🚫 No individual inbox access
+🚫 No message quality review (not built)
+
+7️⃣ Screen 5: Settings (Limited)
+
+Purpose: Org visibility, not control
+
+Allowed
+
+View organization name
+
+View plan (read-only)
+
+View seat usage
+
+NOT allowed
+
+Billing
+
+API keys
+
+Integrations
+
+Mailboxes
+
+Feature flags
+
+🔐 RBAC PERMISSION MATRIX (COPY-PASTE)
+
+This is 100% aligned to existing Manager PRD.
+
+ROLE: MANAGER
+
+USER MANAGEMENT
+✔ user:create
+✔ user:read
+✔ user:update
+✔ user:disable
+✔ user:reset_password
+
+CAMPAIGNS
+✔ campaign:list_all
+✔ campaign:view
+✖ campaign:create
+✖ campaign:update
+✖ campaign:delete
+✖ campaign:launch
+
+SEQUENCES
+✖ sequence:create
+✖ sequence:edit
+✖ sequence:delete
+
+PROSPECTS
+✖ prospect:create
+✖ prospect:import
+✖ prospect:edit
+✖ prospect:search
+
+EMAIL / MAILBOX
+✖ mailbox:connect
+✖ email:send
+✖ inbox:view
+✖ reply:send
+
+ANALYTICS
+✔ analytics:team_view
+✔ analytics:campaign_view
+✖ analytics:user_drilldown
+
+AI FEATURES
+✖ ai:prospecting
+✖ ai:message_generation
+✖ ai:reply_assist
+
+AUTOMATION
+✖ automation:create
+✖ automation:edit
+
+SYSTEM
+✔ org:view
+✖ billing:manage
+✖ api:access
+✖ integrations:manage
+
+🚨 Key Rule (Non-Negotiable)
+
+If a Manager can execute work, accountability breaks.
+
+Manager = observe, manage, govern
+User = execute
+
+Right now, your UI violates this rule — this design fixes it.
