@@ -96,21 +96,25 @@ Classification guidelines:
   }
 
   async processReply(replyId: string, userId: string): Promise<ProcessedReply | null> {
-    const [reply] = await db.select()
+    // Verify ownership by joining through emails table with userId check
+    const [replyData] = await db
+      .select({
+        reply: emailReplies,
+        originalSubject: emails.subject,
+      })
       .from(emailReplies)
-      .where(eq(emailReplies.id, replyId))
+      .innerJoin(emails, eq(emailReplies.emailId, emails.id))
+      .where(and(
+        eq(emailReplies.id, replyId),
+        eq(emails.userId, userId)
+      ))
       .limit(1);
 
-    if (!reply) return null;
+    // Return null if reply doesn't exist OR doesn't belong to this user
+    if (!replyData) return null;
 
-    let originalSubject = '';
-    if (reply.emailId) {
-      const [email] = await db.select()
-        .from(emails)
-        .where(eq(emails.id, reply.emailId))
-        .limit(1);
-      originalSubject = email?.subject || '';
-    }
+    const reply = replyData.reply;
+    const originalSubject = replyData.originalSubject || '';
 
     const classification = await this.classifyReply(reply.replyContent, originalSubject, userId);
 

@@ -42,6 +42,7 @@ import bestPracticesRoutes from "./routes/best-practices.routes";
 import aeHandoffRoutes from "./routes/ae-handoff.routes";
 import waterfallSearchRoutes from "./routes/waterfall-search.routes";
 import managerRoutes from "./routes/manager.routes";
+import { inboxRouter } from "./inbox-routes";
 import { authenticate } from "./middleware/auth.middleware";
 import { emailVolumeConfig, getCapacityReport, getEstimatedTimeForEmails, EMAIL_VOLUME_PRESETS } from "./config/email-volume.config";
 
@@ -1816,6 +1817,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Manager routes (FR-M features)
   app.use(managerRoutes);
+
+  // Inbox routes (unified reply management)
+  app.use("/api/inbox", inboxRouter);
 
   // Automation module routes
   registerAutomationRoutes(app);
