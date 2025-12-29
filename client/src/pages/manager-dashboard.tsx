@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useLocation, Link } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -206,6 +206,7 @@ interface Leaderboard {
 
 export default function ManagerDashboard() {
   const [location, setLocation] = useLocation();
+  const searchString = useSearch(); // This properly tracks query param changes
   const [searchQuery, setSearchQuery] = useState("");
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [newUser, setNewUser] = useState({ email: "", firstName: "", lastName: "", role: "user" });
@@ -218,23 +219,22 @@ export default function ManagerDashboard() {
   const { toast } = useToast();
   const { user } = useAuth();
 
-  // Parse tab from URL query parameter
-  const getTabFromUrl = () => {
-    const urlParams = new URLSearchParams(window.location.search);
+  // Parse tab from URL query parameter using the reactive searchString
+  const getTabFromSearch = (search: string) => {
+    const urlParams = new URLSearchParams(search);
     const tab = urlParams.get('tab');
-    // Valid tabs per Manager PRD: overview (default), team, campaigns, performance, settings
     if (tab && ['team', 'campaigns', 'performance', 'settings'].includes(tab)) {
       return tab;
     }
-    return 'overview'; // Default to Team Dashboard overview
+    return 'overview';
   };
 
-  const [activeTab, setActiveTab] = useState(getTabFromUrl);
+  const [activeTab, setActiveTab] = useState(() => getTabFromSearch(searchString));
 
-  // Sync tab with URL changes
+  // Sync tab with URL search params changes - useSearch hook properly tracks query param changes
   useEffect(() => {
-    setActiveTab(getTabFromUrl());
-  }, [location]);
+    setActiveTab(getTabFromSearch(searchString));
+  }, [searchString]);
 
   // Update URL when tab changes
   const handleTabChange = (tab: string) => {
