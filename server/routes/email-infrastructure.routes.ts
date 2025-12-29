@@ -524,4 +524,139 @@ router.delete("/mailbox-warmup/:mailboxId", authenticate, async (req, res) => {
   }
 });
 
+// ============================================
+// EMAIL VERIFICATION ROUTES
+// ============================================
+
+import { emailVerificationService } from "../services/email-verification.service";
+import { blacklistCheckService } from "../services/blacklist-check.service";
+
+router.post("/verify-email", authenticate, async (req, res) => {
+  try {
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ error: "Email is required" });
+    }
+
+    const result = await emailVerificationService.verifyEmail(email);
+    res.json(result);
+  } catch (error) {
+    console.error("Error verifying email:", error);
+    res.status(500).json({ error: "Failed to verify email" });
+  }
+});
+
+router.post("/verify-emails-batch", authenticate, async (req, res) => {
+  try {
+    const { emails } = req.body;
+    if (!emails || !Array.isArray(emails) || emails.length === 0) {
+      return res.status(400).json({ error: "Array of emails is required" });
+    }
+
+    if (emails.length > 100) {
+      return res.status(400).json({ error: "Maximum 100 emails per batch" });
+    }
+
+    const batchResult = await emailVerificationService.verifyEmailsBatch(emails);
+    
+    const summary = {
+      total: emails.length,
+      completed: batchResult.completed,
+      failed: batchResult.failed,
+      valid: batchResult.results.filter(r => r.isValid).length,
+      invalid: batchResult.results.filter(r => !r.isValid).length,
+      disposable: batchResult.results.filter(r => r.isDisposable).length,
+      freeEmail: batchResult.results.filter(r => r.isFreeEmail).length,
+    };
+
+    res.json({ 
+      results: batchResult.results, 
+      errors: batchResult.errors,
+      summary 
+    });
+  } catch (error) {
+    console.error("Error verifying emails batch:", error);
+    res.status(500).json({ error: "Failed to verify emails" });
+  }
+});
+
+router.post("/verify-domain", authenticate, async (req, res) => {
+  try {
+    const { domain } = req.body;
+    if (!domain) {
+      return res.status(400).json({ error: "Domain is required" });
+    }
+
+    const result = await emailVerificationService.verifyDomain(domain);
+    res.json(result);
+  } catch (error) {
+    console.error("Error verifying domain:", error);
+    res.status(500).json({ error: "Failed to verify domain" });
+  }
+});
+
+// ============================================
+// BLACKLIST CHECK ROUTES
+// ============================================
+
+router.post("/check-ip-blacklist", authenticate, async (req, res) => {
+  try {
+    const { ip } = req.body;
+    if (!ip) {
+      return res.status(400).json({ error: "IP address is required" });
+    }
+
+    const result = await blacklistCheckService.checkIp(ip);
+    res.json(result);
+  } catch (error) {
+    console.error("Error checking IP blacklist:", error);
+    res.status(500).json({ error: "Failed to check IP blacklist" });
+  }
+});
+
+router.post("/check-domain-blacklist", authenticate, async (req, res) => {
+  try {
+    const { domain } = req.body;
+    if (!domain) {
+      return res.status(400).json({ error: "Domain is required" });
+    }
+
+    const result = await blacklistCheckService.checkDomain(domain);
+    res.json(result);
+  } catch (error) {
+    console.error("Error checking domain blacklist:", error);
+    res.status(500).json({ error: "Failed to check domain blacklist" });
+  }
+});
+
+router.post("/check-sender-reputation", authenticate, async (req, res) => {
+  try {
+    const { ip, domain } = req.body;
+    if (!ip && !domain) {
+      return res.status(400).json({ error: "IP or domain is required" });
+    }
+
+    const result = await blacklistCheckService.checkSenderReputation({ ip, domain });
+    res.json(result);
+  } catch (error) {
+    console.error("Error checking sender reputation:", error);
+    res.status(500).json({ error: "Failed to check sender reputation" });
+  }
+});
+
+router.post("/check-mailserver-reputation", authenticate, async (req, res) => {
+  try {
+    const { domain } = req.body;
+    if (!domain) {
+      return res.status(400).json({ error: "Domain is required" });
+    }
+
+    const result = await blacklistCheckService.checkMailServerReputation(domain);
+    res.json(result);
+  } catch (error) {
+    console.error("Error checking mail server reputation:", error);
+    res.status(500).json({ error: "Failed to check mail server reputation" });
+  }
+});
+
 export default router;
