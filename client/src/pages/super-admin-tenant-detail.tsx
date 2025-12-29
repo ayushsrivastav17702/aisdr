@@ -9,6 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -242,11 +243,28 @@ export default function SuperAdminTenantDetail() {
 
   const [activeTab, setActiveTab] = useState("overview");
   const [addManagerDialogOpen, setAddManagerDialogOpen] = useState(false);
+  const [editManagerDialogOpen, setEditManagerDialogOpen] = useState(false);
+  const [resetPasswordDialogOpen, setResetPasswordDialogOpen] = useState(false);
+  const [selectedManagerForEdit, setSelectedManagerForEdit] = useState<{
+    id: string;
+    email: string;
+    firstName: string | null;
+    lastName: string | null;
+    status: string;
+    managerRole: string | null;
+  } | null>(null);
   const [newManagerData, setNewManagerData] = useState({
     email: "",
     firstName: "",
     lastName: "",
     managerRole: "secondary" as "primary" | "secondary" | "readonly",
+    sendInviteEmail: true,
+  });
+  const [editManagerData, setEditManagerData] = useState({
+    firstName: "",
+    lastName: "",
+    managerRole: "primary" as "primary" | "secondary" | "readonly",
+    status: "active" as "active" | "inactive" | "suspended",
   });
   const [limitFormData, setLimitFormData] = useState<{
     maxUsers?: number;
@@ -306,10 +324,47 @@ export default function SuperAdminTenantDetail() {
       queryClient.invalidateQueries({ queryKey: ["/api/super-admin/tenants", tenantId, "details"] });
       queryClient.invalidateQueries({ queryKey: ["/api/super-admin/tenants"] });
       setAddManagerDialogOpen(false);
-      setNewManagerData({ email: "", firstName: "", lastName: "", managerRole: "secondary" });
+      setNewManagerData({ email: "", firstName: "", lastName: "", managerRole: "secondary", sendInviteEmail: true });
       toast({ 
         title: "Manager created successfully",
         description: `Temporary password: ${result.tempPassword}`,
+      });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const updateManagerMutation = useMutation({
+    mutationFn: (data: { userId: string; updates: typeof editManagerData }) =>
+      superAdminFetch(`/api/super-admin/managers/${data.userId}`, {
+        method: "PATCH",
+        body: JSON.stringify(data.updates),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/tenants", tenantId, "details"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/tenants"] });
+      setEditManagerDialogOpen(false);
+      setSelectedManagerForEdit(null);
+      toast({ title: "Manager updated successfully" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const resetPasswordMutation = useMutation({
+    mutationFn: (userId: string) =>
+      superAdminFetch(`/api/super-admin/managers/${userId}/reset-password`, {
+        method: "POST",
+      }),
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/tenants", tenantId, "details"] });
+      setResetPasswordDialogOpen(false);
+      setSelectedManagerForEdit(null);
+      toast({ 
+        title: "Password reset successfully",
+        description: `New temporary password: ${result.tempPassword}`,
       });
     },
     onError: (error: Error) => {
@@ -859,10 +914,32 @@ export default function SuperAdminTenantDetail() {
                           </TableCell>
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-2">
-                              <Button variant="ghost" size="icon" data-testid={`button-edit-manager-${manager.id}`}>
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                data-testid={`button-edit-manager-${manager.id}`}
+                                onClick={() => {
+                                  setSelectedManagerForEdit(manager);
+                                  setEditManagerData({
+                                    firstName: manager.firstName || "",
+                                    lastName: manager.lastName || "",
+                                    managerRole: (manager.managerRole as "primary" | "secondary" | "readonly") || "primary",
+                                    status: (manager.status as "active" | "inactive" | "suspended") || "active",
+                                  });
+                                  setEditManagerDialogOpen(true);
+                                }}
+                              >
                                 <Edit className="h-4 w-4" />
                               </Button>
-                              <Button variant="ghost" size="icon" data-testid={`button-reset-password-${manager.id}`}>
+                              <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                data-testid={`button-reset-password-${manager.id}`}
+                                onClick={() => {
+                                  setSelectedManagerForEdit(manager);
+                                  setResetPasswordDialogOpen(true);
+                                }}
+                              >
                                 <Key className="h-4 w-4" />
                               </Button>
                             </div>
@@ -1000,6 +1077,22 @@ export default function SuperAdminTenantDetail() {
                 </SelectContent>
               </Select>
             </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="sendInviteEmail"
+                checked={newManagerData.sendInviteEmail}
+                onCheckedChange={(checked) =>
+                  setNewManagerData({ ...newManagerData, sendInviteEmail: checked === true })
+                }
+                data-testid="checkbox-send-invite-email"
+              />
+              <label
+                htmlFor="sendInviteEmail"
+                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+              >
+                Send invite email with login credentials
+              </label>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAddManagerDialogOpen(false)}>
@@ -1011,6 +1104,122 @@ export default function SuperAdminTenantDetail() {
               data-testid="button-confirm-add-manager"
             >
               {addManagerMutation.isPending ? "Creating..." : "Create Manager"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={editManagerDialogOpen} onOpenChange={setEditManagerDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Manager</DialogTitle>
+            <DialogDescription>
+              Update details for {selectedManagerForEdit?.email}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>First Name</Label>
+                <Input
+                  value={editManagerData.firstName}
+                  onChange={(e) => setEditManagerData({ ...editManagerData, firstName: e.target.value })}
+                  placeholder="John"
+                  data-testid="input-edit-manager-first-name"
+                />
+              </div>
+              <div>
+                <Label>Last Name</Label>
+                <Input
+                  value={editManagerData.lastName}
+                  onChange={(e) => setEditManagerData({ ...editManagerData, lastName: e.target.value })}
+                  placeholder="Doe"
+                  data-testid="input-edit-manager-last-name"
+                />
+              </div>
+            </div>
+            <div>
+              <Label>Manager Role</Label>
+              <Select
+                value={editManagerData.managerRole}
+                onValueChange={(value: "primary" | "secondary" | "readonly") =>
+                  setEditManagerData({ ...editManagerData, managerRole: value })
+                }
+              >
+                <SelectTrigger data-testid="select-edit-manager-role">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="primary">Primary (Full Access)</SelectItem>
+                  <SelectItem value="secondary">Secondary (Limited Admin)</SelectItem>
+                  <SelectItem value="readonly">Read-Only (View Only)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Status</Label>
+              <Select
+                value={editManagerData.status}
+                onValueChange={(value: "active" | "inactive" | "suspended") =>
+                  setEditManagerData({ ...editManagerData, status: value })
+                }
+              >
+                <SelectTrigger data-testid="select-edit-manager-status">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="inactive">Inactive</SelectItem>
+                  <SelectItem value="suspended">Suspended</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditManagerDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (selectedManagerForEdit) {
+                  updateManagerMutation.mutate({
+                    userId: selectedManagerForEdit.id,
+                    updates: editManagerData,
+                  });
+                }
+              }}
+              disabled={updateManagerMutation.isPending}
+              data-testid="button-confirm-edit-manager"
+            >
+              {updateManagerMutation.isPending ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={resetPasswordDialogOpen} onOpenChange={setResetPasswordDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reset Password</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to reset the password for {selectedManagerForEdit?.email}? 
+              A new temporary password will be generated.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setResetPasswordDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (selectedManagerForEdit) {
+                  resetPasswordMutation.mutate(selectedManagerForEdit.id);
+                }
+              }}
+              disabled={resetPasswordMutation.isPending}
+              data-testid="button-confirm-reset-password"
+            >
+              {resetPasswordMutation.isPending ? "Resetting..." : "Reset Password"}
             </Button>
           </DialogFooter>
         </DialogContent>
