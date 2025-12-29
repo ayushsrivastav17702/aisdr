@@ -299,7 +299,12 @@ export const emailReplies = pgTable("email_replies", {
   nextAction: text("next_action"),
   processed: boolean("processed").default(false), // Whether AI has processed this reply
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => ({
+  sequenceIdIdx: index("email_replies_sequence_id_idx").on(table.sequenceId),
+  sequenceReceivedIdx: index("email_replies_sequence_received_idx").on(table.sequenceId, table.receivedAt),
+  sentimentIdx: index("email_replies_sentiment_idx").on(table.sentiment),
+  prospectIdIdx: index("email_replies_prospect_id_idx").on(table.prospectId),
+}));
 
 // AI follow-up jobs table
 export const aiFollowupJobs = pgTable("ai_followup_jobs", {
@@ -735,7 +740,12 @@ export const emailQueue = pgTable("email_queue", {
   references: text("references"), // Space-separated Message-IDs for the entire thread
   
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (table) => ({
+  sequenceIdIdx: index("email_queue_sequence_id_idx").on(table.sequenceId),
+  userStatusSentIdx: index("email_queue_user_status_sent_idx").on(table.userId, table.status, table.sentAt),
+  statusScheduledIdx: index("email_queue_status_scheduled_idx").on(table.status, table.scheduledFor),
+  mailboxIdIdx: index("email_queue_mailbox_id_idx").on(table.mailboxId),
+}));
 
 // Email Send Log table
 export const emailSendLog = pgTable("email_send_log", {
