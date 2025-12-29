@@ -75,7 +75,18 @@ export const RBAC_MATRIX: Record<string, Permission[]> = {
     PERMISSIONS.MAILBOX_MANAGE,
   ],
   
-  // Manager/Admin role: Team oversight only, NO SDR execution
+  // Manager role: Team oversight only, NO SDR execution
+  // NOTE: 'manager' is the canonical role name (DB stores 'admin' for legacy)
+  manager: [
+    PERMISSIONS.CAMPAIGN_VIEW_TEAM,
+    PERMISSIONS.CAMPAIGN_ANALYTICS_TEAM,
+    PERMISSIONS.USER_CREATE,
+    PERMISSIONS.USER_UPDATE,
+    PERMISSIONS.USER_DISABLE,
+    PERMISSIONS.USER_VIEW_TEAM,
+  ],
+  
+  // Legacy 'admin' alias for backward compatibility
   admin: [
     PERMISSIONS.CAMPAIGN_VIEW_TEAM,
     PERMISSIONS.CAMPAIGN_ANALYTICS_TEAM,
@@ -105,7 +116,8 @@ export function hasPermission(role: string, permission: Permission): boolean {
 }
 
 // Manager role variants that should be blocked from SDR execution
-const MANAGER_ROLES = ['admin', 'manager', 'tenant_admin', 'org_admin'];
+// NOTE: Database stores 'admin', but we normalize to 'manager' in auth responses
+const MANAGER_ROLES = ['manager', 'admin', 'tenant_admin', 'org_admin'];
 
 // Super Admin role - platform owner (blocked from ALL SDR execution)
 const SUPER_ADMIN_ROLE = 'super_admin';
@@ -279,8 +291,9 @@ export function requireManager(req: Request, res: Response, next: NextFunction) 
     return res.status(401).json({ error: 'Authentication required' });
   }
 
-  // Managers are 'admin' role users within an organization
-  if (req.user.role !== 'admin') {
+  // Managers have role='manager' (normalized from 'admin' in DB)
+  // Also accept 'admin' for backward compatibility during transition
+  if (req.user.role !== 'manager' && req.user.role !== 'admin') {
     return res.status(403).json({ error: 'Manager access required' });
   }
 

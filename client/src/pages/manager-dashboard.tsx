@@ -639,84 +639,8 @@ export default function ManagerDashboard() {
                         data-testid="input-search-team"
                       />
                     </div>
-                    <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-                      <DialogTrigger asChild>
-                        <Button data-testid="btn-add-user">
-                          <UserPlus className="w-4 h-4 mr-2" />
-                          Add Team Member
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent>
-                        <DialogHeader>
-                          <DialogTitle>Add New Team Member</DialogTitle>
-                          <DialogDescription>
-                            Send an invitation to add a new member to your team.
-                          </DialogDescription>
-                        </DialogHeader>
-                        <div className="space-y-4 py-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="email">Email</Label>
-                            <Input
-                              id="email"
-                              type="email"
-                              placeholder="user@company.com"
-                              value={newUser.email}
-                              onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-                              data-testid="input-user-email"
-                            />
-                          </div>
-                          <div className="grid grid-cols-2 gap-4">
-                            <div className="space-y-2">
-                              <Label htmlFor="firstName">First Name</Label>
-                              <Input
-                                id="firstName"
-                                placeholder="John"
-                                value={newUser.firstName}
-                                onChange={(e) => setNewUser({ ...newUser, firstName: e.target.value })}
-                                data-testid="input-first-name"
-                              />
-                            </div>
-                            <div className="space-y-2">
-                              <Label htmlFor="lastName">Last Name</Label>
-                              <Input
-                                id="lastName"
-                                placeholder="Doe"
-                                value={newUser.lastName}
-                                onChange={(e) => setNewUser({ ...newUser, lastName: e.target.value })}
-                                data-testid="input-last-name"
-                              />
-                            </div>
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="role">Role</Label>
-                            <Select
-                              value={newUser.role}
-                              onValueChange={(value) => setNewUser({ ...newUser, role: value })}
-                            >
-                              <SelectTrigger data-testid="select-user-role">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectItem value="user">SDR / BDR</SelectItem>
-                                <SelectItem value="admin">Team Manager</SelectItem>
-                              </SelectContent>
-                            </Select>
-                          </div>
-                        </div>
-                        <DialogFooter>
-                          <Button variant="outline" onClick={() => setIsCreateDialogOpen(false)}>
-                            Cancel
-                          </Button>
-                          <Button
-                            onClick={() => createUserMutation.mutate(newUser)}
-                            disabled={createUserMutation.isPending || !newUser.email}
-                            data-testid="btn-send-invitation"
-                          >
-                            {createUserMutation.isPending ? "Sending..." : "Send Invitation"}
-                          </Button>
-                        </DialogFooter>
-                      </DialogContent>
-                    </Dialog>
+                    {/* Add Team Member - Hidden for managers per RBAC requirements */}
+                    {/* Only super_admin can add users, managers have read-only access */}
                   </div>
                 </div>
               </CardHeader>
@@ -727,11 +651,7 @@ export default function ManagerDashboard() {
                   <div className="text-center py-8">
                     <Users className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
                     <h3 className="text-lg font-medium mb-2">No team members yet</h3>
-                    <p className="text-muted-foreground mb-4">Add your first team member to get started</p>
-                    <Button onClick={() => setIsCreateDialogOpen(true)} data-testid="btn-add-first-user">
-                      <UserPlus className="w-4 h-4 mr-2" />
-                      Add Team Member
-                    </Button>
+                    <p className="text-muted-foreground mb-4">Contact your system administrator to add team members.</p>
                   </div>
                 ) : (
                   <Table>
@@ -1029,26 +949,20 @@ export default function ManagerDashboard() {
                     </p>
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-muted-foreground">Current Plan</Label>
-                    <p className="text-lg font-medium" data-testid="org-plan">Professional</p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-muted-foreground">Seat Usage</Label>
-                    <div className="flex items-center gap-2">
-                      <p className="text-lg font-medium" data-testid="seat-usage">
-                        {stats?.activeUsers || 0} / {stats?.totalUsers || 0} seats
-                      </p>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
                     <Label className="text-muted-foreground">Your Role</Label>
                     <Badge variant="secondary" data-testid="user-role">Manager</Badge>
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-muted-foreground">Team Size</Label>
+                    <p className="text-lg font-medium" data-testid="team-size">
+                      {stats?.activeUsers || 0} active members
+                    </p>
                   </div>
                 </div>
 
                 <div className="pt-4 border-t">
                   <p className="text-sm text-muted-foreground">
-                    For billing, integrations, API keys, or other administrative changes, please contact your system administrator.
+                    For billing, plan changes, or other administrative settings, please contact your system administrator.
                   </p>
                 </div>
               </CardContent>
