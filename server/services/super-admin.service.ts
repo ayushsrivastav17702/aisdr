@@ -1415,6 +1415,79 @@ class SuperAdminService {
     return { tempPassword };
   }
 
+  async resendManagerInvite(
+    superAdminId: string,
+    userId: string
+  ): Promise<{ tempPassword: string }> {
+    // Get user and organization info
+    const [user] = await db
+      .select({
+        id: users.id,
+        email: users.email,
+        firstName: users.firstName,
+        lastName: users.lastName,
+        organizationId: users.organizationId,
+      })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+
+    if (!user) {
+      throw new Error('User not found');
+    }
+
+    // Get organization name
+    let orgName = 'your organization';
+    if (user.organizationId) {
+      const [org] = await db
+        .select({ name: organizations.name })
+        .from(organizations)
+        .where(eq(organizations.id, user.organizationId))
+        .limit(1);
+      if (org) {
+        orgName = org.name;
+      }
+    }
+
+    // Generate new temporary password
+    const tempPassword = crypto.randomBytes(12).toString('base64');
+    const passwordHash = await bcrypt.hash(tempPassword, SALT_ROUNDS);
+
+    // Update password in database
+    await db
+      .update(users)
+      .set({
+        passwordHash,
+        forcePasswordReset: true,
+        updatedAt: new Date(),
+      })
+      .where(eq(users.id, userId));
+
+    // Send welcome email with new credentials
+    try {
+      const { emailService } = await import('./email.service');
+      const baseUrl = process.env.APP_URL || 'https://increff-aisdr.replit.app';
+      await emailService.sendWelcomeCredentialsEmail({
+        to: user.email,
+        userName: user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : undefined,
+        email: user.email,
+        tempPassword,
+        loginUrl: `${baseUrl}/login`,
+        organizationName: orgName,
+        role: 'Manager',
+      });
+    } catch (emailError) {
+      console.error('Failed to send invite email:', emailError);
+      // Still return the password so super admin can share it manually
+    }
+
+    await this.logAction(superAdminId, 'MANAGER_INVITE_RESENT', 'manager', userId, {
+      email: user.email,
+    });
+
+    return { tempPassword };
+  }
+
   async suspendManager(
     superAdminId: string,
     userId: string,
