@@ -1,4 +1,4 @@
-import { useLocation, Link } from 'wouter';
+import { useLocation } from 'wouter';
 import { useAuth } from '@/contexts/auth-context';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -164,25 +164,25 @@ export function Layout({ children }: LayoutProps) {
 
     const active = isActive(item.href);
     return (
-      <Link key={item.href} href={item.href}>
-        <Button
-          variant="ghost"
-          className={`w-full justify-start gap-3 ${
-            active
-              ? 'bg-primary/10 text-primary hover:bg-primary/20'
-              : 'text-muted-foreground hover:bg-muted'
-          }`}
-          data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
-        >
-          {item.icon}
-          <span>{item.label}</span>
-          {item.badge && (
-            <Badge variant="secondary" className="ml-auto text-xs">
-              {item.badge}
-            </Badge>
-          )}
-        </Button>
-      </Link>
+      <Button
+        key={item.href}
+        variant="ghost"
+        className={`w-full justify-start gap-3 ${
+          active
+            ? 'bg-primary/10 text-primary hover:bg-primary/20'
+            : 'text-muted-foreground hover:bg-muted'
+        }`}
+        onClick={() => setLocation(item.href)}
+        data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
+      >
+        {item.icon}
+        <span>{item.label}</span>
+        {item.badge && (
+          <Badge variant="secondary" className="ml-auto text-xs">
+            {item.badge}
+          </Badge>
+        )}
+      </Button>
     );
   };
 
@@ -251,12 +251,16 @@ export function Layout({ children }: LayoutProps) {
             </div>
           </div>
           <div className="flex gap-2">
-            <Link href="/profile" className="flex-1">
-              <Button variant="outline" size="sm" className="w-full" data-testid="btn-profile">
-                <UserIcon className="w-3 h-3 mr-1" />
-                Profile
-              </Button>
-            </Link>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="flex-1" 
+              onClick={() => setLocation('/profile')}
+              data-testid="btn-profile"
+            >
+              <UserIcon className="w-3 h-3 mr-1" />
+              Profile
+            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -284,11 +288,15 @@ export function Layout({ children }: LayoutProps) {
           </Button>
           
           <div className="flex items-center gap-2 text-sm">
-            <Link href="/">
-              <Button variant="ghost" size="sm" className="p-1 h-auto" data-testid="btn-home">
-                <Home className="w-4 h-4 text-muted-foreground hover:text-foreground" />
-              </Button>
-            </Link>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="p-1 h-auto" 
+              onClick={() => setLocation('/')}
+              data-testid="btn-home"
+            >
+              <Home className="w-4 h-4 text-muted-foreground hover:text-foreground" />
+            </Button>
             <ChevronRight className="w-3 h-3 text-muted-foreground" />
             <span className="font-medium text-foreground" data-testid="text-page-title">{pageTitle}</span>
           </div>
