@@ -1,0 +1,187 @@
+Frontend:
+
+ AI Prospecting page with:
+
+ICP criteria form (industry, size, titles, location, limit)
+Multiple job title inputs
+Search button triggering waterfall API calls
+Results table with checkboxes
+Select all/deselect all
+Save selected prospects button
+Provider and cost display
+
+
+ Prospect list page
+ Prospect detail view
+ CSV import functionality
+
+Database Tables:
+
+ prospects table
+ prospect_searches table (tracking searches)
+ api_usage table (cost tracking)
+
+Services:
+
+ ProspectSearchService with waterfall logic:
+
+Perplexity API integration
+Apollo API integration
+Lusha API integration
+OpenRouter API integration
+Cost calculation for each provider
+API usage logging
+
+
+
+
+Authentication & Core Features
+Backend:
+
+ POST /api/auth/login - Login endpoint
+ POST /api/auth/register - Register endpoint (or manager creates users)
+ JWT token generation
+ JWT middleware (authenticate)
+ Role-based middleware (requireRole)
+ Password hashing with bcrypt
+ Session management
+
+Frontend:
+
+ Login page
+ Token storage (localStorage)
+ API service with axios
+ Token refresh/interceptors
+ Logout functionality
+ Redirect based on role (super_admin → super-admin/dashboard, manager → manager/dashboard, user → /campaigns)
+
+Database:
+
+ users table
+ sessions table
+ Indexes on critical columns
+
+
+Configuration Files
+
+ backend/.env with required variables:
+
+DATABASE_URL
+JWT_SECRET
+JWT_EXPIRES_IN
+PORT
+PERPLEXITY_API_KEY
+APOLLO_API_KEY
+LUSHA_API_KEY
+OPENROUTER_API_KEY
+
+
+ backend/package.json with dependencies:
+
+express, cors, pg, bcrypt, jsonwebtoken, dotenv, axios
+
+
+ frontend/package.json with dependencies:
+
+react, react-dom, react-router-dom, axios
+vite, tailwindcss
+
+
+ backend/config/database.js (PostgreSQL connection)
+ backend/utils/auditLog.js (logging utility)
+ backend/server.js with all routes registered
+ frontend/src/App.jsx with routing setup
+ database/init.sql with all table schemas
+
+
+Output Format
+Please provide a report in this format:
+✅ IMPLEMENTED (List what exists)
+Super Admin:
+
+ Feature 1 - File: path/to/file.js
+ Feature 2 - File: path/to/file.jsx
+...
+
+Manager:
+
+ Feature 1 - File: path/to/file.js
+...
+
+User:
+
+ Feature 1 - File: path/to/file.js
+...
+
+❌ MISSING (List what's not found)
+Super Admin:
+
+ Feature 1 - Expected in: path/to/file.js
+ Feature 2 - Expected in: path/to/file.jsx
+...
+
+Manager:
+
+ Feature 1 - Expected in: path/to/file.js
+...
+
+User:
+
+ Feature 1 - Expected in: path/to/file.js
+...
+
+⚠️ INCOMPLETE (Partially implemented)
+Super Admin:
+
+[~] Feature 1 - Found in: path/to/file.js (Missing: xyz)
+...
+
+📊 Summary Statistics
+
+Total Expected Features: X
+Implemented: Y (Z%)
+Missing: A (B%)
+Incomplete: C (D%)
+
+🔥 Critical Missing Items (Blocks MVP)
+
+Item 1 - Why it's critical
+Item 2 - Why it's critical
+...
+
+💡 Recommendations
+
+Implement X first because...
+Then add Y because...
+Finally Z because...
+
+
+PROMPT END
+
+Alternative: Quick Check Commands
+If you want to quickly check specific things, use these commands in Replit shell:
+bash# Check if files exist
+ls -la backend/config/database.js
+ls -la backend/utils/auditLog.js
+ls -la backend/services/prospectSearchService.js
+
+# Check routes
+grep -r "router.post\|router.get\|router.put\|router.delete" backend/routes/
+
+# Check tables
+psql $DATABASE_URL -c "\dt"
+
+# Check for API endpoints
+grep -r "app.use" backend/server.js
+
+# Check frontend pages
+ls -la frontend/src/pages/SuperAdmin/
+ls -la frontend/src/pages/Manager/
+ls -la frontend/src/pages/User/
+
+# Check environment variables
+cat backend/.env
+
+# Check dependencies
+cat backend/package.json | grep -A 20 "dependencies"
+cat frontend/package.json | grep -A 20 "dependencies"
