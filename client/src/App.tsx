@@ -148,7 +148,7 @@ function Router() {
         </ProtectedRoute>
       </Route>
       <Route path="/api-docs">
-        <ProtectedRoute blockManager>
+        <ProtectedRoute requireAdmin>
           <APIDocumentationPage />
         </ProtectedRoute>
       </Route>
@@ -183,9 +183,9 @@ function Router() {
           <CreateCampaign />
         </ProtectedRoute>
       </Route>
-      {/* Manager Routes */}
+      {/* Manager Routes - accessible by managers and admins, blocked for regular users */}
       <Route path="/manager/dashboard">
-        <ProtectedRoute requireAdmin>
+        <ProtectedRoute requireManagerOrAdmin>
           <ManagerDashboard />
         </ProtectedRoute>
       </Route>

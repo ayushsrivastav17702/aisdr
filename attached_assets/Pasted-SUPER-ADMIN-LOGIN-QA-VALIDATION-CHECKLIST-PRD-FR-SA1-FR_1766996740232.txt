@@ -1,0 +1,105 @@
+SUPER ADMIN LOGIN – QA VALIDATION CHECKLIST
+
+(PRD: FR-SA1 → FR-SA8, FR-SA11, FR-SA22 only)
+
+Test Preconditions
+
+Super Admin account exists
+
+At least 1 tenant
+
+At least 1 Manager + User created under tenant
+
+1️⃣ Authentication & Role Verification
+Check	Expected
+Login using Super Admin credentials	✅
+Role shows Super Admin	✅
+Access tenant routes	❌
+Access campaign execution	❌
+2️⃣ Sidebar Navigation Validation
+Sidebar MUST contain:
+
+Tenant Dashboard
+
+Tenant Management
+
+Users Overview
+
+Plans & Pricing (read/partial)
+
+System Settings (basic)
+
+Audit Logs
+
+Sidebar MUST NOT contain:
+Menu	Visible?
+AI Search	❌
+Campaigns	❌
+Sequences	❌
+Prospects	❌
+Inbox	❌
+Automation	❌
+Analytics (User)	❌
+3️⃣ Tenant Dashboard (FR-SA2)
+Check	Expected
+Total tenants	✅
+Active / Trial / Suspended	✅
+Search tenants	✅
+Filter by plan	⚠️ Partial
+4️⃣ Tenant Detail View (FR-SA3)
+Check	Expected
+View tenant profile	✅
+View plan	✅
+View usage stats	⚠️ Partial
+View managers	✅
+View users	✅
+5️⃣ Tenant Configuration (FR-SA4)
+Action	Expected
+Edit tenant name	✅
+Change status	✅
+Suspend tenant	✅
+Delete tenant	❌ (if restricted)
+6️⃣ Manager Administration (FR-SA7, FR-SA8)
+Action	Expected
+Auto-create manager	✅
+Reset manager password	✅
+Disable manager	✅
+Login as manager	❌
+7️⃣ Global User Overview (FR-SA11 – Partial)
+Check	Expected
+View users across tenants	✅
+Filter by tenant	⚠️ Partial
+Edit users	❌
+8️⃣ Audit Logging (FR-SA22 – Partial)
+Check	Expected
+Audit log table exists	✅
+Tenant actions logged	✅
+User actions logged	⚠️ Partial
+Export logs	❌
+9️⃣ Security & Isolation (NEGATIVE TESTS)
+Action	Expected
+Send emails	❌
+Create campaign	❌
+View prospect list	❌
+Access inbox	❌
+🔥 Severity Matrix
+Issue	Severity
+Admin sees user execution	SEV-1
+User sees admin controls	SEV-1
+Manager sees execution	SEV-1
+Missing stats	SEV-2
+UI inconsistency	SEV-3
+✅ PASS CRITERIA (Super Admin)
+
+Super Admin is valid if:
+
+Can govern tenants & managers
+
+Cannot execute sales actions
+
+Cannot cross tenant boundaries
+
+Final Truth (Non-Negotiable)
+
+If any role can do another role’s job,
+your product is not multi-tenant — it’s just multi-login.

@@ -1,0 +1,189 @@
+RBAC-USER-001
+
+Title: User login & role validation
+
+Steps:
+
+Login using User credentials
+
+Observe role label in header
+
+Expected Result:
+
+Login successful
+
+Role displayed as User
+
+RBAC-USER-002
+
+Title: User sidebar visibility validation
+
+Steps:
+
+Login as User
+
+Observe left navigation menu
+
+Expected Result:
+
+Visible: AI Search, Prospects, Import, Sequences, Campaigns, Automation, Analytics
+
+NOT visible: Team Dashboard, User Management, Tenant Management, Billing, API Docs
+
+RBAC-USER-003
+
+Title: User campaign creation access
+
+Steps:
+
+Login as User
+
+Click “Create Campaign”
+
+Save campaign draft
+
+Expected Result:
+
+Campaign created successfully
+
+RBAC-USER-004
+
+Title: User restricted admin access
+
+Steps:
+
+Login as User
+
+Navigate to /admin, /team, /users
+
+Expected Result:
+
+Access denied (403 or redirect)
+
+🟡 MANAGER – Jira/TestRail Test Cases
+RBAC-MANAGER-001
+
+Title: Manager login & role validation
+
+Steps:
+
+Login using Manager credentials
+
+Expected Result:
+
+Role displayed as Manager
+
+RBAC-MANAGER-002
+
+Title: Manager sidebar restriction
+
+Steps:
+
+Login as Manager
+
+Observe sidebar
+
+Expected Result:
+
+Visible: Team Dashboard, Team Members, Campaigns, Performance, Settings
+
+NOT visible: AI Search, Prospects, Sequences, Automation, Mailboxes
+
+RBAC-MANAGER-003
+
+Title: Manager campaign execution restriction
+
+Steps:
+
+Login as Manager
+
+Open any campaign
+
+Attempt to edit sequence or add prospects
+
+Expected Result:
+
+Edit actions disabled or blocked
+
+RBAC-MANAGER-004
+
+Title: Manager user administration access
+
+Steps:
+
+Login as Manager
+
+Navigate to Team Members
+
+Create / Disable user
+
+Expected Result:
+
+User management actions succeed
+
+🔴 SUPER ADMIN – Jira/TestRail Test Cases
+RBAC-ADMIN-001
+
+Title: Super Admin login validation
+
+Steps:
+
+Login using Super Admin credentials
+
+Expected Result:
+
+Role displayed as Super Admin
+
+RBAC-ADMIN-002
+
+Title: Tenant management access
+
+Steps:
+
+Login as Super Admin
+
+Open Tenant Dashboard
+
+View tenant details
+
+Expected Result:
+
+Tenant list & details visible
+
+RBAC-ADMIN-003
+
+Title: Super Admin execution restriction
+
+Steps:
+
+Login as Super Admin
+
+Attempt to access /campaigns, /prospects, /inbox
+
+Expected Result:
+
+Access denied
+
+RBAC-ADMIN-004
+
+Title: Tenant isolation enforcement
+
+Steps:
+
+Login as Super Admin
+
+Open Tenant A
+
+Attempt to access Tenant B data directly
+
+Expected Result:
+
+Cross-tenant access blocked
+
+🚨 Jira Severity Mapping
+Failure	Severity
+Role can execute another role’s action	SEV-1
+Sidebar shows wrong modules	SEV-1
+Route accessible via URL	SEV-1
+Incorrect stats	SEV-2
+UI text / labels	SEV-3

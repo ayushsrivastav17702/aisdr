@@ -27,7 +27,10 @@ import {
   ChevronLeft,
   Users2,
   Home,
-  TrendingUp
+  TrendingUp,
+  Target,
+  Upload,
+  Search
 } from 'lucide-react';
 
 interface LayoutProps {
@@ -107,15 +110,18 @@ export function Layout({ children }: LayoutProps) {
     { href: '/manager/dashboard?tab=settings', icon: <SettingsIcon className="w-4 h-4" />, label: 'Settings', requireManager: true },
   ];
 
-  // Regular user navigation (SDR platform)
+  // Regular user navigation (SDR platform) - per User PRD FR-U1 to FR-U15
   const mainNavItems: NavItem[] = [
     { href: '/', icon: <SparklesIcon className="w-4 h-4" />, label: 'AI Search' },
     { href: '/prospects', icon: <UsersIcon className="w-4 h-4" />, label: 'Prospects' },
+    { href: '/ai-prospecting', icon: <Search className="w-4 h-4" />, label: 'AI Prospecting' },
     { href: '/sequences', icon: <ListTodo className="w-4 h-4" />, label: 'Sequences' },
-    { href: '/mailboxes', icon: <Inbox className="w-4 h-4" />, label: 'Mailboxes' },
-    { href: '/content-management', icon: <FileText className="w-4 h-4" />, label: 'Content' },
+    { href: '/campaigns', icon: <Target className="w-4 h-4" />, label: 'Campaigns' },
     { href: '/automation-dashboard', icon: <Zap className="w-4 h-4" />, label: 'Automation' },
+    { href: '/content-management', icon: <FileText className="w-4 h-4" />, label: 'Content' },
+    { href: '/mailboxes', icon: <Inbox className="w-4 h-4" />, label: 'Mailboxes' },
     { href: '/analytics', icon: <BarChart3Icon className="w-4 h-4" />, label: 'Analytics' },
+    { href: '/settings', icon: <SettingsIcon className="w-4 h-4" />, label: 'Settings' },
   ];
 
   const engagementNavItems: NavItem[] = [
