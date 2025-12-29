@@ -107,34 +107,59 @@ router.post("/search-and-save", authenticate, async (req, res) => {
     console.log('Extraction Name:', extractionName);
     console.log('Tag:', tag);
 
+    if (req.userContext?.organizationId) {
+      const requestedLimit = rawCriteria.limit || 50;
+      const preCheck = await checkQuota(req.userContext.organizationId, 'prospects', requestedLimit);
+      if (!preCheck.allowed) {
+        return res.status(429).json({
+          success: false,
+          error: preCheck.message,
+          code: 'QUOTA_EXCEEDED',
+          details: {
+            resource: 'prospects',
+            current: preCheck.current,
+            limit: preCheck.limit,
+            requested: requestedLimit,
+          }
+        });
+      }
+    }
+
     const result = await waterfallSearchService.search(
       rawCriteria,
       req.userContext?.organizationId,
       req.userContext?.userId
     );
 
+    let maxToSave = result.prospects.length;
     if (req.userContext?.organizationId) {
-      const quotaCheck = await checkQuota(req.userContext.organizationId, 'prospects', result.prospects.length);
-      if (!quotaCheck.allowed) {
-        return res.status(429).json({
-          success: false,
-          error: quotaCheck.message,
-          code: 'QUOTA_EXCEEDED',
-          details: {
-            resource: 'prospects',
-            current: quotaCheck.current,
-            limit: quotaCheck.limit,
-            requested: result.prospects.length,
-          }
-        });
+      const postCheck = await checkQuota(req.userContext.organizationId, 'prospects', result.prospects.length);
+      if (!postCheck.allowed && postCheck.limit !== null && postCheck.current !== undefined) {
+        const remaining = Math.max(0, postCheck.limit - postCheck.current);
+        if (remaining === 0) {
+          return res.status(429).json({
+            success: false,
+            error: 'Prospect quota exceeded. Cannot save any prospects.',
+            code: 'QUOTA_EXCEEDED',
+            details: {
+              resource: 'prospects',
+              current: postCheck.current,
+              limit: postCheck.limit,
+              requested: result.prospects.length,
+            }
+          });
+        }
+        maxToSave = remaining;
+        console.log(`Quota limit reached. Will save only ${maxToSave} of ${result.prospects.length} prospects.`);
       }
     }
 
     let savedCount = 0;
     let duplicateCount = 0;
     const savedProspects = [];
+    const prospectsToProcess = result.prospects.slice(0, maxToSave);
 
-    for (const prospect of result.prospects) {
+    for (const prospect of prospectsToProcess) {
       try {
         if (prospect.email) {
           const existing = await db.select()
@@ -179,6 +204,8 @@ router.post("/search-and-save", authenticate, async (req, res) => {
 
     console.log(`Saved ${savedCount} prospects, ${duplicateCount} duplicates skipped`);
 
+    const quotaLimited = maxToSave < result.prospects.length;
+    
     await logAudit({
       userId: req.userContext!.userId,
       action: 'prospect_search_save',
@@ -190,6 +217,7 @@ router.post("/search-and-save", authenticate, async (req, res) => {
         totalFound: result.prospects.length,
         savedCount,
         duplicateCount,
+        quotaLimited,
         cost: result.totalCost,
         extractionName,
         tag
@@ -202,6 +230,8 @@ router.post("/search-and-save", authenticate, async (req, res) => {
       totalFound: result.prospects.length,
       savedCount,
       duplicateCount,
+      quotaLimited,
+      quotaLimitedCount: quotaLimited ? result.prospects.length - maxToSave : 0,
       totalCost: result.totalCost,
       searchId: result.searchId,
       providerChain: result.providerChain,
