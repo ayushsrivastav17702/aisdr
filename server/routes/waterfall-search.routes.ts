@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { authenticate } from "../middleware/auth.middleware";
 import { waterfallSearchService } from "../services/waterfall-search.service";
+import { checkQuota } from "../middleware/quota-enforcement.middleware";
 import { db } from "../db";
 import { prospectSearches, apiUsage, prospects, auditLogs } from "@shared/schema";
 import { eq, desc, and, gte, sql } from "drizzle-orm";
@@ -111,6 +112,23 @@ router.post("/search-and-save", authenticate, async (req, res) => {
       req.userContext?.organizationId,
       req.userContext?.userId
     );
+
+    if (req.userContext?.organizationId) {
+      const quotaCheck = await checkQuota(req.userContext.organizationId, 'prospects', result.prospects.length);
+      if (!quotaCheck.allowed) {
+        return res.status(429).json({
+          success: false,
+          error: quotaCheck.message,
+          code: 'QUOTA_EXCEEDED',
+          details: {
+            resource: 'prospects',
+            current: quotaCheck.current,
+            limit: quotaCheck.limit,
+            requested: result.prospects.length,
+          }
+        });
+      }
+    }
 
     let savedCount = 0;
     let duplicateCount = 0;

@@ -2061,6 +2061,281 @@ router.put('/alert-configurations/:alertType', authenticateSuperAdmin, requireMa
 });
 
 // ============================================================
+// FR-SA27: Alert Automation & Management
+// ============================================================
+router.get('/alerts', authenticateSuperAdmin, async (req, res) => {
+  try {
+    const { status, severity, limit = 50 } = req.query;
+    
+    let query = db
+      .select({
+        id: platformAlerts.id,
+        alertType: platformAlerts.alertType,
+        severity: platformAlerts.severity,
+        status: platformAlerts.status,
+        title: platformAlerts.title,
+        message: platformAlerts.message,
+        details: platformAlerts.details,
+        affectedTenantId: platformAlerts.affectedTenantId,
+        acknowledgedAt: platformAlerts.acknowledgedAt,
+        resolvedAt: platformAlerts.resolvedAt,
+        createdAt: platformAlerts.createdAt,
+      })
+      .from(platformAlerts)
+      .orderBy(desc(platformAlerts.createdAt))
+      .limit(Number(limit));
+
+    const conditions: any[] = [];
+    if (status) {
+      conditions.push(eq(platformAlerts.status, String(status) as any));
+    }
+    if (severity) {
+      conditions.push(eq(platformAlerts.severity, String(severity) as any));
+    }
+    if (conditions.length > 0) {
+      query = query.where(and(...conditions)) as any;
+    }
+
+    const alerts = await query;
+
+    const [activeCount] = await db.select({ count: sql<number>`count(*)` }).from(platformAlerts).where(eq(platformAlerts.status, 'active'));
+    const [criticalCount] = await db.select({ count: sql<number>`count(*)` }).from(platformAlerts).where(and(eq(platformAlerts.status, 'active'), eq(platformAlerts.severity, 'critical')));
+
+    res.json({ 
+      alerts,
+      summary: {
+        activeCount: Number(activeCount?.count || 0),
+        criticalCount: Number(criticalCount?.count || 0),
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching alerts:', error);
+    res.status(500).json({ error: 'Failed to fetch alerts' });
+  }
+});
+
+router.post('/alerts/run-checks', authenticateSuperAdmin, requireMasterAdmin, async (req, res) => {
+  try {
+    const { alertAutomationService } = await import('../services/alert-automation.service');
+    const result = await alertAutomationService.processAlerts();
+
+    await db.insert(superAdminAuditLogs).values({
+      superAdminId: req.superAdmin!.id,
+      action: 'run_alert_checks',
+      targetType: 'alerts',
+      targetId: 'system',
+      details: result,
+      ipAddress: req.ip || null,
+    });
+
+    res.json({ success: true, ...result });
+  } catch (error) {
+    console.error('Error running alert checks:', error);
+    res.status(500).json({ error: 'Failed to run alert checks' });
+  }
+});
+
+router.post('/alerts/:alertId/acknowledge', authenticateSuperAdmin, async (req, res) => {
+  try {
+    const { alertId } = req.params;
+
+    const [updated] = await db
+      .update(platformAlerts)
+      .set({
+        status: 'acknowledged',
+        acknowledgedBy: req.superAdmin!.id,
+        acknowledgedAt: new Date(),
+      })
+      .where(eq(platformAlerts.id, alertId))
+      .returning();
+
+    if (!updated) {
+      return res.status(404).json({ error: 'Alert not found' });
+    }
+
+    await db.insert(superAdminAuditLogs).values({
+      superAdminId: req.superAdmin!.id,
+      action: 'acknowledge_alert',
+      targetType: 'alert',
+      targetId: alertId,
+      ipAddress: req.ip || null,
+    });
+
+    res.json(updated);
+  } catch (error) {
+    console.error('Error acknowledging alert:', error);
+    res.status(500).json({ error: 'Failed to acknowledge alert' });
+  }
+});
+
+router.post('/alerts/:alertId/resolve', authenticateSuperAdmin, async (req, res) => {
+  try {
+    const { alertId } = req.params;
+    const { resolution } = req.body;
+
+    const [updated] = await db
+      .update(platformAlerts)
+      .set({
+        status: 'resolved',
+        resolvedBy: req.superAdmin!.id,
+        resolvedAt: new Date(),
+        resolutionNotes: resolution,
+      })
+      .where(eq(platformAlerts.id, alertId))
+      .returning();
+
+    if (!updated) {
+      return res.status(404).json({ error: 'Alert not found' });
+    }
+
+    await db.insert(superAdminAuditLogs).values({
+      superAdminId: req.superAdmin!.id,
+      action: 'resolve_alert',
+      targetType: 'alert',
+      targetId: alertId,
+      details: { resolution },
+      ipAddress: req.ip || null,
+    });
+
+    res.json(updated);
+  } catch (error) {
+    console.error('Error resolving alert:', error);
+    res.status(500).json({ error: 'Failed to resolve alert' });
+  }
+});
+
+// ============================================================
+// FR-SA30: Time-Series Analytics
+// ============================================================
+router.get('/analytics/time-series', authenticateSuperAdmin, async (req, res) => {
+  try {
+    const { period = '30d' } = req.query;
+    
+    let daysBack = 30;
+    if (period === '7d') daysBack = 7;
+    else if (period === '90d') daysBack = 90;
+
+    const startDate = new Date(Date.now() - daysBack * 24 * 60 * 60 * 1000);
+
+    const dailyStats: {
+      date: string;
+      newTenants: number;
+      newUsers: number;
+      emailsSent: number;
+      activeUsers: number;
+    }[] = [];
+
+    for (let i = daysBack - 1; i >= 0; i--) {
+      const dayStart = new Date(Date.now() - (i + 1) * 24 * 60 * 60 * 1000);
+      const dayEnd = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
+
+      const [newTenants] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(organizations)
+        .where(and(gte(organizations.createdAt, dayStart), lte(organizations.createdAt, dayEnd)));
+
+      const [newUsers] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(users)
+        .where(and(gte(users.createdAt, dayStart), lte(users.createdAt, dayEnd)));
+
+      dailyStats.push({
+        date: dayStart.toISOString().split('T')[0],
+        newTenants: Number(newTenants?.count || 0),
+        newUsers: Number(newUsers?.count || 0),
+        emailsSent: 0,
+        activeUsers: 0,
+      });
+    }
+
+    const [totalTenants] = await db.select({ count: sql<number>`count(*)` }).from(organizations);
+    const [totalUsers] = await db.select({ count: sql<number>`count(*)` }).from(users);
+    const [tenantsInPeriod] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(organizations)
+      .where(gte(organizations.createdAt, startDate));
+    const [usersInPeriod] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(users)
+      .where(gte(users.createdAt, startDate));
+
+    res.json({
+      period,
+      dailyStats,
+      summary: {
+        totalTenants: Number(totalTenants?.count || 0),
+        totalUsers: Number(totalUsers?.count || 0),
+        tenantsAddedInPeriod: Number(tenantsInPeriod?.count || 0),
+        usersAddedInPeriod: Number(usersInPeriod?.count || 0),
+        avgNewTenantsPerDay: Number(tenantsInPeriod?.count || 0) / daysBack,
+        avgNewUsersPerDay: Number(usersInPeriod?.count || 0) / daysBack,
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching time-series analytics:', error);
+    res.status(500).json({ error: 'Failed to fetch analytics' });
+  }
+});
+
+router.get('/analytics/tenant-growth', authenticateSuperAdmin, async (req, res) => {
+  try {
+    const tenantGrowth = await db
+      .select({
+        plan: tenantSettings.plan,
+        count: sql<number>`count(*)`,
+      })
+      .from(tenantSettings)
+      .groupBy(tenantSettings.plan);
+
+    const tenantsByStatus = await db
+      .select({
+        status: tenantSettings.tenantStatus,
+        count: sql<number>`count(*)`,
+      })
+      .from(tenantSettings)
+      .groupBy(tenantSettings.tenantStatus);
+
+    const healthDistribution = await db
+      .select({
+        range: sql<string>`
+          CASE 
+            WHEN ${tenantSettings.healthScore} >= 80 THEN 'healthy'
+            WHEN ${tenantSettings.healthScore} >= 50 THEN 'warning'
+            ELSE 'critical'
+          END
+        `,
+        count: sql<number>`count(*)`,
+      })
+      .from(tenantSettings)
+      .groupBy(sql`
+        CASE 
+          WHEN ${tenantSettings.healthScore} >= 80 THEN 'healthy'
+          WHEN ${tenantSettings.healthScore} >= 50 THEN 'warning'
+          ELSE 'critical'
+        END
+      `);
+
+    res.json({
+      byPlan: tenantGrowth.reduce((acc, t) => {
+        acc[t.plan || 'unknown'] = Number(t.count);
+        return acc;
+      }, {} as Record<string, number>),
+      byStatus: tenantsByStatus.reduce((acc, t) => {
+        acc[t.status || 'unknown'] = Number(t.count);
+        return acc;
+      }, {} as Record<string, number>),
+      healthDistribution: healthDistribution.reduce((acc, h) => {
+        acc[h.range] = Number(h.count);
+        return acc;
+      }, {} as Record<string, number>),
+    });
+  } catch (error) {
+    console.error('Error fetching tenant growth analytics:', error);
+    res.status(500).json({ error: 'Failed to fetch tenant growth' });
+  }
+});
+
+// ============================================================
 // FR-SA28: Tenant Communication
 // ============================================================
 router.get('/communications', authenticateSuperAdmin, async (req, res) => {
@@ -2151,6 +2426,7 @@ router.post('/communications/:commId/send', authenticateSuperAdmin, async (req, 
     let targetQuery = db
       .select({
         organizationId: organizations.id,
+        organizationName: organizations.name,
         email: tenantSettings.primaryContactEmail,
       })
       .from(organizations)
@@ -2170,7 +2446,28 @@ router.post('/communications/:commId/send', authenticateSuperAdmin, async (req, 
     }
 
     const targets = await targetQuery;
-    const recipientCount = targets.filter(t => t.email).length;
+    const validRecipients = targets.filter(t => t.email);
+    const recipientCount = validRecipients.length;
+
+    // Actually send emails to recipients
+    const { emailService } = await import('../services/email.service');
+    let sentCount = 0;
+    let failedCount = 0;
+
+    for (const recipient of validRecipients) {
+      try {
+        await emailService.sendBroadcastEmail({
+          to: recipient.email!,
+          subject: comm.subject,
+          body: comm.body,
+          tenantName: recipient.organizationName || undefined,
+        });
+        sentCount++;
+      } catch (emailError) {
+        console.error(`Failed to send communication to ${recipient.email}:`, emailError);
+        failedCount++;
+      }
+    }
 
     // Update communication status
     await db
@@ -2178,7 +2475,7 @@ router.post('/communications/:commId/send', authenticateSuperAdmin, async (req, 
       .set({ 
         status: 'sent', 
         sentAt: new Date(),
-        recipientCount,
+        recipientCount: sentCount,
       })
       .where(eq(tenantCommunications.id, commId));
 
@@ -2187,11 +2484,11 @@ router.post('/communications/:commId/send', authenticateSuperAdmin, async (req, 
       action: 'send_communication',
       targetType: 'communication',
       targetId: commId,
-      details: { recipientCount },
+      details: { recipientCount: sentCount, failedCount, totalTargets: recipientCount },
       ipAddress: req.ip || null,
     });
 
-    res.json({ success: true, recipientCount });
+    res.json({ success: true, sentCount, failedCount, totalTargets: recipientCount });
   } catch (error) {
     console.error('Error sending communication:', error);
     res.status(500).json({ error: 'Failed to send communication' });
