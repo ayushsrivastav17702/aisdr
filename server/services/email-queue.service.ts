@@ -6,6 +6,7 @@ import { mailboxService } from "./mailbox.service";
 import automationService from "./automation.service";
 import { Sentry, isSentryEnabled } from "../sentry";
 import { notificationService } from "./notification.service";
+import { emailVerificationService } from "./email-verification.service";
 
 /**
  * Renders merge fields in email content, replacing {{fieldName}} with actual prospect data.
@@ -472,6 +473,47 @@ export class EmailQueueService {
       // PRE-SEND VALIDATION: Warn about unresolved fields but still send
       if (allUnresolvedFields.length > 0) {
         console.warn(`⚠️ PRE-SEND VALIDATION WARNING: Email ${email.id} has ${allUnresolvedFields.length} unresolved fields: ${allUnresolvedFields.join(', ')}`);
+      }
+
+      // EMAIL VERIFICATION: Validate recipient email before sending
+      const emailValidation = await emailVerificationService.verifyEmail(prospect.primaryEmail);
+      
+      if (!emailValidation.isValid) {
+        console.warn(`⚠️ EMAIL VERIFICATION FAILED for ${prospect.primaryEmail}:`, emailValidation.errors);
+        
+        // For disposable emails or invalid syntax, mark as failed
+        if (!emailValidation.syntaxValid || emailValidation.isDisposable) {
+          await db
+            .update(emailQueue)
+            .set({ 
+              status: "failed", 
+              lastError: `Email verification failed: ${emailValidation.errors.join(', ')}`,
+              failedAt: new Date()
+            })
+            .where(eq(emailQueue.id, email.id));
+          
+          console.error(`❌ Email ${email.id} failed verification - skipping send to ${prospect.primaryEmail}`);
+          return false;
+        }
+        
+        // For MX record issues, log warning but attempt send (email might still work)
+        console.warn(`⚠️ MX record issue for ${prospect.primaryEmail}, attempting send anyway...`);
+      } else {
+        console.log(`✅ Email verified: ${prospect.primaryEmail} (risk: ${emailValidation.riskScore})`);
+      }
+      
+      // Skip high-risk emails (disposable, invalid domain)
+      if (emailValidation.riskScore >= 80) {
+        console.warn(`⚠️ High risk email (score: ${emailValidation.riskScore}), skipping: ${prospect.primaryEmail}`);
+        await db
+          .update(emailQueue)
+          .set({ 
+            status: "failed", 
+            lastError: `High risk email (score: ${emailValidation.riskScore})`,
+            failedAt: new Date()
+          })
+          .where(eq(emailQueue.id, email.id));
+        return false;
       }
 
       const result = await emailSendingService.sendEmail({

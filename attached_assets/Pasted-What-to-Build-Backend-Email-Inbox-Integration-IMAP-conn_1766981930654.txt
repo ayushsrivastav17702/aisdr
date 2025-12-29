@@ -1,0 +1,177 @@
+What to Build:
+Backend:
+
+Email Inbox Integration
+
+IMAP connection to mailboxes
+Fetch new emails
+Parse email threads
+Extract reply content
+
+
+AI Reply Classification
+
+Sentiment analysis (Positive, Neutral, Negative, OOO)
+Intent detection (Meeting request, Question, Objection, Unsubscribe)
+Priority scoring
+Auto-categorization
+
+
+Reply Management
+
+Store replies
+Link to original message
+Thread tracking
+Conversation history
+
+
+AI Reply Suggestions
+
+Generate response suggestions
+Context-aware replies
+Meeting link insertion
+Follow-up recommendations
+
+
+
+Database Tables:
+sqlCREATE TABLE prospect_replies (
+    id UUID PRIMARY KEY,
+    tenant_id UUID REFERENCES tenants(id),
+    prospect_id UUID REFERENCES prospects(id),
+    campaign_id UUID REFERENCES campaigns(id),
+    message_id UUID REFERENCES messages(id),
+    subject VARCHAR(255),
+    body TEXT,
+    sentiment VARCHAR(50), -- positive, neutral, negative, ooo
+    intent VARCHAR(50), -- meeting_request, question, objection, unsubscribe
+    priority INTEGER DEFAULT 5,
+    read BOOLEAN DEFAULT false,
+    replied BOOLEAN DEFAULT false,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE conversations (
+    id UUID PRIMARY KEY,
+    tenant_id UUID REFERENCES tenants(id),
+    prospect_id UUID REFERENCES prospects(id),
+    subject VARCHAR(255),
+    last_message_at TIMESTAMP,
+    message_count INTEGER DEFAULT 0,
+    status VARCHAR(50), -- active, archived, qualified
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+Key Features:
+
+Unified inbox (all replies)
+AI sentiment analysis
+Conversation threading
+Quick reply with AI suggestions
+Mark as qualified
+Archive/Snooze
+Search and filter
+
+Files to Create:
+
+backend/services/inboxService.js
+backend/services/replyClassifier.js
+backend/models/ProspectReply.js
+backend/controllers/inboxController.js
+backend/routes/inbox.js
+frontend/src/pages/User/Inbox.jsx
+frontend/src/components/ConversationView.jsx
+frontend/src/components/ReplyComposer.jsx
+
+
+PHASE 10: Analytics & Reporting ⏳ PENDING
+Duration: Week 13
+What to Build:
+Backend:
+
+Metrics Calculation
+
+Campaign performance aggregation
+User performance tracking
+Team statistics
+Platform-wide analytics
+
+
+Report Generation
+
+Daily/Weekly/Monthly reports
+Custom date ranges
+Export to CSV/PDF
+Scheduled reports
+
+
+Real-time Dashboards
+
+WebSocket for live updates
+Activity streams
+Notification system
+
+
+
+Database Tables:
+sqlCREATE TABLE metrics_daily (
+    id UUID PRIMARY KEY,
+    tenant_id UUID REFERENCES tenants(id),
+    user_id UUID REFERENCES users(id),
+    date DATE NOT NULL,
+    emails_sent INTEGER DEFAULT 0,
+    emails_opened INTEGER DEFAULT 0,
+    emails_clicked INTEGER DEFAULT 0,
+    replies_received INTEGER DEFAULT 0,
+    positive_replies INTEGER DEFAULT 0,
+    meetings_booked INTEGER DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(tenant_id, user_id, date)
+);
+
+CREATE TABLE user_quotas (
+    id UUID PRIMARY KEY,
+    tenant_id UUID REFERENCES tenants(id),
+    user_id UUID REFERENCES users(id),
+    period VARCHAR(50), -- daily, weekly, monthly, quarterly
+    quota_type VARCHAR(50), -- meetings, replies, emails
+    quota_value INTEGER NOT NULL,
+    current_value INTEGER DEFAULT 0,
+    start_date DATE,
+    end_date DATE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+Key Features:
+User Dashboard:
+
+Today's activity snapshot
+Weekly progress vs quota
+Campaign performance summary
+Reply rate trends
+Meeting booking rate
+
+Manager Dashboard:
+
+Team performance overview
+Individual performance comparison
+Top performers
+Campaign leaderboard
+Pipeline generated
+
+Super Admin Dashboard:
+
+Platform-wide metrics
+Tenant usage statistics
+Revenue tracking (without Stripe)
+System health indicators
+
+Files to Create:
+
+backend/services/metricsService.js
+backend/services/reportService.js
+backend/controllers/analyticsController.js
+backend/routes/analytics.js
+frontend/src/pages/User/Dashboard.jsx
+frontend/src/pages/Manager/Analytics.jsx
+frontend/src/pages/SuperAdmin/Analytics.jsx
+frontend/src/components/MetricsCard.jsx
+frontend/src/components/PerformanceChart.jsx
