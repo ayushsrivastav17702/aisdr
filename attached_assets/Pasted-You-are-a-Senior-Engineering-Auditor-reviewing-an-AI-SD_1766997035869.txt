@@ -1,0 +1,204 @@
+You are a Senior Engineering Auditor reviewing an AI SDR platform codebase.
+
+Your task is to verify whether each PRD feature below is:
+
+✅ Built
+
+⚠️ Partial
+
+❌ Not Built
+
+You MUST base decisions ONLY on:
+
+Existing routes
+
+Services
+
+Database schema
+
+UI components
+
+RBAC guards
+
+Do NOT assume future work.
+
+📁 CODEBASE AREAS TO INSPECT
+
+/backend/routes
+
+/backend/services
+
+/backend/models
+
+/frontend/pages
+
+/frontend/components
+
+/rbac/*
+
+/db/schema.sql
+
+🟢 USER PRD VERIFICATION (FR-U1 → FR-U15)
+
+For EACH item:
+
+List backend evidence
+
+List frontend evidence
+
+List RBAC enforcement
+
+Conclude: Built / Partial / Not Built
+
+FR-U1: Campaign Builder
+
+Expected:
+
+POST /campaign
+
+Campaign model exists
+
+Campaign creation UI exists
+
+User role allowed
+
+FR-U2: Campaign Configuration
+
+Expected:
+
+Campaign settings persisted
+
+Editable UI
+
+FR-U3: Sequence Builder
+
+Expected:
+
+Sequence CRUD APIs
+
+Sequence UI
+
+FR-U4: Campaign Dashboard
+
+Expected:
+
+Campaign list API
+
+Dashboard UI
+
+FR-U5: Campaign Analytics (Basic)
+
+Expected:
+
+Sent / reply counters
+
+Read-only analytics UI
+
+FR-U6: AI Message Composer
+
+Expected:
+
+OpenAI/Claude integration
+➡ If missing → ❌ Not Built
+
+FR-U7: Message Personalization
+
+Expected:
+
+Token parsing logic
+
+Runtime replacement
+
+FR-U8: Subject Line Generator
+
+Expected:
+
+AI endpoint
+➡ If missing → ❌ Not Built
+
+FR-U9: Message Templates
+
+Expected:
+
+Templates table
+
+CRUD UI
+
+FR-U10: AI Writing Assistant
+
+Expected:
+
+AI edit endpoints
+
+FR-U11: Prospect List
+
+Expected:
+
+Prospect table
+
+List UI
+
+FR-U12: Prospect Profile
+
+Expected:
+
+Prospect detail view
+
+FR-U13: Prospect Import
+
+Expected:
+
+CSV upload
+
+Validation
+
+FR-U14: AI Prospecting
+
+Expected:
+
+Waterfall search logic
+
+UI entry point
+
+FR-U15: Prospect Scoring
+
+Expected:
+
+Score column
+
+Scoring logic
+➡ If missing → ❌ Not Built
+
+🟡 MANAGER PRD VERIFICATION (FR-M0 → FR-M15)
+
+Validate only governance + visibility, not execution.
+
+Key checks:
+
+Manager cannot POST campaigns
+
+Manager cannot send emails
+
+Manager can manage users
+
+Manager dashboards are read-only
+
+Flag ANY execution ability as SEV-1.
+
+🔴 SUPER ADMIN PRD VERIFICATION (FR-SA1 → FR-SA8, FR-SA11, FR-SA22)
+
+Validate:
+
+Tenant isolation
+
+Manager creation
+
+Audit logs
+
+No access to campaigns or inbox
+
+📊 OUTPUT FORMAT (MANDATORY)
+
+Return results in this table:
+
+PRD ID	Backend	Frontend	RBAC	DB	Status

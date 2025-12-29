@@ -861,7 +861,7 @@ export default function ManagerDashboard() {
                         <TableHead>Replies</TableHead>
                         <TableHead>Reply Rate</TableHead>
                         <TableHead>Created</TableHead>
-                        <TableHead className="w-[50px]"></TableHead>
+                        <TableHead className="w-[80px]">Access</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -880,55 +880,11 @@ export default function ManagerDashboard() {
                             </div>
                           </TableCell>
                           <TableCell>{new Date(campaign.createdAt).toLocaleDateString()}</TableCell>
+                          {/* Read-only per Manager PRD - no campaign actions allowed */}
                           <TableCell>
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="sm" data-testid={`btn-campaign-actions-${campaign.id}`}>
-                                  <MoreHorizontal className="w-4 h-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                <DropdownMenuItem onClick={() => setLocation(`/sequences/${campaign.id}`)}>
-                                  <Eye className="w-4 h-4 mr-2" />
-                                  View Details
-                                </DropdownMenuItem>
-                                {campaign.status === "draft" && (
-                                  <DropdownMenuItem 
-                                    onClick={() => approveCampaignMutation.mutate({ campaignId: campaign.id, approved: true })}
-                                    data-testid={`action-approve-${campaign.id}`}
-                                  >
-                                    <CheckCircle className="w-4 h-4 mr-2 text-green-600" />
-                                    Approve & Activate
-                                  </DropdownMenuItem>
-                                )}
-                                {campaign.status === "active" && (
-                                  <DropdownMenuItem 
-                                    onClick={() => pauseCampaignMutation.mutate(campaign.id)}
-                                    data-testid={`action-pause-${campaign.id}`}
-                                  >
-                                    <Pause className="w-4 h-4 mr-2 text-orange-600" />
-                                    Pause Campaign
-                                  </DropdownMenuItem>
-                                )}
-                                {campaign.status === "paused" && (
-                                  <DropdownMenuItem 
-                                    onClick={() => approveCampaignMutation.mutate({ campaignId: campaign.id, approved: true })}
-                                    data-testid={`action-resume-${campaign.id}`}
-                                  >
-                                    <Play className="w-4 h-4 mr-2 text-green-600" />
-                                    Resume Campaign
-                                  </DropdownMenuItem>
-                                )}
-                                <DropdownMenuSeparator />
-                                <DropdownMenuItem 
-                                  onClick={() => setReassignModal({ open: true, campaignId: campaign.id, campaignName: campaign.name })}
-                                  data-testid={`action-reassign-${campaign.id}`}
-                                >
-                                  <ArrowRightLeft className="w-4 h-4 mr-2" />
-                                  Reassign Campaign
-                                </DropdownMenuItem>
-                              </DropdownMenuContent>
-                            </DropdownMenu>
+                            <Badge variant="outline" className="text-xs text-muted-foreground">
+                              View Only
+                            </Badge>
                           </TableCell>
                         </TableRow>
                       ))}
