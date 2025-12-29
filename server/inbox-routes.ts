@@ -2,12 +2,12 @@ import { Router, Request, Response } from "express";
 import { db } from "./db";
 import { emailReplies, emails, prospects } from "@shared/schema";
 import { eq, and, desc, sql } from "drizzle-orm";
-import { authenticate } from "./middleware/auth.middleware";
+import { authenticate, forbidManager, blockSuperAdminFromSDR } from "./middleware/auth.middleware";
 import { replyClassificationService } from "./services/reply-classification.service";
 
 export const inboxRouter = Router();
 
-inboxRouter.get("/replies", authenticate, async (req: Request, res: Response) => {
+inboxRouter.get("/replies", authenticate, blockSuperAdminFromSDR, async (req: Request, res: Response) => {
   const userId = req.userContext?.userId;
   
   if (!userId) {
@@ -61,7 +61,7 @@ inboxRouter.get("/replies", authenticate, async (req: Request, res: Response) =>
   }
 });
 
-inboxRouter.get("/stats", authenticate, async (req: Request, res: Response) => {
+inboxRouter.get("/stats", authenticate, blockSuperAdminFromSDR, async (req: Request, res: Response) => {
   const userId = req.userContext?.userId;
   
   if (!userId) {
@@ -97,7 +97,7 @@ inboxRouter.get("/stats", authenticate, async (req: Request, res: Response) => {
   }
 });
 
-inboxRouter.post("/replies/:id/read", authenticate, async (req: Request, res: Response) => {
+inboxRouter.post("/replies/:id/read", authenticate, forbidManager, async (req: Request, res: Response) => {
   const userId = req.userContext?.userId;
   const { id } = req.params;
   
@@ -134,7 +134,7 @@ inboxRouter.post("/replies/:id/read", authenticate, async (req: Request, res: Re
   }
 });
 
-inboxRouter.post("/replies/:id/archive", authenticate, async (req: Request, res: Response) => {
+inboxRouter.post("/replies/:id/archive", authenticate, forbidManager, async (req: Request, res: Response) => {
   const userId = req.userContext?.userId;
   const { id } = req.params;
   
@@ -169,7 +169,7 @@ inboxRouter.post("/replies/:id/archive", authenticate, async (req: Request, res:
   }
 });
 
-inboxRouter.get("/replies/:id", authenticate, async (req: Request, res: Response) => {
+inboxRouter.get("/replies/:id", authenticate, blockSuperAdminFromSDR, async (req: Request, res: Response) => {
   const userId = req.userContext?.userId;
   const { id } = req.params;
   

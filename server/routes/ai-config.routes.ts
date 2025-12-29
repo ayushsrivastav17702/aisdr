@@ -100,7 +100,7 @@ router.patch("/ai-config", authenticate, requireAdmin, async (req, res) => {
   }
 });
 
-router.get("/ai-models", authenticate, async (req, res) => {
+router.get("/ai-models", authenticate, requireAdmin, async (req, res) => {
   res.json({ models: AI_MODELS });
 });
 
@@ -108,7 +108,7 @@ router.get("/ai-models", authenticate, async (req, res) => {
 // AI PROMPT TEMPLATES
 // ============================================
 
-router.get("/ai-prompt-categories", authenticate, async (req, res) => {
+router.get("/ai-prompt-categories", authenticate, requireAdmin, async (req, res) => {
   res.json({ categories: PROMPT_CATEGORIES });
 });
 

@@ -7,7 +7,7 @@ import {
   users
 } from "@shared/schema";
 import { eq, and, desc, sql, or } from "drizzle-orm";
-import { authenticate, requireAdmin } from "../middleware/auth.middleware";
+import { authenticate, forbidManager, blockSuperAdminFromSDR } from "../middleware/auth.middleware";
 import { z } from "zod";
 
 const router = Router();
@@ -72,7 +72,7 @@ function calculateQualificationScore(handoff: any): number {
   return Math.min(score, 100);
 }
 
-router.get("/api/handoffs", authenticate, async (req, res) => {
+router.get("/api/handoffs", authenticate, blockSuperAdminFromSDR, async (req, res) => {
   try {
     const userContext = req.userContext;
     if (!userContext?.organizationId) {
@@ -153,7 +153,7 @@ router.get("/api/handoffs", authenticate, async (req, res) => {
   }
 });
 
-router.get("/api/handoffs/:id", authenticate, async (req, res) => {
+router.get("/api/handoffs/:id", authenticate, blockSuperAdminFromSDR, async (req, res) => {
   try {
     const userContext = req.userContext;
     if (!userContext?.organizationId) {
@@ -213,7 +213,7 @@ router.get("/api/handoffs/:id", authenticate, async (req, res) => {
   }
 });
 
-router.post("/api/handoffs", authenticate, async (req, res) => {
+router.post("/api/handoffs", authenticate, forbidManager, async (req, res) => {
   try {
     const userContext = req.userContext;
     if (!userContext?.organizationId || !userContext?.userId) {
@@ -300,7 +300,7 @@ router.post("/api/handoffs", authenticate, async (req, res) => {
   }
 });
 
-router.patch("/api/handoffs/:id", authenticate, async (req, res) => {
+router.patch("/api/handoffs/:id", authenticate, forbidManager, async (req, res) => {
   try {
     const userContext = req.userContext;
     if (!userContext?.organizationId || !userContext?.userId) {
@@ -388,7 +388,7 @@ router.patch("/api/handoffs/:id", authenticate, async (req, res) => {
   }
 });
 
-router.post("/api/handoffs/:id/activity", authenticate, async (req, res) => {
+router.post("/api/handoffs/:id/activity", authenticate, forbidManager, async (req, res) => {
   try {
     const userContext = req.userContext;
     if (!userContext?.organizationId || !userContext?.userId) {
@@ -424,7 +424,7 @@ router.post("/api/handoffs/:id/activity", authenticate, async (req, res) => {
   }
 });
 
-router.get("/api/handoffs/stats/conversion", authenticate, async (req, res) => {
+router.get("/api/handoffs/stats/conversion", authenticate, blockSuperAdminFromSDR, async (req, res) => {
   try {
     const userContext = req.userContext;
     if (!userContext?.organizationId) {
@@ -474,7 +474,7 @@ router.get("/api/handoffs/stats/conversion", authenticate, async (req, res) => {
   }
 });
 
-router.get("/api/team/ae-users", authenticate, async (req, res) => {
+router.get("/api/team/ae-users", authenticate, blockSuperAdminFromSDR, async (req, res) => {
   try {
     const userContext = req.userContext;
     if (!userContext?.organizationId) {

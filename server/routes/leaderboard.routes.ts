@@ -10,7 +10,7 @@ import {
   prospects
 } from "@shared/schema";
 import { eq, and, desc, gte, lte, sql } from "drizzle-orm";
-import { authenticate } from "../middleware/auth.middleware";
+import { authenticate, forbidManager, blockSuperAdminFromSDR } from "../middleware/auth.middleware";
 import { z } from "zod";
 
 const router = Router();
@@ -28,7 +28,7 @@ const BADGE_DEFINITIONS = [
   { type: "team_player", name: "Team Player", description: "Helped teammates with 5 handoffs", icon: "Users", color: "#795548", threshold: 5 },
 ];
 
-router.get("/api/leaderboard", authenticate, async (req, res) => {
+router.get("/api/leaderboard", authenticate, blockSuperAdminFromSDR, async (req, res) => {
   try {
     const userContext = req.userContext;
     if (!userContext?.organizationId) {
@@ -117,7 +117,7 @@ router.get("/api/leaderboard", authenticate, async (req, res) => {
   }
 });
 
-router.post("/api/leaderboard/refresh", authenticate, async (req, res) => {
+router.post("/api/leaderboard/refresh", authenticate, forbidManager, async (req, res) => {
   try {
     const userContext = req.userContext;
     if (!userContext?.organizationId) {
@@ -261,7 +261,7 @@ router.post("/api/leaderboard/refresh", authenticate, async (req, res) => {
   }
 });
 
-router.get("/api/badges", authenticate, async (req, res) => {
+router.get("/api/badges", authenticate, blockSuperAdminFromSDR, async (req, res) => {
   try {
     const userContext = req.userContext;
     if (!userContext?.userId) {
@@ -284,7 +284,7 @@ router.get("/api/badges", authenticate, async (req, res) => {
   }
 });
 
-router.get("/api/badges/check", authenticate, async (req, res) => {
+router.get("/api/badges/check", authenticate, blockSuperAdminFromSDR, async (req, res) => {
   try {
     const userContext = req.userContext;
     if (!userContext?.userId || !userContext?.organizationId) {

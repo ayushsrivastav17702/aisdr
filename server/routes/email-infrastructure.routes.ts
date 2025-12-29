@@ -362,7 +362,7 @@ router.delete("/mailbox-allocations/:id", authenticate, requireAdmin, async (req
 // MAILBOX WARMUP SCHEDULE ROUTES
 // ============================================
 
-router.get("/mailbox-warmup/:mailboxId", authenticate, async (req, res) => {
+router.get("/mailbox-warmup/:mailboxId", authenticate, requireAdmin, async (req, res) => {
   try {
     const userId = req.userContext?.userId;
     if (!userId) {
@@ -390,7 +390,7 @@ router.get("/mailbox-warmup/:mailboxId", authenticate, async (req, res) => {
   }
 });
 
-router.post("/mailbox-warmup/:mailboxId", authenticate, async (req, res) => {
+router.post("/mailbox-warmup/:mailboxId", authenticate, requireAdmin, async (req, res) => {
   try {
     const userId = req.userContext?.userId;
     if (!userId) {
@@ -447,7 +447,7 @@ router.post("/mailbox-warmup/:mailboxId", authenticate, async (req, res) => {
   }
 });
 
-router.patch("/mailbox-warmup/:mailboxId", authenticate, async (req, res) => {
+router.patch("/mailbox-warmup/:mailboxId", authenticate, requireAdmin, async (req, res) => {
   try {
     const userId = req.userContext?.userId;
     if (!userId) {
@@ -492,7 +492,7 @@ router.patch("/mailbox-warmup/:mailboxId", authenticate, async (req, res) => {
   }
 });
 
-router.delete("/mailbox-warmup/:mailboxId", authenticate, async (req, res) => {
+router.delete("/mailbox-warmup/:mailboxId", authenticate, requireAdmin, async (req, res) => {
   try {
     const userId = req.userContext?.userId;
     if (!userId) {
@@ -531,7 +531,7 @@ router.delete("/mailbox-warmup/:mailboxId", authenticate, async (req, res) => {
 import { emailVerificationService } from "../services/email-verification.service";
 import { blacklistCheckService } from "../services/blacklist-check.service";
 
-router.post("/verify-email", authenticate, async (req, res) => {
+router.post("/verify-email", authenticate, requireAdmin, async (req, res) => {
   try {
     const { email } = req.body;
     if (!email) {
@@ -546,7 +546,7 @@ router.post("/verify-email", authenticate, async (req, res) => {
   }
 });
 
-router.post("/verify-emails-batch", authenticate, async (req, res) => {
+router.post("/verify-emails-batch", authenticate, requireAdmin, async (req, res) => {
   try {
     const { emails } = req.body;
     if (!emails || !Array.isArray(emails) || emails.length === 0) {
@@ -580,7 +580,7 @@ router.post("/verify-emails-batch", authenticate, async (req, res) => {
   }
 });
 
-router.post("/verify-domain", authenticate, async (req, res) => {
+router.post("/verify-domain", authenticate, requireAdmin, async (req, res) => {
   try {
     const { domain } = req.body;
     if (!domain) {
@@ -599,7 +599,7 @@ router.post("/verify-domain", authenticate, async (req, res) => {
 // BLACKLIST CHECK ROUTES
 // ============================================
 
-router.post("/check-ip-blacklist", authenticate, async (req, res) => {
+router.post("/check-ip-blacklist", authenticate, requireAdmin, async (req, res) => {
   try {
     const { ip } = req.body;
     if (!ip) {
@@ -614,7 +614,7 @@ router.post("/check-ip-blacklist", authenticate, async (req, res) => {
   }
 });
 
-router.post("/check-domain-blacklist", authenticate, async (req, res) => {
+router.post("/check-domain-blacklist", authenticate, requireAdmin, async (req, res) => {
   try {
     const { domain } = req.body;
     if (!domain) {
@@ -629,7 +629,7 @@ router.post("/check-domain-blacklist", authenticate, async (req, res) => {
   }
 });
 
-router.post("/check-sender-reputation", authenticate, async (req, res) => {
+router.post("/check-sender-reputation", authenticate, requireAdmin, async (req, res) => {
   try {
     const { ip, domain } = req.body;
     if (!ip && !domain) {
@@ -644,7 +644,7 @@ router.post("/check-sender-reputation", authenticate, async (req, res) => {
   }
 });
 
-router.post("/check-mailserver-reputation", authenticate, async (req, res) => {
+router.post("/check-mailserver-reputation", authenticate, requireAdmin, async (req, res) => {
   try {
     const { domain } = req.body;
     if (!domain) {
