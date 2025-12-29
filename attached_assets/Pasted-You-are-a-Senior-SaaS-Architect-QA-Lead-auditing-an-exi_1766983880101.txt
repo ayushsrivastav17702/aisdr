@@ -1,0 +1,276 @@
+You are a Senior SaaS Architect + QA Lead auditing an existing multi-tenant SaaS platform (AiSDR) built on Replit.
+
+Goal:
+Determine what is ACTUALLY BUILT vs PARTIALLY BUILT vs NOT BUILT for the Super Admin platform, across all 10 phases, based strictly on:
+
+Existing UI screens
+
+Backend routes/controllers
+
+Database schemas
+
+Middleware & enforcement logic
+
+Environment/config usage
+
+❗ Do NOT assume anything is implemented unless verifiable in code.
+
+📌 Scope Rules (Critical)
+
+Only mark a feature as “BUILT” if:
+
+UI exists AND
+
+Backend API exists AND
+
+Data is persisted or enforced server-side
+
+Mark as “PARTIAL” if:
+
+UI exists but backend is missing
+
+Backend exists but not wired to UI
+
+Logic exists but no enforcement (frontend-only)
+
+Mark as “NOT BUILT” if:
+
+Only placeholder UI
+
+Comments without execution
+
+Static mock data
+
+Explicitly EXCLUDE these features (do not expect them to exist):
+
+Stripe / Payment Gateway
+
+CRM Integrations (HubSpot, Salesforce)
+
+LinkedIn Automation
+
+SMS / Phone Outreach
+
+Calendar / Meeting Scheduler
+
+🧱 Audit Structure (MANDATORY)
+
+Evaluate the system phase by phase using the structure below.
+
+🔹 Phase 1: Authentication & Roles
+
+Check and report:
+
+Super Admin login exists
+
+Role stored server-side
+
+RBAC middleware enforced
+
+Managers blocked from Super Admin routes
+
+Output:
+
+Status: BUILT / PARTIAL / NOT BUILT
+
+Evidence: files, routes, middleware
+
+Risk if incomplete
+
+🔹 Phase 2: Tenant Provisioning & Isolation
+
+Verify:
+
+Manual tenant creation flow
+
+Unique tenant ID generation
+
+Schema-per-tenant creation
+
+Tenant status lifecycle
+
+Tenant isolation enforced in queries
+
+Output:
+
+Status
+
+Tables & schema names
+
+Isolation enforcement proof
+
+🔹 Phase 3: Tenant Dashboard & Detail View
+
+Verify:
+
+Tenant list page (real data)
+
+Filters/search work backend-side
+
+Tenant detail page loads live data
+
+Edit tenant settings persists
+
+🔹 Phase 4: Manager Account Management
+
+Verify:
+
+Manager creation by Super Admin
+
+Manager linked to one tenant
+
+Reset/suspend works
+
+Manager cannot cross tenants
+
+🔹 Phase 5: Impersonation System
+
+Verify:
+
+Impersonation session logic
+
+Clear banner indicator
+
+Audit logs created
+
+Restricted destructive actions
+
+❗ If impersonation is UI-only → mark NOT BUILT.
+
+🔹 Phase 6: Limits, Quotas & Enforcement
+
+Verify:
+
+User limits enforced backend
+
+Daily send limits enforced
+
+Mailbox limits enforced
+
+No frontend-only checks
+
+🔹 Phase 7: Platform-Wide Visibility & Analytics (Lite)
+
+Verify:
+
+Global tenant count
+
+Global user count
+
+Email usage counters
+
+Last activity timestamps
+
+Ignore advanced finance metrics.
+
+🔹 Phase 8: Audit Logs & Security
+
+Verify:
+
+Central audit log table
+
+Logs for:
+
+Tenant creation
+
+Manager changes
+
+Impersonation
+
+Status changes
+
+Tamper resistance (append-only)
+
+🔹 Phase 9: Email Infrastructure (Internal Only)
+
+Verify:
+
+Mailbox metadata per tenant
+
+Usage counters
+
+Domain assignment logic (even if stubbed)
+
+No real provider dependency required
+
+🔹 Phase 10: Super Admin UI Completeness
+
+Verify:
+
+Dashboard widgets wired to backend
+
+Tenant wizard functional
+
+Manager pages functional
+
+Navigation role-locked
+
+📊 Final Output Format (STRICT)
+1️⃣ Phase Summary Table
+Phase	Name	Status	Confidence
+1	Auth & RBAC	BUILT	High
+2	Tenant Isolation	PARTIAL	Medium
+…	…	…	…
+2️⃣ Feature Verdict List
+
+For each P0 requirement, mark:
+
+✅ BUILT
+
+⚠️ PARTIAL
+
+❌ NOT BUILT
+
+Include why.
+
+3️⃣ Critical Gaps (Blockers)
+
+List anything that:
+
+Breaks tenant isolation
+
+Allows role bypass
+
+Is frontend-only enforcement
+
+Makes system unsafe for production
+
+4️⃣ Production Readiness Verdict
+
+Choose ONE:
+
+❌ Prototype only
+
+⚠️ Internal beta
+
+✅ Production-ready (with notes)
+
+Justify clearly.
+
+5️⃣ Recommended Fix Order (Top 5)
+
+List the highest-impact fixes to reach production readiness fastest.
+
+🚫 Important Constraints
+
+Do NOT suggest new features
+
+Do NOT refactor unless necessary
+
+Do NOT beautify UI
+
+Focus on truth & safety
+
+Start the audit now by scanning:
+
+Routes
+
+Controllers
+
+DB schema
+
+Middleware
+
+UI wiring
+
+Return only the audit report.
