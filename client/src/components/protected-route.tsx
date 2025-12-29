@@ -6,10 +6,11 @@ import { Loader2 } from 'lucide-react';
 interface ProtectedRouteProps {
   children: React.ReactNode;
   requireAdmin?: boolean;
+  requireManagerOrAdmin?: boolean; // Allows both managers and admins
   blockManager?: boolean; // If true, managers will be redirected to manager dashboard
 }
 
-export function ProtectedRoute({ children, requireAdmin = false, blockManager = false }: ProtectedRouteProps) {
+export function ProtectedRoute({ children, requireAdmin = false, requireManagerOrAdmin = false, blockManager = false }: ProtectedRouteProps) {
   const { user, isLoading, isAuthenticated } = useAuth();
   const [, setLocation] = useLocation();
 
@@ -24,6 +25,16 @@ export function ProtectedRoute({ children, requireAdmin = false, blockManager = 
       setLocation('/');
     }
   }, [isLoading, isAuthenticated, requireAdmin, user, setLocation]);
+
+  // Block regular users from manager/admin routes
+  useEffect(() => {
+    if (!isLoading && isAuthenticated && requireManagerOrAdmin) {
+      const isAllowed = user?.isManager || user?.role === 'admin';
+      if (!isAllowed) {
+        setLocation('/');
+      }
+    }
+  }, [isLoading, isAuthenticated, requireManagerOrAdmin, user?.isManager, user?.role, setLocation]);
 
   // Block managers from accessing SDR-only routes
   useEffect(() => {
@@ -46,6 +57,14 @@ export function ProtectedRoute({ children, requireAdmin = false, blockManager = 
 
   if (requireAdmin && user?.role !== 'admin') {
     return null;
+  }
+
+  // Block regular users from manager/admin routes
+  if (requireManagerOrAdmin) {
+    const isAllowed = user?.isManager || user?.role === 'admin';
+    if (!isAllowed) {
+      return null;
+    }
   }
 
   // Block managers from SDR routes
