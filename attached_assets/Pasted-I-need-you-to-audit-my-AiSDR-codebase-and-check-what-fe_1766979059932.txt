@@ -1,0 +1,388 @@
+I need you to audit my AiSDR codebase and check what features are implemented vs pending for each user role. Please scan the entire project and create a detailed report.
+Project Structure Expected:
+aisdr/
+├── backend/
+│   ├── config/
+│   │   └── database.js
+│   ├── models/
+│   │   ├── User.js
+│   │   ├── Tenant.js
+│   │   ├── Campaign.js
+│   │   └── Prospect.js
+│   ├── controllers/
+│   │   ├── authController.js
+│   │   ├── tenantController.js
+│   │   ├── managerController.js
+│   │   ├── campaignController.js
+│   │   └── prospectController.js
+│   ├── routes/
+│   │   ├── auth.js
+│   │   ├── tenants.js
+│   │   ├── manager.js
+│   │   ├── campaigns.js
+│   │   └── prospects.js
+│   ├── middleware/
+│   │   └── auth.js
+│   ├── services/
+│   │   └── prospectSearchService.js
+│   ├── utils/
+│   │   └── auditLog.js
+│   └── server.js
+├── frontend/
+│   ├── src/
+│   │   ├── pages/
+│   │   │   ├── Login.jsx
+│   │   │   ├── SuperAdmin/
+│   │   │   │   ├── Dashboard.jsx
+│   │   │   │   └── CreateTenant.jsx
+│   │   │   ├── Manager/
+│   │   │   │   ├── Dashboard.jsx
+│   │   │   │   └── CreateUser.jsx
+│   │   │   └── User/
+│   │   │       ├── CampaignDashboard.jsx
+│   │   │       ├── CreateCampaign.jsx
+│   │   │       └── AIProspecting.jsx
+│   │   ├── services/
+│   │   │   └── api.js
+│   │   └── App.jsx
+│   └── package.json
+└── database/
+    └── init.sql
+Role-Based Feature Checklist
+🔴 SUPER ADMIN Features
+Check if these are implemented:
+Backend:
+
+ POST /api/tenants - Create new tenant
+ GET /api/tenants - List all tenants
+ GET /api/tenants/:id - Get tenant details
+ PUT /api/tenants/:id - Update tenant
+ DELETE /api/tenants/:id - Delete tenant
+ GET /api/tenants/stats - Platform statistics
+ Tenant model with CRUD operations
+ Automatic Manager account creation when tenant is created
+ Multi-tenant data isolation (tenant_id filtering)
+ Super admin can impersonate Manager (if applicable)
+
+Frontend:
+
+ Super Admin Dashboard with stats (total tenants, active, trial, suspended)
+ Create Tenant form with:
+
+Company information
+Plan selection (Starter/Growth/Enterprise)
+Manager account details
+Email/password generation
+
+
+ Tenant list table with filters (status, plan)
+ Tenant detail view
+ Edit tenant functionality
+ Delete tenant with confirmation
+
+Database Tables:
+
+ tenants table exists
+ tenant_settings table exists
+ audit_logs table for platform-wide logging
+
+
+🟡 MANAGER Features
+Check if these are implemented:
+Backend:
+
+ POST /api/manager/users - Create user (SDR/BDR)
+ GET /api/manager/users - List all users in tenant
+ GET /api/manager/users/:id - Get user details
+ PUT /api/manager/users/:id - Update user
+ DELETE /api/manager/users/:id - Delete user
+ GET /api/manager/dashboard - Manager dashboard stats
+ User limit enforcement (max_users from tenant)
+ Manager can only see/manage users in their tenant
+ Manager cannot access other tenants' data
+
+Frontend:
+
+ Manager Dashboard with stats (total users, active users, users today)
+ Create User form with:
+
+Full name, email, password
+Role selection (User, Read-only)
+Job title
+
+
+ User list table with actions (edit, delete)
+ User status indicators
+ Edit user functionality
+ Delete user with confirmation
+ User limit warning (approaching max)
+
+Permissions:
+
+ Manager middleware checks tenant_id matches
+ Manager cannot create users beyond max_users limit
+ Manager cannot access super admin routes
+
+
+🟢 USER (SDR/BDR) Features
+Check if these are implemented:
+Campaign Management
+Backend:
+
+ POST /api/campaigns - Create campaign
+ GET /api/campaigns - List user's campaigns (or all if manager)
+ GET /api/campaigns/:id - Get campaign details
+ PUT /api/campaigns/:id - Update campaign
+ DELETE /api/campaigns/:id - Delete campaign
+ POST /api/campaigns/:campaignId/sequences - Add sequence step
+ PUT /api/campaigns/sequences/:sequenceId - Update sequence
+ DELETE /api/campaigns/sequences/:sequenceId - Delete sequence
+
+Frontend:
+
+ Campaign Dashboard with:
+
+Filter tabs (all, active, draft, paused)
+Campaign cards showing metrics
+Status badges
+Pause/Resume buttons
+
+
+ Create Campaign wizard with:
+
+Step 1: Campaign details (name, type, goal, daily limit)
+Step 2: Sequence builder (add/edit/delete steps)
+Subject line and message body inputs
+Delay configuration
+Multi-step sequence support
+
+
+ Campaign detail view
+ Edit campaign
+ Delete campaign
+
+Database Tables:
+
+ campaigns table
+ campaign_sequences table
+ campaign_prospects table (for linking prospects to campaigns)
+
+Prospect Management
+Backend:
+
+ POST /api/prospects/search - AI prospect search (Perplexity → Apollo → Lusha → OpenRouter)
+ POST /api/prospects/save - Save selected prospects
+ GET /api/prospects - List prospects
+ GET /api/prospects/:id - Get prospect details
+ PUT /api/prospects/:id - Update prospect
+ DELETE /api/prospects/:id - Delete prospect
+ POST /api/prospects/import/csv - CSV import
+ GET /api/prospects/stats - Prospect statistics
+
+Frontend:
+
+ AI Prospecting page with:
+
+ICP criteria form (industry, size, titles, location, limit)
+Multiple job title inputs
+Search button triggering waterfall API calls
+Results table with checkboxes
+Select all/deselect all
+Save selected prospects button
+Provider and cost display
+
+
+ Prospect list page
+ Prospect detail view
+ CSV import functionality
+
+Database Tables:
+
+ prospects table
+ prospect_searches table (tracking searches)
+ api_usage table (cost tracking)
+
+Services:
+
+ ProspectSearchService with waterfall logic:
+
+Perplexity API integration
+Apollo API integration
+Lusha API integration
+OpenRouter API integration
+Cost calculation for each provider
+API usage logging
+
+
+
+
+Authentication & Core Features
+Backend:
+
+ POST /api/auth/login - Login endpoint
+ POST /api/auth/register - Register endpoint (or manager creates users)
+ JWT token generation
+ JWT middleware (authenticate)
+ Role-based middleware (requireRole)
+ Password hashing with bcrypt
+ Session management
+
+Frontend:
+
+ Login page
+ Token storage (localStorage)
+ API service with axios
+ Token refresh/interceptors
+ Logout functionality
+ Redirect based on role (super_admin → super-admin/dashboard, manager → manager/dashboard, user → /campaigns)
+
+Database:
+
+ users table
+ sessions table
+ Indexes on critical columns
+
+
+Configuration Files
+
+ backend/.env with required variables:
+
+DATABASE_URL
+JWT_SECRET
+JWT_EXPIRES_IN
+PORT
+PERPLEXITY_API_KEY
+APOLLO_API_KEY
+LUSHA_API_KEY
+OPENROUTER_API_KEY
+
+
+ backend/package.json with dependencies:
+
+express, cors, pg, bcrypt, jsonwebtoken, dotenv, axios
+
+
+ frontend/package.json with dependencies:
+
+react, react-dom, react-router-dom, axios
+vite, tailwindcss
+
+
+ backend/config/database.js (PostgreSQL connection)
+ backend/utils/auditLog.js (logging utility)
+ backend/server.js with all routes registered
+ frontend/src/App.jsx with routing setup
+ database/init.sql with all table schemas
+
+
+Output Format
+Please provide a report in this format:
+✅ IMPLEMENTED (List what exists)
+Super Admin:
+
+ Feature 1 - File: path/to/file.js
+ Feature 2 - File: path/to/file.jsx
+...
+
+Manager:
+
+ Feature 1 - File: path/to/file.js
+...
+
+User:
+
+ Feature 1 - File: path/to/file.js
+...
+
+❌ MISSING (List what's not found)
+Super Admin:
+
+ Feature 1 - Expected in: path/to/file.js
+ Feature 2 - Expected in: path/to/file.jsx
+...
+
+Manager:
+
+ Feature 1 - Expected in: path/to/file.js
+...
+
+User:
+
+ Feature 1 - Expected in: path/to/file.js
+...
+
+⚠️ INCOMPLETE (Partially implemented)
+Super Admin:
+
+[~] Feature 1 - Found in: path/to/file.js (Missing: xyz)
+...
+
+📊 Summary Statistics
+
+Total Expected Features: X
+Implemented: Y (Z%)
+Missing: A (B%)
+Incomplete: C (D%)
+
+🔥 Critical Missing Items (Blocks MVP)
+
+Item 1 - Why it's critical
+Item 2 - Why it's critical
+...
+
+💡 Recommendations
+
+Implement X first because...
+Then add Y because...
+Finally Z because...
+
+
+PROMPT END
+
+Alternative: Quick Check Commands
+If you want to quickly check specific things, use these commands in Replit shell:
+bash# Check if files exist
+ls -la backend/config/database.js
+ls -la backend/utils/auditLog.js
+ls -la backend/services/prospectSearchService.js
+
+# Check routes
+grep -r "router.post\|router.get\|router.put\|router.delete" backend/routes/
+
+# Check tables
+psql $DATABASE_URL -c "\dt"
+
+# Check for API endpoints
+grep -r "app.use" backend/server.js
+
+# Check frontend pages
+ls -la frontend/src/pages/SuperAdmin/
+ls -la frontend/src/pages/Manager/
+ls -la frontend/src/pages/User/
+
+# Check environment variables
+cat backend/.env
+
+# Check dependencies
+cat backend/package.json | grep -A 20 "dependencies"
+cat frontend/package.json | grep -A 20 "dependencies"
+
+What to Do With Results
+
+Copy the report from Replit
+Identify critical gaps (blocks MVP)
+Prioritize missing features:
+
+Priority 1: Core auth, database, tenant creation
+Priority 2: User management, campaign creation
+Priority 3: AI prospecting, analytics
+
+
+Create missing files based on the report
+Test each role separately:
+
+Super Admin: Create tenant → Create manager
+Manager: Create users
+User: Create campaign → Search prospects
+
+
