@@ -7,6 +7,7 @@ import {
   requireSuperAdminPermission 
 } from '../middleware/super-admin.middleware';
 import { db } from '../db';
+import { getMetricsSummary, resetMetrics } from '../middleware/observability';
 import { 
   superAdmins, 
   users, 
@@ -2735,6 +2736,26 @@ router.post('/onboarding/:orgId/assign-manager', authenticateSuperAdmin, require
   } catch (error) {
     console.error('Error assigning success manager:', error);
     res.status(500).json({ error: 'Failed to assign success manager' });
+  }
+});
+
+router.get('/internal/metrics', authenticateSuperAdmin, requireMasterAdmin, async (req, res) => {
+  try {
+    const metrics = getMetricsSummary();
+    res.json(metrics);
+  } catch (error) {
+    console.error('Error fetching internal metrics:', error);
+    res.status(500).json({ error: 'Failed to fetch metrics' });
+  }
+});
+
+router.post('/internal/metrics/reset', authenticateSuperAdmin, requireMasterAdmin, async (req, res) => {
+  try {
+    resetMetrics();
+    res.json({ success: true, message: 'Metrics reset successfully' });
+  } catch (error) {
+    console.error('Error resetting metrics:', error);
+    res.status(500).json({ error: 'Failed to reset metrics' });
   }
 });
 
