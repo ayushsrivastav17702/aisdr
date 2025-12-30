@@ -1,0 +1,105 @@
+I need you to validate RBAC behavior for Super Admin vs Manager vs User.
+
+Issue:
+Manager login is seeing dashboards / permissions that should NOT be visible as per PRD.
+
+What to check (mandatory):
+1. Verify middleware RBAC rules are enforced server-side (not only UI)
+2. Manager must NOT access:
+   - Super Admin routes
+   - Tenant provisioning
+   - System-wide metrics
+3. Super Admin must NOT access:
+   - Campaigns
+   - Prospects
+   - Messages
+   - Any tenant business data
+4. Test API access by manually calling restricted endpoints (expect 403)
+
+Deliverables:
+- List of RBAC gaps found
+- Exact routes / APIs violating RBAC
+- Confirmation once fixed
+This works because:
+
+Clear scope
+
+Clear expected behavior
+
+Clear output
+
+2️⃣ HOW TO ASK REPLIT TO “CHECK” ANYTHING (FRAMEWORK)
+Always structure your request like this:
+
+🔹 A. WHAT IS WRONG
+sql
+Copy code
+Current behavior:
+Manager sees XYZ
+
+Expected:
+Manager should only see ABC as per PRD
+🔹 B. WHERE TO CHECK
+diff
+Copy code
+Modules:
+- Dashboard
+- Campaigns
+- Users
+- Settings
+🔹 C. HOW TO VALIDATE
+diff
+Copy code
+Validate via:
+- UI
+- API calls
+- Direct route access
+🔹 D. WHAT YOU WANT BACK
+diff
+Copy code
+Deliverables:
+- Confirm bug / not a bug
+- Screenshot or route proof
+- Fix or explanation
+If you don’t ask for deliverables, devs will just say “checked”.
+
+3️⃣ ROLE-BASED CHECK REQUEST (MANAGER EXAMPLE)
+sql
+Copy code
+Please test Manager role end-to-end.
+
+Manager should:
+- View assigned campaigns only
+- View prospects (read/write)
+- Send messages within limits
+
+Manager should NOT:
+- Create tenants
+- Modify plans
+- See system analytics
+- Access super-admin routes
+
+If any of the above fails, report as RBAC bug.
+4️⃣ COMMON MISTAKE (DON’T DO THIS)
+❌ “Please check manager dashboard”
+❌ “RBAC seems wrong”
+❌ “Something is off”
+
+These get ignored or misunderstood.
+
+5️⃣ IF YOU WANT TO SOUND FIRM (BUT PROFESSIONAL)
+Use this line at the end:
+
+pgsql
+Copy code
+This is a P0 security/RBAC validation. 
+Please prioritize and confirm today.
+6️⃣ BONUS: IF THEY PUSH BACK
+Reply with:
+
+pgsql
+Copy code
+This is not a UI issue.
+RBAC must be enforced at middleware + API level.
+Please validate access using direct API calls.
+That shuts down most excuses.

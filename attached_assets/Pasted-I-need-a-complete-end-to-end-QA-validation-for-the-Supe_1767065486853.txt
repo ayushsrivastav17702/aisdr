@@ -1,0 +1,94 @@
+I need a complete end-to-end QA validation for the Super Admin role.
+
+Objective:
+Test EVERY module, EVERY tab, and EVERY action available to Super Admin and report:
+1. What is working correctly
+2. What is broken (errors, blank states, wrong data)
+3. What violates PRD or expected behavior
+4. What is missing but should exist
+
+How to test:
+- Login strictly as Super Admin
+- Validate UI + backend behavior
+- Try both happy paths and negative scenarios
+- Attempt restricted actions to ensure RBAC is enforced
+
+Modules & Actions to Validate:
+
+1. Authentication & Access
+- Login / Logout
+- Session persistence
+- Direct URL access to non-super-admin routes (should be blocked)
+- Token expiry and refresh
+
+2. Super Admin Dashboard
+- Total tenants count
+- Active / trial / suspended breakdown
+- Total users
+- Usage metrics correctness
+- Page load time and API responses
+
+3. Tenant Management
+- View tenant list
+- Search tenants
+- Open tenant detail view
+- Tenant status change (active / suspended)
+- Plan assignment
+- Seat limits update
+- Tenant health indicators
+- Last activity correctness
+
+4. Tenant Provisioning
+- Create new tenant
+- Auto-create schema / isolation
+- Default roles and users
+- Error handling for duplicate tenant
+- Rollback if provisioning fails
+
+5. User Management (Cross-Tenant)
+- View users across tenants
+- Role visibility correctness
+- Ensure no edit access into tenant business users
+- RBAC enforcement on user actions
+
+6. Subscription & Billing
+- View plans
+- Assign plan to tenant
+- Upgrade / downgrade flows
+- Trial expiry handling
+- Validation on seat overuse
+
+7. System Settings
+- Global configuration
+- Feature flags (if any)
+- Read/write permissions
+- Audit trail (if available)
+
+8. Audit Logs & Activity Tracking
+- Login logs
+- Tenant changes
+- Admin actions
+- Data correctness and timestamps
+
+9. Error Handling & Edge Cases
+- Empty states
+- API failures
+- Invalid inputs
+- Partial failures
+
+10. Security & RBAC
+- Super Admin must NOT access:
+  - Campaigns
+  - Prospects
+  - Messages
+  - Tenant sales data
+- Validate via direct API calls and route access
+
+Deliverables (MANDATORY):
+- Checklist with Pass / Fail per action
+- Screenshots or API logs for failures
+- Clear bug list with:
+  - Module
+  - Action
+  - Expected vs Actual
+- Confirmation once fixed or marked as not-a-bug
