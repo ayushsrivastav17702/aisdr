@@ -55,6 +55,7 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/multer": "^2.0.0",
     "@types/nodemailer": "^7.0.2",
+    "autocannon": "^8.0.0",
     "bcrypt": "^6.0.0",
     "bullmq": "^5.61.0",
     "class-variance-authority": "^0.7.1",
