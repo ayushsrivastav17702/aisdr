@@ -149,16 +149,17 @@ router.get("/api/manager/stats", authenticate, requireManager, async (req, res) 
     const managerId = currentUser.id;
     const cacheKey = cacheService.buildKey(userContext.organizationId, 'manager-stats', { managerId });
     
+    const orgId = userContext.organizationId;
     const stats = await cacheService.getOrSet(cacheKey, async () => {
       const [memberIds, userCounts] = await Promise.all([
-        getManagerCreatedUserIds(managerId, userContext.organizationId),
+        getManagerCreatedUserIds(managerId, orgId),
         db.select({
           totalUsers: count(),
           activeUsers: sql<number>`count(*) filter (where ${users.isActive} = true)`,
         })
         .from(users)
         .where(and(
-          eq(users.organizationId, userContext.organizationId),
+          eq(users.organizationId, orgId),
           eq(users.createdBy, managerId),
           isNull(users.deletedAt)
         ))
@@ -606,13 +607,14 @@ router.get("/api/manager/analytics", authenticate, requireManager, async (req, r
     if (period === "7d") daysBack = 7;
     else if (period === "90d") daysBack = 90;
     
-    const cacheKey = cacheService.buildKey(userContext.organizationId, 'manager-analytics', { period, managerId });
+    const orgId = userContext.organizationId;
+    const cacheKey = cacheService.buildKey(orgId, 'manager-analytics', { period, managerId });
     
     const result = await cacheService.getOrSet(cacheKey, async () => {
       const startDate = new Date();
       startDate.setDate(startDate.getDate() - daysBack);
 
-      const memberIds = await getManagerCreatedUserIds(managerId, userContext.organizationId);
+      const memberIds = await getManagerCreatedUserIds(managerId, orgId);
 
       if (memberIds.length === 0) {
         return {
@@ -654,7 +656,7 @@ router.get("/api/manager/analytics", authenticate, requireManager, async (req, r
           gte(emailQueue.sentAt, startDate)
         ))
         .where(and(
-          eq(users.organizationId, userContext.organizationId),
+          eq(users.organizationId, orgId),
           eq(users.createdBy, managerId),
           isNull(users.deletedAt)
         ))
