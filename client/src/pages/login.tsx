@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
-import { Loader2, Mail, KeyRound, ChevronDown, ChevronUp } from 'lucide-react';
+import { Loader2, Mail, KeyRound, ChevronDown, ChevronUp, Users } from 'lucide-react';
 import { SiGoogle } from 'react-icons/si';
 import { BsMicrosoft } from 'react-icons/bs';
 import { useQuery } from '@tanstack/react-query';
@@ -16,6 +16,12 @@ interface AuthConfig {
   microsoftEnabled: boolean;
   magicLinkEnabled: boolean;
   passwordLoginEnabled: boolean;
+}
+
+interface AccountOption {
+  id: string;
+  organizationId: string | null;
+  createdBy: string | null;
 }
 
 export default function LoginPage() {
@@ -30,6 +36,7 @@ export default function LoginPage() {
   const [showMagicLink, setShowMagicLink] = useState(false);
   const [showPasswordLogin, setShowPasswordLogin] = useState(false);
   const [magicLinkSent, setMagicLinkSent] = useState(false);
+  const [multipleAccounts, setMultipleAccounts] = useState<AccountOption[] | null>(null);
 
   const { data: authConfig, isLoading: configLoading } = useQuery<AuthConfig>({
     queryKey: ['/api/auth/config'],
@@ -50,7 +57,7 @@ export default function LoginPage() {
     }
   }, [searchString]);
 
-  const handlePasswordLogin = async (e: React.FormEvent) => {
+  const handlePasswordLogin = async (e: React.FormEvent, userId?: string) => {
     e.preventDefault();
     setError('');
     setIsSubmitting(true);
@@ -61,10 +68,17 @@ export default function LoginPage() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, userId }),
       });
 
       const data = await response.json();
+
+      // Handle multiple accounts case - show account selection UI
+      if (response.status === 300 && data.multipleAccounts) {
+        setMultipleAccounts(data.accounts);
+        setIsSubmitting(false);
+        return;
+      }
 
       if (!response.ok) {
         throw new Error(data.error || 'Login failed');
@@ -89,6 +103,17 @@ export default function LoginPage() {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleAccountSelect = async (accountId: string) => {
+    // Create a synthetic event and login with the selected account
+    const syntheticEvent = { preventDefault: () => {} } as React.FormEvent;
+    await handlePasswordLogin(syntheticEvent, accountId);
+  };
+
+  const handleBackToLogin = () => {
+    setMultipleAccounts(null);
+    setPassword('');
   };
 
   const handleMagicLinkRequest = async (e: React.FormEvent) => {
@@ -167,7 +192,49 @@ export default function LoginPage() {
             </Alert>
           )}
 
-          {hasOAuthOptions && (
+          {/* Account Selection UI for multiple accounts with same email */}
+          {multipleAccounts && (
+            <div className="space-y-4" data-testid="account-selection">
+              <Alert>
+                <Users className="h-4 w-4" />
+                <AlertDescription>
+                  Multiple accounts found with this email. Please select which account to use.
+                </AlertDescription>
+              </Alert>
+              <div className="space-y-2">
+                {multipleAccounts.map((account, index) => (
+                  <Button
+                    key={account.id}
+                    type="button"
+                    variant="outline"
+                    className="w-full h-12 justify-start"
+                    onClick={() => handleAccountSelect(account.id)}
+                    disabled={isSubmitting}
+                    data-testid={`button-select-account-${index}`}
+                  >
+                    <Users className="mr-3 h-5 w-5" />
+                    <span className="flex flex-col items-start">
+                      <span className="text-sm font-medium">Account {index + 1}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {account.organizationId ? `Org: ${account.organizationId.slice(0, 8)}...` : 'No organization'}
+                      </span>
+                    </span>
+                  </Button>
+                ))}
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                className="w-full"
+                onClick={handleBackToLogin}
+                data-testid="button-back-to-login"
+              >
+                Back to login
+              </Button>
+            </div>
+          )}
+
+          {!multipleAccounts && hasOAuthOptions && (
             <div className="space-y-3">
               {authConfig?.googleEnabled && (
                 <Button
@@ -199,7 +266,7 @@ export default function LoginPage() {
             </div>
           )}
 
-          {authConfig?.magicLinkEnabled && (
+          {!multipleAccounts && authConfig?.magicLinkEnabled && (
             <>
               {hasOAuthOptions && (
                 <div className="relative my-4">
@@ -300,7 +367,7 @@ export default function LoginPage() {
             </>
           )}
 
-          {authConfig?.passwordLoginEnabled && (
+          {!multipleAccounts && authConfig?.passwordLoginEnabled && (
             <>
               <div className="relative my-4">
                 <div className="absolute inset-0 flex items-center">

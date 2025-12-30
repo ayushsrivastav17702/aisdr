@@ -240,36 +240,17 @@ router.post("/api/manager/users", authenticate, requireManager, async (req, res)
       return res.status(400).json({ error: "Valid email is required" });
     }
 
-    const [existingUser] = await db.select().from(users).where(eq(users.email, email.toLowerCase())).limit(1);
-    if (existingUser) {
-      if (existingUser.organizationId === userContext.organizationId) {
-        if (!existingUser.createdBy) {
-          const [updatedUser] = await db.update(users)
-            .set({ createdBy: currentUser.id, updatedAt: new Date() })
-            .where(eq(users.id, existingUser.id))
-            .returning();
-          
-          auditService.logFromRequest(req, 'USER_ASSIGNED_TO_MANAGER', 'manager', {
-            userId: existingUser.id,
-            email: email.toLowerCase(),
-          });
-          
-          await cacheService.invalidateOrg(userContext.organizationId);
-          
-          const { passwordHash: _, ...safeUser } = updatedUser;
-          return res.status(200).json({
-            ...safeUser,
-            message: "Existing user has been added to your team.",
-            wasExisting: true,
-          });
-        } else if (existingUser.createdBy === currentUser.id) {
-          return res.status(400).json({ error: "This user is already on your team" });
-        } else {
-          return res.status(400).json({ error: "This user is managed by another manager in your organization" });
-        }
-      } else {
-        return res.status(400).json({ error: "User with this email exists in another organization" });
-      }
+    // Only check for duplicate email within this manager's scope (per-manager email uniqueness)
+    const [existingUserUnderManager] = await db.select()
+      .from(users)
+      .where(and(
+        eq(users.email, email.toLowerCase()),
+        eq(users.createdBy, currentUser.id)
+      ))
+      .limit(1);
+    
+    if (existingUserUnderManager) {
+      return res.status(400).json({ error: "This user is already on your team" });
     }
 
     const tempPassword = crypto.randomBytes(8).toString('hex');

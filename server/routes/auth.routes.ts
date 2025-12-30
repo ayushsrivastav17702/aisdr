@@ -99,9 +99,10 @@ router.post('/api/auth/login', loginRateLimit, async (req, res) => {
       console.log('Not a super admin, checking regular user login');
     }
 
-    // Check if password login is enabled for this user
-    const [user] = await db.select().from(users).where(eq(users.email, email.toLowerCase())).limit(1);
-    if (user && !user.passwordLoginEnabled) {
+    // Check if password login is enabled for any user with this email
+    const matchingUsers = await db.select().from(users).where(eq(users.email, email.toLowerCase()));
+    const usersWithPasswordDisabled = matchingUsers.filter(u => !u.passwordLoginEnabled);
+    if (matchingUsers.length > 0 && usersWithPasswordDisabled.length === matchingUsers.length) {
       auditService.logFromRequest(req, 'LOGIN_FAILED', 'auth', { 
         email,
         reason: 'Password login not enabled',
@@ -133,9 +134,11 @@ router.post('/api/auth/login', loginRateLimit, async (req, res) => {
       });
     }
 
-    const session = await authService.login(email, password, ipAddress, userAgent);
+    // Try login - may return session, null, or multipleAccounts response
+    const userId = req.body.userId; // Optional - for account disambiguation
+    const loginResult = await authService.login(email, password, ipAddress, userAgent, userId);
 
-    if (!session) {
+    if (!loginResult) {
       auditService.logFromRequest(req, 'LOGIN_FAILED', 'auth', { 
         email,
         reason: 'Invalid credentials',
@@ -144,6 +147,18 @@ router.post('/api/auth/login', loginRateLimit, async (req, res) => {
       });
       return res.status(401).json({ error: 'Invalid email or password' });
     }
+
+    // Handle multiple accounts case - user needs to select which account to use
+    if ('multipleAccounts' in loginResult && loginResult.multipleAccounts) {
+      return res.status(300).json({
+        multipleAccounts: true,
+        message: 'Multiple accounts found with this email. Please select which account to use.',
+        accounts: loginResult.accounts,
+      });
+    }
+
+    // At this point loginResult must be SessionData
+    const session = loginResult as { userId: string; sessionId: string; token: string; expiresAt: Date };
 
     auditService.logFromRequest(req, 'LOGIN_SUCCESS', 'auth', { 
       userId: session.userId, 
@@ -530,11 +545,13 @@ router.post('/api/auth/invitations/accept', async (req, res) => {
     const ipAddress = req.ip || req.socket.remoteAddress;
     const userAgent = req.headers['user-agent'];
     
-    const session = await authService.login(user.email, password, ipAddress, userAgent);
+    const loginResult = await authService.login(user.email, password, ipAddress, userAgent, user.id);
 
-    if (!session) {
+    if (!loginResult || ('multipleAccounts' in loginResult && loginResult.multipleAccounts)) {
       return res.status(500).json({ error: 'Account created but login failed' });
     }
+
+    const session = loginResult as { userId: string; sessionId: string; token: string; expiresAt: Date };
 
     auditService.logFromRequest(req, 'INVITATION_ACCEPTED', 'auth', { 
       userId: user.id, 
