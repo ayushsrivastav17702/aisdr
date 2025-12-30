@@ -18,28 +18,30 @@ import crypto from "crypto";
 
 const router = Router();
 
-async function getTeamMemberIds(organizationId: string): Promise<string[]> {
-  const teamMembers = await db.select({ id: users.id })
+async function getManagerCreatedUserIds(managerId: string, organizationId: string): Promise<string[]> {
+  const managedUsers = await db.select({ id: users.id })
     .from(users)
     .where(and(
       eq(users.organizationId, organizationId),
+      eq(users.createdBy, managerId),
       isNull(users.deletedAt)
     ));
-  return teamMembers.map(m => m.id);
+  return managedUsers.map(m => m.id);
 }
 
-async function verifyUserBelongsToOrg(userId: string, organizationId: string): Promise<typeof users.$inferSelect | null> {
+async function verifyUserCreatedByManager(userId: string, managerId: string, organizationId: string): Promise<typeof users.$inferSelect | null> {
   const [user] = await db.select().from(users)
     .where(and(
       eq(users.id, userId),
       eq(users.organizationId, organizationId),
+      eq(users.createdBy, managerId),
       isNull(users.deletedAt)
     ))
     .limit(1);
   return user || null;
 }
 
-async function verifyCampaignBelongsToOrg(campaignId: string, organizationId: string): Promise<typeof sequences.$inferSelect | null> {
+async function verifyCampaignBelongsToManager(campaignId: string, managerId: string, organizationId: string): Promise<typeof sequences.$inferSelect | null> {
   const result = await db.select({
     sequence: sequences,
     user: users,
@@ -49,6 +51,7 @@ async function verifyCampaignBelongsToOrg(campaignId: string, organizationId: st
   .where(and(
     eq(sequences.id, campaignId),
     eq(users.organizationId, organizationId),
+    eq(users.createdBy, managerId),
     isNull(users.deletedAt)
   ))
   .limit(1);
@@ -59,7 +62,8 @@ async function verifyCampaignBelongsToOrg(campaignId: string, organizationId: st
 router.get("/api/manager/team", authenticate, requireManager, async (req, res) => {
   try {
     const userContext = req.userContext;
-    if (!userContext?.organizationId) {
+    const currentUser = (req as any).user;
+    if (!userContext?.organizationId || !currentUser?.id) {
       return res.status(403).json({ error: "Organization context required" });
     }
 
@@ -70,6 +74,7 @@ router.get("/api/manager/team", authenticate, requireManager, async (req, res) =
 
     const conditions: any[] = [
       eq(users.organizationId, userContext.organizationId),
+      eq(users.createdBy, currentUser.id),
       isNull(users.deletedAt)
     ];
     
@@ -136,15 +141,17 @@ router.get("/api/manager/team", authenticate, requireManager, async (req, res) =
 router.get("/api/manager/stats", authenticate, requireManager, async (req, res) => {
   try {
     const userContext = req.userContext;
-    if (!userContext?.organizationId) {
+    const currentUser = (req as any).user;
+    if (!userContext?.organizationId || !currentUser?.id) {
       return res.status(403).json({ error: "Organization context required" });
     }
 
-    const cacheKey = cacheService.buildKey(userContext.organizationId, 'stats');
+    const managerId = currentUser.id;
+    const cacheKey = cacheService.buildKey(userContext.organizationId, 'manager-stats', { managerId });
     
     const stats = await cacheService.getOrSet(cacheKey, async () => {
       const [memberIds, userCounts] = await Promise.all([
-        getTeamMemberIds(userContext.organizationId),
+        getManagerCreatedUserIds(managerId, userContext.organizationId),
         db.select({
           totalUsers: count(),
           activeUsers: sql<number>`count(*) filter (where ${users.isActive} = true)`,
@@ -152,6 +159,7 @@ router.get("/api/manager/stats", authenticate, requireManager, async (req, res) 
         .from(users)
         .where(and(
           eq(users.organizationId, userContext.organizationId),
+          eq(users.createdBy, managerId),
           isNull(users.deletedAt)
         ))
         .then(r => r[0])
@@ -285,16 +293,17 @@ router.post("/api/manager/users", authenticate, requireManager, async (req, res)
 router.patch("/api/manager/users/:userId", authenticate, requireManager, async (req, res) => {
   try {
     const userContext = req.userContext;
-    if (!userContext?.organizationId) {
+    const currentUser = (req as any).user;
+    if (!userContext?.organizationId || !currentUser?.id) {
       return res.status(403).json({ error: "Organization context required" });
     }
 
     const { userId } = req.params;
     const { firstName, lastName, role, status, isActive } = req.body;
 
-    const existingUser = await verifyUserBelongsToOrg(userId, userContext.organizationId);
+    const existingUser = await verifyUserCreatedByManager(userId, currentUser.id, userContext.organizationId);
     if (!existingUser) {
-      return res.status(404).json({ error: "User not found in your organization" });
+      return res.status(404).json({ error: "User not found or you don't have permission to manage this user" });
     }
 
     const updateData: any = { updatedAt: new Date() };
@@ -327,20 +336,20 @@ router.patch("/api/manager/users/:userId", authenticate, requireManager, async (
 router.delete("/api/manager/users/:userId", authenticate, requireManager, async (req, res) => {
   try {
     const userContext = req.userContext;
-    if (!userContext?.organizationId) {
+    const currentUser = (req as any).user;
+    if (!userContext?.organizationId || !currentUser?.id) {
       return res.status(403).json({ error: "Organization context required" });
     }
 
     const { userId } = req.params;
-    const currentUser = (req as any).user;
 
     if (userId === currentUser.id) {
       return res.status(400).json({ error: "Cannot delete your own account" });
     }
 
-    const existingUser = await verifyUserBelongsToOrg(userId, userContext.organizationId);
+    const existingUser = await verifyUserCreatedByManager(userId, currentUser.id, userContext.organizationId);
     if (!existingUser) {
-      return res.status(404).json({ error: "User not found in your organization" });
+      return res.status(404).json({ error: "User not found or you don't have permission to manage this user" });
     }
 
     if (existingUser.status === 'inactive' || !existingUser.isActive) {
@@ -375,15 +384,16 @@ router.delete("/api/manager/users/:userId", authenticate, requireManager, async 
 router.post("/api/manager/users/:userId/reset-password", authenticate, requireManager, async (req, res) => {
   try {
     const userContext = req.userContext;
-    if (!userContext?.organizationId) {
+    const currentUser = (req as any).user;
+    if (!userContext?.organizationId || !currentUser?.id) {
       return res.status(403).json({ error: "Organization context required" });
     }
 
     const { userId } = req.params;
 
-    const existingUser = await verifyUserBelongsToOrg(userId, userContext.organizationId);
+    const existingUser = await verifyUserCreatedByManager(userId, currentUser.id, userContext.organizationId);
     if (!existingUser) {
-      return res.status(404).json({ error: "User not found in your organization" });
+      return res.status(404).json({ error: "User not found or you don't have permission to manage this user" });
     }
 
     if (!existingUser.isActive || existingUser.status === 'inactive') {
@@ -419,7 +429,8 @@ router.post("/api/manager/users/:userId/reset-password", authenticate, requireMa
 router.get("/api/manager/campaigns", authenticate, requireManager, async (req, res) => {
   try {
     const userContext = req.userContext;
-    if (!userContext?.organizationId) {
+    const currentUser = (req as any).user;
+    if (!userContext?.organizationId || !currentUser?.id) {
       return res.status(403).json({ error: "Organization context required" });
     }
 
@@ -428,8 +439,16 @@ router.get("/api/manager/campaigns", authenticate, requireManager, async (req, r
     const limitNum = Math.min(parseInt(limit as string, 10), 100);
     const offset = (pageNum - 1) * limitNum;
 
+    if (userId && typeof userId === 'string') {
+      const userBelongsToManager = await verifyUserCreatedByManager(userId, currentUser.id, userContext.organizationId);
+      if (!userBelongsToManager) {
+        return res.status(403).json({ error: "You don't have permission to view campaigns for this user" });
+      }
+    }
+
     const baseConditions: any[] = [
       eq(users.organizationId, userContext.organizationId),
+      eq(users.createdBy, currentUser.id),
       isNull(users.deletedAt)
     ];
     
@@ -548,23 +567,25 @@ router.post("/api/manager/campaigns/:campaignId/pause", authenticate, requireMan
 router.get("/api/manager/analytics", authenticate, requireManager, async (req, res) => {
   try {
     const userContext = req.userContext;
-    if (!userContext?.organizationId) {
+    const currentUser = (req as any).user;
+    if (!userContext?.organizationId || !currentUser?.id) {
       return res.status(403).json({ error: "Organization context required" });
     }
 
     const { period = "30d" } = req.query;
+    const managerId = currentUser.id;
     
     let daysBack = 30;
     if (period === "7d") daysBack = 7;
     else if (period === "90d") daysBack = 90;
     
-    const cacheKey = cacheService.buildKey(userContext.organizationId, 'analytics', { period });
+    const cacheKey = cacheService.buildKey(userContext.organizationId, 'manager-analytics', { period, managerId });
     
     const result = await cacheService.getOrSet(cacheKey, async () => {
       const startDate = new Date();
       startDate.setDate(startDate.getDate() - daysBack);
 
-      const memberIds = await getTeamMemberIds(userContext.organizationId);
+      const memberIds = await getManagerCreatedUserIds(managerId, userContext.organizationId);
 
       if (memberIds.length === 0) {
         return {
@@ -607,6 +628,7 @@ router.get("/api/manager/analytics", authenticate, requireManager, async (req, r
         ))
         .where(and(
           eq(users.organizationId, userContext.organizationId),
+          eq(users.createdBy, managerId),
           isNull(users.deletedAt)
         ))
         .groupBy(users.id, users.email, users.firstName, users.lastName)
@@ -665,11 +687,13 @@ router.get("/api/manager/analytics", authenticate, requireManager, async (req, r
 router.get("/api/manager/resources", authenticate, requireManager, async (req, res) => {
   try {
     const userContext = req.userContext;
-    if (!userContext?.organizationId) {
+    const currentUser = (req as any).user;
+    if (!userContext?.organizationId || !currentUser?.id) {
       return res.status(403).json({ error: "Organization context required" });
     }
 
-    const memberIds = await getTeamMemberIds(userContext.organizationId);
+    const managerId = currentUser.id;
+    const memberIds = await getManagerCreatedUserIds(managerId, userContext.organizationId);
 
     const mailboxAllocation = memberIds.length > 0 ? await db.select({
       userId: emailMailboxes.userId,
@@ -697,6 +721,7 @@ router.get("/api/manager/resources", authenticate, requireManager, async (req, r
     .from(users)
     .where(and(
       eq(users.organizationId, userContext.organizationId),
+      eq(users.createdBy, managerId),
       isNull(users.deletedAt)
     ));
 
@@ -729,16 +754,17 @@ router.get("/api/manager/resources", authenticate, requireManager, async (req, r
 router.get("/api/manager/users/:userId/performance", authenticate, requireManager, async (req, res) => {
   try {
     const userContext = req.userContext;
-    if (!userContext?.organizationId) {
+    const currentUser = (req as any).user;
+    if (!userContext?.organizationId || !currentUser?.id) {
       return res.status(403).json({ error: "Organization context required" });
     }
 
     const { userId } = req.params;
     const { period = "30d" } = req.query;
 
-    const targetUser = await verifyUserBelongsToOrg(userId, userContext.organizationId);
+    const targetUser = await verifyUserCreatedByManager(userId, currentUser.id, userContext.organizationId);
     if (!targetUser) {
-      return res.status(404).json({ error: "User not found in your organization" });
+      return res.status(404).json({ error: "User not found or you don't have permission to view this user" });
     }
 
     let daysBack = 30;
@@ -845,15 +871,16 @@ router.get("/api/manager/users/:userId/performance", authenticate, requireManage
 router.get("/api/manager/users/:userId/campaigns", authenticate, requireManager, async (req, res) => {
   try {
     const userContext = req.userContext;
-    if (!userContext?.organizationId) {
+    const currentUser = (req as any).user;
+    if (!userContext?.organizationId || !currentUser?.id) {
       return res.status(403).json({ error: "Organization context required" });
     }
 
     const { userId } = req.params;
 
-    const targetUser = await verifyUserBelongsToOrg(userId, userContext.organizationId);
+    const targetUser = await verifyUserCreatedByManager(userId, currentUser.id, userContext.organizationId);
     if (!targetUser) {
-      return res.status(404).json({ error: "User not found in your organization" });
+      return res.status(404).json({ error: "User not found or you don't have permission to view this user" });
     }
 
     const userCampaigns = await db.select({
@@ -914,11 +941,13 @@ router.post("/api/manager/campaigns/:campaignId/reassign", authenticate, require
 router.get("/api/manager/team/leaderboard", authenticate, requireManager, async (req, res) => {
   try {
     const userContext = req.userContext;
-    if (!userContext?.organizationId) {
+    const currentUser = (req as any).user;
+    if (!userContext?.organizationId || !currentUser?.id) {
       return res.status(403).json({ error: "Organization context required" });
     }
 
     const { period = "30d", sortBy = "emails" } = req.query;
+    const managerId = currentUser.id;
     
     let daysBack = 30;
     if (period === "7d") daysBack = 7;
@@ -927,7 +956,7 @@ router.get("/api/manager/team/leaderboard", authenticate, requireManager, async 
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - daysBack);
 
-    const memberIds = await getTeamMemberIds(userContext.organizationId);
+    const memberIds = await getManagerCreatedUserIds(managerId, userContext.organizationId);
 
     if (memberIds.length === 0) {
       return res.json({ leaderboard: [], period });
