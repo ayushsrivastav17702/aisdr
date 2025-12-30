@@ -1083,7 +1083,22 @@ function ProvisionTenantForm({ onSubmit, isLoading }: { onSubmit: (data: any) =>
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSubmit(formData);
+    // Filter out empty strings and convert to undefined for optional fields
+    const cleanedData = {
+      name: formData.name,
+      slug: formData.slug,
+      plan: formData.plan,
+      managerEmail: formData.managerEmail,
+      // Optional fields: only include if not empty
+      ...(formData.industry && { industry: formData.industry }),
+      ...(formData.companySize && { companySize: formData.companySize }),
+      ...(formData.managerFirstName && { managerFirstName: formData.managerFirstName }),
+      ...(formData.managerLastName && { managerLastName: formData.managerLastName }),
+      ...(formData.primaryContactName && { primaryContactName: formData.primaryContactName }),
+      ...(formData.primaryContactEmail && { primaryContactEmail: formData.primaryContactEmail }),
+      ...(formData.primaryContactPhone && { primaryContactPhone: formData.primaryContactPhone }),
+    };
+    onSubmit(cleanedData);
   };
 
   const updateField = (field: string, value: string) => {
