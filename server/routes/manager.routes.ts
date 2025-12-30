@@ -13,6 +13,7 @@ import { eq, and, count, sql, isNull, inArray, gte } from "drizzle-orm";
 import { authenticate, requireManager } from "../middleware/auth.middleware";
 import { auditService } from "../services/audit.service";
 import { cacheService } from "../services/cache.service";
+import { invitationService } from "../services/invitation.service";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
 
@@ -271,19 +272,47 @@ router.post("/api/manager/users", authenticate, requireManager, async (req, res)
     }).returning();
 
     const inviteToken = crypto.randomBytes(32).toString('hex');
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
     await db.insert(userInvitations).values({
       email: email.toLowerCase(),
       role: role === 'admin' ? 'admin' : 'user',
       invitedBy: currentUser.id,
       token: inviteToken,
-      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      expiresAt,
       organizationId: userContext.organizationId,
     });
+
+    // Generate invite URL (always provide for manual sharing)
+    const baseUrl = process.env.REPLIT_DEV_DOMAIN 
+      ? `https://${process.env.REPLIT_DEV_DOMAIN}` 
+      : 'http://localhost:5000';
+    const inviteUrl = `${baseUrl}/accept-invitation?token=${inviteToken}`;
+
+    // Send invitation email
+    const inviterName = currentUser.firstName && currentUser.lastName 
+      ? `${currentUser.firstName} ${currentUser.lastName}` 
+      : currentUser.email;
+    
+    const userRole = role === 'admin' ? 'admin' : 'user';
+    let emailSent = false;
+    try {
+      await invitationService.sendInvitationEmail({
+        email: email.toLowerCase(),
+        token: inviteToken,
+        inviterName,
+        expiresAt,
+        role: userRole,
+      });
+      emailSent = true;
+    } catch (emailError) {
+      console.error("Failed to send invitation email:", emailError);
+    }
 
     auditService.logFromRequest(req, 'USER_CREATED_BY_MANAGER', 'manager', {
       newUserId: newUser.id,
       email: email.toLowerCase(),
       role,
+      emailSent,
     });
 
     await cacheService.invalidateOrg(userContext.organizationId);
@@ -291,11 +320,117 @@ router.post("/api/manager/users", authenticate, requireManager, async (req, res)
     const { passwordHash: _, ...safeUser } = newUser;
     res.status(201).json({
       ...safeUser,
-      message: "User created. An invitation email has been sent.",
+      inviteUrl,
+      emailSent,
+      message: emailSent 
+        ? "User created. An invitation email has been sent." 
+        : "User created. Email sending failed - please share the invite link manually.",
     });
   } catch (error) {
     console.error("Error creating user:", error);
     res.status(500).json({ error: "Failed to create user" });
+  }
+});
+
+// Resend invitation email for a pending user
+router.post("/api/manager/users/:userId/resend-invite", authenticate, requireManager, async (req, res) => {
+  try {
+    const userContext = req.userContext;
+    const currentUser = (req as any).user;
+    if (!userContext?.organizationId || !currentUser?.id) {
+      return res.status(403).json({ error: "Organization context required" });
+    }
+
+    const { userId } = req.params;
+
+    // Verify user was created by this manager
+    const user = await verifyUserCreatedByManager(userId, currentUser.id, userContext.organizationId);
+    if (!user) {
+      return res.status(404).json({ error: "User not found or you don't have permission to manage this user" });
+    }
+
+    if (user.status !== 'pending') {
+      return res.status(400).json({ error: "User has already accepted the invitation" });
+    }
+
+    // Get or create invitation - scope to organization and manager
+    const [existingInvite] = await db.select()
+      .from(userInvitations)
+      .where(and(
+        eq(userInvitations.email, user.email),
+        eq(userInvitations.invitedBy, currentUser.id),
+        eq(userInvitations.organizationId, userContext.organizationId),
+        isNull(userInvitations.acceptedAt)
+      ))
+      .limit(1);
+
+    let inviteToken: string;
+    let expiresAt: Date;
+    const userRole = (user.role === 'admin' ? 'admin' : 'user') as 'admin' | 'user';
+
+    if (existingInvite) {
+      // Update existing invitation with new token, expiry, and current role
+      inviteToken = crypto.randomBytes(32).toString('hex');
+      expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      await db.update(userInvitations)
+        .set({ token: inviteToken, expiresAt, role: userRole })
+        .where(eq(userInvitations.id, existingInvite.id));
+    } else {
+      // Create new invitation
+      inviteToken = crypto.randomBytes(32).toString('hex');
+      expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+      await db.insert(userInvitations).values({
+        email: user.email,
+        role: userRole,
+        invitedBy: currentUser.id,
+        token: inviteToken,
+        expiresAt,
+        organizationId: userContext.organizationId,
+      });
+    }
+
+    // Generate invite URL (always provide for manual sharing)
+    const baseUrl = process.env.REPLIT_DEV_DOMAIN 
+      ? `https://${process.env.REPLIT_DEV_DOMAIN}` 
+      : 'http://localhost:5000';
+    const inviteUrl = `${baseUrl}/accept-invitation?token=${inviteToken}`;
+
+    // Send invitation email
+    const inviterName = currentUser.firstName && currentUser.lastName 
+      ? `${currentUser.firstName} ${currentUser.lastName}` 
+      : currentUser.email;
+    
+    let emailSent = false;
+    try {
+      await invitationService.sendInvitationEmail({
+        email: user.email,
+        token: inviteToken,
+        inviterName,
+        expiresAt,
+        role: userRole,
+      });
+      emailSent = true;
+    } catch (emailError) {
+      console.error("Failed to send invitation email:", emailError);
+    }
+
+    auditService.logFromRequest(req, 'INVITATION_RESENT', 'manager', {
+      targetUserId: userId,
+      email: user.email,
+      emailSent,
+    });
+
+    res.json({
+      success: true,
+      inviteUrl,
+      emailSent,
+      message: emailSent 
+        ? "Invitation email has been resent." 
+        : "Email sending failed - please share the invite link manually.",
+    });
+  } catch (error) {
+    console.error("Error resending invitation:", error);
+    res.status(500).json({ error: "Failed to resend invitation" });
   }
 });
 

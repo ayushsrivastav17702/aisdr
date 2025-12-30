@@ -6,6 +6,7 @@ export interface InvitationEmailData {
   token: string;
   inviterName: string;
   expiresAt: Date;
+  role?: 'admin' | 'user';
 }
 
 export class InvitationService {
@@ -21,7 +22,7 @@ export class InvitationService {
         to: data.email,
         inviterName: data.inviterName,
         inviteUrl,
-        role: 'user',
+        role: data.role || 'user',
       });
       console.log(`✅ Invitation email sent to ${data.email}`);
     } catch (error) {
