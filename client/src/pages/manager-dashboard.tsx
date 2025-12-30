@@ -639,8 +639,87 @@ export default function ManagerDashboard() {
                         data-testid="input-search-team"
                       />
                     </div>
-                    {/* Add Team Member - Hidden for managers per RBAC requirements */}
-                    {/* Only super_admin can add users, managers have read-only access */}
+                    <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
+                      <DialogTrigger asChild>
+                        <Button data-testid="btn-add-user">
+                          <UserPlus className="w-4 h-4 mr-2" />
+                          Add User
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Add New Team Member</DialogTitle>
+                          <DialogDescription>
+                            Create a new user account for your team. They will receive an email with login instructions.
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-4 py-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="email">Email Address</Label>
+                            <Input
+                              id="email"
+                              type="email"
+                              placeholder="user@company.com"
+                              value={newUser.email}
+                              onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+                              data-testid="input-new-user-email"
+                            />
+                          </div>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                              <Label htmlFor="firstName">First Name</Label>
+                              <Input
+                                id="firstName"
+                                placeholder="John"
+                                value={newUser.firstName}
+                                onChange={(e) => setNewUser({ ...newUser, firstName: e.target.value })}
+                                data-testid="input-new-user-firstname"
+                              />
+                            </div>
+                            <div className="space-y-2">
+                              <Label htmlFor="lastName">Last Name</Label>
+                              <Input
+                                id="lastName"
+                                placeholder="Doe"
+                                value={newUser.lastName}
+                                onChange={(e) => setNewUser({ ...newUser, lastName: e.target.value })}
+                                data-testid="input-new-user-lastname"
+                              />
+                            </div>
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="role">Role</Label>
+                            <Select
+                              value={newUser.role}
+                              onValueChange={(value) => setNewUser({ ...newUser, role: value })}
+                            >
+                              <SelectTrigger data-testid="select-new-user-role">
+                                <SelectValue placeholder="Select role" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="user">SDR (User)</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        </div>
+                        <DialogFooter>
+                          <Button
+                            variant="outline"
+                            onClick={() => setIsCreateDialogOpen(false)}
+                            data-testid="btn-cancel-create-user"
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            onClick={() => createUserMutation.mutate(newUser)}
+                            disabled={createUserMutation.isPending || !newUser.email}
+                            data-testid="btn-submit-create-user"
+                          >
+                            {createUserMutation.isPending ? "Creating..." : "Create User"}
+                          </Button>
+                        </DialogFooter>
+                      </DialogContent>
+                    </Dialog>
                   </div>
                 </div>
               </CardHeader>
@@ -651,7 +730,7 @@ export default function ManagerDashboard() {
                   <div className="text-center py-8">
                     <Users className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
                     <h3 className="text-lg font-medium mb-2">No team members yet</h3>
-                    <p className="text-muted-foreground mb-4">Contact your system administrator to add team members.</p>
+                    <p className="text-muted-foreground mb-4">Click the "Add User" button above to create your first team member.</p>
                   </div>
                 ) : (
                   <Table>
