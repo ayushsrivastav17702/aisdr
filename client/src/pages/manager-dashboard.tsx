@@ -295,15 +295,25 @@ export default function ManagerDashboard() {
     mutationFn: async (userData: typeof newUser) => {
       return await apiRequest("POST", "/api/manager/users", userData);
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/manager/team"] });
       queryClient.invalidateQueries({ queryKey: ["/api/manager/stats"] });
       setIsCreateDialogOpen(false);
       setNewUser({ email: "", firstName: "", lastName: "", role: "user" });
-      toast({
-        title: "User created",
-        description: "An invitation has been sent to the new user.",
-      });
+      
+      if (data.emailSent) {
+        toast({
+          title: "User created",
+          description: "An invitation has been sent to the new user.",
+        });
+      } else if (data.inviteUrl) {
+        // Copy invite URL to clipboard if email failed
+        navigator.clipboard.writeText(data.inviteUrl);
+        toast({
+          title: "User created",
+          description: "Email sending failed, but the invite link has been copied to your clipboard. Share it manually with the user.",
+        });
+      }
     },
     onError: (error: Error) => {
       toast({
@@ -339,6 +349,33 @@ export default function ManagerDashboard() {
         title: "Password reset", 
         description: `Temporary password: ${data.tempPassword}. Please share it securely with the user.` 
       });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const resendInviteMutation = useMutation({
+    mutationFn: async (userId: string) => {
+      return await apiRequest("POST", `/api/manager/users/${userId}/resend-invite`);
+    },
+    onSuccess: (data: any) => {
+      if (data.emailSent) {
+        toast({ 
+          title: "Invitation sent", 
+          description: "The invitation email has been resent to the user." 
+        });
+      } else {
+        // Copy invite URL to clipboard if email failed
+        if (data.inviteUrl) {
+          navigator.clipboard.writeText(data.inviteUrl);
+          toast({ 
+            title: "Invitation link copied", 
+            description: "Email sending failed, but the invite link has been copied to your clipboard. Share it manually with the user.",
+            variant: "default"
+          });
+        }
+      }
     },
     onError: (error: Error) => {
       toast({ title: "Error", description: error.message, variant: "destructive" });
@@ -793,6 +830,16 @@ export default function ManagerDashboard() {
                                   View Performance
                                 </DropdownMenuItem>
                                 <DropdownMenuSeparator />
+                                {member.status === 'pending' && (
+                                  <DropdownMenuItem 
+                                    data-testid={`action-resend-invite-${member.id}`}
+                                    onClick={() => resendInviteMutation.mutate(member.id)}
+                                    disabled={resendInviteMutation.isPending}
+                                  >
+                                    <Send className="w-4 h-4 mr-2" />
+                                    {resendInviteMutation.isPending ? 'Sending...' : 'Resend Invitation'}
+                                  </DropdownMenuItem>
+                                )}
                                 <DropdownMenuItem 
                                   data-testid={`action-reset-${member.id}`}
                                   onClick={() => setConfirmDialog({ open: true, type: "reset", userId: member.id })}
