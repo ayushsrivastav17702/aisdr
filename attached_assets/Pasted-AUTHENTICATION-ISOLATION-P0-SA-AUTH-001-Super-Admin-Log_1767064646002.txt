@@ -1,0 +1,267 @@
+AUTHENTICATION & ISOLATION (P0)
+SA-AUTH-001: Super Admin Login Isolation
+
+Steps
+
+Navigate to /super-admin/login
+
+Login using valid super admin credentials
+
+Expected
+
+Login succeeds
+
+JWT/session uses super_admin namespace
+
+Cannot access /app/* routes
+
+Redirect only to /super-admin/dashboard
+
+Fail if
+
+Access to tenant app is possible
+
+Shared session with tenant users
+
+SA-AUTH-002: Tenant User Cannot Access Super Admin
+
+Steps
+
+Login as User / Manager
+
+Attempt to access /super-admin/*
+
+Expected
+
+403 Forbidden
+
+Redirect to tenant dashboard
+
+2️⃣ TENANT MANAGEMENT (P0)
+SA-TENANT-001: View Tenant List
+
+Endpoint: GET /api/super-admin/tenants
+
+Expected
+
+All tenants visible
+
+Correct status, plan, user count
+
+Pagination works
+
+SA-TENANT-002: Provision New Tenant
+
+Endpoint: POST /api/super-admin/tenants
+
+Expected
+
+New tenant created
+
+Schema created (schema-per-tenant)
+
+Default settings applied
+
+Manager auto-created (if configured)
+
+SA-TENANT-003: Update Tenant Status
+
+Endpoint: PATCH /api/super-admin/tenants/:id
+
+Actions
+
+Active → Suspended
+
+Trial → Active
+
+Expected
+
+Status updates persist
+
+Suspended tenant cannot login
+
+Active tenant regains access
+
+SA-TENANT-004: Update Plan
+
+Expected
+
+Plan updates correctly
+
+Feature access changes reflected (if applicable)
+
+3️⃣ TENANT IMPERSONATION (P0)
+SA-IMPERSONATE-001: Impersonate Manager
+
+Endpoint: POST /api/super-admin/impersonate
+
+Expected
+
+Super admin can impersonate manager
+
+Banner visible: “Acting as Manager”
+
+Original role stored securely
+
+SA-IMPERSONATE-002: Impersonation Exit
+
+Expected
+
+Exit returns to Super Admin
+
+Manager permissions removed
+
+No session leakage
+
+4️⃣ TENANT ISOLATION & SECURITY (P0)
+SA-SEC-001: Cross-Tenant Isolation
+
+Endpoint: /api/super-admin/security/isolation-test
+
+Expected
+
+Tenant A cannot read Tenant B data
+
+All isolation checks pass
+
+SA-SEC-002: Direct Schema Access Block
+
+Expected
+
+Super Admin cannot accidentally query tenant schema without explicit tenant context
+
+5️⃣ MANAGER CREATION & ADMIN (P1)
+SA-MGR-001: Create Manager
+
+Expected
+
+Manager created inside tenant
+
+Correct role assigned
+
+Login works
+
+No super admin privileges
+
+SA-MGR-002: Reset Manager Password
+
+Expected
+
+Password reset email / token works
+
+Old password invalid
+
+6️⃣ GLOBAL USER OVERVIEW (FR-SA11 – Partial)
+SA-USER-001: View Global Users
+
+Endpoint: GET /api/super-admin/users
+
+Expected
+
+Users grouped by tenant
+
+Role visible
+
+Status visible
+
+SA-USER-002: Filtering (Partial)
+
+Expected
+
+Basic filters work (tenant, role)
+
+Advanced filters may be missing (acceptable)
+
+7️⃣ AUDIT LOGGING (FR-SA22 – Partial)
+SA-AUDIT-001: View Audit Logs
+
+Endpoint: GET /api/super-admin/audit-logs
+
+Expected
+
+Actions logged:
+
+Tenant create/update
+
+Impersonation
+
+Status changes
+
+Timestamp + actor present
+
+SA-AUDIT-002: No Tenant Actions Missing
+
+Expected
+
+No super admin action bypasses audit logging
+
+8️⃣ PLATFORM STATS DASHBOARD (P1)
+SA-STATS-001: Platform Metrics
+
+Expected
+
+Tenant count
+
+Active vs suspended
+
+User count
+
+Campaign count (aggregate)
+
+9️⃣ ACCESS RESTRICTIONS (CRITICAL)
+SA-RBAC-001: Cannot Access Campaigns
+
+Steps
+
+Try /api/sequences
+
+Try /api/emails/send
+
+Expected
+
+403 Forbidden
+
+SA-RBAC-002: Cannot Act as User Without Impersonation
+
+Expected
+
+No tenant data access without impersonation
+
+🔥 NEGATIVE TEST CASES (SECURITY)
+SA-NEG-001: Token Replay Attack
+
+Expected
+
+Expired token rejected
+
+SA-NEG-002: Cross-Tenant ID Injection
+
+Expected
+
+Tenant IDs not accepted via params
+
+SA-NEG-003: Role Escalation Attempt
+
+Expected
+
+Super Admin cannot assign itself tenant user role
+
+Tenant user cannot assign super admin role
+
+📊 SEVERITY CLASSIFICATION
+Severity	Meaning
+P0	Security / Isolation / Auth
+P1	Core functionality
+P2	UX / Reporting
+P3	Cosmetic
+✅ SUPER ADMIN QA EXIT CRITERIA
+
+Zero P0 failures
+
+Tenant isolation 100% verified
+
+Impersonation fully audited
+
+No tenant route accessible directly
+
+All Super Admin actions logged
