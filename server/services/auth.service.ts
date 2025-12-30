@@ -65,11 +65,65 @@ export class AuthService {
     return crypto.randomBytes(INVITATION_TOKEN_LENGTH).toString('hex');
   }
 
-  async login(email: string, password: string, ipAddress?: string, userAgent?: string): Promise<SessionData | null> {
-    const [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+  async login(email: string, password: string, ipAddress?: string, userAgent?: string, userId?: string): Promise<SessionData | { multipleAccounts: true; accounts: Array<{ id: string; organizationId: string | null; createdBy: string | null }> } | null> {
+    // Find all users with this email (since email is now scoped by manager, not globally unique)
+    const matchingUsers = await db.select().from(users).where(eq(users.email, email.toLowerCase()));
+
+    if (matchingUsers.length === 0) {
+      // Record failed attempt even if user doesn't exist (to prevent enumeration attacks)
+      const { accountLockoutService } = await import('./account-lockout.service');
+      await accountLockoutService.recordFailedAttempt(email, ipAddress || 'unknown');
+      return null;
+    }
+
+    // If userId is provided, use that specific user (for disambiguation)
+    let user = userId ? matchingUsers.find(u => u.id === userId) : undefined;
+    
+    // If no specific userId and only one match, use it
+    if (!user && matchingUsers.length === 1) {
+      user = matchingUsers[0];
+    }
+    
+    // If multiple users and no specific userId, verify password against all and return options
+    if (!user && matchingUsers.length > 1) {
+      const validUsers: typeof matchingUsers = [];
+      for (const u of matchingUsers) {
+        // Only include users with password login enabled, active status, and valid password
+        if (u.passwordHash && u.status === 'active' && u.passwordLoginEnabled) {
+          const isValid = await this.verifyPassword(password, u.passwordHash);
+          if (isValid) {
+            validUsers.push(u);
+          }
+        }
+      }
+      
+      if (validUsers.length === 0) {
+        const { accountLockoutService } = await import('./account-lockout.service');
+        await accountLockoutService.recordFailedAttempt(email, ipAddress || 'unknown');
+        return null;
+      }
+      
+      if (validUsers.length === 1) {
+        user = validUsers[0];
+      } else {
+        // Multiple valid accounts - return options for user to choose
+        return {
+          multipleAccounts: true,
+          accounts: validUsers.map(u => ({
+            id: u.id,
+            organizationId: u.organizationId,
+            createdBy: u.createdBy,
+          })),
+        };
+      }
+    }
+    
+    // When userId is provided for disambiguation, re-verify password login is enabled
+    if (userId && user && !user.passwordLoginEnabled) {
+      return null; // Password login disabled for this specific account
+    }
 
     if (!user || !user.passwordHash) {
-      // Record failed attempt even if user doesn't exist (to prevent enumeration attacks)
       const { accountLockoutService } = await import('./account-lockout.service');
       await accountLockoutService.recordFailedAttempt(email, ipAddress || 'unknown');
       return null;

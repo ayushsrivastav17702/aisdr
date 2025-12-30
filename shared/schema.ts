@@ -809,7 +809,7 @@ export const authProviderEnum = pgEnum("auth_provider", ["google", "microsoft", 
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   username: text("username").unique(),
-  email: text("email").notNull().unique(), // Global unique required for authentication
+  email: text("email").notNull(), // No global unique - scoped by createdBy for multi-manager support
   passwordHash: text("password_hash"), // Nullable for OAuth users
   authProvider: authProviderEnum("auth_provider").default("password"), // Primary auth method
   passwordLoginEnabled: boolean("password_login_enabled").default(false), // Restricted password login
@@ -837,7 +837,9 @@ export const users = pgTable("users", {
   deletedAt: timestamp("deleted_at"),
 }, (table) => ({
   orgIdIdx: index("users_organization_id_idx").on(table.organizationId),
-  createdByIdx: index("users_created_by_idx").on(table.createdBy), // Index for manager lookups
+  createdByIdx: index("users_created_by_idx").on(table.createdBy),
+  managerEmailIdx: uniqueIndex("users_manager_email_unique_idx").on(table.createdBy, table.email), // Email unique per manager
+  emailIdx: index("users_email_idx").on(table.email), // Index for login lookups
 }));
 
 // User sessions table
