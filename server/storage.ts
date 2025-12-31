@@ -131,7 +131,7 @@ export interface IStorage {
   updateImportRecord(ctx: RequestContext, id: string, updates: Partial<InsertImportRecord>): Promise<ImportRecord>;
   
   // Sequences
-  getSequences(ctx: RequestContext, limit?: number): Promise<Sequence[]>;
+  getSequences(ctx: RequestContext, filters?: { limit?: number; offset?: number; status?: string }): Promise<{ sequences: Sequence[]; total: number }>;
   getSequence(ctx: RequestContext, id: string): Promise<Sequence | undefined>;
   createSequence(ctx: RequestContext, sequence: InsertSequence): Promise<Sequence>;
   updateSequence(ctx: RequestContext, id: string, updates: Partial<Sequence>): Promise<Sequence>;
@@ -636,19 +636,36 @@ export class DatabaseStorage implements IStorage {
   }
 
   // Sequences
-  async getSequences(ctx: RequestContext, limit = 20): Promise<Sequence[]> {
+  async getSequences(ctx: RequestContext, filters: { limit?: number; offset?: number; status?: string } = {}): Promise<{ sequences: Sequence[]; total: number }> {
+    const { limit = 25, offset = 0, status } = filters;
+    
+    const conditions: SQL[] = [];
+    if (status) {
+      conditions.push(eq(sequences.status, status) as SQL);
+    }
+    
+    const whereClause = scopedWhere(sequences, ctx, conditions.length > 0 ? conditions : undefined);
+    
     let query = db
       .select()
       .from(sequences)
       .orderBy(desc(sequences.createdAt))
-      .limit(limit);
+      .limit(limit)
+      .offset(offset);
     
-    const whereClause = scopedWhere(sequences, ctx);
+    let countQuery = db.select({ count: count() }).from(sequences);
+    
     if (whereClause) {
       query = query.where(whereClause) as any;
+      countQuery = countQuery.where(whereClause) as any;
     }
     
-    return await query;
+    const [sequenceResults, countResult] = await Promise.all([query, countQuery]);
+    
+    return {
+      sequences: sequenceResults,
+      total: countResult[0]?.count || 0
+    };
   }
 
   async getSequence(ctx: RequestContext, id: string): Promise<Sequence | undefined> {
