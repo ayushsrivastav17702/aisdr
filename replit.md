@@ -81,11 +81,59 @@ The platform is built on a modern web stack, featuring a multi-tenant architectu
   - **Unit-Based Throttling**: Pre-flight check validates `batch_size <= (limit - current_usage)` before enrollment to prevent quota gaming via large batches.
 
 ### P1 Roadmap (Future Work)
-The following items are documented for future implementation:
-- **Cost-Based Throttling**: Current throttling counts prospects/enrollments. Future: add AI token usage tracking with provider cost weighting (GPT-4 vs Claude costs), monthly spend limits per tenant.
-- **Auto-Pause Rules**: Kill switch currently manual only. Future: auto-pause triggers for spend spikes (>2x daily average), queue backlog (>10k pending), error storm (>50% failure rate over 1hr).
-- **Super Admin Visibility Dashboard**: Controls exist but no operational views. Future: queue depth by tenant, AI usage trends, throttle violation logs, paused tenant reasons.
-- **Manager-Level Quotas**: Tenant throttling exists but manager quotas implicit. Future: explicit manager-level limits for multi-manager tenants (1 tenant → 20 managers → 200 SDRs).
+The following items are documented for future implementation. **Status: Observability hooks added (December 2025), enforcement deferred until production cost baselines available.**
+
+#### 1. Cost-Based Throttling (Tokens, Not Prospects)
+**Current State**: Throttling counts prospects/enrollments only.
+**Gap**: Missing AI token usage tracking and provider cost weighting.
+**Future Implementation**:
+- Track AI token usage per request (prompt + completion tokens)
+- Provider cost weighting (GPT-4 ~$30/1M tokens vs Claude ~$15/1M tokens)
+- Monthly spend limits per tenant with soft/hard thresholds
+- Cost alerts at 50%, 80%, 100% of budget
+**Observability Hooks Added**: `observability.emitAICostEvent()` emits token counts and estimated costs per AI call.
+**Files**: `server/services/observability.service.ts`
+
+#### 2. Auto-Pause Rules
+**Current State**: Kill switch exists but is manual-only via Super Admin.
+**Gap**: No automatic triggers for runaway usage.
+**Future Implementation**:
+- Auto-pause on spend spike (>2x daily average)
+- Auto-pause on queue backlog (>10k pending emails)
+- Auto-pause on error storm (>50% failure rate over 1hr)
+- Grace period + notification before pause
+**Observability Hooks Added**: `observability.emitAutoPauseCandidate()` logs conditions that would trigger auto-pause.
+**Files**: `server/services/observability.service.ts`
+
+#### 3. Super Admin Visibility Dashboard
+**Current State**: Controls exist but no operational views.
+**Gap**: Missing real-time operational visibility.
+**Future Implementation**:
+- Queue depth by tenant (pending, processing, failed)
+- AI usage trends (tokens/day, cost/day by provider)
+- Throttle violation logs (who hit limits, when, how often)
+- Paused tenant reasons and duration
+- Health score per tenant (deliverability, bounce rate, engagement)
+**Observability Hooks Added**: Events emitted to `observability.service.ts` can be aggregated for dashboards.
+**Files**: `server/services/observability.service.ts`
+
+#### 4. Manager-Level Quotas
+**Current State**: Tenant throttling exists. Manager quotas implicit.
+**Gap**: Matters when 1 tenant → 20 managers → 200 SDRs.
+**Future Implementation**:
+- Explicit quota allocation per manager within tenant limits
+- Manager can subdivide quota to their SDRs
+- Visibility into manager-level usage vs allocation
+- Alert managers approaching their limits
+**Observability Hooks Added**: `observability.emitManagerUsage()` tracks usage per manager for future quota enforcement.
+**Files**: `server/services/observability.service.ts`
+
+#### Observability-Only Approach (Current Phase)
+- All P1 features have observability hooks emitting events and metrics
+- No enforcement logic - collecting production baselines first
+- Events logged to console and stored in `observability_events` table
+- Metrics available for future dashboards and alerting
+- Key principle: "Observe first, enforce later" to avoid over-throttling real usage
 
 ## External Dependencies
 - **Apollo.io**: Prospect search, data enrichment, and bulk matching API.
