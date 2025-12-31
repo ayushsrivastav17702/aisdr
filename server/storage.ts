@@ -175,7 +175,11 @@ export class DatabaseStorage implements IStorage {
     limit?: number;
     offset?: number;
   } = {}): Promise<{ prospects: Prospect[]; total: number }> {
-    const { search, status, companyLocation, jobTitle, limit = 50, offset = 0 } = filters;
+    // Pagination guards: default 50, max 50 per Phase F requirement
+    const MAX_PAGE_SIZE = 50;
+    const rawLimit = filters.limit ?? 50;
+    const limit = Math.min(Math.max(1, rawLimit), MAX_PAGE_SIZE);
+    const { search, status, companyLocation, jobTitle, offset = 0 } = filters;
     
     let query = db.select().from(prospects);
     let countQuery = db.select({ count: count() }).from(prospects);
