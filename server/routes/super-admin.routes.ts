@@ -700,25 +700,6 @@ router.post('/broadcast', authenticateSuperAdmin, requireSuperAdminPermission('c
   }
 });
 
-router.get('/audit-logs', authenticateSuperAdmin, async (req, res) => {
-  try {
-    const { superAdminId, action, targetType, page, limit } = req.query;
-
-    const result = await superAdminService.getAuditLogs({
-      superAdminId: superAdminId as string,
-      action: action as string,
-      targetType: targetType as string,
-      page: page ? parseInt(page as string) : 1,
-      limit: limit ? parseInt(limit as string) : 50,
-    });
-
-    res.json(result);
-  } catch (error) {
-    console.error('Error fetching audit logs:', error);
-    res.status(500).json({ error: 'Failed to fetch audit logs' });
-  }
-});
-
 router.get('/super-admins', authenticateSuperAdmin, requireMasterAdmin, async (req, res) => {
   try {
     const admins = await db
