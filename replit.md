@@ -58,6 +58,13 @@ The platform is built on a modern web stack, featuring a multi-tenant architectu
 - **User Engagement Features (Planned)**: Leaderboard & Gamification (points, badges), Best Practices Library (templates, guides, videos), and AE Handoff Workflow (qualification frameworks, scoring, status workflow).
 - **Manager Dashboard**: Implemented at `/manager/dashboard` with team management (add, update, deactivate users, password reset), campaign oversight (approve, pause, stats), performance analytics with time period selection (7d/30d/90d), and resource allocation tracking. Uses `requireManager` middleware for role-based access.
 - **Multi-Provider Waterfall Search System**: Intelligent prospect search system that cascades through multiple providers (Perplexity AI, Apollo.io, Lusha, OpenRouter) to maximize result coverage while optimizing costs. Features accumulating mode, smart deduplication, cost optimization, error resilience, and usage tracking.
+- **Super Admin Performance Optimizations** (December 2025):
+  - **N+1 Query Elimination**: Tenant listing reduced from 42 queries (20 tenants × 2 count queries + joins) to 1 query using correlated subqueries
+  - **Dashboard Stats**: Combined 7 separate queries into 1 with 30-second in-memory cache
+  - **Keyset Pagination**: Audit logs and tenant listing support cursor-based pagination for O(1) performance at scale
+  - **Approximate Counts**: Unfiltered queries use PostgreSQL `reltuples` statistics for O(1) total counts
+  - **Filter Optimization**: Status/plan filters moved from post-query JavaScript to SQL WHERE clauses
+  - **Export Safety**: All export endpoints capped at reasonable limits (50k records for audit logs)
 
 ## External Dependencies
 - **Apollo.io**: Prospect search, data enrichment, and bulk matching API.

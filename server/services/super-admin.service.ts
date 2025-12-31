@@ -162,7 +162,8 @@ class SuperAdminService {
     limit?: number;
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
-  } = {}): Promise<{ tenants: TenantWithSettings[]; total: number }> {
+    cursor?: string; // For keyset pagination: pass last org's createdAt|id
+  } = {}): Promise<{ tenants: TenantWithSettings[]; total: number; hasNextPage?: boolean; nextCursor?: string }> {
     const { 
       search, 
       status, 
@@ -170,13 +171,18 @@ class SuperAdminService {
       page = 1, 
       limit = 20,
       sortBy = 'createdAt',
-      sortOrder = 'desc'
+      sortOrder = 'desc',
+      cursor
     } = options;
 
-    const conditions: any[] = [];
+    const pageLimit = Math.min(limit, 100); // Cap at 100
+
+    // Separate filter conditions from cursor condition for proper total count
+    const filterConditions: any[] = [];
+    let cursorCondition: any = null;
 
     if (search) {
-      conditions.push(
+      filterConditions.push(
         or(
           like(organizations.name, `%${search}%`),
           like(organizations.slug, `%${search}%`)
@@ -184,65 +190,132 @@ class SuperAdminService {
       );
     }
 
-    const tenantsQuery = db
+    // Filter by status in SQL (eliminates post-filter)
+    if (status) {
+      filterConditions.push(eq(tenantSettings.tenantStatus, status as any));
+    }
+
+    // Filter by plan in SQL (eliminates post-filter)
+    if (plan) {
+      filterConditions.push(eq(tenantSettings.plan, plan as any));
+    }
+
+    // Keyset pagination cursor (kept separate from filters for total count)
+    if (cursor) {
+      try {
+        const [cursorTime, cursorId] = cursor.split('|');
+        if (cursorTime && cursorTime !== 'undefined' && cursorId) {
+          const cursorDate = new Date(cursorTime);
+          if (!isNaN(cursorDate.getTime())) {
+            if (sortOrder === 'desc') {
+              cursorCondition = sql`(${organizations.createdAt}, ${organizations.id}) < (${cursorDate}, ${cursorId})`;
+            } else {
+              cursorCondition = sql`(${organizations.createdAt}, ${organizations.id}) > (${cursorDate}, ${cursorId})`;
+            }
+          }
+        }
+      } catch (e) {
+        // Invalid cursor format, ignore
+      }
+    }
+
+    // Combine conditions for main query (filters + cursor)
+    const allConditions = cursorCondition 
+      ? [...filterConditions, cursorCondition]
+      : filterConditions;
+
+    // Single optimized query with aggregated counts using correlated subqueries
+    // This eliminates N+1 queries (was: 2 queries per tenant)
+    const tenantsRaw = await db
       .select({
         organization: organizations,
         settings: tenantSettings,
+        userCount: sql<number>`(
+          SELECT COUNT(*) FROM users 
+          WHERE users.organization_id = ${organizations.id} 
+          AND users.deleted_at IS NULL
+        )`,
+        managerCount: sql<number>`(
+          SELECT COUNT(*) FROM users 
+          WHERE users.organization_id = ${organizations.id} 
+          AND users.role = 'admin' 
+          AND users.deleted_at IS NULL
+        )`,
       })
       .from(organizations)
       .leftJoin(tenantSettings, eq(organizations.id, tenantSettings.organizationId))
-      .orderBy(sortOrder === 'desc' ? desc(organizations.createdAt) : organizations.createdAt)
-      .limit(limit)
-      .offset((page - 1) * limit);
+      .where(allConditions.length > 0 ? and(...allConditions) : undefined)
+      .orderBy(
+        ...(sortOrder === 'desc' 
+          ? [desc(organizations.createdAt), desc(organizations.id)]
+          : [organizations.createdAt, organizations.id])
+      )
+      .limit(cursor ? pageLimit + 1 : pageLimit) // Fetch one extra for cursor pagination
+      .offset(cursor ? 0 : (page - 1) * pageLimit); // Only use offset if not using cursor
 
-    if (conditions.length > 0) {
-      tenantsQuery.where(and(...conditions));
+    // Check for next page when using cursor
+    const hasNextPage = cursor ? tenantsRaw.length > pageLimit : undefined;
+    const resultTenants = cursor && hasNextPage ? tenantsRaw.slice(0, pageLimit) : tenantsRaw;
+
+    // Generate next cursor - only if createdAt is valid
+    const lastTenant = resultTenants[resultTenants.length - 1];
+    let nextCursor: string | undefined;
+    if (hasNextPage && lastTenant?.organization?.createdAt) {
+      nextCursor = `${lastTenant.organization.createdAt.toISOString()}|${lastTenant.organization.id}`;
     }
 
-    const tenantsRaw = await tenantsQuery;
+    const tenants: TenantWithSettings[] = resultTenants.map(t => ({
+      organization: t.organization,
+      settings: t.settings,
+      userCount: Number(t.userCount) || 0,
+      managerCount: Number(t.managerCount) || 0,
+    }));
 
-    const tenants: TenantWithSettings[] = [];
-    for (const tenant of tenantsRaw) {
-      if (status && tenant.settings?.tenantStatus !== status) continue;
-      if (plan && tenant.settings?.plan !== plan) continue;
-
-      const [userCountResult] = await db
-        .select({ count: count() })
-        .from(users)
-        .where(and(
-          eq(users.organizationId, tenant.organization.id),
-          isNull(users.deletedAt)
-        ));
-
-      const [managerCountResult] = await db
-        .select({ count: count() })
-        .from(users)
-        .where(and(
-          eq(users.organizationId, tenant.organization.id),
-          eq(users.role, 'admin'),
-          isNull(users.deletedAt)
-        ));
-
-      tenants.push({
-        organization: tenant.organization,
-        settings: tenant.settings,
-        managerCount: managerCountResult?.count || 0,
-        userCount: userCountResult?.count || 0,
-      });
+    // Get total count - use ONLY filter conditions (not cursor) for accurate total
+    let total: number;
+    
+    if (filterConditions.length === 0) {
+      // No filters: use PostgreSQL statistics for O(1) count
+      const approxResult = await db.execute(
+        sql`SELECT reltuples::bigint AS estimate FROM pg_class WHERE relname = 'organizations'`
+      );
+      total = Number((approxResult.rows[0] as any)?.estimate || 0);
+      if (total <= 0) {
+        const [countResult] = await db.select({ total: count() }).from(organizations);
+        total = countResult?.total || 0;
+      }
+    } else {
+      // With filters: exact count using filter conditions only (not cursor)
+      let countQuery = db.select({ total: count() }).from(organizations)
+        .leftJoin(tenantSettings, eq(organizations.id, tenantSettings.organizationId));
+      
+      countQuery = countQuery.where(and(...filterConditions)) as any;
+      
+      const [countResult] = await countQuery;
+      total = countResult?.total || 0;
     }
 
-    const [{ total }] = await db
-      .select({ total: count() })
-      .from(organizations);
-
-    return { tenants, total };
+    return { tenants, total, hasNextPage, nextCursor };
   }
 
   async getTenantById(organizationId: string): Promise<TenantWithSettings | null> {
+    // Single optimized query with correlated subqueries (eliminates N+1)
+    // Subqueries correlate on organizations.id for proper scoping
     const [result] = await db
       .select({
         organization: organizations,
         settings: tenantSettings,
+        userCount: sql<number>`(
+          SELECT COUNT(*) FROM users 
+          WHERE users.organization_id = ${organizations.id} 
+          AND users.deleted_at IS NULL
+        )`,
+        managerCount: sql<number>`(
+          SELECT COUNT(*) FROM users 
+          WHERE users.organization_id = ${organizations.id} 
+          AND users.role = 'admin' 
+          AND users.deleted_at IS NULL
+        )`,
       })
       .from(organizations)
       .leftJoin(tenantSettings, eq(organizations.id, tenantSettings.organizationId))
@@ -250,28 +323,11 @@ class SuperAdminService {
 
     if (!result) return null;
 
-    const [userCountResult] = await db
-      .select({ count: count() })
-      .from(users)
-      .where(and(
-        eq(users.organizationId, organizationId),
-        isNull(users.deletedAt)
-      ));
-
-    const [managerCountResult] = await db
-      .select({ count: count() })
-      .from(users)
-      .where(and(
-        eq(users.organizationId, organizationId),
-        eq(users.role, 'admin'),
-        isNull(users.deletedAt)
-      ));
-
     return {
       organization: result.organization,
       settings: result.settings,
-      managerCount: managerCountResult?.count || 0,
-      userCount: userCountResult?.count || 0,
+      managerCount: Number(result.managerCount) || 0,
+      userCount: Number(result.userCount) || 0,
     };
   }
 
@@ -567,6 +623,21 @@ class SuperAdminService {
     return { logs, total };
   }
 
+  // In-memory cache for platform stats (refreshed every 30 seconds)
+  private static platformStatsCache: {
+    data: {
+      totalTenants: number;
+      activeTenants: number;
+      trialTenants: number;
+      suspendedTenants: number;
+      totalUsers: number;
+      totalProspects: number;
+      totalEmailsSent: number;
+    };
+    cachedAt: number;
+  } | null = null;
+  private static STATS_CACHE_TTL = 30 * 1000; // 30 seconds
+
   async getPlatformStats(): Promise<{
     totalTenants: number;
     activeTenants: number;
@@ -576,49 +647,52 @@ class SuperAdminService {
     totalProspects: number;
     totalEmailsSent: number;
   }> {
-    const [tenantCount] = await db.select({ count: count() }).from(organizations);
-    
-    const [activeCount] = await db
-      .select({ count: count() })
-      .from(tenantSettings)
-      .where(eq(tenantSettings.tenantStatus, 'active'));
+    // Check cache first
+    const now = Date.now();
+    if (
+      SuperAdminService.platformStatsCache &&
+      (now - SuperAdminService.platformStatsCache.cachedAt) < SuperAdminService.STATS_CACHE_TTL
+    ) {
+      return SuperAdminService.platformStatsCache.data;
+    }
 
-    const [trialCount] = await db
-      .select({ count: count() })
-      .from(tenantSettings)
-      .where(eq(tenantSettings.tenantStatus, 'trial'));
+    try {
+      // Single optimized query that gets all stats at once (was 7 separate queries)
+      const queryResult = await db.execute(sql`
+        SELECT 
+          (SELECT COUNT(*) FROM organizations) as total_tenants,
+          (SELECT COUNT(*) FROM tenant_settings WHERE tenant_status = 'active') as active_tenants,
+          (SELECT COUNT(*) FROM tenant_settings WHERE tenant_status = 'trial') as trial_tenants,
+          (SELECT COUNT(*) FROM tenant_settings WHERE tenant_status = 'suspended') as suspended_tenants,
+          (SELECT COUNT(*) FROM users WHERE deleted_at IS NULL) as total_users,
+          (SELECT COALESCE(SUM(current_prospect_count), 0)::int FROM tenant_settings) as total_prospects,
+          (SELECT COALESCE(SUM(total_emails_sent), 0)::int FROM tenant_settings) as total_emails_sent
+      `);
 
-    const [suspendedCount] = await db
-      .select({ count: count() })
-      .from(tenantSettings)
-      .where(eq(tenantSettings.tenantStatus, 'suspended'));
+      const stats = queryResult.rows[0] as any;
+      const result = {
+        totalTenants: Number(stats?.total_tenants) || 0,
+        activeTenants: Number(stats?.active_tenants) || 0,
+        trialTenants: Number(stats?.trial_tenants) || 0,
+        suspendedTenants: Number(stats?.suspended_tenants) || 0,
+        totalUsers: Number(stats?.total_users) || 0,
+        totalProspects: Number(stats?.total_prospects) || 0,
+        totalEmailsSent: Number(stats?.total_emails_sent) || 0,
+      };
 
-    const [userCount] = await db
-      .select({ count: count() })
-      .from(users)
-      .where(isNull(users.deletedAt));
+      // Update cache on success
+      SuperAdminService.platformStatsCache = { data: result, cachedAt: now };
 
-    const [emailStats] = await db
-      .select({ 
-        total: sql<number>`COALESCE(SUM(total_emails_sent), 0)::int` 
-      })
-      .from(tenantSettings);
-
-    const [prospectStats] = await db
-      .select({ 
-        total: sql<number>`COALESCE(SUM(current_prospect_count), 0)::int` 
-      })
-      .from(tenantSettings);
-
-    return {
-      totalTenants: tenantCount?.count || 0,
-      activeTenants: activeCount?.count || 0,
-      trialTenants: trialCount?.count || 0,
-      suspendedTenants: suspendedCount?.count || 0,
-      totalUsers: userCount?.count || 0,
-      totalProspects: prospectStats?.total || 0,
-      totalEmailsSent: emailStats?.total || 0,
-    };
+      return result;
+    } catch (error) {
+      // On error, return cached data if available (even if stale)
+      if (SuperAdminService.platformStatsCache) {
+        console.error('Failed to fetch platform stats, using stale cache:', error);
+        return SuperAdminService.platformStatsCache.data;
+      }
+      // No cache available, throw the error
+      throw error;
+    }
   }
 
   // ============================================

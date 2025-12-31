@@ -1592,6 +1592,10 @@ router.post('/security/isolation-test', authenticateSuperAdmin, requireMasterAdm
 // ============================================================
 // FR-SA21: Audit Logging (Platform-Wide)
 // ============================================================
+// In-memory cache for audit log action types (refreshed every 5 minutes)
+let auditActionTypesCache: { types: string[]; cachedAt: number } | null = null;
+const AUDIT_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
 router.get('/audit-logs', authenticateSuperAdmin, async (req, res) => {
   try {
     const { 
@@ -1601,28 +1605,12 @@ router.get('/audit-logs', authenticateSuperAdmin, async (req, res) => {
       endDate, 
       superAdminId,
       limit = 100,
-      offset = 0 
+      cursor // Keyset pagination: pass last log's createdAt+id as cursor
     } = req.query;
 
-    let query = db
-      .select({
-        id: superAdminAuditLogs.id,
-        superAdminId: superAdminAuditLogs.superAdminId,
-        action: superAdminAuditLogs.action,
-        targetType: superAdminAuditLogs.targetType,
-        targetId: superAdminAuditLogs.targetId,
-        details: superAdminAuditLogs.details,
-        ipAddress: superAdminAuditLogs.ipAddress,
-        createdAt: superAdminAuditLogs.createdAt,
-        adminEmail: superAdmins.email,
-        adminName: sql<string>`COALESCE(${superAdmins.firstName} || ' ' || ${superAdmins.lastName}, ${superAdmins.email})`,
-      })
-      .from(superAdminAuditLogs)
-      .leftJoin(superAdmins, eq(superAdminAuditLogs.superAdminId, superAdmins.id))
-      .orderBy(desc(superAdminAuditLogs.createdAt))
-      .limit(Number(limit))
-      .offset(Number(offset));
+    const pageLimit = Math.min(Number(limit) || 100, 500); // Cap at 500
 
+    // Build filter conditions
     const conditions: any[] = [];
     
     if (action) {
@@ -1641,26 +1629,107 @@ router.get('/audit-logs', authenticateSuperAdmin, async (req, res) => {
       conditions.push(eq(superAdminAuditLogs.superAdminId, String(superAdminId)));
     }
 
+    // Keyset pagination: if cursor provided, filter to records older than cursor
+    if (cursor) {
+      try {
+        const [cursorTime, cursorId] = String(cursor).split('|');
+        if (cursorTime && cursorId) {
+          conditions.push(
+            sql`(${superAdminAuditLogs.createdAt}, ${superAdminAuditLogs.id}) < (${new Date(cursorTime)}, ${cursorId})`
+          );
+        }
+      } catch (e) {
+        // Invalid cursor format, ignore
+      }
+    }
+
+    // Build and execute query with keyset pagination
+    let query = db
+      .select({
+        id: superAdminAuditLogs.id,
+        superAdminId: superAdminAuditLogs.superAdminId,
+        action: superAdminAuditLogs.action,
+        targetType: superAdminAuditLogs.targetType,
+        targetId: superAdminAuditLogs.targetId,
+        details: superAdminAuditLogs.details,
+        ipAddress: superAdminAuditLogs.ipAddress,
+        createdAt: superAdminAuditLogs.createdAt,
+        adminEmail: superAdmins.email,
+        adminName: sql<string>`COALESCE(${superAdmins.firstName} || ' ' || ${superAdmins.lastName}, ${superAdmins.email})`,
+      })
+      .from(superAdminAuditLogs)
+      .leftJoin(superAdmins, eq(superAdminAuditLogs.superAdminId, superAdmins.id))
+      .orderBy(desc(superAdminAuditLogs.createdAt), desc(superAdminAuditLogs.id))
+      .limit(pageLimit + 1); // Fetch one extra to detect if there's a next page
+
     if (conditions.length > 0) {
       query = query.where(and(...conditions)) as any;
     }
 
     const logs = await query;
 
-    // Get total count for pagination
-    const countResult = await db
-      .select({ count: sql<number>`count(*)` })
-      .from(superAdminAuditLogs);
+    // Check if there's a next page
+    const hasNextPage = logs.length > pageLimit;
+    const resultLogs = hasNextPage ? logs.slice(0, pageLimit) : logs;
+    
+    // Generate next cursor from last item
+    const lastLog = resultLogs[resultLogs.length - 1];
+    const nextCursor = hasNextPage && lastLog 
+      ? `${lastLog.createdAt?.toISOString()}|${lastLog.id}`
+      : null;
 
-    // Get action types for filtering
-    const actionTypes = await db
-      .selectDistinct({ action: superAdminAuditLogs.action })
-      .from(superAdminAuditLogs);
+    // Use approximate count for large tables (uses statistics, not full scan)
+    // Falls back to exact count only for filtered queries
+    let totalEstimate: number;
+    if (conditions.length === 0 || (conditions.length === 1 && cursor)) {
+      // No filters: use PostgreSQL reltuples for O(1) approximate count
+      const approxResult = await db.execute(
+        sql`SELECT reltuples::bigint AS estimate FROM pg_class WHERE relname = 'super_admin_audit_logs'`
+      );
+      totalEstimate = Number((approxResult.rows[0] as any)?.estimate || 0);
+      // If stats are stale (0 or negative), fall back to limited count
+      if (totalEstimate <= 0) {
+        const countResult = await db
+          .select({ count: sql<number>`count(*)` })
+          .from(superAdminAuditLogs)
+          .limit(10001); // Cap count scan
+        totalEstimate = Math.min(Number(countResult[0]?.count || 0), 10000);
+      }
+    } else {
+      // With filters: run filtered count but cap it
+      let countQuery = db
+        .select({ count: sql<number>`count(*)` })
+        .from(superAdminAuditLogs);
+      
+      // Apply same conditions except cursor
+      const countConditions = conditions.filter(c => !String(c).includes('cursor'));
+      if (countConditions.length > 0) {
+        countQuery = countQuery.where(and(...countConditions)) as any;
+      }
+      
+      const countResult = await countQuery;
+      totalEstimate = Number(countResult[0]?.count || 0);
+    }
+
+    // Get action types from cache or refresh
+    let actionTypes: string[];
+    const now = Date.now();
+    if (auditActionTypesCache && (now - auditActionTypesCache.cachedAt) < AUDIT_CACHE_TTL) {
+      actionTypes = auditActionTypesCache.types;
+    } else {
+      const actionTypesResult = await db
+        .selectDistinct({ action: superAdminAuditLogs.action })
+        .from(superAdminAuditLogs);
+      actionTypes = actionTypesResult.map(a => a.action);
+      auditActionTypesCache = { types: actionTypes, cachedAt: now };
+    }
 
     res.json({
-      logs,
-      total: Number(countResult[0]?.count || 0),
-      actionTypes: actionTypes.map(a => a.action),
+      logs: resultLogs,
+      total: totalEstimate,
+      hasNextPage,
+      nextCursor,
+      actionTypes,
       retentionDays: 1825, // 5 years = 1825 days
     });
   } catch (error) {
@@ -1672,7 +1741,10 @@ router.get('/audit-logs', authenticateSuperAdmin, async (req, res) => {
 // Export audit logs (SIEM integration)
 router.get('/audit-logs/export', authenticateSuperAdmin, requireMasterAdmin, async (req, res) => {
   try {
-    const { startDate, endDate, format = 'json' } = req.query;
+    const { startDate, endDate, format = 'json', limit = 10000 } = req.query;
+
+    // Cap export at 50,000 records to prevent memory issues
+    const exportLimit = Math.min(Number(limit) || 10000, 50000);
 
     const conditions: any[] = [];
     if (startDate) {
@@ -1694,7 +1766,8 @@ router.get('/audit-logs/export', authenticateSuperAdmin, requireMasterAdmin, asy
         ipAddress: superAdminAuditLogs.ipAddress,
       })
       .from(superAdminAuditLogs)
-      .orderBy(desc(superAdminAuditLogs.createdAt));
+      .orderBy(desc(superAdminAuditLogs.createdAt))
+      .limit(exportLimit);
 
     if (conditions.length > 0) {
       query = query.where(and(...conditions)) as any;
