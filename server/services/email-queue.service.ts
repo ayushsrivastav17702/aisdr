@@ -311,20 +311,60 @@ export class EmailQueueService {
         console.log(`📨 Processing pending emails for ALL users (background job)...`);
       }
       
+      // Backpressure: Limit batch size for controlled processing
+      const BATCH_LIMIT = 50;
+      
       const pendingEmails = await db
         .select()
         .from(emailQueue)
         .where(and(...whereConditions))
         .orderBy(emailQueue.priority, emailQueue.scheduledFor)
-        .limit(50);
+        .limit(BATCH_LIMIT);
 
       console.log(`📨 Found ${pendingEmails.length} pending emails`);
 
+      // Import hardening service for kill switch check
+      const { hardeningService } = await import("./hardening.service");
+      const { users } = await import("@shared/schema");
+      
+      // Cache paused org checks and user->org mappings to avoid repeated DB calls
+      const pausedOrgs = new Set<string>();
+      const activeOrgs = new Set<string>();
+      const userOrgMap = new Map<string, string | null>();
+      
       for (const email of pendingEmails) {
         // SECURITY: Verify email belongs to the user if userId is provided
         if (userId && email.userId !== userId) {
           console.error(`🚨 SECURITY: Skipping email ${email.id} - belongs to user ${email.userId}, not ${userId}`);
           continue;
+        }
+        
+        // KILL SWITCH: Check if user's org automation is paused
+        // Lookup user's organizationId (with caching)
+        let orgId = userOrgMap.get(email.userId);
+        if (orgId === undefined) {
+          const [user] = await db.select({ organizationId: users.organizationId })
+            .from(users)
+            .where(eq(users.id, email.userId))
+            .limit(1);
+          orgId = user?.organizationId || null;
+          userOrgMap.set(email.userId, orgId);
+        }
+        
+        if (orgId) {
+          if (pausedOrgs.has(orgId)) {
+            console.log(`⏸️ Skipping email ${email.id} - org ${orgId} automation paused`);
+            continue;
+          }
+          if (!activeOrgs.has(orgId)) {
+            const isPaused = await hardeningService.isAutomationPaused(orgId);
+            if (isPaused) {
+              pausedOrgs.add(orgId);
+              console.log(`⏸️ Skipping email ${email.id} - org ${orgId} automation paused`);
+              continue;
+            }
+            activeOrgs.add(orgId);
+          }
         }
 
         // =====================================
@@ -670,16 +710,22 @@ export class EmailQueueService {
           });
         }
       } else {
+        // Exponential backoff: 2^attempts minutes (2min, 4min, 8min...)
+        // Caps at 30 minutes to prevent excessive delays
+        const backoffMinutes = Math.min(Math.pow(2, attempts), 30);
+        const nextScheduledFor = new Date(Date.now() + backoffMinutes * 60 * 1000);
+        
         await db
           .update(emailQueue)
           .set({
             status: "pending",
             lastError: error.message,
             attempts,
+            scheduledFor: nextScheduledFor, // Delay retry with exponential backoff
           })
           .where(eq(emailQueue.id, email.id));
 
-        console.log(`🔄 Email retry ${attempts}/${maxAttempts}: ${email.id}`);
+        console.log(`🔄 Email retry ${attempts}/${maxAttempts}: ${email.id} (next attempt in ${backoffMinutes}min)`);
       }
       
       return false; // Failed to send
