@@ -20,6 +20,7 @@
 const autocannon = require('autocannon');
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:5000';
+const AUTH_TOKEN = process.env.AUTH_TOKEN || '';
 const AUTH_COOKIE = process.env.AUTH_COOKIE || '';
 const TEST_SEQUENCE_ID = process.env.TEST_SEQUENCE_ID || '';
 const TEST_PROSPECT_ID = process.env.TEST_PROSPECT_ID || '';
@@ -78,7 +79,7 @@ async function runTest(configName = 'baseline') {
     duration: config.duration,
     headers: {
       'Content-Type': 'application/json',
-      'Cookie': AUTH_COOKIE
+      'Authorization': AUTH_TOKEN ? `Bearer ${AUTH_TOKEN}` : undefined, 'Cookie': AUTH_COOKIE
     },
     requests: [{
       method: 'POST',

@@ -15,6 +15,7 @@ const fs = require('fs');
 const path = require('path');
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:5000';
+const AUTH_TOKEN = process.env.AUTH_TOKEN || '';
 const AUTH_COOKIE = process.env.AUTH_COOKIE || '';
 
 // Test configurations
@@ -92,7 +93,7 @@ async function runTest(configName = 'baseline') {
     duration: config.duration,
     headers: {
       'Content-Type': `multipart/form-data; boundary=${boundary}`,
-      'Cookie': AUTH_COOKIE
+      'Authorization': AUTH_TOKEN ? `Bearer ${AUTH_TOKEN}` : undefined, 'Cookie': AUTH_COOKIE
     },
     body: body,
     setupClient: (client) => {
