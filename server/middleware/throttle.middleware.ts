@@ -118,7 +118,7 @@ export async function trackUsage(
   }
 }
 
-export function checkManagerQuota(resourceType: 'users' | 'prospects' | 'sequences' | 'activeSequences') {
+export function checkManagerQuota(resourceType: 'users' | 'prospects' | 'sequences' | 'activeSequences' | 'activeCampaigns') {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
       const user = req.user;
@@ -143,6 +143,139 @@ export function checkManagerQuota(resourceType: 'users' | 'prospects' | 'sequenc
       next();
     }
   };
+}
+
+export async function checkManagerPause(req: Request, res: Response, next: NextFunction) {
+  try {
+    const user = req.user;
+    
+    if (!user?.id) {
+      return next();
+    }
+    
+    // If user is a manager, check if they themselves are paused
+    if (user.role === 'manager') {
+      const paused = await hardeningService.isManagerPaused(user.id);
+      if (paused) {
+        const quota = await hardeningService.getManagerQuota(user.id);
+        return res.status(503).json({
+          error: 'Manager paused',
+          message: quota?.pausedReason || 'Your account has been paused. All operations are temporarily suspended.',
+          code: 'MANAGER_PAUSED',
+        });
+      }
+    } else {
+      // For SDRs, check if their manager is paused
+      const { paused, reason } = await hardeningService.isUserManagerPaused(user.id);
+      if (paused) {
+        return res.status(503).json({
+          error: 'Manager paused',
+          message: reason || 'Your manager has been paused. All SDR operations are temporarily suspended.',
+          code: 'MANAGER_PAUSED',
+        });
+      }
+    }
+    
+    next();
+  } catch (error) {
+    console.error('Error checking manager pause status:', error);
+    next();
+  }
+}
+
+export async function validateProspectUpload(req: Request, res: Response, next: NextFunction) {
+  try {
+    const user = req.user;
+    const prospectCount = req.body?.prospects?.length || req.body?.prospectCount || 0;
+    
+    if (!user?.id || prospectCount === 0) {
+      return next();
+    }
+    
+    // For managers, use their own ID. For SDRs, use their manager's ID.
+    const managerId = user.role === 'manager' ? user.id : user.createdBy;
+    if (!managerId) {
+      return next();
+    }
+    
+    const validation = await hardeningService.validateProspectUpload(managerId, prospectCount);
+    
+    if (!validation.allowed) {
+      return res.status(403).json({
+        error: 'Upload validation failed',
+        message: validation.reason,
+        maxAllowed: validation.maxAllowed,
+        code: 'UPLOAD_VALIDATION_FAILED',
+      });
+    }
+    
+    next();
+  } catch (error) {
+    console.error('Error validating prospect upload:', error);
+    next();
+  }
+}
+
+export async function validateCampaignCreation(req: Request, res: Response, next: NextFunction) {
+  try {
+    const user = req.user;
+    
+    if (!user?.id) {
+      return next();
+    }
+    
+    // For managers, use their own ID. For SDRs, use their manager's ID.
+    const managerId = user.role === 'manager' ? user.id : user.createdBy;
+    if (!managerId) {
+      return next();
+    }
+    
+    const validation = await hardeningService.validateCampaignCreation(managerId);
+    
+    if (!validation.allowed) {
+      return res.status(403).json({
+        error: 'Campaign creation failed',
+        message: validation.reason,
+        code: 'CAMPAIGN_LIMIT_REACHED',
+      });
+    }
+    
+    next();
+  } catch (error) {
+    console.error('Error validating campaign creation:', error);
+    next();
+  }
+}
+
+export async function validateSequenceCreation(req: Request, res: Response, next: NextFunction) {
+  try {
+    const user = req.user;
+    
+    if (!user?.id) {
+      return next();
+    }
+    
+    // For managers, use their own ID. For SDRs, use their manager's ID.
+    const managerId = user.role === 'manager' ? user.id : user.createdBy;
+    if (!managerId) {
+      return next();
+    }
+    
+    const validation = await hardeningService.validateSequenceCreation(managerId);
+    
+    if (!validation.allowed) {
+      return res.status(403).json({
+        error: 'Sequence creation failed',
+        message: validation.reason,
+        code: 'SEQUENCE_LIMIT_REACHED',
+      });
+    }
+    
+    next();
+  } catch (error) {
+    console.error('Error validating sequence creation:', error);
+    next();
+  }
 }
 
 export function requireIdempotencyKey(operation: string) {

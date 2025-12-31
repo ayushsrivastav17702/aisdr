@@ -3552,7 +3552,7 @@ export const throttleWindows = pgTable("throttle_windows", {
   userTypeWindowIdx: index("throttle_windows_user_type_window_idx").on(table.userId, table.counterType, table.windowStart),
 }));
 
-// Manager Quotas - Per-manager resource limits
+// Manager Quotas - Per-manager resource limits and kill switch
 export const managerQuotas = pgTable("manager_quotas", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   managerId: varchar("manager_id").notNull().references(() => users.id, { onDelete: "cascade" }),
@@ -3563,12 +3563,21 @@ export const managerQuotas = pgTable("manager_quotas", {
   maxProspects: integer("max_prospects").default(10000),
   maxSequences: integer("max_sequences").default(50),
   maxActiveSequences: integer("max_active_sequences").default(10),
+  maxActiveCampaigns: integer("max_active_campaigns").default(5),
+  maxProspectsPerUpload: integer("max_prospects_per_upload").default(1000),
   
   // Current usage (denormalized for fast checks)
   currentUsers: integer("current_users").default(0),
   currentProspects: integer("current_prospects").default(0),
   currentSequences: integer("current_sequences").default(0),
   currentActiveSequences: integer("current_active_sequences").default(0),
+  currentActiveCampaigns: integer("current_active_campaigns").default(0),
+  
+  // Manager-level kill switch (pauses all assets under this manager)
+  isPaused: boolean("is_paused").default(false),
+  pausedAt: timestamp("paused_at"),
+  pausedBy: varchar("paused_by"),
+  pausedReason: text("paused_reason"),
   
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
