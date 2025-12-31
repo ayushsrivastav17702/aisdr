@@ -1,0 +1,367 @@
+USER ROLE — END-TO-END CAPACITY & AI FLOW VALIDATION PLAN
+1️⃣ PROSPECT UPLOAD LIMIT TEST
+Goal
+
+Identify:
+
+Max prospects per upload
+
+Failure mode (timeout, partial insert, silent drop)
+
+Test Steps
+
+Upload CSV with:
+
+1k prospects
+
+5k prospects
+
+10k prospects
+
+25k prospects
+
+Repeat with:
+
+Required fields only
+
+Full enrichment fields
+
+Upload concurrently from 5 users
+
+Metrics to Capture
+
+Upload time
+
+DB insert time
+
+Failed rows count
+
+Memory spike
+
+API timeout %
+
+Red Flags
+
+🚨 Partial success without error
+🚨 Upload succeeds but enrichment never triggers
+🚨 UI success, backend rollback
+
+2️⃣ AI ENRICHMENT CAPACITY TEST
+Goal
+
+How many prospects can be enriched reliably, not theoretically.
+
+Test Scenarios
+Scenario	Count
+Single batch	100
+Medium batch	500
+Stress batch	1,000
+Concurrent users	5 × 300
+Validate For EACH Prospect
+
+Company data fetched
+
+LinkedIn data fetched
+
+Role/title resolved
+
+Missing data handled gracefully
+
+Measure
+
+Avg enrichment time
+
+Queue lag
+
+Retry count
+
+API failures (Perplexity / Apollo / others)
+
+Red Flags
+
+🚨 Enrichment stuck in “processing”
+🚨 Silent skip of prospects
+🚨 External API rate limit crashes system
+
+3️⃣ SEQUENCE CREATION LIMIT
+Goal
+
+Find:
+
+Max sequences per user
+
+When UI or backend degrades
+
+Test
+
+Create:
+
+10 sequences
+
+50 sequences
+
+100 sequences
+
+Each with:
+
+3 steps
+
+7 steps
+
+Conditional logic
+
+Validate
+
+Save time
+
+Load time
+
+Edit latency
+
+DB size impact
+
+Red Flags
+
+🚨 Slow load on campaign list
+🚨 Sequence edits overwrite steps
+🚨 Broken step ordering
+
+4️⃣ PROSPECTS PER SEQUENCE TEST
+Goal
+
+Max prospects that can be safely attached to a sequence.
+
+Test
+
+Add:
+
+100 prospects
+
+1,000 prospects
+
+5,000 prospects
+
+Trigger enrollment simultaneously
+
+Validate
+
+All prospects enrolled
+
+No duplicates
+
+Correct step assignment
+
+Red Flags
+
+🚨 Some prospects never enter step 1
+🚨 Enrollment succeeds but no emails sent
+🚨 UI shows count ≠ DB count
+
+5️⃣ EMAIL SEND RATE TEST (CRITICAL)
+Goal
+
+Answer:
+
+Can system send emails every 30 seconds?
+
+Does queue hold up?
+
+Are limits enforced?
+
+Test
+Scenario	Volume
+Slow	1 email / 30s
+Medium	10/min
+Burst	50/min
+Stress	200/min
+Validate
+
+Email sent time
+
+Queue delay
+
+Provider acceptance
+
+Duplicate prevention
+
+Red Flags
+
+🚨 Queue backlog keeps growing
+🚨 Emails sent out of order
+🚨 Same prospect emailed twice
+
+6️⃣ AI PERSONALISED EMAIL AT SCALE
+Goal
+
+Test real AI flow, not fake generation.
+
+Required Flow (MUST ALL PASS)
+
+Visit LinkedIn (profile/company)
+
+Research recent activity / role
+
+Map research → ICP context
+
+Generate personalised email
+
+Save prompt + output
+
+Send email
+
+Test Scenarios
+Count
+10
+50
+100
+300 (stress)
+Validate
+
+Personalization is UNIQUE
+
+LinkedIn signals actually used
+
+No repeated templates
+
+AI response time
+
+Red Flags
+
+🚨 Same email copy reused
+🚨 Research skipped silently
+🚨 AI timeout = blank email
+
+7️⃣ “ONE-TIME BLAST” PERSONALIZATION TEST
+Goal
+
+How many prospects can receive AI-personalized email at once
+
+Test
+
+20 prospects
+
+50 prospects
+
+100 prospects
+
+300 prospects
+
+Validate
+
+Queue health
+
+AI throughput
+
+Email delay
+
+Cost per email (important for pricing)
+
+Red Flags
+
+🚨 AI jobs dropped
+🚨 Emails sent without personalization
+🚨 Partial batch failure
+
+8️⃣ REPLY CAPTURE SLA TEST (30 SECONDS)
+Goal
+
+Does system capture replies fast enough for AI to react?
+
+Test
+
+Send test email
+
+Reply within:
+
+10s
+
+30s
+
+60s
+
+Validate
+
+Reply visible in UI
+
+Reply stored in DB
+
+Webhook reliability
+
+Red Flags
+
+🚨 Reply visible after minutes
+🚨 Missed replies
+🚨 Wrong prospect mapping
+
+9️⃣ AI AUTO-REPLY TEST
+Goal
+
+Is AI reply actually working under load?
+
+Test
+
+Enable auto-reply
+
+Trigger:
+
+10 replies
+
+50 replies
+
+100 replies
+
+Validate
+
+Context awareness
+
+No hallucinations
+
+Correct sequence step progression
+
+Red Flags
+
+🚨 AI replies off-topic
+🚨 Double replies
+🚨 Reply sent to wrong thread
+
+🔟 ANALYTICS LOAD CAPACITY
+Goal
+
+How much analytics data can be handled without slowing SDRs
+
+Test
+
+Load dashboard with:
+
+10k emails
+
+50k emails
+
+100k emails
+
+Change date filters rapidly
+
+Measure
+
+Query time
+
+CPU usage
+
+Cache hit ratio
+
+Red Flags
+
+🚨 Analytics blocks email sending
+🚨 p95 > 4s
+🚨 DB CPU spikes
+
+FINAL OUTPUT (WHAT YOU’LL KNOW)
+
+After this testing you’ll KNOW:
+✅ Real prospect limits
+✅ Safe AI personalization volume
+✅ True email throughput
+✅ Reply SLA reality
+✅ Analytics breaking point
+✅ Cost per AI action
+✅ What to put in pricing plans
