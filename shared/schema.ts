@@ -224,7 +224,10 @@ export const sequences = pgTable("sequences", {
   settings: jsonb("settings"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => ({
+  userIdStatusCreatedAtIdx: index("sequences_user_id_status_created_at_idx").on(table.userId, table.status, table.createdAt),
+  userIdCreatedAtIdx: index("sequences_user_id_created_at_idx").on(table.userId, table.createdAt),
+}));
 
 // Sequence steps table
 export const sequenceSteps = pgTable("sequence_steps", {
@@ -255,7 +258,10 @@ export const sequenceProspects = pgTable("sequence_prospects", {
   replies: integer("replies").default(0),
   opens: integer("opens").default(0),
   clicks: integer("clicks").default(0),
-});
+}, (table) => ({
+  sequenceIdProspectIdIdx: index("sequence_prospects_sequence_id_prospect_id_idx").on(table.sequenceId, table.prospectId),
+  sequenceIdStatusIdx: index("sequence_prospects_sequence_id_status_idx").on(table.sequenceId, table.status),
+}));
 
 // Emails table
 export const emails = pgTable("emails", {
@@ -745,6 +751,7 @@ export const emailQueue = pgTable("email_queue", {
   userStatusSentIdx: index("email_queue_user_status_sent_idx").on(table.userId, table.status, table.sentAt),
   statusScheduledIdx: index("email_queue_status_scheduled_idx").on(table.status, table.scheduledFor),
   mailboxIdIdx: index("email_queue_mailbox_id_idx").on(table.mailboxId),
+  sequenceIdStatusSentAtIdx: index("email_queue_sequence_id_status_sent_at_idx").on(table.sequenceId, table.status, table.sentAt),
 }));
 
 // Email Send Log table
