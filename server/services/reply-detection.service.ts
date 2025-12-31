@@ -73,12 +73,17 @@ export class ReplyDetectionService {
       for (const mailbox of mailboxes) {
         if (mailbox.provider === "smtp" || mailbox.provider === "gmail") {
           // KILL SWITCH CHECK: Skip mailboxes for paused tenants
+          // userId is required per schema, but check anyway for safety
           if (mailbox.userId) {
             const isPaused = await hardeningService.isAutomationPausedForUser(mailbox.userId);
             if (isPaused) {
               console.log(`⏸️  Skipping reply check for mailbox ${mailbox.email} - tenant automation paused`);
               continue;
             }
+          } else {
+            // Defensive: skip mailboxes without userId (should not happen per schema)
+            console.warn(`⚠️  Skipping mailbox ${mailbox.email} - no userId assigned (unexpected)`);
+            continue;
           }
           await this.checkMailboxReplies(mailbox);
         }
