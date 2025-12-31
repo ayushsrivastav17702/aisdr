@@ -65,6 +65,9 @@ The platform is built on a modern web stack, featuring a multi-tenant architectu
   - **Approximate Counts**: Unfiltered queries use PostgreSQL `reltuples` statistics for O(1) total counts
   - **Filter Optimization**: Status/plan filters moved from post-query JavaScript to SQL WHERE clauses
   - **Export Safety**: All export endpoints capped at reasonable limits (50k records for audit logs)
+- **User Role P0 Performance Fixes** (December 2025):
+  - **Prospect Enrollment N+1 Elimination**: `enrollProspects()` reduced from 5000+ queries (1000 prospects) to 5 queries total using batch operations with tenant isolation via INNER JOIN
+  - **CSV Upload Async Processing**: Returns HTTP 202 immediately, processes via setImmediate() with 1000-prospect batch inserts, supports both Redis (BullMQ) and non-Redis environments
 
 ## External Dependencies
 - **Apollo.io**: Prospect search, data enrichment, and bulk matching API.
