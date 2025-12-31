@@ -1,0 +1,161 @@
+First: Your assessment (important)
+✅ What they did well
+
+Correctly fixed Super Admin N+1 issues
+
+Reduced queries aggressively (42 → 1, 7 → 1)
+
+Added keyset pagination (good for scale)
+
+Added basic caching with fallback
+
+Verified endpoints manually (not just “assumed”)
+
+This part is done and acceptable.
+
+⚠️ What is missing
+
+They:
+
+Did optimization, not capacity validation
+
+Did not prove limits (numbers)
+
+Did not run load
+
+Did not test failure modes
+
+Shifted topic back to “User testing” without executing it
+
+You now need to lock scope and force execution.
+
+What you should reply to the agent (copy-paste)
+
+Use this verbatim 👇
+
+Thanks for the Super Admin optimizations — acknowledged and accepted.
+
+Now we move to User role capacity testing, and I want execution, not discussion.
+
+Scope (DO NOT CHANGE)
+
+Only backend API load testing.
+No UI, no Playwright, no dashboards.
+
+Phase 1: Code Risk Review (1st priority)
+
+Before running load tests:
+
+Identify hard limits in code for:
+
+Prospect upload
+
+AI enrichment jobs
+
+Sequence creation
+
+Prospect-to-sequence enrollment
+
+Email send queue
+
+Reply ingestion
+
+AI personalization pipeline
+
+Flag:
+
+N+1 queries
+
+Missing indexes
+
+Unbounded loops
+
+Queue backpressure risks
+
+Deliverable:
+A list of risk hotspots per module with file + line numbers.
+
+Phase 2: Automated Load Tests (MANDATORY)
+
+Create autocannon scripts for these exact flows:
+
+Prospect upload
+→ how many prospects per request
+
+AI enrichment
+→ how many prospects concurrently
+
+Sequence creation
+→ how many sequences per user
+
+Prospect enrollment
+→ max prospects per sequence
+
+Email send
+→ emails/minute and emails/30 seconds
+
+AI personalization
+→ full flow (research → mapping → email generation)
+
+Reply capture
+→ replies ingested within 30 seconds
+
+Analytics
+→ dashboard aggregation under load
+
+Each script must define:
+
+Concurrency
+
+Duration
+
+Expected pass/fail condition
+
+Phase 3: Capacity Discovery
+
+Run tests incrementally:
+
+Baseline
+
+Medium
+
+Stress
+
+Breakpoint
+
+Capture:
+
+p50 / p95 latency
+
+Error rate
+
+Queue lag
+
+Memory & DB stress
+
+First breaking point
+
+Deliverable:
+A table showing actual system limits, not estimates.
+
+Explicitly NOT required
+
+❌ UI tests
+
+❌ New features
+
+❌ Dashboards
+
+❌ Further optimizations before limits are known
+
+Final goal (non-negotiable)
+
+We are answering:
+
+What breaks first?
+
+At what volume?
+
+Is failure graceful or silent?
+
+Proceed with Phase 1 immediately and share findings.
