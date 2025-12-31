@@ -78,7 +78,8 @@ import {
   Filter,
   Calendar,
   Send,
-  UserPlus
+  UserPlus,
+  CreditCard
 } from "lucide-react";
 
 interface SuperAdmin {
@@ -159,7 +160,9 @@ export default function SuperAdminDashboard() {
   const [suspendDialogOpen, setSuspendDialogOpen] = useState(false);
   const [activateDialogOpen, setActivateDialogOpen] = useState(false);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [planDialogOpen, setPlanDialogOpen] = useState(false);
   const [suspendReason, setSuspendReason] = useState("");
+  const [selectedPlan, setSelectedPlan] = useState<string>("");
   const [selectedTenant, setSelectedTenant] = useState<TenantWithSettings | null>(null);
   const [selectedTenantIds, setSelectedTenantIds] = useState<Set<string>>(new Set());
   const [bulkMessageDialogOpen, setBulkMessageDialogOpen] = useState(false);
@@ -238,6 +241,25 @@ export default function SuperAdminDashboard() {
     },
     onError: (error: any) => {
       toast({ title: "Failed to delete tenant", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const updatePlanMutation = useMutation({
+    mutationFn: ({ id, plan }: { id: string; plan: string }) =>
+      superAdminFetch(`/api/super-admin/tenants/${id}/plan`, {
+        method: "PATCH",
+        body: JSON.stringify({ plan }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/tenants"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/stats"] });
+      setPlanDialogOpen(false);
+      setSelectedTenant(null);
+      setSelectedPlan("");
+      toast({ title: "Tenant plan updated successfully" });
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed to update plan", description: error.message, variant: "destructive" });
     },
   });
 
@@ -700,6 +722,17 @@ export default function SuperAdminDashboard() {
                                 <UserCog className="h-4 w-4 mr-2" />
                                 Impersonate Manager
                               </DropdownMenuItem>
+                              <DropdownMenuItem 
+                                onClick={() => {
+                                  setSelectedTenant(tenant);
+                                  setSelectedPlan(tenant.settings?.plan || "trial");
+                                  setPlanDialogOpen(true);
+                                }}
+                                data-testid={`button-update-plan-${tenant.organization.id}`}
+                              >
+                                <CreditCard className="h-4 w-4 mr-2" />
+                                Update Plan
+                              </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               {tenant.settings?.tenantStatus === "suspended" ? (
                                 <DropdownMenuItem 
@@ -965,6 +998,56 @@ export default function SuperAdminDashboard() {
               data-testid="button-confirm-delete"
             >
               {deleteTenantMutation.isPending ? "Deleting..." : "Delete Permanently"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Update Plan Dialog */}
+      <Dialog open={planDialogOpen} onOpenChange={setPlanDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <CreditCard className="h-5 w-5" />
+              Update Tenant Plan
+            </DialogTitle>
+            <DialogDescription>
+              Change the subscription plan for <strong>{selectedTenant?.organization.name}</strong>.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Select Plan</Label>
+              <Select value={selectedPlan} onValueChange={setSelectedPlan}>
+                <SelectTrigger data-testid="select-new-plan">
+                  <SelectValue placeholder="Select a plan" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="trial">Trial (14 days)</SelectItem>
+                  <SelectItem value="starter">Starter</SelectItem>
+                  <SelectItem value="growth">Growth</SelectItem>
+                  <SelectItem value="enterprise">Enterprise</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPlanDialogOpen(false)} data-testid="button-cancel-plan">
+              Cancel
+            </Button>
+            <Button 
+              onClick={() => {
+                if (selectedTenant && selectedPlan) {
+                  updatePlanMutation.mutate({ 
+                    id: selectedTenant.organization.id, 
+                    plan: selectedPlan 
+                  });
+                }
+              }}
+              disabled={updatePlanMutation.isPending || !selectedPlan}
+              data-testid="button-confirm-plan"
+            >
+              {updatePlanMutation.isPending ? "Updating..." : "Update Plan"}
             </Button>
           </DialogFooter>
         </DialogContent>
