@@ -637,7 +637,8 @@ export class DatabaseStorage implements IStorage {
 
   // Sequences
   async getSequences(ctx: RequestContext, filters: { limit?: number; offset?: number; status?: string } = {}): Promise<{ sequences: Sequence[]; total: number }> {
-    const { limit = 25, offset = 0, status } = filters;
+    const { limit: requestedLimit = 25, offset = 0, status } = filters;
+    const limit = Math.min(Math.max(1, requestedLimit), 50); // Clamp between 1 and 50
     
     const conditions: SQL[] = [];
     if (status) {
