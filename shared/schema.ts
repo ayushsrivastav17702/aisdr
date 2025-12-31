@@ -731,6 +731,7 @@ export const emailQueue = pgTable("email_queue", {
   
   attempts: integer("attempts").default(0),
   maxAttempts: integer("max_attempts").default(3),
+  deferralAttempts: integer("deferral_attempts").default(0), // Separate counter for pause/limit deferrals
   lastError: text("last_error"),
   
   // Email Content (denormalized for queue processing)

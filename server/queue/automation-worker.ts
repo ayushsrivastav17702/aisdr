@@ -29,15 +29,15 @@ async function processAutomationJob(job: Job<AutomationJobData>): Promise<void> 
 
   console.log(`[Worker] Processing automation job: ${automationRunId} for user: ${userId}`);
   
-  // KILL SWITCH CHECK: Skip if tenant automation is paused
-  const isPaused = await hardeningService.isAutomationPausedForUser(userId);
-  if (isPaused) {
-    console.log(`[Worker] Automation paused for user ${userId}, skipping job ${automationRunId}`);
+  // KILL SWITCH CHECK: Full cascade pause check (user → manager → tenant)
+  const { paused, reason, pauseLevel } = await hardeningService.isUserFullyPaused(userId);
+  if (paused) {
+    console.log(`[Worker] Automation paused at ${pauseLevel} level for user ${userId}, skipping job ${automationRunId}: ${reason}`);
     // Update status to show it was skipped due to pause
     await db.update(automationRuns)
       .set({ 
         status: 'cancelled', 
-        errors: 'Automation paused by administrator',
+        errors: `Automation paused at ${pauseLevel} level: ${reason || 'Administrator action'}`,
       })
       .where(and(eq(automationRuns.id, automationRunId), eq(automationRuns.userId, userId)));
     return;
