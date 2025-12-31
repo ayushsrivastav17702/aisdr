@@ -1,0 +1,356 @@
+Context
+You are working on a multi-tenant AI SDR platform with three roles:
+
+Super Admin (platform owner)
+
+Manager (company admin who creates SDR users)
+
+User (SDR) (executes campaigns, AI personalization, email sending)
+
+The system has passed basic performance testing, but critical RBAC, scaling, abuse, and background-job risks remain.
+
+Your task is to systematically identify, fix, and harden all risks listed below without adding new infrastructure (no Redis, no Kafka, no queues outside DB).
+Use Postgres + existing Node/TypeScript backend only.
+
+🎯 OBJECTIVES (DO NOT SKIP)
+
+Enforce strict RBAC at backend level
+
+Prevent cross-tenant and cross-manager data leaks
+
+Add hard limits + throttling for cost and abuse control
+
+Make write paths async & idempotent
+
+Improve background job safety & observability
+
+Preserve authentication integrity (global email uniqueness)
+
+🧱 GLOBAL NON-NEGOTIABLE RULES
+
+Every query MUST include tenant_id
+
+Manager queries MUST include manager_id
+
+Never trust frontend role checks
+
+Fail safely (deny access by default)
+
+All heavy writes must be async or batched
+
+Idempotency for all retryable actions
+
+1️⃣ SUPER ADMIN — RISKS & FIXES
+❌ Risks
+
+No tenant kill-switch
+
+No per-tenant rate limiting
+
+No visibility into background jobs
+
+No proof of tenant isolation
+
+Unlimited AI & email cost exposure
+
+✅ Required Fixes
+A. Tenant Kill Switch
+
+Implement:
+
+automation_status = active | paused
+
+Pause only:
+
+email sending
+
+AI enrichment
+
+sequence execution
+
+Do NOT disable login or read access.
+
+B. Tenant-Level Throttling (DB-Backed)
+
+Add limits per tenant:
+
+emails_per_minute
+
+ai_calls_per_minute
+
+enrollments_per_hour
+
+Store counters in DB with rolling windows.
+
+C. Background Job Visibility
+
+Create admin-only endpoints:
+
+queue depth
+
+oldest pending job
+
+failed jobs (last 24h)
+
+All job tables must expose:
+
+status
+
+retries
+
+last_error
+
+D. Tenant Isolation Proof
+
+Create automated checks that:
+
+Attempt cross-tenant access (must fail)
+
+Validate every admin endpoint requires tenant_id
+
+Add test utilities for this.
+
+2️⃣ MANAGER — RISKS & FIXES (🔥 P0)
+❌ Risks
+
+Manager behaves like tenant admin
+
+Data not scoped to manager-created users
+
+Analytics polluted with tenant-wide data
+
+User lifecycle ownership unclear
+
+No quotas per manager
+
+✅ Required Fixes
+A. Manager Ownership Model
+
+Rules:
+
+Manager can ONLY see users where created_by = manager_id
+
+Users belong to exactly ONE manager
+
+Campaigns, prospects, sequences inherit manager_id
+
+Enforce at DB + API level.
+
+B. Mandatory Query Scoping
+
+ALL manager queries MUST include:
+
+WHERE tenant_id = $tenantId
+AND manager_id = $managerId
+
+
+No exceptions.
+Reject requests if manager_id missing.
+
+C. User Creation Logic (Correct Model)
+
+If email exists:
+
+Same tenant, no manager → assign
+
+Same tenant, other manager → block
+
+Other tenant → block
+
+DO NOT change global email uniqueness.
+
+D. Manager Quotas
+
+Enforce:
+
+max_users_per_manager
+
+max_prospects_per_manager
+
+max_sequences_per_manager
+
+Block writes if exceeded.
+
+E. Manager Analytics Rewrite
+
+All metrics must aggregate ONLY:
+
+manager → users → activity
+
+
+No tenant-wide rollups.
+
+3️⃣ USER (SDR) — RISKS & FIXES
+❌ Risks
+
+Unlimited prospect uploads
+
+Sync processing blocks system
+
+N+1 queries on enrollment
+
+AI calls unbounded
+
+Sequential email sending
+
+Silent failures confuse users
+
+✅ Required Fixes
+A. Hard Limits (Must Enforce)
+Action	Limit
+Prospect upload	max rows + async
+Enrollment	batch only
+Sequences	max active
+AI calls	per-minute
+Emails	per-minute
+
+Reject requests beyond limits with clear errors.
+
+B. Async-First Write Design
+
+Convert to async:
+
+Prospect upload
+
+AI enrichment
+
+Enrollment
+
+Return:
+
+job_id
+
+progress endpoint
+
+partial failure reporting
+
+C. Idempotency
+
+Add idempotency keys for:
+
+enrollment
+
+email send
+
+AI personalization
+
+Prevent duplicate execution on retries.
+
+D. AI Pipeline Transparency
+
+Expose states:
+
+researching
+
+generating
+
+fallback used
+
+failed
+
+Store AI steps per prospect.
+
+4️⃣ BACKGROUND JOB SYSTEM — RISKS & FIXES
+❌ Risks
+
+Sequential processing
+
+No retry caps
+
+No backpressure
+
+No dead-letter handling
+
+✅ Required Fixes
+A. Controlled Parallelism
+
+Allow limited concurrency:
+
+email workers
+
+AI workers
+
+reply ingestion
+
+Use DB locking (FOR UPDATE SKIP LOCKED).
+
+B. Retry Policy
+
+Max retries (e.g. 3)
+
+Exponential backoff
+
+Persist failure reason
+
+C. Backpressure
+
+If queue depth > threshold:
+
+slow down intake
+
+reject new jobs
+
+5️⃣ CROSS-CUTTING REQUIREMENTS
+A. Pagination Everywhere
+
+Clamp:
+
+limit min 1, max 50
+
+no OFFSET on large tables
+
+B. Payload Control
+
+Avoid:
+
+SELECT *
+
+large JSON blobs
+
+Return minimal fields.
+
+C. Cost Guardrails
+
+Track per tenant:
+
+AI cost/day
+
+email count/day
+
+Auto-disable automation if exceeded.
+
+🧪 VALIDATION REQUIREMENTS
+
+After fixes:
+
+Write RBAC tests for all roles
+
+Prove no cross-tenant access
+
+Re-run load tests
+
+Confirm graceful failure under overload
+
+🚫 CONSTRAINTS
+
+Do NOT add Redis, Kafka, or new infra
+
+Use existing DB + Node runtime
+
+Do NOT change auth model
+
+Do NOT break existing APIs without migration
+
+✅ FINAL OUTPUT EXPECTED FROM YOU
+
+Updated schema (indexes, constraints)
+
+Hardened RBAC middleware
+
+Scoped queries everywhere
+
+Async job handling improvements
+
+Admin visibility endpoints
+
+Clear inline comments explaining decisions
