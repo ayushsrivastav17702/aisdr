@@ -20,6 +20,9 @@ import { getEffectiveUserId } from '../storage';
 
 const router = Router();
 
+// Export safety limits to prevent excessive memory usage
+const EXPORT_LIMIT = 50000; // Max records per export
+
 // Export prospects as CSV
 router.get('/api/export/prospects/csv', authenticate, forbidManager, async (req, res) => {
   try {
@@ -32,7 +35,8 @@ router.get('/api/export/prospects/csv', authenticate, forbidManager, async (req,
     const userProspects = await db
       .select()
       .from(prospects)
-      .where(eq(prospects.userId, effectiveUserId));
+      .where(eq(prospects.userId, effectiveUserId))
+      .limit(EXPORT_LIMIT);
 
     stringify(userProspects, {
       header: true,
@@ -71,7 +75,8 @@ router.get('/api/export/prospects/json', authenticate, forbidManager, async (req
     const userProspects = await db
       .select()
       .from(prospects)
-      .where(eq(prospects.userId, effectiveUserId));
+      .where(eq(prospects.userId, effectiveUserId))
+      .limit(EXPORT_LIMIT);
 
     res.setHeader('Content-Type', 'application/json');
     res.setHeader('Content-Disposition', 'attachment; filename="prospects.json"');
