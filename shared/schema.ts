@@ -3706,3 +3706,19 @@ export const insertUsageCounterSchema = createInsertSchema(usageCounters).omit({
   createdAt: true,
   updatedAt: true,
 });
+
+// =============================================
+// OBSERVABILITY EVENTS (P1 Metrics Collection)
+// =============================================
+
+export const observabilityEvents = pgTable("observability_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  eventType: varchar("event_type", { length: 50 }).notNull(),
+  eventData: jsonb("event_data").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  typeCreatedIdx: index("observability_events_type_created_idx").on(table.eventType, table.createdAt),
+}));
+
+export type ObservabilityEvent = typeof observabilityEvents.$inferSelect;
+export type InsertObservabilityEvent = typeof observabilityEvents.$inferInsert;

@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import Anthropic from '@anthropic-ai/sdk';
+import { observability } from './observability.service';
 
 // Use GPT-4o as the default model for optimal performance and availability
 const DEFAULT_OPENAI_MODEL = "gpt-4o";
@@ -98,6 +99,30 @@ class AIService {
       }
       throw error;
     }
+  }
+
+  private trackAIUsage(
+    provider: 'openai' | 'anthropic' | 'openrouter' | 'perplexity',
+    model: string,
+    usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | undefined,
+    operation: string,
+    organizationId?: string
+  ): void {
+    if (!usage) return;
+    
+    const promptTokens = usage.prompt_tokens || 0;
+    const completionTokens = usage.completion_tokens || 0;
+    const totalTokens = usage.total_tokens || promptTokens + completionTokens;
+    
+    observability.emitAICostEvent({
+      organizationId: organizationId || 'unknown',
+      provider,
+      model,
+      promptTokens,
+      completionTokens,
+      totalTokens,
+      operation,
+    });
   }
 
   async parseNaturalLanguageQuery(query: string): Promise<{
@@ -298,6 +323,9 @@ class AIService {
       })
     );
 
+    // Track AI usage for observability
+    this.trackAIUsage('openai', DEFAULT_OPENAI_MODEL, response.usage, 'parseNaturalLanguageQuery');
+
     const result = JSON.parse(response.choices[0].message.content || '{}');
     return {
       aiFilters: result.aiFilters || {},
@@ -369,6 +397,9 @@ class AIService {
 
     const response = await this.openRouter.chat.completions.create(requestParams);
 
+    // Track AI usage for observability
+    this.trackAIUsage('openrouter', DEFAULT_OPENROUTER_MODEL, response.usage, 'parseNaturalLanguageQuery');
+
     const rawContent = response.choices[0].message.content || '{}';
     
     // Handle potential markdown code blocks for models that don't support JSON mode
@@ -433,6 +464,12 @@ class AIService {
         { role: "user", content: query }
       ],
     });
+
+    // Track AI usage for observability (Anthropic uses input_tokens/output_tokens)
+    this.trackAIUsage('anthropic', DEFAULT_ANTHROPIC_MODEL, {
+      prompt_tokens: response.usage?.input_tokens,
+      completion_tokens: response.usage?.output_tokens,
+    }, 'parseNaturalLanguageQuery');
 
     const textContent = response.content.find(block => block.type === 'text');
     if (!textContent || textContent.type !== 'text') {

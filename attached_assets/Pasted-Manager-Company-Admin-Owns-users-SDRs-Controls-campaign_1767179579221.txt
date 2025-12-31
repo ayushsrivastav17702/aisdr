@@ -1,0 +1,227 @@
+Manager = Company Admin
+
+Owns users (SDRs)
+
+Controls campaigns, sequences, quotas
+
+First line of abuse, cost, and performance risk
+
+Most dangerous role after Super Admin (because actions scale fast)
+
+What Is ALREADY SAFE (Assumed / Verified)
+
+Based on your platform maturity:
+
+✅ Manager actions are tenant-scoped
+
+✅ Manager cannot bypass tenant pause
+
+✅ Manager cannot exceed tenant-level unit quotas
+
+✅ RBAC blocks Super Admin-only controls
+
+This means Manager cannot break the platform globally — good.
+
+🚨 P0 MANAGER RISKS (Must Be Closed Before Scale)
+
+These can stop platform performance or cost control.
+
+1️⃣ Campaign Over-Creation (Silent Load Multiplier)
+
+Risk
+
+Manager can create many campaigns with small limits
+
+Total load becomes unbounded
+
+Fix (Backend)
+
+Hard cap:
+
+Active campaigns per tenant
+
+Active sequences per manager
+
+2️⃣ SDR Explosion Risk
+
+Risk
+
+Manager adds too many users
+
+Each SDR sends small volumes → total abuse
+
+Fix
+
+Enforce:
+
+Max users per plan
+
+Per-user quota auto-derived from tenant cap
+
+3️⃣ Manager Can Starve Queue
+
+Risk
+
+One manager floods email queue
+
+Other managers/SDRs starved
+
+Fix
+
+Queue partitioning:
+
+Tenant → Manager → User
+
+Weighted fair scheduling
+
+4️⃣ No Manager-Level Kill Switch
+
+Risk
+
+One rogue manager forces Super Admin intervention
+
+Fix
+
+Manager-level pause:
+
+Pause all campaigns under that manager
+
+Does NOT pause tenant
+
+5️⃣ No Blast Radius Isolation
+
+Risk
+
+Bad data upload (CSV / API) breaks processing
+
+Fix
+
+Validate at manager boundary:
+
+Prospect count limits
+
+Dedup before enqueue
+
+⚠️ P1 MANAGER RISKS (Document, Don’t Implement Yet)
+
+These are scaling optimizations, not blockers.
+
+6️⃣ No Spend Visibility for Managers
+
+Risk
+
+Manager unaware of AI/email usage
+
+Future
+
+Manager usage dashboard
+
+Cost estimation (not billing)
+
+7️⃣ No Campaign Health Scoring
+
+Risk
+
+Bad campaigns keep running
+
+Future
+
+Soft health signals:
+
+Bounce rate
+
+Reply rate
+
+AI error rate
+
+8️⃣ No Auto-Throttle at Manager Level
+
+Risk
+
+One manager hits tenant cap repeatedly
+
+Future
+
+Soft throttles before tenant pause
+
+9️⃣ No Abuse Alerts
+
+Risk
+
+Ops team finds issues too late
+
+Future
+
+Alerts when:
+
+Sudden volume spikes
+
+Queue backlog per manager
+
+🔟 No Change Audit Trail
+
+Risk
+
+Cannot trace who caused issue
+
+Future
+
+Manager-level activity logs:
+
+Campaign created
+
+Limits changed
+
+Bulk uploads
+
+✅ WHAT TO DO NOW (CLEAR INSTRUCTIONS)
+✅ Implement Now (P0 Only)
+
+Ask agent to implement:
+
+Manager Caps
+
+Max active campaigns
+
+Max sequences
+
+Max users
+
+Manager Kill Switch
+
+Pause all assets under manager
+
+Queue Fairness
+
+Prevent single-manager starvation
+
+Pre-Enqueue Validation
+
+Prospect & batch limits
+
+📝 Document Only (P1)
+
+Add to replit.md:
+
+Manager cost visibility
+
+Auto-throttle rules
+
+Health scoring logic
+
+Alert thresholds
+
+Exact Instruction You Can Give Agent
+
+Proceed with P0 Manager safeguards only:
+
+Manager-level caps
+
+Manager kill switch
+
+Queue fairness isolation
+
+Pre-enqueue validation
+
+Document all P1 items in replit.md.
+Do not implement cost-based throttling yet.

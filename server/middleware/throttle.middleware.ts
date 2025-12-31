@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import { hardeningService } from '../services/hardening.service';
+import { observability } from '../services/observability.service';
 
 declare global {
   namespace Express {
@@ -57,6 +58,15 @@ export function throttleOperation(counterType: 'emails' | 'ai_calls' | 'enrollme
       req.throttleInfo = { allowed, currentCount, limit };
       
       if (!allowed) {
+        // Emit throttle violation event for observability
+        observability.emitThrottleViolation({
+          organizationId,
+          userId,
+          counterType,
+          currentCount,
+          limit,
+        });
+        
         const periodName = ['enrollments', 'prospects'].includes(counterType) ? 'hour' : 'minute';
         return res.status(429).json({
           error: 'Rate limit exceeded',
