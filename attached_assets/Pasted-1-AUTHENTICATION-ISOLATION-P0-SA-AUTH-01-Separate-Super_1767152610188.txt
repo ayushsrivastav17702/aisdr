@@ -1,0 +1,317 @@
+1. AUTHENTICATION & ISOLATION (P0)
+SA-AUTH-01: Separate Super Admin login
+
+Steps
+
+Open /super-admin/login
+
+Login with Super Admin credentials
+
+Expected
+
+Login succeeds
+
+Separate JWT/session from tenant auth
+
+role = super_admin
+
+Cannot access /app/* routes
+
+SA-AUTH-02: Tenant login cannot access Super Admin
+
+Steps
+
+Login as Admin/Manager
+
+Try /super-admin
+
+Expected
+
+❌ 403 Forbidden or redirect to tenant app
+
+SA-AUTH-03: Session isolation
+
+Steps
+
+Login as Super Admin
+
+Open tenant app in new tab
+
+Expected
+
+Requires tenant login again
+
+No session bleed
+
+🏢 2. TENANT DASHBOARD (P0)
+SA-TENANT-01: Tenant list loads
+
+Steps
+
+Open Super Admin Dashboard
+
+Expected
+
+List of tenants
+
+Correct counts (active / trial / suspended)
+
+No tenant data (campaigns, users)
+
+SA-TENANT-02: Tenant filters
+
+Expected
+
+Filter by plan / status works
+
+No missing or duplicate tenants
+
+➕ 3. TENANT PROVISIONING (P0)
+SA-PROV-01: Create tenant
+
+Steps
+
+Create new tenant
+
+Assign plan + limits
+
+Expected
+
+Tenant created
+
+Manager auto-created
+
+Tenant appears in list
+
+SA-PROV-02: Duplicate tenant protection
+
+Steps
+
+Try creating tenant with same domain/org name
+
+Expected
+
+❌ Validation error
+
+No duplicate tenant
+
+⚙️ 4. TENANT CONFIGURATION (P0)
+SA-CONFIG-01: Update tenant plan
+
+Steps
+
+Change plan / seat count
+
+Expected
+
+Updated immediately
+
+Reflected in tenant app
+
+SA-CONFIG-02: Suspend tenant
+
+Steps
+
+Suspend tenant
+
+Expected
+
+Tenant users cannot login
+
+Super Admin still can view
+
+SA-CONFIG-03: Resume tenant
+
+Expected
+
+Tenant access restored
+
+No data loss
+
+👤 5. MANAGER CREATION & ADMINISTRATION (P0)
+SA-MGR-01: Create manager
+
+Steps
+
+Create Manager under tenant
+
+Expected
+
+Manager user created
+
+Linked to tenant
+
+Correct role
+
+SA-MGR-02: Reset manager password
+
+Expected
+
+Password reset works
+
+Manager can login
+
+SA-MGR-03: Disable manager
+
+Expected
+
+Manager blocked
+
+Manager’s users remain intact
+
+🕵️ 6. IMPERSONATION (P0)
+SA-IMP-01: Impersonate manager
+
+Steps
+
+Click “Impersonate”
+
+Expected
+
+Acts as Manager
+
+actingAs = managerId
+
+Original role preserved internally
+
+SA-IMP-02: Exit impersonation
+
+Expected
+
+Returns to Super Admin
+
+Session restored
+
+SA-IMP-03: Audit log entry
+
+Expected
+
+Impersonation logged
+
+Includes actor + target
+
+🧾 7. AUDIT LOGS (P0)
+SA-AUDIT-01: View audit logs
+
+Expected
+
+Tenant provisioning events
+
+Impersonation
+
+Status changes
+
+SA-AUDIT-02: Filtering
+
+Expected
+
+Filter by tenant, action, date
+
+🔒 8. TENANT ISOLATION TESTS (P0)
+SA-ISO-01: Cross-tenant isolation
+
+Steps
+
+Open Tenant A detail
+
+Switch to Tenant B
+
+Expected
+
+No data overlap
+
+Isolation test passes
+
+SA-ISO-02: Forced API access
+
+Steps
+
+Call tenant campaign API from Super Admin token
+
+Expected
+
+❌ 403 Forbidden
+
+📊 9. PLATFORM STATS (P1)
+SA-STATS-01: Platform metrics
+
+Expected
+
+Total tenants
+
+Total users
+
+No campaign details
+
+SA-STATS-02: Accuracy
+
+Expected
+
+Matches DB totals
+
+🚫 10. CAMPAIGN & SDR ACCESS BLOCK (P0)
+SA-BLOCK-01: No campaign UI
+
+Expected
+
+No Campaigns tab
+
+No Prospecting tab
+
+SA-BLOCK-02: API enforcement
+
+Steps
+
+Call /api/sequences
+
+Expected
+
+❌ 403 Forbidden
+
+🧠 11. RBAC & PERMISSION ENFORCEMENT (P0)
+SA-RBAC-01: Role enforcement
+
+Expected
+
+All Super Admin routes protected by authenticateSuperAdmin
+
+SA-RBAC-02: Role downgrade attack
+
+Steps
+
+Modify JWT role manually
+
+Expected
+
+Request rejected
+
+🧪 12. REGRESSION CHECKS (P1)
+SA-REG-01: Manager/Admin unaffected
+
+Expected
+
+Tenant app still works normally
+
+SA-REG-02: Cache separation
+
+Expected
+
+No tenant data cached across admins
+
+📌 ACCEPTANCE CRITERIA
+
+Super Admin is PASS only if:
+
+❌ Cannot access tenant execution paths
+
+❌ Tenant users cannot access Super Admin
+
+✅ Tenant provisioning & control works
+
+✅ Impersonation logged & reversible
+
+✅ Strong isolation enforced at API level
+
+🧾 WHAT TO SEND TO REPLIT (COPY-PASTE)
+
+“Please execute the Super Admin QA checklist focusing on tenant isolation, impersonation, audit logs, and RBAC enforcement. All Super Admin access must remain platform-only with zero tenant execution access.”
