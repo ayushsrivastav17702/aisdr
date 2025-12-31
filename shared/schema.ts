@@ -259,7 +259,8 @@ export const sequenceProspects = pgTable("sequence_prospects", {
   opens: integer("opens").default(0),
   clicks: integer("clicks").default(0),
 }, (table) => ({
-  sequenceIdProspectIdIdx: index("sequence_prospects_sequence_id_prospect_id_idx").on(table.sequenceId, table.prospectId),
+  // Unique constraint to prevent duplicate enrollments (prospectId + sequenceId deduplication)
+  uniqueSequenceProspect: uniqueIndex("sequence_prospects_unique_idx").on(table.sequenceId, table.prospectId),
   sequenceIdStatusIdx: index("sequence_prospects_sequence_id_status_idx").on(table.sequenceId, table.status),
 }));
 
@@ -3586,6 +3587,46 @@ export const managerQuotas = pgTable("manager_quotas", {
   orgIdIdx: index("manager_quotas_org_id_idx").on(table.organizationId),
 }));
 
+// User Controls - Per-user resource limits and kill switch (SDR level)
+export const userControls = pgTable("user_controls", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  organizationId: varchar("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  managerId: varchar("manager_id").references(() => users.id, { onDelete: "set null" }),
+  
+  // Daily limits (hard stop enforcement)
+  maxEmailsPerDay: integer("max_emails_per_day").default(200),
+  maxActiveCampaigns: integer("max_active_campaigns").default(3),
+  maxConcurrentEnrollments: integer("max_concurrent_enrollments").default(5),
+  maxProspectsPerSequence: integer("max_prospects_per_sequence").default(500),
+  maxPersonalizationTokens: integer("max_personalization_tokens").default(1000),
+  maxRetriesPerCampaign: integer("max_retries_per_campaign").default(3),
+  
+  // Current usage (denormalized for fast checks, reset daily)
+  emailsSentToday: integer("emails_sent_today").default(0),
+  activeCampaigns: integer("active_campaigns").default(0),
+  activeEnrollments: integer("active_enrollments").default(0),
+  failedRetriesCount: integer("failed_retries_count").default(0),
+  lastResetDate: date("last_reset_date"),
+  
+  // User-level kill switch
+  isPaused: boolean("is_paused").default(false),
+  pausedAt: timestamp("paused_at"),
+  pausedBy: varchar("paused_by"),
+  pausedReason: text("paused_reason"),
+  
+  // Auto-pause triggers
+  autoPausedOnFailures: boolean("auto_paused_on_failures").default(false),
+  consecutiveFailures: integer("consecutive_failures").default(0),
+  
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  userIdIdx: uniqueIndex("user_controls_user_id_idx").on(table.userId),
+  orgIdIdx: index("user_controls_org_id_idx").on(table.organizationId),
+  managerIdIdx: index("user_controls_manager_id_idx").on(table.managerId),
+}));
+
 // Idempotency Keys - Prevent duplicate operations on retries
 export const idempotencyKeys = pgTable("idempotency_keys", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -3675,6 +3716,8 @@ export type ThrottleWindow = typeof throttleWindows.$inferSelect;
 export type InsertThrottleWindow = typeof throttleWindows.$inferInsert;
 export type ManagerQuota = typeof managerQuotas.$inferSelect;
 export type InsertManagerQuota = typeof managerQuotas.$inferInsert;
+export type UserControl = typeof userControls.$inferSelect;
+export type InsertUserControl = typeof userControls.$inferInsert;
 export type IdempotencyKey = typeof idempotencyKeys.$inferSelect;
 export type InsertIdempotencyKey = typeof idempotencyKeys.$inferInsert;
 export type BackgroundJobAudit = typeof backgroundJobAudit.$inferSelect;

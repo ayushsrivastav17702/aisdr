@@ -5,6 +5,7 @@ import { emailQueueService } from "./services/email-queue.service";
 import { insertEmailMailboxSchema } from "@shared/schema";
 import { z } from "zod";
 import { authenticate, forbidManager, blockSuperAdminFromSDR } from "./middleware/auth.middleware";
+import { checkUserPause, checkDailyEmailLimit } from "./middleware/throttle.middleware";
 
 const router = Router();
 
@@ -328,7 +329,7 @@ router.get("/email-queue/stats", authenticate, blockSuperAdminFromSDR, async (re
   }
 });
 
-router.post("/email-queue/process", authenticate, forbidManager, async (req, res) => {
+router.post("/email-queue/process", authenticate, forbidManager, checkUserPause, checkDailyEmailLimit, async (req, res) => {
   try {
     if (!req.userContext?.userId) {
       return res.status(401).json({ error: "Authentication required" });

@@ -3,6 +3,7 @@ import {
   tenantControls,
   throttleWindows,
   managerQuotas,
+  userControls,
   backgroundJobAudit,
   usageCounters,
   idempotencyKeys,
@@ -11,6 +12,7 @@ import {
   type TenantControl,
   type ThrottleWindow,
   type ManagerQuota,
+  type UserControl,
   type BackgroundJobAudit,
   type UsageCounter,
 } from '@shared/schema';
@@ -476,6 +478,314 @@ class HardeningService {
         updatedAt: new Date(),
       })
       .where(eq(managerQuotas.managerId, managerId));
+  }
+
+  // =============================================
+  // USER CONTROLS (SDR Level)
+  // =============================================
+  
+  async getUserControls(userId: string): Promise<UserControl | null> {
+    const today = new Date().toISOString().split('T')[0];
+    
+    const [controls] = await db
+      .select()
+      .from(userControls)
+      .where(eq(userControls.userId, userId))
+      .limit(1);
+    
+    if (!controls) return null;
+    
+    // Check if we need to reset daily counters
+    if (controls.lastResetDate !== today) {
+      const [updated] = await db
+        .update(userControls)
+        .set({
+          emailsSentToday: 0,
+          failedRetriesCount: 0,
+          lastResetDate: today,
+          updatedAt: new Date(),
+        })
+        .where(eq(userControls.userId, userId))
+        .returning();
+      return updated;
+    }
+    
+    return controls;
+  }
+  
+  async createOrUpdateUserControls(
+    userId: string,
+    organizationId: string,
+    managerId: string | null,
+    data: Partial<UserControl>
+  ): Promise<UserControl> {
+    const existing = await this.getUserControls(userId);
+    
+    if (existing) {
+      const [updated] = await db
+        .update(userControls)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(userControls.userId, userId))
+        .returning();
+      return updated;
+    }
+    
+    const [created] = await db
+      .insert(userControls)
+      .values({ 
+        userId, 
+        organizationId, 
+        managerId,
+        lastResetDate: new Date().toISOString().split('T')[0],
+        ...data 
+      })
+      .returning();
+    return created;
+  }
+  
+  async pauseUser(
+    userId: string,
+    pausedBy: string,
+    reason: string
+  ): Promise<UserControl | null> {
+    const [updated] = await db
+      .update(userControls)
+      .set({
+        isPaused: true,
+        pausedAt: new Date(),
+        pausedBy,
+        pausedReason: reason,
+        updatedAt: new Date(),
+      })
+      .where(eq(userControls.userId, userId))
+      .returning();
+    
+    return updated || null;
+  }
+  
+  async resumeUser(userId: string): Promise<UserControl | null> {
+    const [updated] = await db
+      .update(userControls)
+      .set({
+        isPaused: false,
+        pausedAt: null,
+        pausedBy: null,
+        pausedReason: null,
+        autoPausedOnFailures: false,
+        consecutiveFailures: 0,
+        updatedAt: new Date(),
+      })
+      .where(eq(userControls.userId, userId))
+      .returning();
+    
+    return updated || null;
+  }
+  
+  /**
+   * Check full pause status: user pause + manager pause + tenant pause
+   */
+  async isUserFullyPaused(userId: string): Promise<{ 
+    paused: boolean; 
+    reason?: string;
+    pauseLevel?: 'user' | 'manager' | 'tenant';
+  }> {
+    // Check user-level pause
+    const userCtrl = await this.getUserControls(userId);
+    if (userCtrl?.isPaused) {
+      return { 
+        paused: true, 
+        reason: userCtrl.pausedReason || 'User account paused',
+        pauseLevel: 'user',
+      };
+    }
+    
+    // Check manager-level pause
+    const { paused: managerPaused, reason: managerReason } = await this.isUserManagerPaused(userId);
+    if (managerPaused) {
+      return { 
+        paused: true, 
+        reason: managerReason || 'Manager paused',
+        pauseLevel: 'manager',
+      };
+    }
+    
+    // Check tenant-level pause
+    const orgId = await this.getOrganizationIdForUser(userId);
+    if (orgId) {
+      const tenantPaused = await this.isAutomationPaused(orgId);
+      if (tenantPaused) {
+        return { 
+          paused: true, 
+          reason: 'Organization automation paused',
+          pauseLevel: 'tenant',
+        };
+      }
+    }
+    
+    return { paused: false };
+  }
+  
+  /**
+   * Check if user can send email (daily limit) with atomic reset
+   */
+  async canUserSendEmail(userId: string): Promise<{ 
+    allowed: boolean; 
+    current: number; 
+    limit: number; 
+    reason?: string;
+  }> {
+    const today = new Date().toISOString().split('T')[0];
+    
+    // Atomic upsert with daily reset
+    const [controls] = await db
+      .insert(userControls)
+      .values({
+        userId,
+        lastResetDate: today,
+        emailsSentToday: 0,
+      })
+      .onConflictDoUpdate({
+        target: userControls.userId,
+        set: {
+          emailsSentToday: sql`CASE WHEN ${userControls.lastResetDate} < ${today} THEN 0 ELSE ${userControls.emailsSentToday} END`,
+          lastResetDate: sql`CASE WHEN ${userControls.lastResetDate} < ${today} THEN ${today} ELSE ${userControls.lastResetDate} END`,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    
+    if (!controls) {
+      return { allowed: true, current: 0, limit: 200 };
+    }
+    
+    if (controls.isPaused) {
+      return { 
+        allowed: false, 
+        current: controls.emailsSentToday || 0,
+        limit: controls.maxEmailsPerDay || 200,
+        reason: controls.pausedReason || 'User is paused',
+      };
+    }
+    
+    const current = controls.emailsSentToday || 0;
+    const limit = controls.maxEmailsPerDay || 200;
+    
+    if (current >= limit) {
+      return {
+        allowed: false,
+        current,
+        limit,
+        reason: `Daily email limit reached (${current}/${limit})`,
+      };
+    }
+    
+    return { allowed: true, current, limit };
+  }
+  
+  /**
+   * Check concurrency limit for enrollments with atomic upsert
+   */
+  async canUserEnroll(userId: string): Promise<{ 
+    allowed: boolean; 
+    current: number; 
+    limit: number; 
+    reason?: string;
+  }> {
+    // Ensure controls exist (atomic upsert)
+    const [controls] = await db
+      .insert(userControls)
+      .values({
+        userId,
+        lastResetDate: new Date().toISOString().split('T')[0],
+      })
+      .onConflictDoUpdate({
+        target: userControls.userId,
+        set: { updatedAt: new Date() },
+      })
+      .returning();
+    
+    if (!controls) {
+      return { allowed: true, current: 0, limit: 5 };
+    }
+    
+    if (controls.isPaused) {
+      return { 
+        allowed: false, 
+        current: controls.activeEnrollments || 0,
+        limit: controls.maxConcurrentEnrollments || 5,
+        reason: controls.pausedReason || 'User is paused',
+      };
+    }
+    
+    const current = controls.activeEnrollments || 0;
+    const limit = controls.maxConcurrentEnrollments || 5;
+    
+    if (current >= limit) {
+      return {
+        allowed: false,
+        current,
+        limit,
+        reason: `Concurrent enrollment limit reached (${current}/${limit})`,
+      };
+    }
+    
+    return { allowed: true, current, limit };
+  }
+  
+  /**
+   * Record email sent and check for auto-pause on failures
+   */
+  async recordEmailSent(userId: string, success: boolean): Promise<void> {
+    const controls = await this.getUserControls(userId);
+    if (!controls) return;
+    
+    if (success) {
+      await db
+        .update(userControls)
+        .set({
+          emailsSentToday: sql`COALESCE(${userControls.emailsSentToday}, 0) + 1`,
+          consecutiveFailures: 0,
+          updatedAt: new Date(),
+        })
+        .where(eq(userControls.userId, userId));
+    } else {
+      const newFailures = (controls.consecutiveFailures || 0) + 1;
+      const maxRetries = controls.maxRetriesPerCampaign || 3;
+      
+      const shouldAutoPause = newFailures >= maxRetries;
+      
+      await db
+        .update(userControls)
+        .set({
+          consecutiveFailures: newFailures,
+          failedRetriesCount: sql`COALESCE(${userControls.failedRetriesCount}, 0) + 1`,
+          isPaused: shouldAutoPause ? true : controls.isPaused,
+          autoPausedOnFailures: shouldAutoPause ? true : controls.autoPausedOnFailures,
+          pausedReason: shouldAutoPause ? `Auto-paused after ${newFailures} consecutive failures` : controls.pausedReason,
+          pausedAt: shouldAutoPause ? new Date() : controls.pausedAt,
+          updatedAt: new Date(),
+        })
+        .where(eq(userControls.userId, userId));
+    }
+  }
+  
+  async incrementUserUsage(
+    userId: string,
+    resourceType: 'activeCampaigns' | 'activeEnrollments',
+    incrementBy: number = 1
+  ): Promise<void> {
+    const columnMap = {
+      activeCampaigns: userControls.activeCampaigns,
+      activeEnrollments: userControls.activeEnrollments,
+    };
+    
+    await db
+      .update(userControls)
+      .set({ 
+        [columnMap[resourceType].name]: sql`COALESCE(${columnMap[resourceType]}, 0) + ${incrementBy}`,
+        updatedAt: new Date(),
+      })
+      .where(eq(userControls.userId, userId));
   }
 
   // =============================================

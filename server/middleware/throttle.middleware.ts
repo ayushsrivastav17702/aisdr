@@ -278,6 +278,114 @@ export async function validateSequenceCreation(req: Request, res: Response, next
   }
 }
 
+// =============================================
+// USER-LEVEL SAFEGUARDS
+// =============================================
+
+export async function checkUserPause(req: Request, res: Response, next: NextFunction) {
+  try {
+    const userId = req.user?.id;
+    
+    if (!userId) {
+      return next();
+    }
+    
+    const { paused, reason, pauseLevel } = await hardeningService.isUserFullyPaused(userId);
+    
+    if (paused) {
+      observability.emitThrottleViolation({
+        organizationId: req.user?.organizationId || 'unknown',
+        userId,
+        counterType: `pause_${pauseLevel || 'user'}`,
+        currentCount: 0,
+        limit: 0,
+      });
+      
+      return res.status(503).json({
+        error: 'Operations paused',
+        message: reason || 'Operations are temporarily suspended.',
+        code: 'USER_PAUSED',
+        pauseLevel,
+      });
+    }
+    
+    next();
+  } catch (error) {
+    console.error('Error checking user pause status:', error);
+    next();
+  }
+}
+
+export async function checkDailyEmailLimit(req: Request, res: Response, next: NextFunction) {
+  try {
+    const userId = req.user?.id;
+    
+    if (!userId) {
+      return next();
+    }
+    
+    const { allowed, current, limit, reason } = await hardeningService.canUserSendEmail(userId);
+    
+    if (!allowed) {
+      observability.emitThrottleViolation({
+        organizationId: req.user?.organizationId || 'unknown',
+        userId,
+        counterType: 'daily_emails',
+        currentCount: current,
+        limit,
+      });
+      
+      return res.status(429).json({
+        error: 'Daily limit exceeded',
+        message: reason || `Daily email limit reached (${current}/${limit})`,
+        code: 'DAILY_EMAIL_LIMIT',
+        current,
+        limit,
+      });
+    }
+    
+    next();
+  } catch (error) {
+    console.error('Error checking daily email limit:', error);
+    next();
+  }
+}
+
+export async function checkEnrollmentConcurrency(req: Request, res: Response, next: NextFunction) {
+  try {
+    const userId = req.user?.id;
+    
+    if (!userId) {
+      return next();
+    }
+    
+    const { allowed, current, limit, reason } = await hardeningService.canUserEnroll(userId);
+    
+    if (!allowed) {
+      observability.emitThrottleViolation({
+        organizationId: req.user?.organizationId || 'unknown',
+        userId,
+        counterType: 'concurrent_enrollments',
+        currentCount: current,
+        limit,
+      });
+      
+      return res.status(429).json({
+        error: 'Concurrency limit exceeded',
+        message: reason || `Concurrent enrollment limit reached (${current}/${limit})`,
+        code: 'ENROLLMENT_CONCURRENCY_LIMIT',
+        current,
+        limit,
+      });
+    }
+    
+    next();
+  } catch (error) {
+    console.error('Error checking enrollment concurrency:', error);
+    next();
+  }
+}
+
 export function requireIdempotencyKey(operation: string) {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {

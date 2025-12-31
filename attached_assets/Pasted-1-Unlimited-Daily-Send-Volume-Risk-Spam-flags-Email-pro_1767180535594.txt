@@ -1,0 +1,221 @@
+1️⃣ Unlimited Daily Send Volume
+
+Risk
+
+Spam flags
+
+Email provider blacklisting
+
+IP/domain reputation collapse
+
+P0 Safeguard
+
+maxEmailsPerDayPerUser
+
+Enforced before enqueue
+
+Hard stop, not soft warning
+
+2️⃣ Concurrency Abuse (Parallel Campaign Launches)
+
+Risk
+
+Sudden queue spikes
+
+DB contention
+
+Worker starvation
+
+P0 Safeguard
+
+maxActiveEnrollmentsPerUser
+
+Reject parallel launches beyond cap
+
+3️⃣ Prospect Re-Enrollment Loops
+
+Risk
+
+Duplicate sends
+
+Compliance violations
+
+Trust destruction
+
+P0 Safeguard
+
+Deduplicate by (prospectId + sequenceId)
+
+Enforce uniqueness at DB level
+
+4️⃣ Personalization Token Abuse
+
+Risk
+
+AI cost explosion
+
+Latency spikes
+
+Token quota drain
+
+P0 Safeguard
+
+Max personalization tokens per message
+
+Hard cap on dynamic variables
+
+5️⃣ Cold Start Domain Burn
+
+Risk
+
+New inboxes sending at full speed
+
+Immediate provider throttling
+
+P0 Safeguard
+
+Warm-up enforcement per mailbox
+
+Ramp schedule (Day 1 → Day N)
+
+6️⃣ Retry Storms from Failing SDR Campaigns
+
+Risk
+
+Queue loops
+
+Silent cost accumulation
+
+P0 Safeguard
+
+Per-user retry caps
+
+Auto-disable after N failures
+
+7️⃣ Long-Running Campaign Zombies
+
+Risk
+
+Stale data
+
+Memory leaks
+
+Worker starvation
+
+P0 Safeguard
+
+Max campaign duration
+
+Auto-expire inactive campaigns
+
+8️⃣ Payload Size Abuse (CSV / Prospect Data)
+
+Risk
+
+Memory spikes
+
+API latency
+
+Export failures
+
+P0 Safeguard
+
+Strict per-field and per-row size limits
+
+Reject malformed uploads early
+
+9️⃣ Silent Error Masking (User Doesn’t See Failures)
+
+Risk
+
+Repeated retries
+
+Support overload
+
+No corrective behavior
+
+P0 Safeguard
+
+Explicit user-visible failure states
+
+Auto-pause on repeated errors
+
+🔟 Automation Bypass Attempts
+
+Risk
+
+SDRs attempting to send while paused
+
+Trust boundary violations
+
+P0 Safeguard
+
+Kill switch enforced at:
+
+API
+
+Queue
+
+Worker
+
+No UI-only enforcement
+
+✅ REQUIRED P0 USER SAFEGUARDS (WHAT MUST EXIST)
+User-Level Quotas
+maxEmailsPerDay
+maxActiveCampaigns
+maxConcurrentEnrollments
+maxProspectsPerSequence
+maxPersonalizationTokens
+
+User Kill Switch (Inherited + Local)
+
+Manager pause cascades automatically
+
+Optional user-specific pause
+
+Checked before:
+
+Enrollment
+
+Message enqueue
+
+AI calls
+
+Usage Tracking (Already Exists – Extend)
+
+Attribute usage to:
+
+userId
+
+managerId
+
+tenantId
+
+Required for:
+
+abuse detection
+
+future billing
+
+🧠 Architecture Rule (Critical)
+
+User actions must NEVER enqueue work directly without passing through validation middleware.
+
+If any endpoint bypasses this:
+
+You have a scaling time bomb
+
+📌 Implementation Order (DO NOT CHANGE)
+
+User pause + inherited pause checks
+
+Per-user send limits (hard stop)
+
+Concurrency caps
+
+Retry limits
+
+Deduplication enforcement
+
+Warm-up enforcement

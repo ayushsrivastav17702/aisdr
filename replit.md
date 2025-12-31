@@ -44,6 +44,7 @@ The platform is built on a modern web stack, featuring a multi-tenant architectu
 - **Multi-Provider Waterfall Search System**: Intelligent prospect search system that cascades through multiple providers (Perplexity AI, Apollo.io, Lusha, OpenRouter) to maximize result coverage while optimizing costs, featuring accumulating mode, smart deduplication, cost optimization, error resilience, and usage tracking.
 - **Performance Fixes**: Prospect enrollment N+1 query elimination and asynchronous CSV upload processing.
 - **RBAC Hardening**: Implemented kill switch for tenant automation, rate limiting via throttle middleware (enrollments, prospects, emails, AI calls), batch limits for prospect enrollment, sequence activation guards, and exponential backoff for email retries. Pagination guards are enforced on data exports and prospect listings. Universal Kill Switch is enforced across background services (automation-worker, reply-detection, intelligent-personalization, email-queue). Unit-based throttling prevents quota gaming.
+- **User/SDR Safeguards**: User-level quotas (maxEmailsPerDay, maxConcurrentEnrollments, maxRetriesPerCampaign) with kill switch. Cascade pause checks (user → manager → tenant). Daily email limits with automatic reset. Enrollment concurrency caps. DB-level deduplication via unique constraint on sequenceProspects. Middleware guards on HTTP endpoints with observability event emission.
 
 ### P1 Roadmap (Future Work)
 - **Cost-Based Throttling**: Implement AI token usage tracking, provider cost weighting, monthly spend limits per tenant, and cost alerts.
@@ -55,6 +56,10 @@ The platform is built on a modern web stack, featuring a multi-tenant architectu
 - **Auto-Throttle at Manager Level**: Implement soft throttles for managers before tenant pause triggers.
 - **Manager Abuse Alerts**: Develop alerts for sudden volume spikes, queue backlogs, and anomaly detection for usage patterns per manager.
 - **Manager Change Audit Trail**: Implement manager-level activity logs for actions like campaign creation, limit changes, and bulk uploads.
+- **Atomic Send Limits**: Combine check+increment in single transaction for email send limits to prevent race conditions on concurrent sends.
+- **Background Worker Safeguards**: Extend user-level pause/limit checks to background workers and job schedulers (email queue processor, automation workers).
+- **Service-Layer Telemetry**: Add observability events to service-layer rejections (recordEmailSent failures, auto-pause triggers) for complete visibility.
+- **Manager Pause via UserControls**: Extend cascade pause logic to recognize manager pauses in userControls table in addition to managerQuotas.
 
 ## External Dependencies
 - **Apollo.io**: Prospect search, data enrichment, and bulk matching API.
