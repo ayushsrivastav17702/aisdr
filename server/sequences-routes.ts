@@ -626,6 +626,23 @@ router.post("/sequences/:id/prospects", authenticate, forbidManager, checkAutoma
       });
     }
     
+    // P0 FIX: Unit-based throttling - check if this batch fits in remaining quota
+    const throttleInfo = req.throttleInfo;
+    if (throttleInfo && req.userContext?.organizationId) {
+      const remainingCapacity = throttleInfo.limit - throttleInfo.currentCount;
+      if (prospectIds.length > remainingCapacity) {
+        return res.status(429).json({
+          error: 'Rate limit would be exceeded',
+          message: `This batch of ${prospectIds.length} prospects would exceed your hourly limit. Remaining capacity: ${remainingCapacity}. Try a smaller batch or wait until the hour resets.`,
+          code: 'RATE_LIMIT_EXCEEDED',
+          currentUsage: throttleInfo.currentCount,
+          limit: throttleInfo.limit,
+          batchSize: prospectIds.length,
+          retryAfter: 3600,
+        });
+      }
+    }
+    
     const sequenceId = req.params.id;
     const userId = req.userContext!.userId;
     

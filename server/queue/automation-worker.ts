@@ -5,6 +5,7 @@ import automationService from '../services/automation.service';
 import { db } from '../db';
 import { automationRuns } from '@shared/schema';
 import { eq, and } from 'drizzle-orm';
+import { hardeningService } from '../services/hardening.service';
 
 const MAX_CONCURRENT_JOBS = 3; // Limit concurrent automations to avoid rate limit conflicts
 
@@ -27,6 +28,20 @@ async function processAutomationJob(job: Job<AutomationJobData>): Promise<void> 
   } = job.data;
 
   console.log(`[Worker] Processing automation job: ${automationRunId} for user: ${userId}`);
+  
+  // KILL SWITCH CHECK: Skip if tenant automation is paused
+  const isPaused = await hardeningService.isAutomationPausedForUser(userId);
+  if (isPaused) {
+    console.log(`[Worker] Automation paused for user ${userId}, skipping job ${automationRunId}`);
+    // Update status to show it was skipped due to pause
+    await db.update(automationRuns)
+      .set({ 
+        status: 'cancelled', 
+        errors: 'Automation paused by administrator',
+      })
+      .where(and(eq(automationRuns.id, automationRunId), eq(automationRuns.userId, userId)));
+    return;
+  }
   
   // SECURITY: Load automation run with user scoping to prevent cross-tenant access
   const run = await db.query.automationRuns.findFirst({

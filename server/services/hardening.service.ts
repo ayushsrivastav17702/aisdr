@@ -90,6 +90,27 @@ class HardeningService {
     const controls = await this.getTenantControls(organizationId);
     return controls?.automationStatus === 'paused';
   }
+  
+  /**
+   * Get organization ID for a user - used by background jobs that only have userId
+   */
+  async getOrganizationIdForUser(userId: string): Promise<string | null> {
+    const [user] = await db
+      .select({ organizationId: users.organizationId })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    return user?.organizationId || null;
+  }
+  
+  /**
+   * Check if automation is paused for a user (resolves userId -> orgId first)
+   */
+  async isAutomationPausedForUser(userId: string): Promise<boolean> {
+    const orgId = await this.getOrganizationIdForUser(userId);
+    if (!orgId) return false; // No org = no pause controls
+    return this.isAutomationPaused(orgId);
+  }
 
   // =============================================
   // THROTTLE WINDOWS (Rate Limiting)

@@ -8,6 +8,7 @@ import { mailboxService } from "./mailbox.service";
 import sequenceStepService from "./sequence-step.service";
 import { Sentry, isSentryEnabled } from "../sentry";
 import { emailQueueService } from "./email-queue.service";
+import { hardeningService } from "./hardening.service";
 
 /**
  * Comprehensive reply classification result
@@ -71,6 +72,14 @@ export class ReplyDetectionService {
 
       for (const mailbox of mailboxes) {
         if (mailbox.provider === "smtp" || mailbox.provider === "gmail") {
+          // KILL SWITCH CHECK: Skip mailboxes for paused tenants
+          if (mailbox.userId) {
+            const isPaused = await hardeningService.isAutomationPausedForUser(mailbox.userId);
+            if (isPaused) {
+              console.log(`⏸️  Skipping reply check for mailbox ${mailbox.email} - tenant automation paused`);
+              continue;
+            }
+          }
           await this.checkMailboxReplies(mailbox);
         }
       }
