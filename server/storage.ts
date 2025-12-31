@@ -785,82 +785,92 @@ export class DatabaseStorage implements IStorage {
   }
 
   async enrollProspects(ctx: RequestContext, sequenceId: string, prospectIds: string[]): Promise<SequenceProspect[]> {
+    if (prospectIds.length === 0) return [];
+    
     const sequence = await this.getSequence(ctx, sequenceId);
     if (!sequence) {
       throw new Error('Sequence not found');
     }
     
-    for (const prospectId of prospectIds) {
-      const prospect = await this.getProspect(ctx, prospectId);
-      if (!prospect) {
-        throw new Error(`Prospect ${prospectId} not found`);
-      }
+    const effectiveUserId = getEffectiveUserId(ctx);
+    
+    // BATCH OPERATION 1: Validate all prospects exist in single query (scoped to user)
+    const validProspects = await this.getProspectsByIds(ctx, prospectIds);
+    const validProspectIds = new Set(validProspects.map(p => p.id));
+    const missingIds = prospectIds.filter(id => !validProspectIds.has(id));
+    if (missingIds.length > 0) {
+      throw new Error(`Prospects not found: ${missingIds.slice(0, 5).join(', ')}${missingIds.length > 5 ? ` and ${missingIds.length - 5} more` : ''}`);
     }
     
-    const enrolled: SequenceProspect[] = [];
-    for (const prospectId of prospectIds) {
-      // 🔥 CRITICAL: "Latest sequence takes priority" logic
-      // Before enrolling, cancel any pending emails from ALL previous sequences
-      // and mark previous enrollments as "superseded"
+    // BATCH OPERATION 2: Find ALL previous active enrollments for these prospects (in OTHER sequences)
+    // Scoped by joining to user-owned sequences to maintain tenant isolation
+    const previousEnrollments = await db
+      .select({
+        id: sequenceProspects.id,
+        sequenceId: sequenceProspects.sequenceId,
+        prospectId: sequenceProspects.prospectId
+      })
+      .from(sequenceProspects)
+      .innerJoin(sequences, eq(sequenceProspects.sequenceId, sequences.id))
+      .where(and(
+        inArray(sequenceProspects.prospectId, prospectIds),
+        sql`${sequenceProspects.sequenceId} != ${sequenceId}`,
+        eq(sequenceProspects.status, 'active'),
+        eq(sequences.userId, effectiveUserId)
+      ));
+    
+    if (previousEnrollments.length > 0) {
+      console.log(`[Enrollment Batch] Found ${previousEnrollments.length} previous active enrollments - superseding them`);
+      const previousEnrollmentIds = previousEnrollments.map(e => e.id);
+      const prospectsWithPreviousEnrollments = Array.from(new Set(previousEnrollments.map(e => e.prospectId)));
       
-      // Step 1: Find all previous active enrollments for this prospect (in OTHER sequences)
-      const previousEnrollments = await db
-        .select()
-        .from(sequenceProspects)
+      // BATCH OPERATION 3: Cancel pending emails ONLY for prospects that had previous enrollments
+      // Scoped to user's emails only
+      const cancelledEmails = await db
+        .update(emailQueue)
+        .set({ 
+          status: 'cancelled',
+          lastError: 'Superseded by new sequence enrollment'
+        })
         .where(and(
-          eq(sequenceProspects.prospectId, prospectId),
-          sql`${sequenceProspects.sequenceId} != ${sequenceId}`,
-          eq(sequenceProspects.status, 'active')
-        ));
+          inArray(emailQueue.prospectId, prospectsWithPreviousEnrollments),
+          eq(emailQueue.userId, effectiveUserId),
+          sql`${emailQueue.sequenceId} != ${sequenceId}`,
+          sql`${emailQueue.status} IN ('pending', 'scheduled')`
+        ))
+        .returning({ id: emailQueue.id });
       
-      if (previousEnrollments.length > 0) {
-        console.log(`[Enrollment] Found ${previousEnrollments.length} previous active enrollments for prospect ${prospectId} - superseding them`);
-        
-        // Step 2: Cancel ALL pending emails for this prospect from previous sequences
-        const cancelledEmails = await db
-          .update(emailQueue)
-          .set({ 
-            status: 'cancelled',
-            lastError: 'Superseded by new sequence enrollment'
-          })
-          .where(and(
-            eq(emailQueue.prospectId, prospectId),
-            eq(emailQueue.userId, ctx.userId),
-            sql`${emailQueue.sequenceId} != ${sequenceId}`,
-            sql`${emailQueue.status} IN ('pending', 'scheduled')`
-          ))
-          .returning({ id: emailQueue.id });
-        
-        if (cancelledEmails.length > 0) {
-          console.log(`[Enrollment] Cancelled ${cancelledEmails.length} pending emails from previous sequences`);
-        }
-        
-        // Step 3: Mark previous enrollments as "superseded"
-        for (const prevEnrollment of previousEnrollments) {
-          await db
-            .update(sequenceProspects)
-            .set({ 
-              status: 'superseded',
-              completedAt: new Date()
-            })
-            .where(eq(sequenceProspects.id, prevEnrollment.id));
-          
-          console.log(`[Enrollment] Marked previous enrollment ${prevEnrollment.id} (sequence ${prevEnrollment.sequenceId}) as superseded`);
-        }
+      if (cancelledEmails.length > 0) {
+        console.log(`[Enrollment Batch] Cancelled ${cancelledEmails.length} pending emails from previous sequences`);
       }
       
-      // Step 4: Now enroll in the new sequence
-      const [result] = await db
-        .insert(sequenceProspects)
-        .values({
-          sequenceId,
-          prospectId,
-          status: "active",
-          enrolledAt: new Date()
+      // BATCH OPERATION 4: Mark ALL previous enrollments as "superseded" in single query
+      // Using the IDs we already found (already scoped by user)
+      await db
+        .update(sequenceProspects)
+        .set({ 
+          status: 'superseded',
+          completedAt: new Date()
         })
-        .returning();
-      enrolled.push(result);
+        .where(inArray(sequenceProspects.id, previousEnrollmentIds));
+      
+      console.log(`[Enrollment Batch] Marked ${previousEnrollmentIds.length} previous enrollments as superseded`);
     }
+    
+    // BATCH OPERATION 5: Insert all new enrollments in single query
+    const enrollmentValues = prospectIds.map(prospectId => ({
+      sequenceId,
+      prospectId,
+      status: "active" as const,
+      enrolledAt: new Date()
+    }));
+    
+    const enrolled = await db
+      .insert(sequenceProspects)
+      .values(enrollmentValues)
+      .returning();
+    
+    console.log(`[Enrollment Batch] Enrolled ${enrolled.length} prospects in sequence ${sequenceId}`);
     return enrolled;
   }
 

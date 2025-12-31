@@ -534,6 +534,142 @@ class JobService {
       completedAt: new Date(),
     });
   }
+
+  async createAsyncImportJob(
+    ctx: RequestContext,
+    filePath: string,
+    fieldMappings: Record<string, string>,
+    options: { skipDuplicates?: boolean; autoEnrich?: boolean } = {}
+  ): Promise<Job> {
+    const serializedCtx = serializeContext(ctx);
+    
+    const job = await storage.createJob(ctx, {
+      type: 'import',
+      title: 'CSV Import',
+      description: `Importing prospects from ${filePath}`,
+      totalItems: 0,
+      status: 'queued',
+      jobData: { filePath, fieldMappings, ...options, context: serializedCtx },
+      userId: ctx.userId,
+    });
+
+    setImmediate(() => {
+      this.processAsyncImport(job.id, ctx, filePath, fieldMappings, options).catch(error => {
+        console.error(`[Async Import] Job ${job.id} failed:`, error);
+      });
+    });
+
+    return job;
+  }
+
+  private async processAsyncImport(
+    jobId: string,
+    ctx: RequestContext,
+    filePath: string,
+    fieldMappings: Record<string, string>,
+    options: { skipDuplicates?: boolean; autoEnrich?: boolean }
+  ): Promise<void> {
+    const BATCH_SIZE = 1000;
+    
+    try {
+      await storage.updateJob(ctx, jobId, {
+        status: 'running',
+        startedAt: new Date(),
+      });
+
+      console.log(`[Async Import ${jobId}] Starting CSV processing...`);
+      const csvData = await this.parseCSVFile(filePath);
+      
+      await storage.updateJob(ctx, jobId, {
+        totalItems: csvData.length,
+      });
+
+      console.log(`[Async Import ${jobId}] Parsed ${csvData.length} rows`);
+
+      let successCount = 0;
+      let failureCount = 0;
+      let duplicateCount = 0;
+      const duplicateEmails = new Set<string>();
+
+      const allProspects = csvData.map(row => this.mapCSVRowToProspect(row, fieldMappings, ctx.userId));
+      
+      if (options.skipDuplicates) {
+        const allEmails = allProspects
+          .map(p => p.primaryEmail)
+          .filter((email): email is string => !!email);
+        
+        if (allEmails.length > 0) {
+          const duplicates = await storage.checkDuplicateProspects(ctx, allEmails);
+          duplicates.forEach(dup => {
+            if (dup.primaryEmail) duplicateEmails.add(dup.primaryEmail);
+            if (dup.secondaryEmail) duplicateEmails.add(dup.secondaryEmail);
+          });
+          console.log(`[Async Import ${jobId}] Found ${duplicateEmails.size} existing emails`);
+        }
+      }
+
+      const prospectsToInsert = options.skipDuplicates
+        ? allProspects.filter(p => !p.primaryEmail || !duplicateEmails.has(p.primaryEmail))
+        : allProspects;
+      
+      duplicateCount = allProspects.length - prospectsToInsert.length;
+
+      for (let i = 0; i < prospectsToInsert.length; i += BATCH_SIZE) {
+        const batch = prospectsToInsert.slice(i, i + BATCH_SIZE);
+        const batchNum = Math.floor(i / BATCH_SIZE) + 1;
+        const totalBatches = Math.ceil(prospectsToInsert.length / BATCH_SIZE);
+        
+        try {
+          await storage.bulkCreateProspects(ctx, batch);
+          successCount += batch.length;
+          console.log(`[Async Import ${jobId}] Batch ${batchNum}/${totalBatches}: ${batch.length} prospects inserted`);
+        } catch (error) {
+          console.error(`[Async Import ${jobId}] Batch ${batchNum} failed, trying individual inserts:`, error);
+          for (const prospect of batch) {
+            try {
+              await storage.createProspect(ctx, prospect);
+              successCount++;
+            } catch (err) {
+              failureCount++;
+            }
+          }
+        }
+
+        await storage.updateJob(ctx, jobId, {
+          processedItems: Math.min(i + BATCH_SIZE, prospectsToInsert.length),
+          successCount,
+          failureCount,
+        });
+      }
+
+      await storage.updateJob(ctx, jobId, {
+        status: 'completed',
+        completedAt: new Date(),
+        processedItems: csvData.length,
+        successCount,
+        failureCount,
+        results: {
+          imported: successCount,
+          failed: failureCount,
+          duplicates: duplicateCount,
+        },
+      });
+
+      console.log(`[Async Import ${jobId}] Complete: ${successCount} imported, ${duplicateCount} duplicates, ${failureCount} failed`);
+
+      if (options.autoEnrich && successCount > 0) {
+        console.log(`[Async Import ${jobId}] Note: Auto-enrich skipped (requires Redis)`);
+      }
+
+    } catch (error) {
+      console.error(`[Async Import ${jobId}] Fatal error:`, error);
+      await storage.updateJob(ctx, jobId, {
+        status: 'failed',
+        completedAt: new Date(),
+        error: error instanceof Error ? error.message : 'Unknown error',
+      });
+    }
+  }
 }
 
 export const jobService = new JobService();

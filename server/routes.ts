@@ -1415,7 +1415,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // CSV upload and import
+  // CSV upload and import - Always returns 202 immediately with async processing
   app.post("/api/import/csv", authenticate, forbidManager, upload.single('file'), async (req, res) => {
     try {
       if (!req.file) {
@@ -1433,162 +1433,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check if Redis/job queue is available
       const REDIS_ENABLED = !!process.env.REDIS_URL;
       
+      let job;
       if (REDIS_ENABLED) {
-        // Use background job queue
-        const job = await jobService.createImportJob(
+        // Use BullMQ background job queue
+        job = await jobService.createImportJob(
           req.userContext!,
           req.file.path,
           parsedFieldMappings,
           options
         );
-        res.json({ job });
       } else {
-        // Process synchronously without Redis
-        console.log('\n========== SYNCHRONOUS CSV IMPORT (No Redis) ==========');
-        console.log(`File path: ${req.file.path}`);
-        console.log(`File size: ${req.file.size} bytes`);
-        console.log(`Field mappings:`, parsedFieldMappings);
-        console.log(`Options:`, options);
-        
-        const fileContent = readFileSync(req.file.path, 'utf-8');
-        console.log(`File content length: ${fileContent.length} characters`);
-        
-        const records = parse(fileContent, {
-          columns: true,
-          skip_empty_lines: true,
-          trim: true,
-          relax_quotes: true,
-          relax_column_count: true,
-          skip_records_with_error: true,
-          bom: true,
-        });
-
-        let successCount = 0;
-        let failureCount = 0;
-        let duplicateCount = 0;
-        const errors: string[] = [];
-        const prospectsToInsert: any[] = [];
-        const duplicateEmails = new Set<string>();
-
-        console.log(`  Parsed ${records.length} rows from CSV`);
-
-        // First pass: map rows and check for duplicates
-        if (options.skipDuplicates) {
-          // Get all emails from CSV
-          const allEmails = records
-            .map((row: any) => {
-              const prospectData: any = {};
-              for (const [csvCol, prospectField] of Object.entries(parsedFieldMappings)) {
-                if (row[csvCol]) {
-                  prospectData[prospectField] = row[csvCol];
-                }
-              }
-              return prospectData.primaryEmail;
-            })
-            .filter(Boolean);
-
-          console.log(`  Extracted ${allEmails.length} emails from CSV for duplicate checking`);
-          console.log(`  Sample emails:`, allEmails.slice(0, 5));
-
-          // Check duplicates in database in one query
-          if (allEmails.length > 0) {
-            const duplicates = await storage.checkDuplicateProspects(req.userContext!, allEmails);
-            console.log(`  Database returned ${duplicates.length} duplicate prospects`);
-            duplicates.forEach(dup => {
-              if (dup.primaryEmail) duplicateEmails.add(dup.primaryEmail);
-              if (dup.secondaryEmail) duplicateEmails.add(dup.secondaryEmail);
-            });
-            console.log(`  Found ${duplicateEmails.size} existing emails in database`);
-            console.log(`  Duplicate emails:`, Array.from(duplicateEmails));
-          }
-        }
-
-        // Second pass: prepare prospects to insert
-        for (let i = 0; i < records.length; i++) {
-          const row = records[i] as Record<string, any>;
-          
-          try {
-            // Map CSV row to prospect format
-            const prospectData: any = {};
-            for (const [csvCol, prospectField] of Object.entries(parsedFieldMappings)) {
-              if (row[csvCol]) {
-                prospectData[prospectField] = row[csvCol];
-              }
-            }
-
-            // Log first few rows for debugging
-            if (i < 3) {
-              console.log(`  Row ${i + 1} mapped data:`, prospectData);
-            }
-
-            // Check for duplicates
-            if (options.skipDuplicates && prospectData.primaryEmail && duplicateEmails.has(prospectData.primaryEmail)) {
-              duplicateCount++;
-              if (i < 3) {
-                console.log(`  Row ${i + 1} is duplicate, skipping`);
-              }
-              continue;
-            }
-
-            prospectsToInsert.push(prospectData);
-          } catch (error) {
-            failureCount++;
-            errors.push(`Row ${i + 1}: ${error instanceof Error ? error.message : 'Unknown error'}`);
-          }
-        }
-
-        // Bulk insert prospects in batches of 1000
-        const BATCH_SIZE = 1000;
-        for (let i = 0; i < prospectsToInsert.length; i += BATCH_SIZE) {
-          const batch = prospectsToInsert.slice(i, i + BATCH_SIZE);
-          try {
-            await storage.bulkCreateProspects(req.userContext!, batch);
-            successCount += batch.length;
-            console.log(`  Batch ${Math.floor(i / BATCH_SIZE) + 1}: Inserted ${batch.length} prospects (total: ${successCount}/${prospectsToInsert.length})`);
-          } catch (error) {
-            // If batch insert fails, try one by one for this batch
-            console.log(`  Batch insert failed, trying individual inserts for batch ${Math.floor(i / BATCH_SIZE) + 1}`);
-            for (let j = 0; j < batch.length; j++) {
-              try {
-                await storage.createProspect(req.userContext!, batch[j]);
-                successCount++;
-              } catch (err) {
-                failureCount++;
-                errors.push(`Row ${i + j + 1}: ${err instanceof Error ? err.message : 'Unknown error'}`);
-              }
-            }
-          }
-        }
-
-        // Note: Auto-enrich requires Redis
-        if (options.autoEnrich) {
-          console.log('  Note: Auto-enrich skipped (requires Redis)');
-        }
-
-        console.log('\n========== IMPORT COMPLETE ==========');
-        console.log(`  Success: ${successCount}`);
-        console.log(`  Duplicates: ${duplicateCount}`);
-        console.log(`  Failed: ${failureCount}`);
-        console.log('=========================================\n');
-
-        // Build duplicate details for response
-        const duplicateDetails = Array.from(duplicateEmails).slice(0, 20); // Return up to 20 duplicate emails
-        
-        // Invalidate prospects cache
-        res.json({
-          success: true,
-          imported: successCount,
-          failed: failureCount,
-          duplicates: duplicateCount,
-          duplicateEmails: duplicateDetails,
-          errors: errors.slice(0, 10), // Return first 10 errors
-          message: successCount > 0 
-            ? `Imported ${successCount} prospects successfully${failureCount > 0 ? ` (${failureCount} failed)` : ''}${duplicateCount > 0 ? `. ${duplicateCount} skipped - emails already exist: ${duplicateDetails.join(', ')}` : ''}`
-            : duplicateCount > 0
-              ? `No prospects imported. ${duplicateCount} email(s) already exist in database: ${duplicateDetails.join(', ')}`
-              : 'No prospects imported'
-        });
+        // Use async processing without Redis (setImmediate-based)
+        job = await jobService.createAsyncImportJob(
+          req.userContext!,
+          req.file.path,
+          parsedFieldMappings,
+          options
+        );
       }
+
+      // Return 202 Accepted immediately - processing continues in background
+      res.status(202).json({ 
+        job,
+        message: 'Import job queued. Check job status for progress.',
+        statusUrl: `/api/jobs/${job.id}`
+      });
     } catch (error) {
       console.error("CSV import error:", error);
       res.status(500).json({ 
