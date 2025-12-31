@@ -1,0 +1,466 @@
+GLOBAL LOAD TEST GOALS
+
+Measure:
+
+Max concurrent Super Admin sessions
+
+Max tenant count system can handle
+
+Query amplification risks
+
+UI + API degradation points
+
+Cascading failures into tenant systems
+
+Track at every step:
+
+p95 / p99 latency
+
+DB query count per request
+
+CPU / memory spikes
+
+Cache hit ratio
+
+Error rate (%)
+
+UI render time
+
+🔐 MODULE 1: AUTH & SESSION MANAGEMENT
+1.1 Super Admin Login
+
+Actions
+
+Load /super-admin/login
+
+Submit credentials
+
+JWT issued
+
+Dashboard redirect
+
+Load Scenarios
+
+1 → 10 → 50 → 200 concurrent logins
+
+Burst logins every 5 seconds
+
+Hidden Risk Spots
+
+Token signing bottleneck
+
+Session store saturation
+
+Auth DB table locking
+
+Breaking Point Signals
+
+Login > 2s
+
+Token failures
+
+5xx on auth service
+
+🏠 MODULE 2: SUPER ADMIN DASHBOARD (HOME)
+2.1 Dashboard Load
+
+Tabs / Widgets
+
+Total Tenants
+
+Active / Trial / Suspended
+
+Total Users
+
+System Health
+
+Actions
+
+Load dashboard
+
+Auto-refresh stats (if enabled)
+
+Load Scenarios
+
+1 SA refreshing every 5 sec
+
+10 SAs refreshing every 5 sec
+
+1 SA with 10k / 50k / 100k tenants
+
+Hidden Risk Spots
+
+COUNT(*) queries on large tables
+
+Missing aggregation tables
+
+No caching for metrics
+
+Watch For
+
+DB CPU spike
+
+Slow COUNT queries
+
+UI partial renders
+
+🏢 MODULE 3: TENANT LISTING
+3.1 Tenant Table Load
+
+Actions
+
+Load tenant list
+
+Scroll pagination
+
+Sort by status
+
+Filter by plan
+
+Load Scenarios
+
+1 SA scrolling 100 pages
+
+5 SAs filtering simultaneously
+
+Dataset sizes:
+
+1k tenants
+
+10k tenants
+
+100k tenants
+
+Hidden Risk Spots
+
+OFFSET pagination slowdown
+
+N+1 queries for plan/status
+
+Client-side filtering
+
+Breaking Signals
+
+Table load > 3s
+
+Browser memory spike
+
+API timeout
+
+🔍 MODULE 4: TENANT SEARCH
+4.1 Search by Name / Domain
+
+Actions
+
+Type search query
+
+Hit enter
+
+Results load
+
+Load Scenarios
+
+Rapid keystroke search
+
+10 SAs searching simultaneously
+
+Partial matches vs exact
+
+Hidden Risk Spots
+
+LIKE %query% on large tables
+
+No DB index
+
+Full table scan
+
+Critical Metric
+
+DB execution plan time
+
+🧾 MODULE 5: TENANT DETAIL PAGE
+5.1 Tenant Overview Tab
+
+Data Loaded
+
+Company info
+
+Plan
+
+Limits
+
+Usage stats
+
+Manager info
+
+Actions
+
+Open tenant detail
+
+Switch tabs rapidly
+
+Load Scenarios
+
+1 SA opening 50 tenants back-to-back
+
+5 SAs opening same tenant
+
+Hidden Risk Spots
+
+Multiple parallel API calls
+
+Sequential blocking requests
+
+Real-time usage calculation
+
+5.2 Tenant Usage Stats Tab
+
+Actions
+
+Load usage metrics (emails sent, users, campaigns)
+
+Load Scenarios
+
+10k+ historical records
+
+Real-time aggregation
+
+Hidden Risk Spots
+
+JOIN-heavy queries
+
+No pre-aggregation
+
+Cold cache behavior
+
+➕ MODULE 6: TENANT PROVISIONING
+6.1 Create Tenant
+
+Actions
+
+Submit create tenant form
+
+DB schema creation
+
+Default data seeding
+
+Manager creation
+
+Load Scenarios
+
+1 tenant creation
+
+5 parallel tenant creations
+
+20 parallel creations (stress)
+
+Hidden Risk Spots
+
+Schema creation locks
+
+Migration scripts
+
+Transaction rollbacks
+
+Hard Fail Risk
+
+Partial tenant creation (orphaned schemas)
+
+⚙️ MODULE 7: TENANT CONFIGURATION
+7.1 Update Plan / Limits
+
+Actions
+
+Change plan
+
+Save
+
+Reflect in tenant app
+
+Load Scenarios
+
+Bulk plan updates (20 tenants)
+
+Concurrent SA updates
+
+Hidden Risk Spots
+
+Cache invalidation
+
+Race conditions
+
+Event propagation delays
+
+7.2 Suspend / Resume Tenant
+
+Actions
+
+Suspend tenant
+
+Attempt tenant login
+
+Resume tenant
+
+Load Scenarios
+
+Rapid suspend/resume toggling
+
+Multiple tenants at once
+
+Hidden Risk Spots
+
+Auth cache not cleared
+
+Zombie sessions
+
+Partial suspension
+
+👤 MODULE 8: MANAGER MANAGEMENT
+8.1 Create / Disable Manager
+
+Actions
+
+Add manager
+
+Disable manager
+
+Reset password
+
+Load Scenarios
+
+50 managers under one tenant
+
+Rapid create/delete
+
+Hidden Risk Spots
+
+Email service throttling
+
+User uniqueness constraints
+
+Password reset token buildup
+
+🕵️ MODULE 9: IMPERSONATION
+9.1 Impersonate Manager
+
+Actions
+
+Click impersonate
+
+Switch context
+
+Browse tenant app
+
+Exit impersonation
+
+Load Scenarios
+
+1 SA impersonating repeatedly
+
+5 SAs impersonating same tenant
+
+Hidden Risk Spots
+
+Context switching bugs
+
+Audit log explosion
+
+Session corruption
+
+Critical Risk
+
+SA accidentally performing tenant actions
+
+🧾 MODULE 10: AUDIT LOGS
+10.1 Audit Log Load
+
+Actions
+
+Load logs
+
+Filter by date
+
+Filter by tenant
+
+Load Scenarios
+
+1M+ log rows
+
+10 concurrent filters
+
+Hidden Risk Spots
+
+No partitioning
+
+Unindexed timestamp filters
+
+UI freeze on large responses
+
+📊 MODULE 11: PLATFORM METRICS
+11.1 Metrics Dashboard
+
+Actions
+
+Load aggregated stats
+
+Auto-refresh
+
+Load Scenarios
+
+1 SA with refresh every 3 sec
+
+10 SAs simultaneous refresh
+
+Hidden Risk Spots
+
+Real-time metrics from raw data
+
+Missing rollups
+
+Cache stampede
+
+🚫 MODULE 12: SECURITY & ABUSE LOAD
+12.1 Forced Access Attempts
+
+Actions
+
+Call tenant APIs using SA token
+
+High-frequency 403 requests
+
+Load Scenarios
+
+100 blocked calls/sec
+
+Hidden Risk Spots
+
+Auth middleware performance
+
+Excessive logging
+
+🔁 MODULE 13: FAILURE & CHAOS TESTING
+Actions
+
+Kill DB replica
+
+Kill cache
+
+Kill email service
+
+Slow network (200–500ms)
+
+Observe
+
+Graceful degradation
+
+UI fallback
+
+Error messaging
+
+📌 FINAL OUTPUT YOU SHOULD GET
+
+For each module, capture:
+
+Module	Max Load	p95 Latency	Failure Mode	Root Cause
+Tenant List	50k tenants	3.2s	Timeout	OFFSET pagination
+Audit Logs	1M rows	5.1s	UI freeze	No index
