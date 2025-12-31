@@ -134,6 +134,7 @@ The following items are documented for future implementation. **Status: Observab
 - Events logged to console and stored in `observability_events` table
 - Metrics available for future dashboards and alerting
 - Key principle: "Observe first, enforce later" to avoid over-throttling real usage
+- **Known Limitation**: AI cost events from background parsing (e.g., natural language query) don't have organization context since they're called outside request scope. Routes that call AI services directly (email generation, personalization) can pass context. This will be improved as more AI calls are made through request-scoped code paths.
 
 ## External Dependencies
 - **Apollo.io**: Prospect search, data enrichment, and bulk matching API.
