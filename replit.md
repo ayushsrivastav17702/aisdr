@@ -77,6 +77,15 @@ The platform is built on a modern web stack, featuring a multi-tenant architectu
   - **Pagination Guards**: `getProspects()` caps at 50 per page, data exports cap at 50k records
   - **DB Tables**: `tenant_controls`, `throttle_windows`, `manager_quotas`, `usage_counters`, `idempotency_keys`, `background_job_audit`
   - **Key Files**: `server/services/hardening.service.ts`, `server/middleware/throttle.middleware.ts`
+  - **Universal Kill Switch** (December 2025): Kill switch now enforced in automation-worker (cancels jobs), reply-detection (skips mailbox polling), intelligent-personalization (blocks AI calls), and email-queue (skips sending). All background services resolve userId→orgId→pauseStatus.
+  - **Unit-Based Throttling**: Pre-flight check validates `batch_size <= (limit - current_usage)` before enrollment to prevent quota gaming via large batches.
+
+### P1 Roadmap (Future Work)
+The following items are documented for future implementation:
+- **Cost-Based Throttling**: Current throttling counts prospects/enrollments. Future: add AI token usage tracking with provider cost weighting (GPT-4 vs Claude costs), monthly spend limits per tenant.
+- **Auto-Pause Rules**: Kill switch currently manual only. Future: auto-pause triggers for spend spikes (>2x daily average), queue backlog (>10k pending), error storm (>50% failure rate over 1hr).
+- **Super Admin Visibility Dashboard**: Controls exist but no operational views. Future: queue depth by tenant, AI usage trends, throttle violation logs, paused tenant reasons.
+- **Manager-Level Quotas**: Tenant throttling exists but manager quotas implicit. Future: explicit manager-level limits for multi-manager tenants (1 tenant → 20 managers → 200 SDRs).
 
 ## External Dependencies
 - **Apollo.io**: Prospect search, data enrichment, and bulk matching API.
