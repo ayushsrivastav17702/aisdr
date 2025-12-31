@@ -7,6 +7,8 @@ import automationService from "./automation.service";
 import { Sentry, isSentryEnabled } from "../sentry";
 import { notificationService } from "./notification.service";
 import { emailVerificationService } from "./email-verification.service";
+import { hardeningService } from "./hardening.service";
+import { observability } from "./observability.service";
 
 /**
  * Renders merge fields in email content, replacing {{fieldName}} with actual prospect data.
@@ -473,6 +475,102 @@ export class EmailQueueService {
     let prospect: typeof prospects.$inferSelect | undefined;
     
     try {
+      // ========================================
+      // DEFENSIVE SAFEGUARDS: Check pause/limits before processing
+      // ========================================
+      
+      // Check if user is paused (cascade: user → manager → tenant)
+      const { paused, reason, pauseLevel } = await hardeningService.isUserFullyPaused(email.userId);
+      if (paused) {
+        console.warn(`🚫 [Background Worker] Email ${email.id} blocked - user ${email.userId} paused at ${pauseLevel} level: ${reason}`);
+        
+        // Emit observability event for pause-based deferral
+        const orgId = await hardeningService.getOrganizationIdForUser(email.userId);
+        observability.emitThrottleViolation({
+          organizationId: orgId || 'unknown',
+          userId: email.userId,
+          counterType: `pause_${pauseLevel || 'user'}`,
+          currentCount: 0,
+          limit: 0,
+        });
+        
+        // Track deferrals separately from send attempts to prevent infinite loops
+        const currentDeferrals = email.deferralAttempts || 0;
+        const maxPauseDeferrals = 48; // 48 * 30 min = 24 hours max wait
+        
+        if (currentDeferrals >= maxPauseDeferrals) {
+          await db.update(emailQueue)
+            .set({ 
+              status: 'failed',
+              failedAt: new Date(),
+              lastError: `Max pause deferrals exceeded (${maxPauseDeferrals}). User still paused at ${pauseLevel} level.`,
+            })
+            .where(eq(emailQueue.id, email.id));
+          return false;
+        }
+        
+        // Re-queue for later with delay and increment deferral count
+        await db.update(emailQueue)
+          .set({ 
+            scheduledFor: new Date(Date.now() + 30 * 60 * 1000), // Retry in 30 minutes
+            lastError: `Paused at ${pauseLevel} level: ${reason}`,
+            deferralAttempts: currentDeferrals + 1,
+          })
+          .where(eq(emailQueue.id, email.id));
+        
+        return false;
+      }
+      
+      // Check daily email limit
+      const { allowed, current, limit, reason: limitReason } = await hardeningService.canUserSendEmail(email.userId);
+      if (!allowed) {
+        console.warn(`🚫 [Background Worker] Email ${email.id} blocked - user ${email.userId} daily limit exceeded: ${current}/${limit}`);
+        
+        // Emit observability event
+        const orgId = await hardeningService.getOrganizationIdForUser(email.userId);
+        observability.emitThrottleViolation({
+          organizationId: orgId || 'unknown',
+          userId: email.userId,
+          counterType: 'daily_emails',
+          currentCount: current,
+          limit,
+        });
+        
+        // Track deferrals separately for daily limit
+        const currentDeferrals = email.deferralAttempts || 0;
+        const maxDailyLimitDeferrals = 7; // 7 days max wait
+        
+        if (currentDeferrals >= maxDailyLimitDeferrals) {
+          await db.update(emailQueue)
+            .set({ 
+              status: 'failed',
+              failedAt: new Date(),
+              lastError: `Max daily limit deferrals exceeded (${maxDailyLimitDeferrals} days). User consistently at limit.`,
+            })
+            .where(eq(emailQueue.id, email.id));
+          return false;
+        }
+        
+        // Re-queue for next day with deferral tracking
+        const tomorrow = new Date();
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        tomorrow.setHours(8, 0, 0, 0); // 8 AM next day
+        
+        await db.update(emailQueue)
+          .set({ 
+            scheduledFor: tomorrow,
+            lastError: limitReason || 'Daily email limit exceeded',
+            deferralAttempts: currentDeferrals + 1,
+          })
+          .where(eq(emailQueue.id, email.id));
+        
+        return false;
+      }
+      
+      // ========================================
+      // END DEFENSIVE SAFEGUARDS
+      // ========================================
+      
       // Fetch prospect to get actual email address
       const [fetchedProspect] = await db
         .select()
@@ -571,7 +669,7 @@ export class EmailQueueService {
       if (result.success) {
         const sentAt = new Date();
         
-        // Update email queue status with rendered content
+        // Update email queue status with rendered content (reset deferral counter on success)
         await db
           .update(emailQueue)
           .set({
@@ -579,6 +677,7 @@ export class EmailQueueService {
             sentAt,
             subject: renderedSubject, // Store rendered subject
             body: renderedBody, // Store rendered body
+            deferralAttempts: 0, // Reset deferral counter on successful send
           })
           .where(eq(emailQueue.id, email.id));
 

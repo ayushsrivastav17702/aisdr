@@ -635,12 +635,14 @@ class HardeningService {
     reason?: string;
   }> {
     const today = new Date().toISOString().split('T')[0];
+    const orgId = await this.getOrganizationIdForUser(userId);
     
     // Atomic upsert with daily reset
     const [controls] = await db
       .insert(userControls)
       .values({
         userId,
+        organizationId: orgId || 'unknown',
         lastResetDate: today,
         emailsSentToday: 0,
       })
@@ -691,11 +693,14 @@ class HardeningService {
     limit: number; 
     reason?: string;
   }> {
+    const orgId = await this.getOrganizationIdForUser(userId);
+    
     // Ensure controls exist (atomic upsert)
     const [controls] = await db
       .insert(userControls)
       .values({
         userId,
+        organizationId: orgId || 'unknown',
         lastResetDate: new Date().toISOString().split('T')[0],
       })
       .onConflictDoUpdate({
@@ -783,6 +788,26 @@ class HardeningService {
       .update(userControls)
       .set({ 
         [columnMap[resourceType].name]: sql`COALESCE(${columnMap[resourceType]}, 0) + ${incrementBy}`,
+        updatedAt: new Date(),
+      })
+      .where(eq(userControls.userId, userId));
+  }
+  
+  async decrementUserUsage(
+    userId: string,
+    resourceType: 'activeCampaigns' | 'activeEnrollments',
+    decrementBy: number = 1
+  ): Promise<void> {
+    const columnMap = {
+      activeCampaigns: userControls.activeCampaigns,
+      activeEnrollments: userControls.activeEnrollments,
+    };
+    
+    // Decrement but don't go below 0
+    await db
+      .update(userControls)
+      .set({ 
+        [columnMap[resourceType].name]: sql`GREATEST(0, COALESCE(${columnMap[resourceType]}, 0) - ${decrementBy})`,
         updatedAt: new Date(),
       })
       .where(eq(userControls.userId, userId));

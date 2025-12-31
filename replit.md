@@ -56,8 +56,7 @@ The platform is built on a modern web stack, featuring a multi-tenant architectu
 - **Auto-Throttle at Manager Level**: Implement soft throttles for managers before tenant pause triggers.
 - **Manager Abuse Alerts**: Develop alerts for sudden volume spikes, queue backlogs, and anomaly detection for usage patterns per manager.
 - **Manager Change Audit Trail**: Implement manager-level activity logs for actions like campaign creation, limit changes, and bulk uploads.
-- **Atomic Send Limits**: Combine check+increment in single transaction for email send limits to prevent race conditions on concurrent sends.
-- **Background Worker Safeguards**: Extend user-level pause/limit checks to background workers and job schedulers (email queue processor, automation workers).
+- **[NEXT PATCH] Atomic Send Limits**: Combine check+increment in single transaction for email send limits to prevent race conditions on concurrent sends.
 - **Service-Layer Telemetry**: Add observability events to service-layer rejections (recordEmailSent failures, auto-pause triggers) for complete visibility.
 - **Manager Pause via UserControls**: Extend cascade pause logic to recognize manager pauses in userControls table in addition to managerQuotas.
 
