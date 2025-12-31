@@ -3500,3 +3500,209 @@ export interface WaterfallSearchCriteria {
   technologies?: string[];
   fundingStage?: string;
 }
+
+// ============================================
+// RBAC HARDENING & ABUSE CONTROL MODULE
+// ============================================
+
+// Tenant automation status enum for kill switch (distinct from job automation_status)
+export const tenantAutomationStatusEnum = pgEnum("tenant_automation_status", ["active", "paused"]);
+
+// Tenant Controls - Kill switch and automation status per tenant
+export const tenantControls = pgTable("tenant_controls", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }).unique(),
+  
+  // Kill switch - pauses email, AI, sequence execution but NOT login/read
+  automationStatus: tenantAutomationStatusEnum("tenant_automation_status").default("active"),
+  pausedReason: text("paused_reason"),
+  pausedAt: timestamp("paused_at"),
+  pausedBy: varchar("paused_by"), // Super admin who paused
+  
+  // Per-tenant throttle limits (overrides defaults when set)
+  emailsPerMinute: integer("emails_per_minute").default(10),
+  aiCallsPerMinute: integer("ai_calls_per_minute").default(20),
+  enrollmentsPerHour: integer("enrollments_per_hour").default(100),
+  prospectsPerHour: integer("prospects_per_hour").default(500),
+  
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  orgIdIdx: index("tenant_controls_org_id_idx").on(table.organizationId),
+  automationStatusIdx: index("tenant_controls_automation_status_idx").on(table.automationStatus),
+}));
+
+// Throttle Windows - Rolling window counters for rate limiting
+export const throttleWindows = pgTable("throttle_windows", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }),
+  
+  // Counter type: emails, ai_calls, enrollments, prospects
+  counterType: varchar("counter_type", { length: 50 }).notNull(),
+  
+  // Rolling window tracking
+  windowStart: timestamp("window_start").notNull(),
+  windowDurationMinutes: integer("window_duration_minutes").notNull().default(1),
+  currentCount: integer("current_count").notNull().default(0),
+  
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  orgTypeWindowIdx: index("throttle_windows_org_type_window_idx").on(table.organizationId, table.counterType, table.windowStart),
+  userTypeWindowIdx: index("throttle_windows_user_type_window_idx").on(table.userId, table.counterType, table.windowStart),
+}));
+
+// Manager Quotas - Per-manager resource limits
+export const managerQuotas = pgTable("manager_quotas", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  managerId: varchar("manager_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  organizationId: varchar("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  
+  // Resource limits
+  maxUsers: integer("max_users").default(10),
+  maxProspects: integer("max_prospects").default(10000),
+  maxSequences: integer("max_sequences").default(50),
+  maxActiveSequences: integer("max_active_sequences").default(10),
+  
+  // Current usage (denormalized for fast checks)
+  currentUsers: integer("current_users").default(0),
+  currentProspects: integer("current_prospects").default(0),
+  currentSequences: integer("current_sequences").default(0),
+  currentActiveSequences: integer("current_active_sequences").default(0),
+  
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  managerIdIdx: uniqueIndex("manager_quotas_manager_id_idx").on(table.managerId),
+  orgIdIdx: index("manager_quotas_org_id_idx").on(table.organizationId),
+}));
+
+// Idempotency Keys - Prevent duplicate operations on retries
+export const idempotencyKeys = pgTable("idempotency_keys", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  
+  // Scope to tenant and user
+  organizationId: varchar("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  
+  // Idempotency key from client
+  idempotencyKey: varchar("idempotency_key", { length: 255 }).notNull(),
+  
+  // Operation details
+  operation: varchar("operation", { length: 100 }).notNull(), // enrollment, email_send, ai_personalization
+  resourceId: varchar("resource_id", { length: 255 }), // Resulting resource ID if created
+  status: varchar("status", { length: 50 }).default("pending"), // pending, completed, failed
+  response: jsonb("response"), // Cached response for replay
+  
+  // Expiry
+  expiresAt: timestamp("expires_at").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  keyIdx: uniqueIndex("idempotency_keys_key_idx").on(table.organizationId, table.userId, table.idempotencyKey),
+  expiresAtIdx: index("idempotency_keys_expires_at_idx").on(table.expiresAt),
+}));
+
+// Background Job Audit - Visibility into job processing
+export const backgroundJobAudit = pgTable("background_job_audit", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").references(() => organizations.id, { onDelete: "set null" }),
+  
+  // Job identification
+  jobType: varchar("job_type", { length: 100 }).notNull(), // email_send, ai_enrichment, reply_poll, sequence_exec
+  jobId: varchar("job_id", { length: 255 }), // External job ID if applicable
+  
+  // Status tracking
+  status: varchar("status", { length: 50 }).notNull().default("queued"), // queued, running, completed, failed, cancelled
+  retryCount: integer("retry_count").default(0),
+  maxRetries: integer("max_retries").default(3),
+  lastError: text("last_error"),
+  
+  // Timing
+  queuedAt: timestamp("queued_at").defaultNow(),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  
+  // Metrics
+  itemsProcessed: integer("items_processed").default(0),
+  itemsFailed: integer("items_failed").default(0),
+  
+  // Payload (truncated for large jobs)
+  payload: jsonb("payload"),
+  result: jsonb("result"),
+  
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  orgIdIdx: index("background_job_audit_org_id_idx").on(table.organizationId),
+  jobTypeStatusIdx: index("background_job_audit_type_status_idx").on(table.jobType, table.status),
+  queuedAtIdx: index("background_job_audit_queued_at_idx").on(table.queuedAt),
+}));
+
+// Usage Counters - Daily/hourly tracking for cost guardrails
+export const usageCounters = pgTable("usage_counters", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "cascade" }),
+  
+  // Counter type and period
+  counterType: varchar("counter_type", { length: 50 }).notNull(), // emails_sent, ai_tokens, prospects_uploaded
+  periodType: varchar("period_type", { length: 20 }).notNull(), // hourly, daily, monthly
+  periodStart: timestamp("period_start").notNull(),
+  
+  // Count and cost
+  count: integer("count").notNull().default(0),
+  costUsd: real("cost_usd").default(0),
+  
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  orgTypeperiodIdx: uniqueIndex("usage_counters_org_type_period_idx").on(table.organizationId, table.counterType, table.periodType, table.periodStart),
+  userTypePeriodIdx: index("usage_counters_user_type_period_idx").on(table.userId, table.counterType, table.periodType, table.periodStart),
+}));
+
+// Hardening module types
+export type TenantControl = typeof tenantControls.$inferSelect;
+export type InsertTenantControl = typeof tenantControls.$inferInsert;
+export type ThrottleWindow = typeof throttleWindows.$inferSelect;
+export type InsertThrottleWindow = typeof throttleWindows.$inferInsert;
+export type ManagerQuota = typeof managerQuotas.$inferSelect;
+export type InsertManagerQuota = typeof managerQuotas.$inferInsert;
+export type IdempotencyKey = typeof idempotencyKeys.$inferSelect;
+export type InsertIdempotencyKey = typeof idempotencyKeys.$inferInsert;
+export type BackgroundJobAudit = typeof backgroundJobAudit.$inferSelect;
+export type InsertBackgroundJobAudit = typeof backgroundJobAudit.$inferInsert;
+export type UsageCounter = typeof usageCounters.$inferSelect;
+export type InsertUsageCounter = typeof usageCounters.$inferInsert;
+
+// Hardening module schemas
+export const insertTenantControlSchema = createInsertSchema(tenantControls).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertThrottleWindowSchema = createInsertSchema(throttleWindows).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertManagerQuotaSchema = createInsertSchema(managerQuotas).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export const insertIdempotencyKeySchema = createInsertSchema(idempotencyKeys).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertBackgroundJobAuditSchema = createInsertSchema(backgroundJobAudit).omit({
+  id: true,
+  createdAt: true,
+});
+
+export const insertUsageCounterSchema = createInsertSchema(usageCounters).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
