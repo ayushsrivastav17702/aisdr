@@ -45,6 +45,7 @@ import managerRoutes from "./routes/manager.routes";
 import { inboxRouter } from "./inbox-routes";
 import { authenticate, forbidManager, blockSuperAdminFromSDR } from "./middleware/auth.middleware";
 import { emailVolumeConfig, getCapacityReport, getEstimatedTimeForEmails, EMAIL_VOLUME_PRESETS } from "./config/email-volume.config";
+import { analyticsCache } from "./utils/cache";
 
 const upload = multer({ 
   dest: 'uploads/',
@@ -2766,7 +2767,14 @@ Respond in JSON format:
       const userId = req.userContext!.userId;
       const days = parseInt(req.query.days as string) || 30;
       
+      const cacheKey = `email-analytics:performance:${userId}:${days}`;
+      const cached = analyticsCache.get<any>(cacheKey);
+      if (cached) {
+        return res.json(cached);
+      }
+      
       const metrics = await emailTrackingService.getPerformanceMetrics(userId, days);
+      analyticsCache.set(cacheKey, metrics, 30); // 30 second TTL
       res.json(metrics);
     } catch (error) {
       console.error("Error getting email performance metrics:", error);

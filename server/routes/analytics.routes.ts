@@ -1,16 +1,27 @@
 import { Router } from "express";
 import { AnalyticsService } from "../services/analytics.service";
 import { authenticate } from "../middleware/auth.middleware";
+import { analyticsCache } from "../utils/cache";
 
 const router = Router();
+const ANALYTICS_CACHE_TTL = 30; // 30 seconds
 
 router.get("/overview", authenticate, async (req, res) => {
   try {
     if (!req.userContext) {
       return res.status(401).json({ error: "Unauthorized" });
     }
+    
+    const cacheKey = `analytics:overview:${req.userContext.userId}`;
+    const cached = analyticsCache.get<any>(cacheKey);
+    if (cached) {
+      return res.json(cached);
+    }
+    
     const analyticsService = new AnalyticsService(req.userContext);
     const overview = await analyticsService.getOverview();
+    
+    analyticsCache.set(cacheKey, overview, ANALYTICS_CACHE_TTL);
     res.json(overview);
   } catch (error) {
     console.error("Error fetching analytics overview:", error);
