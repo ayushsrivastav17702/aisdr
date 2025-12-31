@@ -7,6 +7,7 @@ import { sequenceProspects, emailReplies, emailQueue, emails, prospects, persona
 import { eq, and, sql, desc } from "drizzle-orm";
 import { z } from "zod";
 import { authenticate, forbidManager, blockSuperAdminFromSDR } from "./middleware/auth.middleware";
+import { checkAutomationStatus, throttleOperation, incrementThrottle, trackUsage } from "./middleware/throttle.middleware";
 
 const router = Router();
 
@@ -437,9 +438,22 @@ router.post("/sequences/from-template", authenticate, forbidManager, async (req,
   }
 });
 
-// Update sequence
+// Update sequence (with automation check for activation)
 router.put("/sequences/:id", authenticate, forbidManager, async (req, res) => {
   try {
+    // Check automation status if activating sequence
+    if (req.body.status === "active" && req.userContext?.organizationId) {
+      const { hardeningService } = await import("./services/hardening.service");
+      const isPaused = await hardeningService.isAutomationPaused(req.userContext.organizationId);
+      if (isPaused) {
+        return res.status(503).json({
+          error: 'Automation paused',
+          message: 'Cannot activate sequence while automation is paused for this organization.',
+          code: 'AUTOMATION_PAUSED',
+        });
+      }
+    }
+    
     const sequence = await storage.updateSequence(req.userContext!, req.params.id, req.body);
     
     // If status changed to active, initialize the sequence
@@ -454,9 +468,22 @@ router.put("/sequences/:id", authenticate, forbidManager, async (req, res) => {
   }
 });
 
-// Update sequence (PATCH)
+// Update sequence (PATCH) (with automation check for activation)
 router.patch("/sequences/:id", authenticate, forbidManager, async (req, res) => {
   try {
+    // Check automation status if activating sequence
+    if (req.body.status === "active" && req.userContext?.organizationId) {
+      const { hardeningService } = await import("./services/hardening.service");
+      const isPaused = await hardeningService.isAutomationPaused(req.userContext.organizationId);
+      if (isPaused) {
+        return res.status(503).json({
+          error: 'Automation paused',
+          message: 'Cannot activate sequence while automation is paused for this organization.',
+          code: 'AUTOMATION_PAUSED',
+        });
+      }
+    }
+    
     const sequence = await storage.updateSequence(req.userContext!, req.params.id, req.body);
     
     // If status changed to active, initialize the sequence
@@ -581,13 +608,22 @@ router.get("/sequences/:id/prospects", authenticate, blockSuperAdminFromSDR, asy
   }
 });
 
-// Add prospects to sequence
-router.post("/sequences/:id/prospects", authenticate, forbidManager, async (req, res) => {
+// Add prospects to sequence (with throttling and automation check)
+router.post("/sequences/:id/prospects", authenticate, forbidManager, checkAutomationStatus, throttleOperation('enrollments'), async (req, res) => {
   try {
     const { prospectIds } = req.body;
     
     if (!Array.isArray(prospectIds) || prospectIds.length === 0) {
       return res.status(400).json({ error: "prospectIds array is required" });
+    }
+    
+    // Hard limit: Max 1000 prospects per enrollment request
+    const MAX_ENROLLMENT_BATCH = 1000;
+    if (prospectIds.length > MAX_ENROLLMENT_BATCH) {
+      return res.status(400).json({ 
+        error: `Batch size exceeds limit. Maximum ${MAX_ENROLLMENT_BATCH} prospects per request.`,
+        code: 'BATCH_SIZE_EXCEEDED'
+      });
     }
     
     const sequenceId = req.params.id;
@@ -623,6 +659,11 @@ router.post("/sequences/:id/prospects", authenticate, forbidManager, async (req,
         console.error(`[Manual Enrollment] Failed to schedule email for prospect ${enrolledProspect.prospectId}:`, scheduleError);
         // Continue with other prospects even if one fails
       }
+    }
+    
+    // Track enrollment usage for throttling and cost guardrails
+    if (req.userContext?.organizationId) {
+      await incrementThrottle(req.userContext.organizationId, 'enrollments', enrolled.length, req.userContext.userId);
     }
     
     res.json({ message: `${enrolled.length} prospects enrolled and emails scheduled`, enrolled });
