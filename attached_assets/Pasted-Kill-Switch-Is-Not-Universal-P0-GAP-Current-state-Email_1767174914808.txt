@@ -1,0 +1,188 @@
+Kill Switch Is Not Universal (P0 GAP)
+
+Current state
+
+Email queue respects kill switch
+
+Sequence activation blocked
+
+Missing
+
+AI enrichment jobs
+
+AI personalization jobs
+
+Analytics background jobs
+
+Reply ingestion
+
+Risk
+Paused tenant can still generate AI cost.
+
+🔧 Fix
+
+Every background worker must begin with:
+
+if (isAutomationPaused(orgId)) return SKIPPED;
+
+🔴 2️⃣ Throttling Is Endpoint-Based, Not COST-Based (P0 GAP)
+
+Right now:
+
+100 enrollments/hr
+
+But:
+
+1 enrollment = 1 prospect OR 1000 prospects
+
+AI cost is not normalized
+
+🔥 Risk
+
+User can:
+
+Enroll 1000 prospects
+
+Trigger 1000 AI calls
+
+Within throttle window
+
+🔧 Fix
+
+Introduce unit-based throttling:
+
+AI tokens
+
+Prospects
+
+Emails
+
+Not just requests.
+
+🔴 3️⃣ No Usage Ledger (P0 SCALE BLOCKER)
+
+You enforce limits but don’t persist usage history.
+
+Missing Tables
+
+tenant_usage_daily
+
+manager_usage_daily
+
+user_usage_daily
+
+Why this matters
+
+Without this:
+
+No billing accuracy
+
+No abuse detection
+
+No auto-shutdown
+
+No forecasting
+
+This will block revenue scaling.
+
+🟠 4️⃣ Manager Throttling Is Incomplete
+
+Throttle applied to:
+
+Enrollment
+
+Missing:
+
+Prospect upload
+
+AI enrichment triggers
+
+Sequence creation
+
+Analytics heavy endpoints
+
+Risk
+
+Managers can overload system indirectly.
+
+🟠 5️⃣ Kill Switch Is Reactive, Not Preventive
+
+Right now:
+
+Admin pauses AFTER damage
+
+Missing:
+
+Auto-pause rules:
+
+Cost threshold crossed
+
+Queue depth exceeded
+
+Error rate spike
+
+This is needed at 100+ tenants.
+
+🟠 6️⃣ No Visibility Dashboard for Super Admin
+
+You added controls, but no observability:
+
+Missing views:
+
+Queue depth per tenant
+
+AI spend per tenant
+
+Failed jobs per tenant
+
+Throttle violations
+
+Without this:
+
+Super Admin is blind during incidents.
+
+🟠 7️⃣ Manager Ownership Is Enforced — But Not Audited
+
+You fixed scoping (good), but:
+
+No audit trail
+
+No history of reassignment
+
+No deletion logs
+
+This will bite you in enterprise sales.
+
+🟡 8️⃣ Pagination Guards Missing for Analytics Drilldowns
+
+Summary endpoints are protected, but:
+
+Drill-down views
+
+Time-series exports
+
+CSV analytics
+
+These are common crash vectors.
+
+🟡 9️⃣ Background Workers Still Share Global Pool
+
+Even with kill switch:
+
+All tenants share same worker pool
+
+One noisy tenant degrades others
+
+Acceptable now, not later.
+
+🟡 10️⃣ No Chaos / Failure Testing
+
+You hardened logic but haven’t tested:
+
+AI provider outage
+
+DB slowdown
+
+Queue overload
+
+Partial worker crashes

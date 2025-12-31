@@ -1,5 +1,6 @@
 import { openaiHelper } from './openai-helper';
 import { storage, type RequestContext } from "../storage";
+import { hardeningService } from "./hardening.service";
 
 interface ProspectData {
   id: string;
@@ -51,6 +52,14 @@ interface PersonalizationInsights {
 class IntelligentPersonalizationService {
   async analyzeProspect(ctx: RequestContext, prospectId: string): Promise<PersonalizationInsights> {
     console.log(`🧠 Starting intelligent analysis for prospect ${prospectId}`);
+
+    // KILL SWITCH CHECK: Block AI personalization for paused tenants
+    if (ctx.organizationId) {
+      const isPaused = await hardeningService.isAutomationPaused(ctx.organizationId);
+      if (isPaused) {
+        throw new Error('AI personalization blocked: tenant automation is paused');
+      }
+    }
 
     const prospect = await storage.getProspect(ctx, prospectId);
     if (!prospect) {
