@@ -16,6 +16,7 @@
 const autocannon = require('autocannon');
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:5000';
+const AUTH_TOKEN = process.env.AUTH_TOKEN || '';
 const AUTH_COOKIE = process.env.AUTH_COOKIE || '';
 const TEST_SEQUENCE_ID = process.env.TEST_SEQUENCE_ID || '';
 // Set PROSPECT_IDS=id1,id2,id3 for real enrollment test
@@ -91,7 +92,7 @@ async function runTest(configName = 'baseline') {
     timeout: 30, // 30s timeout for large batch enrollments
     headers: {
       'Content-Type': 'application/json',
-      'Cookie': AUTH_COOKIE
+      'Authorization': AUTH_TOKEN ? `Bearer ${AUTH_TOKEN}` : undefined, 'Cookie': AUTH_COOKIE
     },
     requests: [
       {

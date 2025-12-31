@@ -15,6 +15,7 @@
 const autocannon = require('autocannon');
 
 const BASE_URL = process.env.BASE_URL || 'http://localhost:5000';
+const AUTH_TOKEN = process.env.AUTH_TOKEN || '';
 const AUTH_COOKIE = process.env.AUTH_COOKIE || '';
 
 const CONFIGS = {
@@ -80,7 +81,7 @@ async function runTest(configName = 'baseline') {
     timeout: 60, // 60s timeout for AI calls
     headers: {
       'Content-Type': 'application/json',
-      'Cookie': AUTH_COOKIE
+      'Authorization': AUTH_TOKEN ? `Bearer ${AUTH_TOKEN}` : undefined, 'Cookie': AUTH_COOKIE
     },
     requests: [
       {
