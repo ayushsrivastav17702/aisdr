@@ -7,7 +7,7 @@ import { sequenceProspects, emailReplies, emailQueue, emails, prospects, persona
 import { eq, and, sql, desc } from "drizzle-orm";
 import { z } from "zod";
 import { authenticate, forbidManager, blockSuperAdminFromSDR } from "./middleware/auth.middleware";
-import { checkAutomationStatus, throttleOperation, incrementThrottle, trackUsage } from "./middleware/throttle.middleware";
+import { checkAutomationStatus, throttleOperation, incrementThrottle, trackUsage, checkUserPause, checkDailyEmailLimit, checkEnrollmentConcurrency } from "./middleware/throttle.middleware";
 
 const router = Router();
 
@@ -609,7 +609,7 @@ router.get("/sequences/:id/prospects", authenticate, blockSuperAdminFromSDR, asy
 });
 
 // Add prospects to sequence (with throttling and automation check)
-router.post("/sequences/:id/prospects", authenticate, forbidManager, checkAutomationStatus, throttleOperation('enrollments'), async (req, res) => {
+router.post("/sequences/:id/prospects", authenticate, forbidManager, checkUserPause, checkEnrollmentConcurrency, checkAutomationStatus, throttleOperation('enrollments'), async (req, res) => {
   try {
     const { prospectIds } = req.body;
     

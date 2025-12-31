@@ -29,6 +29,7 @@ export interface AuthUser {
   role: 'manager' | 'user' | 'super_admin';
   status: 'active' | 'inactive' | 'suspended';
   organizationId: string | null;
+  createdBy: string | null;
   isManager: boolean;
 }
 
@@ -269,6 +270,7 @@ export class AuthService {
       role: normalizedRole as 'manager' | 'user',
       status: user.status as 'active' | 'inactive' | 'suspended',
       organizationId: user.organizationId,
+      createdBy: user.createdBy,
       isManager: !!managerAccount,
     };
   }
