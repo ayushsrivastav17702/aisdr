@@ -122,14 +122,23 @@ async function initializeSequence(userContext: RequestContext, sequenceId: strin
   }
 }
 
-// Get all sequences
+// Get all sequences with pagination
 router.get("/sequences", authenticate, blockSuperAdminFromSDR, async (req, res) => {
   try {
-    const sequences = await storage.getSequences(req.userContext!);
+    const { page = '1', limit = '25', status } = req.query;
+    const pageNum = parseInt(page as string);
+    const limitNum = Math.min(parseInt(limit as string), 50); // Cap at 50
+    const offset = (pageNum - 1) * limitNum;
+    
+    const result = await storage.getSequences(req.userContext!, {
+      limit: limitNum,
+      offset,
+      status: status as string | undefined,
+    });
     
     // Enhance each sequence with tracking stats
     const sequencesWithStats = await Promise.all(
-      sequences.map(async (sequence) => {
+      result.sequences.map(async (sequence) => {
         const emails = await storage.getSequenceEmails(req.userContext!, sequence.id);
         
         const sentCount = emails.filter(e => e.sentAt).length;
@@ -145,7 +154,13 @@ router.get("/sequences", authenticate, blockSuperAdminFromSDR, async (req, res) 
       })
     );
     
-    res.json(sequencesWithStats);
+    res.json({
+      sequences: sequencesWithStats,
+      total: result.total,
+      page: pageNum,
+      limit: limitNum,
+      totalPages: Math.ceil(result.total / limitNum),
+    });
   } catch (error) {
     console.error("Error fetching sequences:", error);
     res.status(500).json({ error: "Failed to fetch sequences" });
