@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { superAdminService } from '../services/super-admin.service';
+import { hardeningService } from '../services/hardening.service';
 import { 
   authenticateSuperAdmin, 
   requireMasterAdmin,
@@ -2810,6 +2811,144 @@ router.post('/internal/metrics/reset', authenticateSuperAdmin, requireMasterAdmi
   } catch (error) {
     console.error('Error resetting metrics:', error);
     res.status(500).json({ error: 'Failed to reset metrics' });
+  }
+});
+
+// =============================================
+// HARDENING - TENANT CONTROLS & KILL SWITCH
+// =============================================
+
+const killSwitchSchema = z.object({
+  action: z.enum(['pause', 'resume']),
+  reason: z.string().max(500).optional(),
+});
+
+const throttleLimitsSchema = z.object({
+  emailsPerMinute: z.number().int().min(1).max(1000).optional(),
+  aiCallsPerMinute: z.number().int().min(1).max(100).optional(),
+  enrollmentsPerHour: z.number().int().min(1).max(10000).optional(),
+  prospectsPerHour: z.number().int().min(1).max(10000).optional(),
+});
+
+router.get('/tenants/:id/controls', authenticateSuperAdmin, async (req, res) => {
+  try {
+    const controls = await hardeningService.getTenantControls(req.params.id);
+    res.json(controls || {
+      organizationId: req.params.id,
+      automationStatus: 'active',
+      emailsPerMinute: 10,
+      aiCallsPerMinute: 20,
+      enrollmentsPerHour: 100,
+      prospectsPerHour: 500,
+    });
+  } catch (error) {
+    console.error('Error fetching tenant controls:', error);
+    res.status(500).json({ error: 'Failed to fetch tenant controls' });
+  }
+});
+
+router.post('/tenants/:id/automation', authenticateSuperAdmin, requireSuperAdminPermission('canSuspendTenants'), async (req, res) => {
+  try {
+    const validation = killSwitchSchema.safeParse(req.body);
+    if (!validation.success) {
+      return res.status(400).json({ error: 'Validation failed', details: validation.error.errors });
+    }
+
+    const { action, reason } = validation.data;
+    let controls;
+
+    if (action === 'pause') {
+      controls = await hardeningService.pauseTenantAutomation(
+        req.params.id,
+        req.superAdmin!.id,
+        reason || 'Paused by super admin'
+      );
+
+      await db.insert(superAdminAuditLogs).values({
+        superAdminId: req.superAdmin!.id,
+        action: 'pause_tenant_automation',
+        targetType: 'tenant',
+        targetId: req.params.id,
+        details: { reason },
+        ipAddress: req.ip || null,
+      });
+    } else {
+      controls = await hardeningService.resumeTenantAutomation(req.params.id);
+
+      await db.insert(superAdminAuditLogs).values({
+        superAdminId: req.superAdmin!.id,
+        action: 'resume_tenant_automation',
+        targetType: 'tenant',
+        targetId: req.params.id,
+        details: {},
+        ipAddress: req.ip || null,
+      });
+    }
+
+    res.json(controls);
+  } catch (error) {
+    console.error('Error toggling tenant automation:', error);
+    res.status(500).json({ error: 'Failed to toggle tenant automation' });
+  }
+});
+
+router.patch('/tenants/:id/throttle', authenticateSuperAdmin, requireSuperAdminPermission('canSuspendTenants'), async (req, res) => {
+  try {
+    const validation = throttleLimitsSchema.safeParse(req.body);
+    if (!validation.success) {
+      return res.status(400).json({ error: 'Validation failed', details: validation.error.errors });
+    }
+
+    const controls = await hardeningService.updateTenantThrottleLimits(req.params.id, validation.data);
+
+    await db.insert(superAdminAuditLogs).values({
+      superAdminId: req.superAdmin!.id,
+      action: 'update_tenant_throttle',
+      targetType: 'tenant',
+      targetId: req.params.id,
+      details: validation.data,
+      ipAddress: req.ip || null,
+    });
+
+    res.json(controls);
+  } catch (error) {
+    console.error('Error updating tenant throttle limits:', error);
+    res.status(500).json({ error: 'Failed to update throttle limits' });
+  }
+});
+
+// =============================================
+// HARDENING - BACKGROUND JOB VISIBILITY
+// =============================================
+
+router.get('/jobs/stats', authenticateSuperAdmin, async (req, res) => {
+  try {
+    const stats = await hardeningService.getJobQueueStats();
+    res.json(stats);
+  } catch (error) {
+    console.error('Error fetching job stats:', error);
+    res.status(500).json({ error: 'Failed to fetch job stats' });
+  }
+});
+
+router.get('/jobs/failed', authenticateSuperAdmin, async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
+    const jobs = await hardeningService.getRecentFailedJobs(limit);
+    res.json({ jobs, total: jobs.length });
+  } catch (error) {
+    console.error('Error fetching failed jobs:', error);
+    res.status(500).json({ error: 'Failed to fetch failed jobs' });
+  }
+});
+
+router.get('/tenants/:id/usage', authenticateSuperAdmin, async (req, res) => {
+  try {
+    const usage = await hardeningService.getTenantDailyUsageSummary(req.params.id);
+    res.json(usage);
+  } catch (error) {
+    console.error('Error fetching tenant usage:', error);
+    res.status(500).json({ error: 'Failed to fetch tenant usage' });
   }
 });
 
