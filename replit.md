@@ -24,117 +24,37 @@ The platform is built on a modern web stack, featuring a multi-tenant architectu
 - **Database**: PostgreSQL with Drizzle ORM.
 - **AI Integration**: Multi-provider AI system with automatic fallback (OpenAI, OpenRouter, Anthropic) for NLP, email generation, and sentiment analysis.
 - **Job Queue**: BullMQ (requires Redis/Upstash) for background tasks like automation scheduling.
-- **Authentication & Security**: Enterprise-grade passwordless authentication (Google/Microsoft OAuth, Magic Link), JWT sessions, bcrypt, CSRF protection, role-based access, and comprehensive audit logging.
-- **RBAC Middleware Rules** (Source of Truth - `server/middleware/auth.middleware.ts`):
-  - **User (SDR)**: Full SDR execution - campaigns, sequences, emails, AI writing, prospect import, automation, mailboxes
-  - **Manager** (`admin` role): Team oversight only - view campaigns (read-only), team analytics, user management. BLOCKED from all SDR execution via `forbidManager` middleware
-  - **Super Admin** (`super_admin` role): Platform governance only - tenant provisioning, config, manager creation, audit logs, impersonation. BLOCKED from all SDR execution via `forbidManager` middleware
-  - **Key Middleware**: `forbidManager` blocks managers AND super_admins from SDR routes; `requireSuperAdmin` enforces super-admin-only access; `requireManager` enforces manager-only access
-- **Multi-Tenancy**: RequestContext-based data isolation, user invitation system, and admin impersonation. Includes organization and workspace management with hierarchical structures and resource limits.
+- **Authentication & Security**: Enterprise-grade passwordless authentication (Google/Microsoft OAuth, Magic Link), JWT sessions, bcrypt, CSRF protection, role-based access (User, Manager, Super Admin), and comprehensive audit logging. Role-based access control (RBAC) rules are enforced via middleware to prevent unauthorized SDR execution by Managers and Super Admins.
+- **Multi-Tenancy**: RequestContext-based data isolation, user invitation system, organization/workspace management, and admin impersonation.
 - **Natural Language Processing**: Converts user queries into structured Apollo.io filters with AI.
 - **Email Sequence Management**: Multi-step sequences, prospect enrollment, tracking, AI personalization, multi-mailbox sending with round-robin rotation.
 - **Data Security**: Secure credential encryption (AES-256-CBC) for mailboxes.
-- **Reply Detection**: IMAP-based polling for automatic reply detection, OOO detection, bounce handling, and unsubscribe processing.
-- **Reply Classification**: AI-powered sentiment and intent analysis for incoming replies with automatic sequence adjustments.
-- **Email Threading**: Follow-up emails properly thread using RFC 5322 Message-ID headers.
-- **Unified Inbox**: Centralized reply management with AI summaries, filtering by sentiment/intent, and quick actions.
-- **Template Management**: Message template library with performance tracking, variable replacement, and AI-powered template generation.
+- **Reply Detection & Classification**: IMAP-based polling for automatic reply detection, OOO, bounce, and unsubscribe handling, with AI-powered sentiment and intent analysis. Follow-up emails are properly threaded.
+- **Unified Inbox**: Centralized reply management with AI summaries, filtering, and quick actions.
+- **Template Management**: Message template library with performance tracking, variable replacement, and AI-powered generation.
 - **AI Usage Tracking**: Comprehensive token usage tracking with cost calculation across multiple AI providers.
 - **Campaign Execution**: Automated sequence execution with AI personalization, daily limits, and progress tracking.
 - **Automation Layer**: Background automation for autonomous prospect imports and sequence enrollment.
 - **Email Tracking & Analytics**: Comprehensive email engagement tracking (open, click, reply rates) with HMAC-signed URL wrapping.
 - **Duplicate Detection**: Intelligent checks by email, Apollo ID, LinkedIn URL, and name+company.
 - **Advanced Search**: Revenue range, technology stack, and funding stage filtering with multi-strategy Apollo search fallback.
-- **Admin Infrastructure**: Comprehensive admin settings including email infrastructure, API access (keys, webhooks), email deliverability settings, AI configuration, and multi-channel notifications.
-- **Super Admin System**: Comprehensive super admin functionality for platform-level tenant management:
-  - **Tenant Management**: Full tenant lifecycle (provisioning, status management, plan upgrades, configuration controls, manager account creation)
-  - **Quota Enforcement**: Middleware-based resource limits with pre-flight checks (users, prospects, sequences, mailboxes)
-  - **Alert Automation**: Background monitoring for tenant health, quota usage (80% threshold), mailbox health, inactive tenants, server resources
-  - **Time-Series Analytics**: Daily metrics tracking for tenant/user growth with period-based aggregation (7d/30d/90d)
-  - **Broadcast Messaging**: Targeted tenant communications with Resend email delivery
-  - **Impersonation**: Manager impersonation with full audit trail
-  - **Platform Health**: Server metrics, storage monitoring, email infrastructure dashboard
-  - **Bootstrap Script**: `server/scripts/seed-super-admin.ts` for initial super admin account creation
-- **User Engagement Features (Planned)**: Leaderboard & Gamification (points, badges), Best Practices Library (templates, guides, videos), and AE Handoff Workflow (qualification frameworks, scoring, status workflow).
-- **Manager Dashboard**: Implemented at `/manager/dashboard` with team management (add, update, deactivate users, password reset), campaign oversight (approve, pause, stats), performance analytics with time period selection (7d/30d/90d), and resource allocation tracking. Uses `requireManager` middleware for role-based access.
-- **Multi-Provider Waterfall Search System**: Intelligent prospect search system that cascades through multiple providers (Perplexity AI, Apollo.io, Lusha, OpenRouter) to maximize result coverage while optimizing costs. Features accumulating mode, smart deduplication, cost optimization, error resilience, and usage tracking.
-- **Super Admin Performance Optimizations** (December 2025):
-  - **N+1 Query Elimination**: Tenant listing reduced from 42 queries (20 tenants × 2 count queries + joins) to 1 query using correlated subqueries
-  - **Dashboard Stats**: Combined 7 separate queries into 1 with 30-second in-memory cache
-  - **Keyset Pagination**: Audit logs and tenant listing support cursor-based pagination for O(1) performance at scale
-  - **Approximate Counts**: Unfiltered queries use PostgreSQL `reltuples` statistics for O(1) total counts
-  - **Filter Optimization**: Status/plan filters moved from post-query JavaScript to SQL WHERE clauses
-  - **Export Safety**: All export endpoints capped at reasonable limits (50k records for audit logs)
-- **User Role P0 Performance Fixes** (December 2025):
-  - **Prospect Enrollment N+1 Elimination**: `enrollProspects()` reduced from 5000+ queries (1000 prospects) to 5 queries total using batch operations with tenant isolation via INNER JOIN
-  - **CSV Upload Async Processing**: Returns HTTP 202 immediately, processes via setImmediate() with 1000-prospect batch inserts, supports both Redis (BullMQ) and non-Redis environments
-- **RBAC Hardening Phase** (December 2025):
-  - **Kill Switch**: Super Admin can pause/resume tenant automation via `hardeningService.pauseTenantAutomation()`. Email queue respects kill switch and skips emails for paused orgs.
-  - **Throttle Middleware**: Rate limiting via `throttle.middleware.ts` with default limits: enrollments 100/hr, prospects 500/hr, emails 10/min, AI calls 20/min
-  - **Batch Limits**: Max 1000 prospects per enrollment request enforced in `sequences-routes.ts`
-  - **Sequence Activation Guards**: PUT/PATCH `/sequences/:id` checks automation status before allowing activation
-  - **Exponential Backoff**: Email retry mechanism uses exponential delay (2^attempts minutes, capped at 30min)
-  - **Pagination Guards**: `getProspects()` caps at 50 per page, data exports cap at 50k records
-  - **DB Tables**: `tenant_controls`, `throttle_windows`, `manager_quotas`, `usage_counters`, `idempotency_keys`, `background_job_audit`
-  - **Key Files**: `server/services/hardening.service.ts`, `server/middleware/throttle.middleware.ts`
-  - **Universal Kill Switch** (December 2025): Kill switch now enforced in automation-worker (cancels jobs), reply-detection (skips mailbox polling), intelligent-personalization (blocks AI calls), and email-queue (skips sending). All background services resolve userId→orgId→pauseStatus.
-  - **Unit-Based Throttling**: Pre-flight check validates `batch_size <= (limit - current_usage)` before enrollment to prevent quota gaming via large batches.
+- **Admin Infrastructure**: Comprehensive admin settings including email infrastructure, API access, email deliverability, AI configuration, and multi-channel notifications.
+- **Super Admin System**: Comprehensive platform-level tenant management including provisioning, status, plan upgrades, configuration, manager account creation, quota enforcement, and alert automation. Includes time-series analytics, broadcast messaging, impersonation, and platform health monitoring. Performance optimizations for Super Admin dashboards and listings include N+1 query elimination, in-memory caching, keyset pagination, approximate counts, and filter optimization.
+- **Manager Dashboard**: Implemented at `/manager/dashboard` for team management, campaign oversight, performance analytics, and resource allocation tracking, with `requireManager` middleware for access control. Manager-level safeguards include hard limits on active campaigns, sequences, users, and prospects, and a Manager Kill Switch to pause operations.
+- **Multi-Provider Waterfall Search System**: Intelligent prospect search system that cascades through multiple providers (Perplexity AI, Apollo.io, Lusha, OpenRouter) to maximize result coverage while optimizing costs, featuring accumulating mode, smart deduplication, cost optimization, error resilience, and usage tracking.
+- **Performance Fixes**: Prospect enrollment N+1 query elimination and asynchronous CSV upload processing.
+- **RBAC Hardening**: Implemented kill switch for tenant automation, rate limiting via throttle middleware (enrollments, prospects, emails, AI calls), batch limits for prospect enrollment, sequence activation guards, and exponential backoff for email retries. Pagination guards are enforced on data exports and prospect listings. Universal Kill Switch is enforced across background services (automation-worker, reply-detection, intelligent-personalization, email-queue). Unit-based throttling prevents quota gaming.
 
 ### P1 Roadmap (Future Work)
-The following items are documented for future implementation. **Status: Observability hooks added (December 2025), enforcement deferred until production cost baselines available.**
-
-#### 1. Cost-Based Throttling (Tokens, Not Prospects)
-**Current State**: Throttling counts prospects/enrollments only.
-**Gap**: Missing AI token usage tracking and provider cost weighting.
-**Future Implementation**:
-- Track AI token usage per request (prompt + completion tokens)
-- Provider cost weighting (GPT-4 ~$30/1M tokens vs Claude ~$15/1M tokens)
-- Monthly spend limits per tenant with soft/hard thresholds
-- Cost alerts at 50%, 80%, 100% of budget
-**Observability Hooks Added**: `observability.emitAICostEvent()` emits token counts and estimated costs per AI call.
-**Files**: `server/services/observability.service.ts`
-
-#### 2. Auto-Pause Rules
-**Current State**: Kill switch exists but is manual-only via Super Admin.
-**Gap**: No automatic triggers for runaway usage.
-**Future Implementation**:
-- Auto-pause on spend spike (>2x daily average)
-- Auto-pause on queue backlog (>10k pending emails)
-- Auto-pause on error storm (>50% failure rate over 1hr)
-- Grace period + notification before pause
-**Observability Hooks Added**: `observability.emitAutoPauseCandidate()` logs conditions that would trigger auto-pause.
-**Files**: `server/services/observability.service.ts`
-
-#### 3. Super Admin Visibility Dashboard
-**Current State**: Controls exist but no operational views.
-**Gap**: Missing real-time operational visibility.
-**Future Implementation**:
-- Queue depth by tenant (pending, processing, failed)
-- AI usage trends (tokens/day, cost/day by provider)
-- Throttle violation logs (who hit limits, when, how often)
-- Paused tenant reasons and duration
-- Health score per tenant (deliverability, bounce rate, engagement)
-**Observability Hooks Added**: Events emitted to `observability.service.ts` can be aggregated for dashboards.
-**Files**: `server/services/observability.service.ts`
-
-#### 4. Manager-Level Quotas
-**Current State**: Tenant throttling exists. Manager quotas implicit.
-**Gap**: Matters when 1 tenant → 20 managers → 200 SDRs.
-**Future Implementation**:
-- Explicit quota allocation per manager within tenant limits
-- Manager can subdivide quota to their SDRs
-- Visibility into manager-level usage vs allocation
-- Alert managers approaching their limits
-**Observability Hooks Added**: `observability.emitManagerUsage()` tracks usage per manager for future quota enforcement.
-**Files**: `server/services/observability.service.ts`
-
-#### Observability-Only Approach (Current Phase)
-- All P1 features have observability hooks emitting events and metrics
-- No enforcement logic - collecting production baselines first
-- Events logged to console and stored in `observability_events` table
-- Metrics available for future dashboards and alerting
-- Key principle: "Observe first, enforce later" to avoid over-throttling real usage
-- **Known Limitation**: AI cost events from background parsing (e.g., natural language query) don't have organization context since they're called outside request scope. Routes that call AI services directly (email generation, personalization) can pass context. This will be improved as more AI calls are made through request-scoped code paths.
+- **Cost-Based Throttling**: Implement AI token usage tracking, provider cost weighting, monthly spend limits per tenant, and cost alerts.
+- **Auto-Pause Rules**: Introduce automatic triggers for pausing tenants based on spend spikes, queue backlogs, or error storms.
+- **Super Admin Visibility Dashboard**: Develop real-time operational visibility for queue depth, AI usage trends, throttle violations, and tenant health scores.
+- **Manager-Level Quotas**: Implement explicit quota allocation per manager within tenant limits, allowing managers to subdivide quotas to SDRs.
+- **Manager Spend Visibility**: Provide managers with dashboards showing AI tokens, email volume, and estimated costs per campaign/sequence.
+- **Campaign Health Scoring**: Introduce soft health signals (bounce rate, reply rate, AI error rate) and visual indicators for campaign performance.
+- **Auto-Throttle at Manager Level**: Implement soft throttles for managers before tenant pause triggers.
+- **Manager Abuse Alerts**: Develop alerts for sudden volume spikes, queue backlogs, and anomaly detection for usage patterns per manager.
+- **Manager Change Audit Trail**: Implement manager-level activity logs for actions like campaign creation, limit changes, and bulk uploads.
 
 ## External Dependencies
 - **Apollo.io**: Prospect search, data enrichment, and bulk matching API.

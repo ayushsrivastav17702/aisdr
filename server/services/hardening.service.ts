@@ -254,7 +254,7 @@ class HardeningService {
   
   async checkManagerQuota(
     managerId: string,
-    resourceType: 'users' | 'prospects' | 'sequences' | 'activeSequences'
+    resourceType: 'users' | 'prospects' | 'sequences' | 'activeSequences' | 'activeCampaigns'
   ): Promise<{ allowed: boolean; current: number; limit: number }> {
     const quota = await this.getManagerQuota(managerId);
     
@@ -267,15 +267,198 @@ class HardeningService {
       prospects: { current: quota.currentProspects || 0, limit: quota.maxProspects || 10000 },
       sequences: { current: quota.currentSequences || 0, limit: quota.maxSequences || 50 },
       activeSequences: { current: quota.currentActiveSequences || 0, limit: quota.maxActiveSequences || 10 },
+      activeCampaigns: { current: quota.currentActiveCampaigns || 0, limit: quota.maxActiveCampaigns || 5 },
     };
     
     const { current, limit } = mapping[resourceType];
     return { allowed: current < limit, current, limit };
   }
   
+  // =============================================
+  // MANAGER KILL SWITCH
+  // =============================================
+  
+  async pauseManager(
+    managerId: string,
+    pausedBy: string,
+    reason: string
+  ): Promise<ManagerQuota | null> {
+    const existing = await this.getManagerQuota(managerId);
+    
+    if (!existing) {
+      return null;
+    }
+    
+    const [updated] = await db
+      .update(managerQuotas)
+      .set({
+        isPaused: true,
+        pausedAt: new Date(),
+        pausedBy,
+        pausedReason: reason,
+        updatedAt: new Date(),
+      })
+      .where(eq(managerQuotas.managerId, managerId))
+      .returning();
+    
+    return updated;
+  }
+  
+  async resumeManager(managerId: string): Promise<ManagerQuota | null> {
+    const existing = await this.getManagerQuota(managerId);
+    
+    if (!existing) {
+      return null;
+    }
+    
+    const [updated] = await db
+      .update(managerQuotas)
+      .set({
+        isPaused: false,
+        pausedAt: null,
+        pausedBy: null,
+        pausedReason: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(managerQuotas.managerId, managerId))
+      .returning();
+    
+    return updated;
+  }
+  
+  async isManagerPaused(managerId: string): Promise<boolean> {
+    const quota = await this.getManagerQuota(managerId);
+    return quota?.isPaused === true;
+  }
+  
+  /**
+   * Check if a user's manager is paused (for SDR actions)
+   */
+  async isUserManagerPaused(userId: string): Promise<{ paused: boolean; reason?: string }> {
+    const [user] = await db
+      .select({ createdBy: users.createdBy })
+      .from(users)
+      .where(eq(users.id, userId))
+      .limit(1);
+    
+    if (!user?.createdBy) {
+      return { paused: false };
+    }
+    
+    const quota = await this.getManagerQuota(user.createdBy);
+    if (quota?.isPaused) {
+      return { paused: true, reason: quota.pausedReason || undefined };
+    }
+    
+    return { paused: false };
+  }
+  
+  // =============================================
+  // PRE-ENQUEUE VALIDATION
+  // =============================================
+  
+  async validateProspectUpload(
+    managerId: string,
+    prospectCount: number
+  ): Promise<{ allowed: boolean; reason?: string; maxAllowed?: number }> {
+    const quota = await this.getManagerQuota(managerId);
+    
+    if (!quota) {
+      return { allowed: true };
+    }
+    
+    if (quota.isPaused) {
+      return { 
+        allowed: false, 
+        reason: `Manager is paused: ${quota.pausedReason || 'No reason provided'}` 
+      };
+    }
+    
+    const maxPerUpload = quota.maxProspectsPerUpload || 1000;
+    if (prospectCount > maxPerUpload) {
+      return { 
+        allowed: false, 
+        reason: `Batch size ${prospectCount} exceeds maximum of ${maxPerUpload} prospects per upload`,
+        maxAllowed: maxPerUpload,
+      };
+    }
+    
+    const currentProspects = quota.currentProspects || 0;
+    const maxProspects = quota.maxProspects || 10000;
+    const remainingQuota = maxProspects - currentProspects;
+    
+    if (prospectCount > remainingQuota) {
+      return { 
+        allowed: false, 
+        reason: `Upload of ${prospectCount} prospects would exceed quota. Remaining: ${remainingQuota}`,
+        maxAllowed: remainingQuota,
+      };
+    }
+    
+    return { allowed: true };
+  }
+  
+  async validateCampaignCreation(
+    managerId: string
+  ): Promise<{ allowed: boolean; reason?: string }> {
+    const quota = await this.getManagerQuota(managerId);
+    
+    if (!quota) {
+      return { allowed: true };
+    }
+    
+    if (quota.isPaused) {
+      return { 
+        allowed: false, 
+        reason: `Manager is paused: ${quota.pausedReason || 'No reason provided'}` 
+      };
+    }
+    
+    const current = quota.currentActiveCampaigns || 0;
+    const max = quota.maxActiveCampaigns || 5;
+    
+    if (current >= max) {
+      return { 
+        allowed: false, 
+        reason: `Active campaign limit reached (${current}/${max})` 
+      };
+    }
+    
+    return { allowed: true };
+  }
+  
+  async validateSequenceCreation(
+    managerId: string
+  ): Promise<{ allowed: boolean; reason?: string }> {
+    const quota = await this.getManagerQuota(managerId);
+    
+    if (!quota) {
+      return { allowed: true };
+    }
+    
+    if (quota.isPaused) {
+      return { 
+        allowed: false, 
+        reason: `Manager is paused: ${quota.pausedReason || 'No reason provided'}` 
+      };
+    }
+    
+    const current = quota.currentSequences || 0;
+    const max = quota.maxSequences || 50;
+    
+    if (current >= max) {
+      return { 
+        allowed: false, 
+        reason: `Sequence limit reached (${current}/${max})` 
+      };
+    }
+    
+    return { allowed: true };
+  }
+  
   async incrementManagerUsage(
     managerId: string,
-    resourceType: 'users' | 'prospects' | 'sequences' | 'activeSequences',
+    resourceType: 'users' | 'prospects' | 'sequences' | 'activeSequences' | 'activeCampaigns',
     incrementBy: number = 1
   ): Promise<void> {
     const columnMap = {
@@ -283,6 +466,7 @@ class HardeningService {
       prospects: managerQuotas.currentProspects,
       sequences: managerQuotas.currentSequences,
       activeSequences: managerQuotas.currentActiveSequences,
+      activeCampaigns: managerQuotas.currentActiveCampaigns,
     };
     
     await db
