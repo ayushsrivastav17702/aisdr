@@ -770,10 +770,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await sdrWorkflowService.assertStage(userId, "upload");
       } catch (stageError) {
         if (stageError instanceof WorkflowBlockedError) {
-          return res.status(403).json({
-            error: "WORKFLOW_BLOCKED",
-            ...stageError.toJSON(),
-          });
+          return res.status(403).json(stageError.toJSON());
         }
         // Fail-closed on guard errors
         console.error("Workflow stage check failed:", stageError);
@@ -883,10 +880,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await sdrWorkflowService.assertStage(userId, "enrichment");
       } catch (stageError) {
         if (stageError instanceof WorkflowBlockedError) {
-          return res.status(403).json({
-            error: "WORKFLOW_BLOCKED",
-            ...stageError.toJSON(),
-          });
+          return res.status(403).json(stageError.toJSON());
         }
         console.error("Workflow stage check failed:", stageError);
         return res.status(503).json({ error: "Unable to verify workflow stage" });
@@ -1165,10 +1159,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await sdrWorkflowService.assertStage(userId, "enrichment");
       } catch (stageError) {
         if (stageError instanceof WorkflowBlockedError) {
-          return res.status(403).json({
-            error: "WORKFLOW_BLOCKED",
-            ...stageError.toJSON(),
-          });
+          return res.status(403).json(stageError.toJSON());
         }
         console.error("Workflow stage check failed:", stageError);
         return res.status(503).json({ error: "Unable to verify workflow stage" });
@@ -1338,10 +1329,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await sdrWorkflowService.assertStage(userId, "enrichment");
       } catch (stageError) {
         if (stageError instanceof WorkflowBlockedError) {
-          return res.status(403).json({
-            error: "WORKFLOW_BLOCKED",
-            ...stageError.toJSON(),
-          });
+          return res.status(403).json(stageError.toJSON());
         }
         console.error("Workflow stage check failed:", stageError);
         return res.status(503).json({ error: "Unable to verify workflow stage" });
@@ -1654,10 +1642,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await sdrWorkflowService.assertStage(userId, "upload");
       } catch (stageError) {
         if (stageError instanceof WorkflowBlockedError) {
-          return res.status(403).json({
-            error: "WORKFLOW_BLOCKED",
-            ...stageError.toJSON(),
-          });
+          return res.status(403).json(stageError.toJSON());
         }
         console.error("Workflow stage check failed:", stageError);
         return res.status(503).json({ error: "Unable to verify workflow stage" });
@@ -2612,10 +2597,7 @@ Return ONLY the email body text, no subject line needed.`;
         await sdrWorkflowService.assertStage(userId, "enrichment");
       } catch (stageError) {
         if (stageError instanceof WorkflowBlockedError) {
-          return res.status(403).json({
-            error: "WORKFLOW_BLOCKED",
-            ...stageError.toJSON(),
-          });
+          return res.status(403).json(stageError.toJSON());
         }
         console.error("Workflow stage check failed:", stageError);
         return res.status(503).json({ error: "Unable to verify workflow stage" });
