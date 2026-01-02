@@ -84,9 +84,89 @@ export default function AISearch() {
   });
   const [parsedFilters, setParsedFilters] = useState<ParsedFilters | null>(null);
   const [showFilterPreview, setShowFilterPreview] = useState(false);
+  const [jobTitleInput, setJobTitleInput] = useState(""); // Separate input state for job titles
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
+  
+  // Add job titles from input - handles comma-separated, semicolon-separated, or single titles
+  const addJobTitles = (input: string) => {
+    // Split by comma or semicolon, trim each, filter empties
+    const titles = input
+      .split(/[,;]/)
+      .map(t => t.trim())
+      .filter(Boolean);
+    
+    if (titles.length === 0) return;
+    
+    const current = advancedFilters.jobTitles || [];
+    const newTitles: string[] = [];
+    const duplicates: string[] = [];
+    
+    for (const title of titles) {
+      // Check for duplicates (case-insensitive) in both existing and newly added
+      const isDuplicate = current.some(t => t.toLowerCase() === title.toLowerCase()) ||
+                          newTitles.some(t => t.toLowerCase() === title.toLowerCase());
+      if (isDuplicate) {
+        duplicates.push(title);
+      } else {
+        newTitles.push(title);
+      }
+    }
+    
+    // Show toast for duplicates
+    if (duplicates.length > 0) {
+      toast({
+        title: duplicates.length === 1 ? "Duplicate title" : "Duplicate titles",
+        description: `"${duplicates.join('", "')}" already added`,
+        variant: "destructive"
+      });
+    }
+    
+    // Add non-duplicate titles
+    if (newTitles.length > 0) {
+      setAdvancedFilters({
+        ...advancedFilters,
+        jobTitles: [...current, ...newTitles]
+      });
+    }
+    
+    setJobTitleInput(""); // Clear input after adding
+  };
+  
+  // Handle job title input keydown (Enter to add)
+  const handleJobTitleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (jobTitleInput.trim()) {
+        addJobTitles(jobTitleInput);
+      }
+    }
+    // For comma key, let the character be typed and then process on next change
+  };
+  
+  // Handle input change - check for comma at the end to auto-add
+  const handleJobTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    // If user types a comma at the end, process and add the title(s)
+    if (value.endsWith(",")) {
+      const beforeComma = value.slice(0, -1).trim();
+      if (beforeComma) {
+        addJobTitles(beforeComma);
+      }
+    } else {
+      setJobTitleInput(value);
+    }
+  };
+  
+  // Remove a job title by index
+  const removeJobTitle = (index: number) => {
+    const updated = advancedFilters.jobTitles?.filter((_, i) => i !== index) || [];
+    setAdvancedFilters({
+      ...advancedFilters,
+      jobTitles: updated
+    });
+  };
 
   const aiSearchMutation = useMutation({
     mutationFn: api.aiSearch,
@@ -768,49 +848,70 @@ export default function AISearch() {
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <Label htmlFor="job-titles">Decision Makers & Job Titles</Label>
-                  <Badge variant="outline" className="text-xs text-amber-600">
-                    OR Logic
-                  </Badge>
+                  {advancedFilters.jobTitles && advancedFilters.jobTitles.length > 0 && (
+                    <Badge variant="outline" className="text-xs text-amber-600">
+                      OR Logic
+                    </Badge>
+                  )}
                 </div>
-                <Input
-                  id="job-titles"
-                  placeholder="e.g., CEO, CTO, VP Sales, Merchandiser (separate with commas)"
-                  value={advancedFilters.jobTitles?.join(", ") || ""}
-                  onChange={(e) => setAdvancedFilters({
-                    ...advancedFilters,
-                    jobTitles: e.target.value.split(",").map(s => s.trim()).filter(Boolean)
-                  })}
-                  data-testid="input-job-titles"
-                />
+                
+                {/* Show badges FIRST when titles exist */}
                 {advancedFilters.jobTitles && advancedFilters.jobTitles.length > 0 && (
-                  <div className="flex flex-wrap gap-2 mt-2">
+                  <div className="flex flex-wrap gap-2 p-2 border rounded-md bg-muted/30" data-testid="job-titles-badges">
                     {advancedFilters.jobTitles.map((title, index) => (
-                      <Badge key={index} variant="secondary" className="text-xs flex items-center gap-1">
+                      <Badge key={index} variant="secondary" className="text-sm flex items-center gap-1 py-1 px-2">
                         {title}
                         {index < advancedFilters.jobTitles!.length - 1 && (
-                          <span className="text-amber-600 font-bold ml-1">OR</span>
+                          <span className="text-amber-600 font-bold ml-1 text-xs">OR</span>
                         )}
                         <button
-                          onClick={() => {
-                            const updated = advancedFilters.jobTitles?.filter((_, i) => i !== index) || [];
-                            setAdvancedFilters({
-                              ...advancedFilters,
-                              jobTitles: updated
-                            });
-                          }}
-                          className="ml-1 hover:text-destructive"
+                          onClick={() => removeJobTitle(index)}
+                          className="ml-1 hover:text-destructive text-muted-foreground hover:text-red-500 transition-colors"
                           data-testid={`remove-title-${index}`}
+                          aria-label={`Remove ${title}`}
                         >
-                          ×
+                          <XIcon className="h-3 w-3" />
                         </button>
                       </Badge>
                     ))}
                   </div>
                 )}
+                
+                {/* Input for adding new titles */}
+                <div className="flex gap-2">
+                  <Input
+                    id="job-titles"
+                    placeholder={advancedFilters.jobTitles?.length 
+                      ? "Add another title (Enter or comma to add)" 
+                      : "e.g., CEO, CTO, VP Sales (Enter or comma to add)"
+                    }
+                    value={jobTitleInput}
+                    onChange={handleJobTitleChange}
+                    onKeyDown={handleJobTitleKeyDown}
+                    onBlur={() => {
+                      // Add any remaining text when focus leaves (handles comma-separated too)
+                      if (jobTitleInput.trim()) {
+                        addJobTitles(jobTitleInput);
+                      }
+                    }}
+                    data-testid="input-job-titles"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => addJobTitles(jobTitleInput)}
+                    disabled={!jobTitleInput.trim()}
+                    data-testid="button-add-job-title"
+                  >
+                    Add
+                  </Button>
+                </div>
+                
                 <p className="text-xs text-muted-foreground">
                   {advancedFilters.jobTitles && advancedFilters.jobTitles.length > 0 
-                    ? `${advancedFilters.jobTitles.length} title(s) - matches ANY of these (OR logic)` 
-                    : "Add multiple job titles separated by commas (OR logic)"
+                    ? `${advancedFilters.jobTitles.length} title(s) added - matches ANY of these (OR logic)` 
+                    : "Type a job title and press Enter or comma to add. Add multiple titles for OR matching."
                   }
                 </p>
               </div>
