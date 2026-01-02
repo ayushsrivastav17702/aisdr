@@ -20,11 +20,12 @@ interface ActiveFilter {
 
 interface ResolvedCompany {
   input: string;           // Original input (name or domain)
-  id: string;              // Apollo organization_id
+  id: string;              // Apollo organization_id (or synthetic ID for non-Apollo sources)
   name: string;            // Normalized company name
   domain?: string;         // Company domain
   resolved: boolean;       // Whether resolution succeeded
   error?: string;          // Error message if resolution failed
+  source?: string;         // Which provider resolved this (apollo, perplexity, lusha, openrouter)
 }
 
 interface AdvancedFilters {
@@ -214,7 +215,8 @@ export default function AISearch() {
         id: data.organizationId,
         name: data.name,
         domain: data.domain,
-        resolved: true
+        resolved: true,
+        source: data.source  // Track which provider resolved this
       };
     } catch (error) {
       return {
@@ -507,10 +509,22 @@ export default function AISearch() {
     // TARGET COMPANIES - HARD FILTER that takes precedence
     const resolvedCompanies = advancedFilters.targetCompanies?.filter(c => c.resolved) || [];
     if (resolvedCompanies.length > 0) {
-      // Use organization_ids for precise company targeting
-      finalFilters.organization_ids = resolvedCompanies.map(c => c.id);
-      // CRITICAL: Clear ALL org-level filters - company IDs must be the sole org scope
-      delete finalFilters.q_organization_name;
+      // Split by source: Apollo IDs use organization_ids, others use q_organization_name
+      const apolloCompanies = resolvedCompanies.filter(c => c.source === 'apollo');
+      const otherCompanies = resolvedCompanies.filter(c => c.source !== 'apollo');
+      
+      if (apolloCompanies.length > 0) {
+        // Use organization_ids for Apollo-resolved companies (precise matching)
+        finalFilters.organization_ids = apolloCompanies.map(c => c.id);
+      }
+      
+      if (otherCompanies.length > 0) {
+        // Use q_organization_name for non-Apollo sources (fuzzy matching by name)
+        const companyNames = otherCompanies.map(c => c.name);
+        finalFilters.q_organization_name = companyNames.join(' OR ');
+      }
+      
+      // CRITICAL: Clear org-level filters that conflict with company targeting
       delete finalFilters.organization_industry_tag_ids;
       delete finalFilters.organization_num_employees_ranges;
       delete finalFilters.q_organization_keyword_tags;
@@ -630,7 +644,18 @@ export default function AISearch() {
     
     // TARGET COMPANIES - HARD FILTER (takes precedence)
     if (resolvedCompanies.length > 0) {
-      filters.organization_ids = resolvedCompanies.map(c => c.id);
+      // Split by source: Apollo IDs use organization_ids, others use q_organization_name
+      const apolloCompanies = resolvedCompanies.filter(c => c.source === 'apollo');
+      const otherCompanies = resolvedCompanies.filter(c => c.source !== 'apollo');
+      
+      if (apolloCompanies.length > 0) {
+        filters.organization_ids = apolloCompanies.map(c => c.id);
+      }
+      
+      if (otherCompanies.length > 0) {
+        const companyNames = otherCompanies.map(c => c.name);
+        filters.q_organization_name = companyNames.join(' OR ');
+      }
       // Don't apply industry/size filters when targeting specific companies
     } else {
       // Only apply these when NOT using target companies

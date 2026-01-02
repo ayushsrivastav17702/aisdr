@@ -185,30 +185,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Resolve company name/domain to Apollo organization ID
+  // Resolve company name/domain using waterfall (Perplexity → Apollo → Lusha → OpenRouter)
   app.post("/api/resolve-company", authenticate, forbidManager, async (req, res) => {
     try {
       const { query } = z.object({ query: z.string().min(1).max(200) }).parse(req.body);
       
-      console.log(`🏢 Resolving company: "${query}"`);
+      const { companyResolutionService } = await import("./services/company-resolution.service");
+      const result = await companyResolutionService.resolveCompany(query, req.userContext?.organizationId);
       
-      const result = await apolloService.searchOrganization(query);
-      
-      if (!result) {
+      if (!result.success || !result.company) {
         return res.status(404).json({ 
           error: "COMPANY_NOT_FOUND",
-          message: `Could not find company matching "${query}". Try using the company's website domain instead.`
+          message: `Could not find company matching "${query}". Tried: ${result.providersAttempted.join(' → ')}`,
+          providersAttempted: result.providersAttempted
         });
       }
       
-      console.log(`✅ Resolved "${query}" to: ${result.name} (${result.organizationId})`);
+      console.log(`✅ Resolved "${query}" to: ${result.company.name} via ${result.company.source}`);
       
       res.json({
-        organizationId: result.organizationId,
-        name: result.name,
-        domain: result.domain,
-        industry: result.industry,
-        employees: result.employees
+        organizationId: result.company.organizationId,
+        name: result.company.name,
+        domain: result.company.domain,
+        industry: result.company.industry,
+        employees: result.company.employees,
+        source: result.company.source,
+        providersAttempted: result.providersAttempted
       });
     } catch (error) {
       console.error("Company resolution error:", error);
