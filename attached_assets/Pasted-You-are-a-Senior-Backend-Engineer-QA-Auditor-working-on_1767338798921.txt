@@ -1,0 +1,151 @@
+You are a Senior Backend Engineer + QA Auditor working on an SDR automation platform.
+Your task is to verify, block invalid states, and harden Sequence Activation logic.
+
+You must:
+
+Reproduce failures
+
+Fail the build if violations exist
+
+Implement fixes
+
+Re-verify all test cases
+
+🎯 OBJECTIVE
+
+Sequence Activation must be safe, deterministic, and irreversible unless valid.
+
+A sequence MUST NOT activate unless ALL pre-conditions pass.
+
+📍 FILES TO ANALYZE
+
+Search and inspect:
+
+sequences-routes.ts
+
+sequence.service.ts
+
+sdr-workflow.service.ts
+
+email-queue.service.ts
+
+userControls / usageCounters
+
+Any activateSequence, initializeSequence, tryAutoAdvance logic
+
+🔎 AUTO-VERIFY CHECKLIST (FAIL BUILD IF ANY ❌)
+1️⃣ Zero-Prospect Activation (CRITICAL)
+
+Verify
+
+Attempt to activate a sequence with 0 enrolled prospects
+
+Expected
+
+❌ Activation must be blocked
+
+❌ Workflow stage must NOT advance
+
+✅ Error code: SEQUENCE_EMPTY
+
+✅ Audit log: SEQUENCE_ACTIVATION_BLOCKED
+
+Fix Required If Missing
+
+Add hard validation before activation:
+
+if (prospectCount === 0) throw new Error("SEQUENCE_EMPTY");
+
+2️⃣ Re-Activation of Active Sequence (CRITICAL)
+
+Verify
+
+Activate a sequence already in ACTIVE or SENDING state
+
+Expected
+
+❌ Block activation
+
+✅ Error code: SEQUENCE_ALREADY_ACTIVE
+
+✅ No duplicate background jobs
+
+Fix
+
+Enforce idempotency:
+
+if (sequence.status !== 'DRAFT') throw new Error(...)
+
+3️⃣ Daily Email Limit Pre-Check (CRITICAL)
+
+Verify
+
+Activate sequence when user is at or above daily send limit
+
+Expected
+
+❌ Activation blocked
+
+✅ canUserSendEmail() checked BEFORE activation
+
+✅ Error: DAILY_LIMIT_EXCEEDED
+
+Fix
+
+Add pre-activation limit validation
+
+Do NOT rely on background worker to catch this
+
+4️⃣ AI Budget Exhaustion Check (P1)
+
+Verify
+
+Activate sequence when AI token budget is exhausted
+
+Expected
+
+❌ Block activation
+
+✅ Error: AI_BUDGET_EXHAUSTED
+
+✅ Workflow remains unchanged
+
+Fix
+
+Add:
+
+assertAIBudgetAvailable(userId)
+
+
+before activation
+
+5️⃣ Rapid Activate / Deactivate Abuse (P1)
+
+Verify
+
+Toggle activate/deactivate repeatedly (≥5 times in <1 minute)
+
+Expected
+
+❌ Block further toggles
+
+✅ Cooldown enforced (e.g. 60s)
+
+✅ Error: ACTIVATION_RATE_LIMITED
+
+Fix
+
+Add rate-limit guard (DB-backed, not memory)
+
+🧪 POSITIVE PATH (MUST STILL PASS)
+Happy Path Activation
+
+Sequence has:
+
+≥1 ENRICHED prospect
+
+User + Manager + Tenant not paused
+
+Daily limits available
+
+AI budget available

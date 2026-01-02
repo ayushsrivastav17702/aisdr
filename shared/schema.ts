@@ -224,6 +224,9 @@ export const sequences = pgTable("sequences", {
   settings: jsonb("settings"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+  lastActivatedAt: timestamp("last_activated_at"),
+  lastStatusChangeAt: timestamp("last_status_change_at"),
+  activationToggleCount: integer("activation_toggle_count").default(0),
 }, (table) => ({
   userIdStatusCreatedAtIdx: index("sequences_user_id_status_created_at_idx").on(table.userId, table.status, table.createdAt),
   userIdCreatedAtIdx: index("sequences_user_id_created_at_idx").on(table.userId, table.createdAt),
