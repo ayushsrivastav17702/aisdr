@@ -196,7 +196,10 @@ function enforceQuota(resource: 'users' | 'prospects' | 'sequences' | 'mailboxes
       next();
     } catch (error) {
       console.error('Quota enforcement error:', error);
-      next();
+      return res.status(500).json({
+        error: 'Quota check failed - please try again',
+        code: 'QUOTA_CHECK_ERROR'
+      });
     }
   };
 }
@@ -236,7 +239,10 @@ export function enforceBulkProspectQuota(req: Request, res: Response, next: Next
       next();
     } catch (error) {
       console.error('Bulk quota enforcement error:', error);
-      next();
+      return res.status(500).json({
+        error: 'Quota check failed - please try again',
+        code: 'QUOTA_CHECK_ERROR'
+      });
     }
   })();
 }

@@ -1,0 +1,132 @@
+You are acting as a senior backend + product QA engineer.
+
+Goal: Prepare AiSDR for real customers.
+
+Do the following:
+1. Identify all P0 and P1 bugs across Super Admin, Manager, and User flows.
+2. Simulate real user behavior (mis-clicks, retries, invalid inputs).
+3. List every place where:
+   - Errors are silent
+   - Backend fails but frontend shows success
+   - Limits can be bypassed client-side
+4. Fix only stability, security, and data integrity issues.
+5. DO NOT add new features.
+6. Provide a final “Production Readiness Checklist” with pass/fail status.
+
+Return:
+- Bug list (severity, file, fix summary)
+- Code fixes
+- Checklist
+👉 Output you want: Confidence you won’t embarrass yourself in demos
+
+2️⃣ Enforce All Business Rules Server-Side
+Prompt
+
+markdown
+Copy code
+Review the entire AiSDR backend and confirm:
+
+- No quota, role, or plan restriction is enforced only on frontend
+- Manager cannot exceed:
+  - User limits
+  - Email limits
+  - Campaign limits
+- User cannot access Manager or Super Admin routes via API
+- Tenant isolation cannot be bypassed by manipulating IDs
+
+For each violation:
+- Show the exact exploit path
+- Patch it server-side
+- Add a guard clause or middleware
+
+Return a security enforcement report.
+👉 This prevents early churn + trust loss
+
+3️⃣ Deliverability & Outreach Safety Checks (CRITICAL)
+Prompt
+
+diff
+Copy code
+Audit outbound email logic for deliverability safety.
+
+Verify and fix:
+- Daily send caps per inbox
+- Randomized send intervals
+- Domain-level throttling
+- Automatic pause on high bounce or spam signals
+- Unsubscribe handling (global + per campaign)
+
+If anything is missing:
+- Implement minimal safeguards
+- Document assumptions and limits
+
+Do NOT optimize copy or AI prompts.
+Focus only on safety and compliance.
+👉 Without this, AiSDR will die quietly.
+
+4️⃣ Observability & Debugging (So You Can Sell Calmly)
+Prompt
+
+diff
+Copy code
+Implement basic observability for AiSDR:
+
+Required:
+- Centralized error logging
+- Campaign-level execution logs
+- Email send status tracking
+- Reason codes for failures
+
+Add:
+- Manager-visible activity log
+- Correlation ID per campaign run
+
+Do NOT build dashboards.
+Expose logs via admin views or database tables.
+
+Return schema + sample log entries.
+👉 When a customer says “nothing is working”, you’ll have answers.
+
+5️⃣ Demo Mode / Safe Sandbox (Highly Recommended)
+Prompt
+
+vbnet
+Copy code
+Create a DEMO MODE for AiSDR.
+
+Requirements:
+- No real emails are sent
+- Fake prospects + replies are generated
+- Entire campaign flow is visible end-to-end
+- Clearly labeled “Demo Environment”
+
+Access:
+- Super Admin toggle per tenant
+
+Do NOT change existing logic.
+Wrap existing functions safely.
+
+Return:
+- How demo mode is toggled
+- What is mocked
+- Demo limitations
+👉 This makes selling 10x easier.
+
+6️⃣ Data Reset & Hygiene (Early-Stage Lifesaver)
+Prompt
+
+diff
+Copy code
+Implement safe data reset tools:
+
+- Reset tenant data (campaigns, prospects, messages)
+- Preserve users and roles
+- Super Admin only
+- Require explicit confirmation
+
+Add safeguards to prevent accidental production wipes.
+
+Return:
+- APIs added
+- Permissions enforced
+- Recovery assumptions

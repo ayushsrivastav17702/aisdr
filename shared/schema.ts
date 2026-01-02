@@ -2595,6 +2595,12 @@ export const tenantConfiguration = pgTable("tenant_configuration", {
   maxProspectsPerImport: integer("max_prospects_per_import").default(1000),
   maxEnrichmentsPerDay: integer("max_enrichments_per_day").default(100),
   
+  // Demo Mode - Sandbox environment for demos without real email sending
+  demoModeEnabled: boolean("demo_mode_enabled").default(false),
+  demoModeReason: text("demo_mode_reason"), // Why demo mode was enabled
+  demoModeEnabledAt: timestamp("demo_mode_enabled_at"),
+  demoModeEnabledBy: varchar("demo_mode_enabled_by"), // Super admin ID who enabled it
+  
   // Multi-Manager Settings (Enterprise - FR-SA10)
   multiManagerEnabled: boolean("multi_manager_enabled").default(false),
   maxManagers: integer("max_managers").default(1),
