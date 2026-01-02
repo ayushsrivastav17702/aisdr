@@ -9,6 +9,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Slider } from "@/components/ui/slider";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
+import { getCsrfToken } from "@/lib/csrf";
 import { SparklesIcon, SearchIcon, SlidersHorizontalIcon, XIcon, ChevronDownIcon, ChevronUpIcon, AlertCircleIcon, CheckCircleIcon, EditIcon, Loader2Icon, BuildingIcon } from "lucide-react";
 
 interface ActiveFilter {
@@ -185,9 +186,13 @@ export default function AISearch() {
   // Resolve company name/domain to Apollo organization ID
   const resolveCompany = async (input: string): Promise<ResolvedCompany> => {
     try {
+      const csrfToken = await getCsrfToken();
       const response = await fetch("/api/resolve-company", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+          "Content-Type": "application/json",
+          "x-csrf-token": csrfToken
+        },
         credentials: "include",
         body: JSON.stringify({ query: input })
       });
