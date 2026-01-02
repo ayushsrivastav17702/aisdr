@@ -1,0 +1,300 @@
+You are verifying the Manager role safeguards, workflow gating, RBAC, throttling, and ownership enforcement in a multi-tenant AiSDR platform.
+
+Manager sits between Super Admin and Users (SDRs).
+
+Managers:
+
+Create and manage SDR users
+
+Own campaigns, sequences, prospects created by their users
+
+Must NOT see tenant-wide data
+
+Must NOT bypass tenant or super admin kill switches
+
+Must be independently pausable
+
+🎯 Objective
+
+Generate a module-by-module verification report for Manager, covering:
+
+Workflow correctness
+
+Ownership scoping
+
+Safeguards & limits
+
+Background worker enforcement
+
+Negative and abuse cases
+
+Output format must match:
+
+MODULE X - <Module Name>
+Test Case | Status | Evidence (file:line, function)
+Risk Level
+
+🔎 MODULES TO VERIFY (Manager)
+MODULE 1 — Manager Authentication & Scope Resolution
+
+Verify:
+
+✅ Manager session resolves:
+
+managerId
+
+organizationId
+
+role = manager
+
+✅ Manager cannot impersonate another manager or user
+
+❌ Negative cases:
+
+Manager token used on super-admin routes → 403
+
+Manager token accessing tenant-wide data → blocked
+
+Check:
+
+auth middleware
+
+RBAC guards
+
+createdBy / managerId resolution
+
+MODULE 2 — Team Management (Users under Manager)
+
+Verify:
+
+✅ Manager sees ONLY users they created
+✅ Manager can create users within maxUsers cap
+✅ Manager pause blocks:
+
+Manager actions
+
+All SDR actions under them
+
+❌ Negative cases:
+
+Manager sees users created by another manager
+
+Manager edits or deletes other manager’s users
+
+Paused manager creating new users
+
+Check:
+
+/api/manager/team
+
+user creation routes
+
+checkManagerPause
+
+manager caps enforcement
+
+MODULE 3 — Prospect Management
+
+Verify:
+
+✅ Manager-level prospect caps enforced
+✅ Upload batch size enforced (maxProspectsPerUpload)
+✅ Manager sees only prospects created by their SDRs
+
+❌ Negative cases:
+
+Upload exceeding remaining quota
+
+SDR uploading when manager paused
+
+Manager accessing other manager’s prospects
+
+Check:
+
+prospect upload routes
+
+preflight quota validation
+
+createdBy / managerId filters
+
+MODULE 4 — Campaigns & Sequences
+
+Verify:
+
+✅ Manager caps:
+
+maxCampaigns
+
+maxSequences
+
+maxActiveSequences
+
+✅ Manager sees ONLY campaigns/sequences owned by their SDRs
+
+❌ Negative cases:
+
+Manager activates sequence when paused
+
+Manager activates beyond cap
+
+Manager modifies another manager’s sequence
+
+Check:
+
+campaign routes
+
+sequence routes
+
+validateCampaignCreation
+
+validateSequenceCreation
+
+MODULE 5 — Enrollment Controls
+
+Verify:
+
+✅ Enrollment blocked if:
+
+Manager paused
+
+Batch exceeds quota
+
+SDR concurrency exceeded
+
+✅ Manager-level throttles apply to SDR actions
+
+❌ Negative cases:
+
+SDR enrolls prospects when manager paused
+
+Large single batch bypassing limits
+
+Check:
+
+enrollment endpoints
+
+throttle middleware
+
+usageCounters & userControls interaction
+
+MODULE 6 — Activation Controls (Manager Oversight)
+
+Verify:
+
+✅ Manager activation respects:
+
+Tenant kill switch
+
+Manager kill switch
+
+User limits
+
+AI budget availability
+
+❌ Negative cases:
+
+Manager activates sequence with 0 prospects
+
+Rapid toggle activate/deactivate abuse
+
+Activation when AI budget exhausted
+
+Check:
+
+validateSequenceActivation
+
+recordSequenceStatusChange
+
+rate limiting logic
+
+MODULE 7 — Background Workers (Manager Scope)
+
+Verify:
+
+✅ Workers resolve:
+user → manager → tenant
+
+✅ Manager pause blocks:
+
+Email sends
+
+AI personalization
+
+Enrollment continuation
+
+❌ Negative cases:
+
+Worker processes SDR jobs under paused manager
+
+Cross-manager job execution
+
+Check:
+
+automation worker
+
+personalization service
+
+isUserFullyPaused cascade logic
+
+MODULE 8 — Analytics & Reporting
+
+Verify:
+
+✅ Manager analytics show:
+
+ONLY SDRs under manager
+
+Aggregated correctly
+
+❌ Negative cases:
+
+Manager sees tenant-wide metrics
+
+Manager sees another manager’s SDR performance
+
+Check:
+
+analytics queries
+
+filters by managerId
+
+cache key isolation
+
+MODULE 9 — Abuse & Recovery
+
+Verify:
+
+✅ Manager can be paused/resumed independently
+✅ Pause reason logged
+✅ Resume restores functionality cleanly
+
+❌ Negative cases:
+
+Resume without clearing throttles
+
+Pause does not cascade to SDRs
+
+Check:
+
+hardening.service.ts
+
+audit logs
+
+pauseManager / resumeManager
+
+📌 FINAL OUTPUT REQUIRED
+
+At the end, produce:
+
+Summary Table
+
+Module | Pass | Fail | Warnings | Risk Level
+
+
+Top 5 Manager-Level Risks
+
+P0 / P1 / P2 Fix List
+
+Explicit confirmation:
+
+“Manager cannot behave like Tenant Admin”
