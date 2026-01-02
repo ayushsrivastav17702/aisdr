@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
-import { Loader2, Mail, KeyRound, ChevronDown, ChevronUp, Users } from 'lucide-react';
+import { Loader2, KeyRound, ChevronDown, ChevronUp, Users } from 'lucide-react';
 import { SiGoogle } from 'react-icons/si';
 import { BsMicrosoft } from 'react-icons/bs';
 import { useQuery } from '@tanstack/react-query';
@@ -33,9 +33,7 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showMagicLink, setShowMagicLink] = useState(false);
   const [showPasswordLogin, setShowPasswordLogin] = useState(false);
-  const [magicLinkSent, setMagicLinkSent] = useState(false);
   const [multipleAccounts, setMultipleAccounts] = useState<AccountOption[] | null>(null);
 
   const { data: authConfig, isLoading: configLoading } = useQuery<AuthConfig>({
@@ -114,35 +112,6 @@ export default function LoginPage() {
   const handleBackToLogin = () => {
     setMultipleAccounts(null);
     setPassword('');
-  };
-
-  const handleMagicLinkRequest = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setSuccessMessage('');
-    setIsSubmitting(true);
-
-    try {
-      const response = await fetch('/api/auth/magic-link', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        setError(data.error || 'Failed to send magic link');
-        return;
-      }
-
-      setMagicLinkSent(true);
-      setSuccessMessage('Magic link sent! Please check your inbox.');
-    } catch (err) {
-      setError('Failed to send magic link. Please try again.');
-    } finally {
-      setIsSubmitting(false);
-    }
   };
 
   const handleGoogleLogin = () => {
@@ -264,107 +233,6 @@ export default function LoginPage() {
                 </Button>
               )}
             </div>
-          )}
-
-          {!multipleAccounts && authConfig?.magicLinkEnabled && (
-            <>
-              {hasOAuthOptions && (
-                <div className="relative my-4">
-                  <div className="absolute inset-0 flex items-center">
-                    <Separator className="w-full" />
-                  </div>
-                  <div className="relative flex justify-center text-xs uppercase">
-                    <span className="bg-card px-2 text-muted-foreground">or</span>
-                  </div>
-                </div>
-              )}
-
-              {!showMagicLink ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full h-12"
-                  onClick={() => setShowMagicLink(true)}
-                  disabled={isSubmitting}
-                  data-testid="button-show-magic-link"
-                >
-                  <Mail className="mr-3 h-5 w-5" />
-                  Login with Magic Link
-                </Button>
-              ) : (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h3 className="text-sm font-medium flex items-center gap-2">
-                      <Mail className="h-4 w-4" />
-                      Magic Link Login
-                    </h3>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        setShowMagicLink(false);
-                        setMagicLinkSent(false);
-                        setSuccessMessage('');
-                      }}
-                    >
-                      <ChevronUp className="h-4 w-4" />
-                    </Button>
-                  </div>
-
-                  {!magicLinkSent ? (
-                    <form onSubmit={handleMagicLinkRequest} className="space-y-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="magic-email">Email address</Label>
-                        <Input
-                          id="magic-email"
-                          type="email"
-                          placeholder="you@company.com"
-                          value={email}
-                          onChange={(e) => setEmail(e.target.value)}
-                          required
-                          disabled={isSubmitting}
-                          data-testid="input-magic-email"
-                        />
-                      </div>
-                      <Button
-                        type="submit"
-                        className="w-full"
-                        disabled={isSubmitting || !email}
-                        data-testid="button-send-magic-link"
-                      >
-                        {isSubmitting ? (
-                          <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Sending...
-                          </>
-                        ) : (
-                          'Send Magic Link'
-                        )}
-                      </Button>
-                    </form>
-                  ) : (
-                    <div className="text-center py-4">
-                      <p className="text-sm text-muted-foreground">
-                        Check your inbox for the magic link. It will expire in 15 minutes.
-                      </p>
-                      <Button
-                        type="button"
-                        variant="link"
-                        className="mt-2"
-                        onClick={() => {
-                          setMagicLinkSent(false);
-                          setSuccessMessage('');
-                        }}
-                        data-testid="button-resend-magic-link"
-                      >
-                        Send another link
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              )}
-            </>
           )}
 
           {!multipleAccounts && authConfig?.passwordLoginEnabled && (
