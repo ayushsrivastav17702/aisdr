@@ -1,0 +1,169 @@
+Build enforced, step-by-step workflows for Super Admin, Manager, and User (SDR) such that:
+
+Users cannot perform actions out of order
+
+Each module validates prerequisites before allowing progress
+
+Errors are prevented, not explained after the fact
+
+Every action is auditable, rate-limited, and safe at scale
+
+This guidance must be embedded into the product via:
+
+UI state gating
+
+Backend validation
+
+Inline system messages
+
+Disabled actions until prerequisites are met
+
+1️⃣ SUPER ADMIN — PLATFORM SETUP & GOVERNANCE FLOW
+Super Admin Goal
+
+Safely onboard tenants, control platform load, monitor abuse, and intervene instantly.
+
+MODULE 1: Tenant Creation
+
+Step-by-Step Flow
+
+Create Tenant
+
+Required: Company name, domain, plan, limits
+
+System validates:
+
+Domain uniqueness
+
+Plan limits exist
+
+Auto-create Manager (mandatory)
+
+Email must be unique
+
+Manager status = ACTIVE
+
+Tenant remains in INACTIVE_AUTOMATION state by default
+
+Hard Rules
+
+No tenant can run automation without explicit activation
+
+No tenant without at least one manager
+
+MODULE 2: Platform Controls
+
+Steps
+
+Set global limits
+
+Max emails/day per tenant
+
+AI cost ceilings
+
+Enable/Disable automation
+
+View live system health
+
+Enforcement
+
+Kill switch overrides all roles
+
+Changes propagate immediately to workers
+
+MODULE 3: Monitoring & Intervention
+
+Steps
+
+Monitor:
+
+Queue depth
+
+Email throughput
+
+AI latency
+
+If anomaly detected:
+
+Pause tenant
+
+Investigate logs
+
+Resume once safe
+
+2️⃣ MANAGER — TEAM & CAMPAIGN CONTROL FLOW
+Manager Goal
+
+Build and manage a sales team without risking platform stability.
+
+MODULE 1: Manager Onboarding (First Login)
+
+Mandatory Setup Checklist
+
+ Add at least one User (SDR)
+
+ Configure team limits
+
+ Verify email infrastructure status
+
+ Review automation rules
+
+System Enforcement
+
+Manager cannot create campaigns or sequences until at least one User exists
+
+MODULE 2: User (SDR) Creation
+
+Steps
+
+Click “Add User”
+
+Enter email + role
+
+System validates:
+
+Email uniqueness
+
+Manager user cap not exceeded
+
+User created in INACTIVE state
+
+Rules
+
+Manager can only see users they created
+
+Manager pause disables all child users
+
+MODULE 3: Campaign & Sequence Governance
+
+Steps
+
+Create Campaign
+
+Must assign at least one User
+
+Create Sequences
+
+Max limits enforced
+
+Activate sequence only if:
+
+Manager not paused
+
+Tenant not paused
+
+User limits available
+
+MODULE 4: Performance Monitoring
+
+Steps
+
+View dashboards
+
+Only data from own users
+
+If abnormal behavior:
+
+Pause individual user
+
+Pause own manager automation
