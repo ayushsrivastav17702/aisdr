@@ -1,0 +1,101 @@
+Before publishing, perform a final pre-production sanity checklist:
+
+Verify:
+- Env variables are correctly set for prod (email providers, webhooks, Sentry)
+- Demo mode is OFF by default for new tenants
+- Super Admin credentials are secure and not hardcoded
+- Rate limits and daily limits are non-zero and realistic
+- No test tenants or mock data exist in production DB
+- Bounce auto-pause triggers correctly on a simulated >10% case
+- Reset tools are NOT exposed to Manager/User roles
+
+Return:
+- Pre-publish checklist (PASS/FAIL)
+- Any hard blockers (must-fix before publish)
+- Any safe-to-publish warnings
+Do NOT change code unless a blocker exists.
+👉 This protects you from production embarrassment.
+
+2️⃣ Decide: Soft Launch vs Full Publish
+You should not do a full public launch yet.
+
+✅ Recommended: Soft Launch
+Tell Replit:
+
+diff
+Copy code
+Proceed with a SOFT PUBLISH.
+
+Conditions:
+- Production environment live
+- Access limited to Super Admin-created tenants only
+- No public signup or marketing traffic
+- Logs + observability actively monitored
+Why:
+
+You’re moving from engineering success → usage truth
+
+Real users will break assumptions
+
+3️⃣ Immediately After Publish: 72-Hour Watch Mode
+Tell Replit to prepare for post-publish monitoring, not building.
+
+Prompt
+
+diff
+Copy code
+After publish, enable 72-hour watch mode.
+
+Monitor and report:
+- Error rates (by endpoint)
+- Email send success vs failure
+- Bounce auto-pause triggers
+- Throttle violations
+- Queue backlogs
+
+If any metric exceeds safe thresholds:
+- Flag immediately
+- Do NOT auto-fix without approval
+
+Provide a daily health summary.
+4️⃣ What You Should Personally Do Next (Very Important)
+While Replit handles publish:
+
+Your focus:
+Line up 3–5 internal / friendly users
+
+Run real campaigns
+
+Watch:
+
+Reply rate
+
+Bounce %
+
+Time to first meeting
+
+Note confusion points, not feature gaps
+
+🚫 Do NOT:
+
+Add integrations
+
+Improve AI prompts
+
+Build dashboards
+
+Change pricing logic
+
+5️⃣ When to Say “YES, FULLY PUBLISH”
+You move to full launch only when:
+
+3+ tenants ran campaigns end-to-end
+
+No Sev-1 incidents in 7 days
+
+At least 1 tenant asks: “Can I pay for this?”
+
+That’s the real signal.
+
+Direct Answer to the Question Replit Asked
+“Would you like me to publish the application?”
