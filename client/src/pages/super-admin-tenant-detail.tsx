@@ -53,8 +53,12 @@ import {
   AlertCircle,
   Copy,
   Check,
-  Send
+  Send,
+  Play,
+  Pause,
+  Circle
 } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
 
 interface TenantDetails {
   organization: {
@@ -292,6 +296,82 @@ export default function SuperAdminTenantDetail() {
     queryKey: ["/api/super-admin/tenants", tenantId, "details"],
     queryFn: () => superAdminFetch(`/api/super-admin/tenants/${tenantId}/details`),
   });
+
+  // Workflow progress query (separate from tenant details for independent caching)
+  interface WorkflowData {
+    workflowProgress: {
+      id: string;
+      organizationId: string;
+      currentStage: 'created' | 'manager_active' | 'limits_configured' | 'automation_enabled';
+      managerActiveAt: string | null;
+      limitsConfiguredAt: string | null;
+      automationEnabledAt: string | null;
+    } | null;
+    automationStatus: {
+      automationStatus: 'active' | 'paused';
+      workflowStage: string;
+      canEnableAutomation: boolean;
+      missingSteps?: string[];
+    } | null;
+  }
+
+  const { data: workflowData } = useQuery<WorkflowData>({
+    queryKey: ["/api/super-admin/tenants", tenantId, "workflow"],
+    queryFn: () => superAdminFetch(`/api/super-admin/tenants/${tenantId}/workflow`),
+    enabled: !!tenantId,
+  });
+
+  // Workflow mutations
+  const markLimitsConfiguredMutation = useMutation({
+    mutationFn: () =>
+      superAdminFetch(`/api/super-admin/tenants/${tenantId}/workflow/limits-configured`, {
+        method: "POST",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/tenants", tenantId, "workflow"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/tenants", tenantId, "details"] });
+      toast({ title: "Limits marked as configured" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const enableAutomationMutation = useMutation({
+    mutationFn: () =>
+      superAdminFetch(`/api/super-admin/tenants/${tenantId}/workflow/enable-automation`, {
+        method: "POST",
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/tenants", tenantId, "workflow"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/tenants", tenantId, "details"] });
+      toast({ title: "Tenant automation enabled successfully" });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const pauseAutomationMutation = useMutation({
+    mutationFn: (reason: string) =>
+      superAdminFetch(`/api/super-admin/tenants/${tenantId}/workflow/pause-automation`, {
+        method: "POST",
+        body: JSON.stringify({ reason }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/tenants", tenantId, "workflow"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/super-admin/tenants", tenantId, "details"] });
+      toast({ title: "Tenant automation paused" });
+      setPauseDialogOpen(false);
+      setPauseReason("");
+    },
+    onError: (error: Error) => {
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const [pauseDialogOpen, setPauseDialogOpen] = useState(false);
+  const [pauseReason, setPauseReason] = useState("");
 
   const updateConfigMutation = useMutation({
     mutationFn: (config: Record<string, any>) =>
@@ -557,6 +637,223 @@ export default function SuperAdminTenantDetail() {
                 </CardContent>
               </Card>
             </div>
+
+            {/* Tenant Activation Workflow Card */}
+            <Card className="mt-6" data-testid="card-workflow-progress">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Shield className="h-5 w-5" />
+                  Tenant Activation Workflow
+                </CardTitle>
+                <CardDescription>
+                  Step-by-step setup required before automation can be enabled
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  {/* Workflow Steps */}
+                  <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                    {/* Step 1: Created */}
+                    <div className={`p-4 rounded-lg border-2 ${
+                      workflowData?.workflowProgress ? 'border-green-500 bg-green-50 dark:bg-green-900/20' : 'border-slate-200'
+                    }`} data-testid="workflow-step-created">
+                      <div className="flex items-center gap-2 mb-2">
+                        <CheckCircle className="h-5 w-5 text-green-500" />
+                        <span className="font-medium">1. Created</span>
+                      </div>
+                      <p className="text-sm text-slate-500">Tenant and manager provisioned</p>
+                    </div>
+
+                    {/* Step 2: Manager Active */}
+                    <div className={`p-4 rounded-lg border-2 ${
+                      workflowData?.workflowProgress?.managerActiveAt 
+                        ? 'border-green-500 bg-green-50 dark:bg-green-900/20' 
+                        : workflowData?.workflowProgress?.currentStage === 'created'
+                          ? 'border-yellow-500 bg-yellow-50 dark:bg-yellow-900/20'
+                          : 'border-slate-200'
+                    }`} data-testid="workflow-step-manager-active">
+                      <div className="flex items-center gap-2 mb-2">
+                        {workflowData?.workflowProgress?.managerActiveAt ? (
+                          <CheckCircle className="h-5 w-5 text-green-500" />
+                        ) : workflowData?.workflowProgress?.currentStage === 'created' ? (
+                          <AlertCircle className="h-5 w-5 text-yellow-500" />
+                        ) : (
+                          <Circle className="h-5 w-5 text-slate-300" />
+                        )}
+                        <span className="font-medium">2. Manager Active</span>
+                      </div>
+                      <p className="text-sm text-slate-500">
+                        {workflowData?.workflowProgress?.managerActiveAt 
+                          ? `Activated ${new Date(workflowData.workflowProgress.managerActiveAt).toLocaleDateString()}`
+                          : 'Waiting for manager to log in'
+                        }
+                      </p>
+                    </div>
+
+                    {/* Step 3: Limits Configured */}
+                    <div className={`p-4 rounded-lg border-2 ${
+                      workflowData?.workflowProgress?.limitsConfiguredAt 
+                        ? 'border-green-500 bg-green-50 dark:bg-green-900/20' 
+                        : workflowData?.workflowProgress?.currentStage === 'manager_active'
+                          ? 'border-yellow-500 bg-yellow-50 dark:bg-yellow-900/20'
+                          : 'border-slate-200'
+                    }`} data-testid="workflow-step-limits-configured">
+                      <div className="flex items-center gap-2 mb-2">
+                        {workflowData?.workflowProgress?.limitsConfiguredAt ? (
+                          <CheckCircle className="h-5 w-5 text-green-500" />
+                        ) : workflowData?.workflowProgress?.currentStage === 'manager_active' ? (
+                          <AlertCircle className="h-5 w-5 text-yellow-500" />
+                        ) : (
+                          <Circle className="h-5 w-5 text-slate-300" />
+                        )}
+                        <span className="font-medium">3. Limits Configured</span>
+                      </div>
+                      <p className="text-sm text-slate-500">
+                        {workflowData?.workflowProgress?.limitsConfiguredAt 
+                          ? `Configured ${new Date(workflowData.workflowProgress.limitsConfiguredAt).toLocaleDateString()}`
+                          : 'Review and configure tenant limits'
+                        }
+                      </p>
+                      {workflowData?.workflowProgress?.currentStage === 'manager_active' && !workflowData?.workflowProgress?.limitsConfiguredAt && (
+                        <Button 
+                          size="sm" 
+                          className="mt-2 w-full"
+                          onClick={() => markLimitsConfiguredMutation.mutate()}
+                          disabled={markLimitsConfiguredMutation.isPending}
+                          data-testid="button-mark-limits-configured"
+                        >
+                          {markLimitsConfiguredMutation.isPending ? 'Configuring...' : 'Mark as Configured'}
+                        </Button>
+                      )}
+                    </div>
+
+                    {/* Step 4: Automation Enabled */}
+                    <div className={`p-4 rounded-lg border-2 ${
+                      workflowData?.automationStatus?.automationStatus === 'active'
+                        ? 'border-green-500 bg-green-50 dark:bg-green-900/20' 
+                        : workflowData?.workflowProgress?.currentStage === 'limits_configured'
+                          ? 'border-yellow-500 bg-yellow-50 dark:bg-yellow-900/20'
+                          : 'border-slate-200'
+                    }`} data-testid="workflow-step-automation-enabled">
+                      <div className="flex items-center gap-2 mb-2">
+                        {workflowData?.automationStatus?.automationStatus === 'active' ? (
+                          <CheckCircle className="h-5 w-5 text-green-500" />
+                        ) : workflowData?.workflowProgress?.currentStage === 'limits_configured' ? (
+                          <AlertCircle className="h-5 w-5 text-yellow-500" />
+                        ) : (
+                          <Circle className="h-5 w-5 text-slate-300" />
+                        )}
+                        <span className="font-medium">4. Automation</span>
+                      </div>
+                      <p className="text-sm text-slate-500">
+                        {workflowData?.automationStatus?.automationStatus === 'active' 
+                          ? 'Automation is active'
+                          : 'Enable tenant automation'
+                        }
+                      </p>
+                      {workflowData?.workflowProgress?.currentStage === 'limits_configured' && 
+                       workflowData?.automationStatus?.automationStatus === 'paused' && (
+                        <Button 
+                          size="sm" 
+                          className="mt-2 w-full"
+                          onClick={() => enableAutomationMutation.mutate()}
+                          disabled={enableAutomationMutation.isPending || !workflowData?.automationStatus?.canEnableAutomation}
+                          data-testid="button-enable-automation"
+                        >
+                          <Play className="h-4 w-4 mr-1" />
+                          {enableAutomationMutation.isPending ? 'Enabling...' : 
+                           !workflowData?.automationStatus?.canEnableAutomation ? 'Prerequisites Not Met' : 'Enable Automation'}
+                        </Button>
+                      )}
+                      {workflowData?.automationStatus?.automationStatus === 'active' && (
+                        <Button 
+                          size="sm" 
+                          variant="destructive"
+                          className="mt-2 w-full"
+                          onClick={() => setPauseDialogOpen(true)}
+                          data-testid="button-pause-automation"
+                        >
+                          <Pause className="h-4 w-4 mr-1" />
+                          Pause Automation
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Missing Steps Alert */}
+                  {workflowData?.automationStatus?.missingSteps && workflowData.automationStatus.missingSteps.length > 0 && (
+                    <div className="mt-4 p-3 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200" data-testid="alert-missing-steps">
+                      <div className="flex items-center gap-2 text-yellow-800 dark:text-yellow-400">
+                        <AlertTriangle className="h-4 w-4" />
+                        <span className="font-medium">Prerequisites not met:</span>
+                      </div>
+                      <ul className="mt-2 text-sm text-yellow-700 dark:text-yellow-300 list-disc list-inside">
+                        {workflowData.automationStatus.missingSteps.map((step, idx) => (
+                          <li key={idx}>{step}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {/* Automation Status Badge */}
+                  <div className="flex items-center justify-between pt-4 border-t">
+                    <span className="text-sm text-slate-500">Automation Status</span>
+                    <Badge 
+                      variant={workflowData?.automationStatus?.automationStatus === 'active' ? 'default' : 'secondary'}
+                      data-testid="badge-automation-status"
+                    >
+                      {workflowData?.automationStatus?.automationStatus === 'active' ? (
+                        <>
+                          <CheckCircle className="h-3 w-3 mr-1" />
+                          Active
+                        </>
+                      ) : (
+                        <>
+                          <Pause className="h-3 w-3 mr-1" />
+                          Paused
+                        </>
+                      )}
+                    </Badge>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Pause Automation Dialog */}
+            <Dialog open={pauseDialogOpen} onOpenChange={setPauseDialogOpen}>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Pause Tenant Automation</DialogTitle>
+                  <DialogDescription>
+                    This will immediately stop all email sending, sequence execution, and AI processing for this tenant.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="py-4">
+                  <Label htmlFor="pause-reason">Reason for pausing</Label>
+                  <Textarea
+                    id="pause-reason"
+                    placeholder="Enter reason for pausing automation..."
+                    value={pauseReason}
+                    onChange={(e) => setPauseReason(e.target.value)}
+                    className="mt-2"
+                    data-testid="input-pause-reason"
+                  />
+                </div>
+                <DialogFooter>
+                  <Button variant="outline" onClick={() => setPauseDialogOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button 
+                    variant="destructive"
+                    onClick={() => pauseAutomationMutation.mutate(pauseReason)}
+                    disabled={!pauseReason.trim() || pauseAutomationMutation.isPending}
+                    data-testid="button-confirm-pause"
+                  >
+                    {pauseAutomationMutation.isPending ? 'Pausing...' : 'Pause Automation'}
+                  </Button>
+                </DialogFooter>
+              </DialogContent>
+            </Dialog>
 
             {tenantDetails.healthMetrics.alerts.length > 0 && (
               <Card className="mt-6">

@@ -3761,6 +3761,53 @@ export const insertUsageCounterSchema = createInsertSchema(usageCounters).omit({
 });
 
 // =============================================
+// SUPER ADMIN WORKFLOW PROGRESS (Step Enforcement)
+// =============================================
+
+// Tenant setup workflow stages
+export const tenantWorkflowStageEnum = pgEnum("tenant_workflow_stage", [
+  "created",           // Tenant and manager created
+  "manager_active",    // Manager has logged in and confirmed
+  "limits_configured", // Limits have been reviewed/configured
+  "automation_enabled" // Automation explicitly enabled by super admin
+]);
+
+// Tenant workflow progress tracking
+export const tenantWorkflowProgress = pgTable("tenant_workflow_progress", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }).unique(),
+  
+  // Current workflow stage
+  currentStage: tenantWorkflowStageEnum("current_stage").notNull().default("created"),
+  
+  // Step completion timestamps
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  managerActiveAt: timestamp("manager_active_at"),
+  limitsConfiguredAt: timestamp("limits_configured_at"),
+  automationEnabledAt: timestamp("automation_enabled_at"),
+  
+  // Actor tracking for audit
+  createdBy: varchar("created_by").references(() => superAdmins.id),
+  managerActivatedBy: varchar("manager_activated_by"), // Manager self-activation
+  limitsConfiguredBy: varchar("limits_configured_by").references(() => superAdmins.id),
+  automationEnabledBy: varchar("automation_enabled_by").references(() => superAdmins.id),
+  
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  orgIdIdx: index("tenant_workflow_progress_org_id_idx").on(table.organizationId),
+  stageIdx: index("tenant_workflow_progress_stage_idx").on(table.currentStage),
+}));
+
+export type TenantWorkflowProgress = typeof tenantWorkflowProgress.$inferSelect;
+export type InsertTenantWorkflowProgress = typeof tenantWorkflowProgress.$inferInsert;
+
+export const insertTenantWorkflowProgressSchema = createInsertSchema(tenantWorkflowProgress).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+// =============================================
 // OBSERVABILITY EVENTS (P1 Metrics Collection)
 // =============================================
 
