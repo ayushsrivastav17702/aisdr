@@ -341,7 +341,8 @@ export default function ManagerDashboard() {
 
   const resetPasswordMutation = useMutation({
     mutationFn: async (userId: string) => {
-      return await apiRequest("POST", `/api/manager/users/${userId}/reset-password`);
+      const response = await apiRequest("POST", `/api/manager/users/${userId}/reset-password`);
+      return await response.json();
     },
     onSuccess: (data: any) => {
       setConfirmDialog({ open: false, type: "" });
@@ -357,7 +358,8 @@ export default function ManagerDashboard() {
 
   const resendInviteMutation = useMutation({
     mutationFn: async (userId: string) => {
-      return await apiRequest("POST", `/api/manager/users/${userId}/resend-invite`);
+      const response = await apiRequest("POST", `/api/manager/users/${userId}/resend-invite`);
+      return await response.json();
     },
     onSuccess: (data: any) => {
       if (data.emailSent) {
