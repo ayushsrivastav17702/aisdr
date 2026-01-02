@@ -1,0 +1,192 @@
+SUPER ADMIN — AUTO-VERIFY PROMPTS (REPLIT)
+MODULE 1 — Super Admin Authentication & Global Scope
+
+Prompt
+
+Verify Super Admin authentication and global scope resolution.
+
+Checklist:
+- Confirm super_admin token resolves role = 'super_admin'
+- Confirm super_admin session is NOT bound to organizationId or managerId
+- Confirm super_admin can access /api/super-admin routes
+- Confirm non-super-admin token accessing these routes returns 403
+- Confirm actingAs allows super_admin → tenant admin → manager → user
+- Confirm actingAs rejects non-super-admin escalation
+
+Output:
+- PASS / FAIL per check
+- Evidence with file:line and function names
+- Final module risk level
+
+MODULE 2 — Tenant Management (Organizations)
+
+Prompt
+
+Verify Super Admin tenant (organization) management controls.
+
+Checklist:
+- Super admin can create a new tenant
+- Tenant is created with correct default limits (users, prospects, AI tokens)
+- Super admin can pause tenant (kill switch)
+- Paused tenant blocks ALL downstream actions (manager + SDR)
+- Super admin can resume tenant cleanly
+- Super admin can update tenant plan & limits
+- Super admin cannot accidentally overwrite another tenant
+
+Output:
+- PASS / FAIL per test
+- Evidence (routes, services, DB writes)
+- Confirm tenant isolation guarantees
+- Module risk level
+
+MODULE 3 — Manager Management (Cross-Tenant)
+
+Prompt
+
+Verify Super Admin manager-level controls.
+
+Checklist:
+- Super admin can view ALL managers across tenants
+- Super admin can create manager under a specific tenant
+- Super admin can pause/resume a manager
+- Manager pause blocks SDR execution without pausing tenant
+- Super admin can move manager between plans / quotas
+- Super admin cannot assign manager to wrong tenantId
+
+Output:
+- PASS / FAIL
+- Evidence (manager.routes, hardening.service)
+- Confirm no cross-tenant contamination
+
+MODULE 4 — User (SDR) Oversight
+
+Prompt
+
+Verify Super Admin SDR-level oversight and controls.
+
+Checklist:
+- Super admin can view all SDRs across tenants
+- Super admin can deactivate any SDR
+- Deactivated SDR cannot send emails or run automation
+- Super admin impersonation into SDR respects tenant pause
+- Super admin cannot bypass tenant or manager pause via impersonation
+
+Output:
+- PASS / FAIL
+- Evidence from auth.middleware, throttle.middleware
+
+MODULE 5 — Plan, Quota & Billing Enforcement
+
+Prompt
+
+Verify Super Admin plan and quota enforcement logic.
+
+Checklist:
+- Super admin can define plan limits (users, prospects, campaigns, AI tokens)
+- Plan updates take effect immediately
+- Downgrade blocks new actions but does not break running data
+- AI token monthly cap enforced per tenant
+- Super admin override does NOT bypass enforcement unless explicitly coded
+
+Output:
+- PASS / FAIL
+- Evidence from quota / hardening services
+
+MODULE 6 — Global Kill Switch & Safety Controls
+
+Prompt
+
+Verify Super Admin global automation safety mechanisms.
+
+Checklist:
+- Super admin global pause blocks:
+  - Email sending
+  - AI personalization
+  - Sequence activation
+- Pause cascades: Tenant → Manager → User
+- Resume restores automation correctly
+- Pause reason logged
+- Pause/resume emits audit events
+
+Output:
+- PASS / FAIL
+- Evidence with cascade proof
+
+MODULE 7 — Background Workers & Queues (Global Scope)
+
+Prompt
+
+Verify background worker behavior under Super Admin controls.
+
+Checklist:
+- Workers respect tenant pause
+- Workers respect manager pause
+- Workers do NOT process jobs across tenants
+- Super admin actions immediately affect in-flight jobs
+- Job cancellation reason logged correctly
+
+Output:
+- PASS / FAIL
+- Evidence from worker files
+
+MODULE 8 — Analytics (Tenant & Platform Level)
+
+Prompt
+
+Verify Super Admin analytics access.
+
+Checklist:
+- Super admin can view tenant-level analytics
+- Super admin can view platform-wide analytics
+- Cached analytics keys are tenant-aware
+- No manager/user-level analytics leak upward incorrectly
+- Fail-open only allowed for read-only views
+
+Output:
+- PASS / FAIL
+- Evidence from analytics routes & cache layer
+
+MODULE 9 — Audit Logs & Compliance
+
+Prompt
+
+Verify Super Admin audit and compliance coverage.
+
+Checklist:
+- All super admin actions generate audit logs
+- Logs include actorId, action, targetId, timestamp
+- Tenant pause/resume logged
+- Manager pause/resume logged
+- Plan changes logged
+- Audit logs are immutable
+
+Output:
+- PASS / FAIL
+- Evidence from auditService
+
+MODULE 10 — Abuse Prevention & Blast Radius
+
+Prompt
+
+Verify Super Admin abuse prevention mechanisms.
+
+Checklist:
+- Rate limiting on destructive actions (pause, delete, downgrade)
+- Confirmation required for tenant delete
+- No single API call can wipe multi-tenant data
+- Super admin errors are fail-safe (no silent corruption)
+
+Output:
+- PASS / FAIL
+- Final risk assessment
+
+✅ FINAL CONSOLIDATION PROMPT
+Generate Super Admin Verification Summary:
+
+- Total PASS / FAIL / WARNINGS
+- Risk level per module
+- P0 / P1 / P2 gaps
+- Confirmation:
+  "Super Admin controls global state without violating tenant isolation"
+
+Return report in same format as Manager Verification Report.
