@@ -1,0 +1,195 @@
+USER MUST FOLLOW THIS EXACT ORDER
+
+Any deviation must be blocked by the system
+
+MODULE 1: Profile & Readiness Check
+
+Step 1
+
+Verify email mailbox is connected
+
+System validates:
+
+SPF/DKIM
+
+Warm-up status
+
+Blocked If
+
+Mailbox not ready → No sending allowed
+
+MODULE 2: Prospect Upload
+
+Steps
+
+Upload CSV
+
+Max size enforced
+
+System validates:
+
+Required fields present
+
+No duplicates
+
+Upload size ≤ manager/user quota
+
+Prospects saved as RAW
+
+Blocked If
+
+User paused
+
+Manager paused
+
+Daily prospect cap exceeded
+
+MODULE 3: AI Enrichment (Explicit Step)
+
+Steps
+
+Select prospects
+
+Click “Enrich”
+
+System checks:
+
+AI quota
+
+Tenant not paused
+
+Enrichment runs asynchronously
+
+State Change
+
+RAW → ENRICHED
+
+Blocked If
+
+AI quota exceeded
+
+Automation paused
+
+MODULE 4: Sequence Creation
+
+Steps
+
+Create sequence
+
+Add steps (email / LinkedIn / wait)
+
+System validates:
+
+Step count limits
+
+Wait time sanity
+
+Sequence remains DRAFT
+
+MODULE 5: Prospect Enrollment (CRITICAL)
+
+Steps
+
+Select ENRICHED prospects only
+
+Click “Enroll”
+
+System performs pre-flight check:
+
+Enrollment concurrency
+
+Remaining daily sends
+
+Sequence not paused
+
+Enrollment only proceeds if ALL checks pass
+
+MODULE 6: Sequence Activation
+
+Steps
+
+User clicks “Activate”
+
+System checks:
+
+User daily email limit
+
+Manager limits
+
+Tenant automation status
+
+Sequence moves to ACTIVE
+
+MODULE 7: Email Sending (Background)
+
+Worker Flow
+
+Resolve user → manager → tenant
+
+Check:
+
+Kill switch
+
+Daily limit
+
+Send email
+
+Log usage
+
+Update analytics
+
+Failure Handling
+
+Retries capped
+
+Deferred jobs limited
+
+No infinite loops
+
+MODULE 8: Reply Handling
+
+Steps
+
+IMAP polling
+
+Match reply to prospect
+
+Update status
+
+Trigger AI reply (if enabled)
+
+Blocked If
+
+User paused
+
+Automation paused
+
+MODULE 9: Analytics & Optimization
+
+Steps
+
+User views analytics
+
+System shows:
+
+Sent
+
+Replies
+
+Bounces
+
+User optimizes sequences
+
+🔒 GLOBAL ENFORCEMENT RULES (MANDATORY)
+
+Replit MUST enforce:
+
+Step gating (cannot skip modules)
+
+Backend validation (no UI trust)
+
+Clear error messages
+
+Disabled actions until prerequisites met
+
+Audit logs for every state change
