@@ -1,0 +1,262 @@
+You are acting as a Senior QA Automation Engineer + Platform Auditor.
+
+Your goal is to AUTO-VERIFY the complete 9-module SDR workflow for correctness, RBAC safety, workflow gating, scale limits, and background worker enforcement.
+
+DO NOT build new features.
+ONLY verify, test, and report failures.
+FAIL FAST. Be explicit.
+
+=====================================================
+GLOBAL CONTEXT
+=====================================================
+Platform roles:
+- Super Admin
+- Manager
+- User (SDR)
+
+Workflow enforcement uses:
+- sdrWorkflowProgress table
+- workflowGuardService
+- Kill switches (tenant / manager / user)
+- Usage counters (daily/hourly/monthly)
+- Background workers (email, AI, reply detection)
+
+=====================================================
+GENERAL VERIFICATION RULES
+=====================================================
+For every module:
+1. Verify API behavior (HTTP)
+2. Verify DB state transitions
+3. Verify RBAC enforcement (role + ownership)
+4. Verify workflow stage gating
+5. Verify background workers respect gates
+6. Verify limits, quotas, and throttles
+7. Verify failure messages are explicit and correct
+8. Verify no cross-tenant or cross-manager data leaks
+9. Verify concurrency and race-condition safety
+
+If ANY rule fails → report as ❌ P0 BUG.
+
+=====================================================
+MODULE 1 — PROFILE & READINESS
+=====================================================
+Happy Path:
+- User with valid mailbox (SPF, DKIM, warmupComplete=true)
+- readinessCompletedAt is set
+- workflow stage advances to "upload"
+
+Negative / Edge Cases:
+- Missing SPF
+- DKIM valid but warmup incomplete
+- Mailbox disconnected mid-check
+- Manager paused
+- Tenant paused
+- User paused
+- Multiple mailboxes (only one valid)
+
+Verify:
+- assertStage blocks upload if readiness incomplete
+- Background workers do NOT run for unready user
+- Blocking reasons returned correctly
+
+=====================================================
+MODULE 2 — PROSPECT UPLOAD
+=====================================================
+Happy Paths:
+- Upload CSV with 10 prospects
+- Upload max allowed batch (1000)
+- Upload multiple files sequentially
+
+Negative / Edge Cases:
+- Upload without readiness
+- Upload > maxProspectsPerUpload
+- Upload when manager paused
+- Upload when user paused
+- Upload exceeding remaining quota
+- Duplicate emails inside CSV
+- Duplicate prospects across uploads
+- Malformed CSV
+- 50MB boundary test
+- Parallel uploads (race condition)
+
+Verify:
+- Prospects saved as RAW only
+- Workflow stage remains "upload"
+- Usage counters increment correctly
+- Partial failures handled safely
+
+=====================================================
+MODULE 3 — AI ENRICHMENT
+=====================================================
+Happy Paths:
+- Enrich RAW prospects
+- Batch enrich (10, 100, max allowed)
+- Successful RAW → ENRICHED transition
+
+Negative / Edge Cases:
+- Enrich ENRICHED prospects (should block)
+- Enrich with no RAW prospects
+- AI provider timeout
+- Partial enrichment failure
+- Cost limit exceeded
+- Tenant paused mid-enrichment
+- User paused mid-job
+- Retry exhaustion
+- Duplicate enrichment requests
+
+Verify:
+- Only RAW prospects processed
+- Usage ledger increments
+- Workflow advances ONLY after success
+- Kill switch stops AI calls
+- No double billing
+
+=====================================================
+MODULE 4 — SEQUENCE CREATION
+=====================================================
+Happy Paths:
+- Create DRAFT sequence
+- Create multiple sequences within limits
+
+Negative / Edge Cases:
+- Create without enrichment complete
+- Create ACTIVE directly (should fail)
+- Create beyond manager cap
+- Duplicate sequence names
+- Invalid steps/templates
+- Manager paused
+- Tenant paused
+
+Verify:
+- Only DRAFT allowed
+- Workflow stage gating enforced
+- No orphan sequences created
+
+=====================================================
+MODULE 5 — PROSPECT ENROLLMENT
+=====================================================
+Happy Paths:
+- Enroll ENRICHED prospects
+- Enroll small + large batches
+- Correct sequenceProspects rows created
+
+Negative / Edge Cases:
+- Enroll RAW prospects
+- Enroll same prospect twice
+- Enroll > remaining quota
+- Concurrent enrollments
+- Enrollment during pause
+- Enrollment when sequence inactive
+- Enrollment with invalid templates
+- Partial batch failures
+
+Verify:
+- ENRICHED-only enforced at DB + API
+- Deduplication index works
+- activeEnrollments increments/decrements safely
+- No N+1 queries
+
+=====================================================
+MODULE 6 — SEQUENCE ACTIVATION
+=====================================================
+Happy Paths:
+- Activate valid sequence
+- Activation triggers background jobs
+
+Negative / Edge Cases:
+- Activate with zero prospects
+- Activate during pause
+- Activate when daily email limit too low
+- Activate when AI budget exhausted
+- Activate already active sequence
+- Rapid activate/deactivate
+
+Verify:
+- Multi-level kill switch enforced
+- Workflow advances to "sending"
+- Audit logs written
+
+=====================================================
+MODULE 7 — EMAIL SENDING (BACKGROUND)
+=====================================================
+Happy Paths:
+- Emails sent respecting rate limits
+- Queue drains normally
+
+Negative / Edge Cases:
+- Daily email limit reached mid-batch
+- User paused mid-send
+- Manager paused mid-send
+- Tenant paused mid-send
+- Retry storms
+- Provider failure
+- Concurrency overload
+
+Verify:
+- isUserFullyPaused() enforced
+- canUserSendEmail() enforced
+- Deferral logic caps retries
+- No infinite loops
+- No duplicate sends
+
+=====================================================
+MODULE 8 — REPLY HANDLING
+=====================================================
+Happy Paths:
+- Replies captured
+- Linked to correct prospect/sequence
+
+Negative / Edge Cases:
+- IMAP timeout
+- Large mailbox
+- Multiple replies same prospect
+- Reply during pause
+- Reply with missing userId
+- Reply detection under load
+
+Verify:
+- Pause respected
+- No cross-tenant leaks
+- Safe handling of malformed replies
+
+=====================================================
+MODULE 9 — ANALYTICS
+=====================================================
+Happy Paths:
+- Metrics accurate
+- Pagination works
+- Cached responses valid
+
+Negative / Edge Cases:
+- Access analytics before workflow complete
+- Large datasets
+- Cache invalidation
+- Concurrent reads
+- Manager vs User scoping
+
+Verify:
+- Stage gating enforced
+- No tenant-wide leakage
+- p99 latency < expected bounds
+
+=====================================================
+FINAL OUTPUT REQUIRED
+=====================================================
+Produce:
+1. ❌ List of all failures with:
+   - Module
+   - Endpoint / worker
+   - Root cause
+   - File + line number
+   - Severity (P0/P1/P2)
+
+2. ✅ Verified safe areas
+
+3. ⚠️ Scale risks not yet breaking but dangerous
+
+4. 🔒 RBAC or data-leak risks
+
+DO NOT fix code.
+ONLY verify and report.
+
+Begin verification now.
