@@ -865,7 +865,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Enrich prospects (uses job queue if Redis available, otherwise direct enrichment) - workflow-gated
+  // Enrich prospects (uses job queue if Redis available, otherwise direct enrichment) - auto-advances workflow if prospects exist
   app.post("/api/enrich", authenticate, forbidManager, async (req, res) => {
     try {
       const userId = req.userContext?.userId;
@@ -875,9 +875,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ error: "Authentication required" });
       }
 
-      // Workflow stage gate: must be at or past enrichment stage
+      // Check if enrichment is allowed - auto-advances workflow if prospects exist
       try {
-        await sdrWorkflowService.assertStage(userId, "enrichment");
+        const canEnrichResult = await sdrWorkflowService.canEnrich(userId, organizationId);
+        if (!canEnrichResult.allowed) {
+          return res.status(403).json({
+            error: "ENRICHMENT_BLOCKED",
+            message: canEnrichResult.reason || "Cannot enrich prospects",
+          });
+        }
+        if (canEnrichResult.autoAdvanced) {
+          console.log(`📊 Workflow auto-advanced to enrichment stage for user ${userId}`);
+        }
       } catch (stageError) {
         if (stageError instanceof WorkflowBlockedError) {
           return res.status(403).json(stageError.toJSON());
@@ -1144,7 +1153,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Waterfall enrichment - tries Apollo → Lusha → Email pattern guessing (workflow-gated)
+  // Waterfall enrichment - tries Apollo → Lusha → Email pattern guessing - auto-advances workflow if prospects exist
   app.post("/api/waterfall-enrich", authenticate, forbidManager, async (req, res) => {
     try {
       const userId = req.userContext?.userId;
@@ -1154,9 +1163,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(401).json({ error: "Authentication required" });
       }
 
-      // Workflow stage gate: must be at or past enrichment stage
+      // Check if enrichment is allowed - auto-advances workflow if prospects exist
       try {
-        await sdrWorkflowService.assertStage(userId, "enrichment");
+        const canEnrichResult = await sdrWorkflowService.canEnrich(userId, organizationId);
+        if (!canEnrichResult.allowed) {
+          return res.status(403).json({
+            error: "ENRICHMENT_BLOCKED",
+            message: canEnrichResult.reason || "Cannot enrich prospects",
+          });
+        }
+        if (canEnrichResult.autoAdvanced) {
+          console.log(`📊 Workflow auto-advanced to enrichment stage for user ${userId}`);
+        }
       } catch (stageError) {
         if (stageError instanceof WorkflowBlockedError) {
           return res.status(403).json(stageError.toJSON());
@@ -2582,7 +2600,7 @@ Return ONLY the email body text, no subject line needed.`;
     }
   });
 
-  // Enhanced enrichment with automatic Lusha fallback (workflow-gated)
+  // Enhanced enrichment with automatic Lusha fallback - auto-advances workflow if prospects exist
   app.post("/api/prospects/enrich-with-fallback", authenticate, forbidManager, async (req, res) => {
     try {
       const userId = req.userContext?.userId;
@@ -2592,9 +2610,18 @@ Return ONLY the email body text, no subject line needed.`;
         return res.status(401).json({ error: "Authentication required" });
       }
 
-      // Workflow stage gate: must be at or past enrichment stage
+      // Check if enrichment is allowed - auto-advances workflow if prospects exist
       try {
-        await sdrWorkflowService.assertStage(userId, "enrichment");
+        const canEnrichResult = await sdrWorkflowService.canEnrich(userId, organizationId);
+        if (!canEnrichResult.allowed) {
+          return res.status(403).json({
+            error: "ENRICHMENT_BLOCKED",
+            message: canEnrichResult.reason || "Cannot enrich prospects",
+          });
+        }
+        if (canEnrichResult.autoAdvanced) {
+          console.log(`📊 Workflow auto-advanced to enrichment stage for user ${userId}`);
+        }
       } catch (stageError) {
         if (stageError instanceof WorkflowBlockedError) {
           return res.status(403).json(stageError.toJSON());
