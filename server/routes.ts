@@ -185,6 +185,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Resolve company name/domain to Apollo organization ID
+  app.post("/api/resolve-company", authenticate, forbidManager, async (req, res) => {
+    try {
+      const { query } = z.object({ query: z.string().min(1).max(200) }).parse(req.body);
+      
+      console.log(`🏢 Resolving company: "${query}"`);
+      
+      const result = await apolloService.searchOrganization(query);
+      
+      if (!result) {
+        return res.status(404).json({ 
+          error: "COMPANY_NOT_FOUND",
+          message: `Could not find company matching "${query}". Try using the company's website domain instead.`
+        });
+      }
+      
+      console.log(`✅ Resolved "${query}" to: ${result.name} (${result.organizationId})`);
+      
+      res.json({
+        organizationId: result.organizationId,
+        name: result.name,
+        domain: result.domain,
+        industry: result.industry,
+        employees: result.employees
+      });
+    } catch (error) {
+      console.error("Company resolution error:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid request", details: error.errors });
+      }
+      res.status(500).json({ 
+        error: "RESOLUTION_FAILED",
+        message: error instanceof Error ? error.message : "Failed to resolve company" 
+      });
+    }
+  });
+
   // Direct Apollo search (for immediate results)
   app.post("/api/apollo-search", authenticate, forbidManager, async (req, res) => {
     try {

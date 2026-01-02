@@ -9,12 +9,21 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Slider } from "@/components/ui/slider";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
-import { SparklesIcon, SearchIcon, SlidersHorizontalIcon, XIcon, ChevronDownIcon, ChevronUpIcon, AlertCircleIcon, CheckCircleIcon, EditIcon } from "lucide-react";
+import { SparklesIcon, SearchIcon, SlidersHorizontalIcon, XIcon, ChevronDownIcon, ChevronUpIcon, AlertCircleIcon, CheckCircleIcon, EditIcon, Loader2Icon, BuildingIcon } from "lucide-react";
 
 interface ActiveFilter {
   type: string;
   value: string;
   icon: string;
+}
+
+interface ResolvedCompany {
+  input: string;           // Original input (name or domain)
+  id: string;              // Apollo organization_id
+  name: string;            // Normalized company name
+  domain?: string;         // Company domain
+  resolved: boolean;       // Whether resolution succeeded
+  error?: string;          // Error message if resolution failed
 }
 
 interface AdvancedFilters {
@@ -29,6 +38,7 @@ interface AdvancedFilters {
   technologies?: string;
   departments?: string;
   seniorityLevels?: string[];
+  targetCompanies?: ResolvedCompany[];  // New: resolved company filter
 }
 
 interface ParsedFilters {
@@ -165,6 +175,156 @@ export default function AISearch() {
     setAdvancedFilters({
       ...advancedFilters,
       jobTitles: updated
+    });
+  };
+
+  // Company filter state and handlers
+  const [companyInput, setCompanyInput] = useState("");
+  const [isResolvingCompany, setIsResolvingCompany] = useState(false);
+  
+  // Resolve company name/domain to Apollo organization ID
+  const resolveCompany = async (input: string): Promise<ResolvedCompany> => {
+    try {
+      const response = await fetch("/api/resolve-company", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ query: input })
+      });
+      
+      if (!response.ok) {
+        const error = await response.json();
+        return {
+          input,
+          id: "",
+          name: input,
+          resolved: false,
+          error: error.message || "Company not found"
+        };
+      }
+      
+      const data = await response.json();
+      return {
+        input,
+        id: data.organizationId,
+        name: data.name,
+        domain: data.domain,
+        resolved: true
+      };
+    } catch (error) {
+      return {
+        input,
+        id: "",
+        name: input,
+        resolved: false,
+        error: "Failed to resolve company"
+      };
+    }
+  };
+  
+  // Add companies from input
+  const addCompanies = async (input: string) => {
+    const entries = input
+      .split(/[,;]/)
+      .map(s => s.trim())
+      .filter(Boolean);
+    
+    if (entries.length === 0) return;
+    
+    const current = advancedFilters.targetCompanies || [];
+    const duplicates: string[] = [];
+    const toResolve: string[] = [];
+    
+    for (const entry of entries) {
+      // Check for duplicates by input (case-insensitive)
+      const isDuplicate = current.some(c => 
+        c.input.toLowerCase() === entry.toLowerCase() ||
+        c.name.toLowerCase() === entry.toLowerCase()
+      );
+      if (isDuplicate) {
+        duplicates.push(entry);
+      } else {
+        toResolve.push(entry);
+      }
+    }
+    
+    if (duplicates.length > 0) {
+      toast({
+        title: "Duplicate company",
+        description: `"${duplicates.join('", "')}" already added`,
+        variant: "destructive"
+      });
+    }
+    
+    if (toResolve.length === 0) {
+      setCompanyInput("");
+      return;
+    }
+    
+    setIsResolvingCompany(true);
+    
+    try {
+      // Resolve all companies in parallel
+      const resolved = await Promise.all(toResolve.map(resolveCompany));
+      
+      // Check for resolution failures
+      const failed = resolved.filter(r => !r.resolved);
+      const succeeded = resolved.filter(r => r.resolved);
+      
+      if (failed.length > 0) {
+        toast({
+          title: "Company resolution failed",
+          description: `Could not find: ${failed.map(f => f.input).join(", ")}. Check spelling or try company website.`,
+          variant: "destructive"
+        });
+      }
+      
+      if (succeeded.length > 0) {
+        setAdvancedFilters({
+          ...advancedFilters,
+          targetCompanies: [...current, ...succeeded]
+        });
+        
+        toast({
+          title: "Companies added",
+          description: `Added: ${succeeded.map(s => s.name).join(", ")}`,
+        });
+      }
+    } finally {
+      setIsResolvingCompany(false);
+      setCompanyInput("");
+    }
+  };
+  
+  // Handle company input keydown
+  const handleCompanyKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      if (companyInput.trim() && !isResolvingCompany) {
+        addCompanies(companyInput);
+      }
+    }
+  };
+  
+  // Handle company input change
+  const handleCompanyChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    if (value.endsWith(",")) {
+      const beforeComma = value.slice(0, -1).trim();
+      if (beforeComma && !isResolvingCompany) {
+        addCompanies(beforeComma);
+      }
+    } else {
+      setCompanyInput(value);
+    }
+  };
+  
+  // Remove a company by index
+  const removeCompany = (index: number) => {
+    const updated = advancedFilters.targetCompanies?.filter((_, i) => i !== index) || [];
+    setAdvancedFilters({
+      ...advancedFilters,
+      targetCompanies: updated
     });
   };
 
@@ -338,23 +498,38 @@ export default function AISearch() {
     if (advancedFilters.seniorityLevels?.length) {
       finalFilters.person_seniorities = advancedFilters.seniorityLevels;
     }
-    if (advancedFilters.companySizes?.length) {
-      finalFilters.organization_num_employees_ranges = advancedFilters.companySizes;
-    }
-    if (advancedFilters.industries?.length) {
-      const mappedIndustries = advancedFilters.industries
-        .map(mapIndustryToApolloId)
-        .filter((id): id is string => id !== null);
-      if (mappedIndustries.length > 0) {
-        finalFilters.organization_industry_tag_ids = mappedIndustries;
+    
+    // TARGET COMPANIES - HARD FILTER that takes precedence
+    const resolvedCompanies = advancedFilters.targetCompanies?.filter(c => c.resolved) || [];
+    if (resolvedCompanies.length > 0) {
+      // Use organization_ids for precise company targeting
+      finalFilters.organization_ids = resolvedCompanies.map(c => c.id);
+      // CRITICAL: Clear ALL org-level filters - company IDs must be the sole org scope
+      delete finalFilters.q_organization_name;
+      delete finalFilters.organization_industry_tag_ids;
+      delete finalFilters.organization_num_employees_ranges;
+      delete finalFilters.q_organization_keyword_tags;
+    } else {
+      // Only apply these filters when NOT using target companies
+      if (advancedFilters.companySizes?.length) {
+        finalFilters.organization_num_employees_ranges = advancedFilters.companySizes;
+      }
+      if (advancedFilters.industries?.length) {
+        const mappedIndustries = advancedFilters.industries
+          .map(mapIndustryToApolloId)
+          .filter((id): id is string => id !== null);
+        if (mappedIndustries.length > 0) {
+          finalFilters.organization_industry_tag_ids = mappedIndustries;
+        }
+      }
+      if (advancedFilters.specificCompanies?.trim()) {
+        const companies = advancedFilters.specificCompanies.split(',').map(c => c.trim()).filter(Boolean);
+        if (companies.length > 0) {
+          finalFilters.q_organization_name = companies.join(' OR ');
+        }
       }
     }
-    if (advancedFilters.specificCompanies?.trim()) {
-      const companies = advancedFilters.specificCompanies.split(',').map(c => c.trim()).filter(Boolean);
-      if (companies.length > 0) {
-        finalFilters.q_organization_name = companies.join(' OR ');
-      }
-    }
+    
     if (advancedFilters.technologies?.trim()) {
       finalFilters.q_keywords = advancedFilters.technologies;
     }
@@ -425,14 +600,19 @@ export default function AISearch() {
       return;
     }
     
-    if (!advancedFilters.industries?.length && 
-        !advancedFilters.countries?.length && 
-        !advancedFilters.jobTitles?.length && 
-        !advancedFilters.seniorityLevels?.length && 
-        !advancedFilters.companySizes?.length &&
-        !advancedFilters.specificCompanies?.trim() &&
-        !advancedFilters.technologies?.trim() &&
-        !advancedFilters.departments?.trim()) {
+    // Check if any filter is set (including targetCompanies)
+    const resolvedCompanies = advancedFilters.targetCompanies?.filter(c => c.resolved) || [];
+    const hasFilters = advancedFilters.industries?.length || 
+        advancedFilters.countries?.length || 
+        advancedFilters.jobTitles?.length || 
+        advancedFilters.seniorityLevels?.length || 
+        advancedFilters.companySizes?.length ||
+        advancedFilters.specificCompanies?.trim() ||
+        advancedFilters.technologies?.trim() ||
+        advancedFilters.departments?.trim() ||
+        resolvedCompanies.length > 0;
+    
+    if (!hasFilters) {
       toast({
         variant: "destructive",
         title: "No Filters Selected",
@@ -443,15 +623,33 @@ export default function AISearch() {
 
     const filters: any = {};
     
-    if (advancedFilters.industries?.length) {
-      const mappedIndustries = advancedFilters.industries
-        .map(mapIndustryToApolloId)
-        .filter((id): id is string => id !== null);
-      
-      if (mappedIndustries.length > 0) {
-        filters.organization_industry_tag_ids = mappedIndustries;
+    // TARGET COMPANIES - HARD FILTER (takes precedence)
+    if (resolvedCompanies.length > 0) {
+      filters.organization_ids = resolvedCompanies.map(c => c.id);
+      // Don't apply industry/size filters when targeting specific companies
+    } else {
+      // Only apply these when NOT using target companies
+      if (advancedFilters.industries?.length) {
+        const mappedIndustries = advancedFilters.industries
+          .map(mapIndustryToApolloId)
+          .filter((id): id is string => id !== null);
+        
+        if (mappedIndustries.length > 0) {
+          filters.organization_industry_tag_ids = mappedIndustries;
+        }
+      }
+      if (advancedFilters.companySizes?.length) {
+        filters.organization_num_employees_ranges = advancedFilters.companySizes;
+      }
+      if (advancedFilters.specificCompanies) {
+        const companies = advancedFilters.specificCompanies.split(',').map(c => c.trim()).filter(Boolean);
+        if (companies.length > 0) {
+          filters.q_organization_name = companies.join(' OR ');
+        }
       }
     }
+    
+    // These filters always apply
     if (advancedFilters.countries?.length) {
       filters.person_locations = advancedFilters.countries;
     }
@@ -460,15 +658,6 @@ export default function AISearch() {
     }
     if (advancedFilters.seniorityLevels?.length) {
       filters.person_seniorities = advancedFilters.seniorityLevels;
-    }
-    if (advancedFilters.companySizes?.length) {
-      filters.organization_num_employees_ranges = advancedFilters.companySizes;
-    }
-    if (advancedFilters.specificCompanies) {
-      const companies = advancedFilters.specificCompanies.split(',').map(c => c.trim()).filter(Boolean);
-      if (companies.length > 0) {
-        filters.q_organization_name = companies.join(' OR ');
-      }
     }
     if (advancedFilters.technologies) {
       filters.q_keywords = advancedFilters.technologies;
@@ -843,6 +1032,97 @@ export default function AISearch() {
                     data-testid="input-tag"
                   />
                 </div>
+              </div>
+
+              {/* Company Filter - HARD FILTER that takes precedence */}
+              <div className="space-y-2 p-4 border-2 border-primary/20 rounded-lg bg-primary/5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <BuildingIcon className="h-4 w-4 text-primary" />
+                    <Label htmlFor="target-companies" className="font-semibold">Target Companies (Priority Filter)</Label>
+                  </div>
+                  {advancedFilters.targetCompanies && advancedFilters.targetCompanies.length > 0 && (
+                    <Badge variant="default" className="text-xs bg-primary">
+                      HARD FILTER
+                    </Badge>
+                  )}
+                </div>
+                
+                <p className="text-xs text-muted-foreground">
+                  Search job titles ONLY within these specific companies. Takes precedence over industries/size filters.
+                </p>
+                
+                {/* Show resolved company badges */}
+                {advancedFilters.targetCompanies && advancedFilters.targetCompanies.length > 0 && (
+                  <div className="flex flex-wrap gap-2 p-2 border rounded-md bg-background" data-testid="target-companies-badges">
+                    {advancedFilters.targetCompanies.map((company, index) => (
+                      <Badge 
+                        key={index} 
+                        variant={company.resolved ? "secondary" : "destructive"}
+                        className="text-sm flex items-center gap-1 py-1 px-2"
+                      >
+                        <BuildingIcon className="h-3 w-3" />
+                        {company.name}
+                        {company.domain && (
+                          <span className="text-xs text-muted-foreground ml-1">({company.domain})</span>
+                        )}
+                        {index < advancedFilters.targetCompanies!.length - 1 && (
+                          <span className="text-amber-600 font-bold ml-1 text-xs">OR</span>
+                        )}
+                        <button
+                          onClick={() => removeCompany(index)}
+                          className="ml-1 hover:text-destructive text-muted-foreground hover:text-red-500 transition-colors"
+                          data-testid={`remove-company-${index}`}
+                          aria-label={`Remove ${company.name}`}
+                        >
+                          <XIcon className="h-3 w-3" />
+                        </button>
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+                
+                {/* Input for adding companies */}
+                <div className="flex gap-2">
+                  <Input
+                    id="target-companies"
+                    placeholder={advancedFilters.targetCompanies?.length 
+                      ? "Add another company (name or website)" 
+                      : "e.g., Puma or puma.com (press Enter to add)"
+                    }
+                    value={companyInput}
+                    onChange={handleCompanyChange}
+                    onKeyDown={handleCompanyKeyDown}
+                    onBlur={() => {
+                      if (companyInput.trim() && !isResolvingCompany) {
+                        addCompanies(companyInput);
+                      }
+                    }}
+                    disabled={isResolvingCompany}
+                    data-testid="input-target-companies"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => addCompanies(companyInput)}
+                    disabled={!companyInput.trim() || isResolvingCompany}
+                    data-testid="button-add-company"
+                  >
+                    {isResolvingCompany ? (
+                      <Loader2Icon className="h-4 w-4 animate-spin" />
+                    ) : (
+                      "Add"
+                    )}
+                  </Button>
+                </div>
+                
+                <p className="text-xs text-muted-foreground">
+                  {advancedFilters.targetCompanies && advancedFilters.targetCompanies.length > 0 
+                    ? `${advancedFilters.targetCompanies.length} company(s) - job titles will be searched ONLY within these companies` 
+                    : "Enter company name or website domain. Multiple companies = OR logic."
+                  }
+                </p>
               </div>
 
               <div className="space-y-2">

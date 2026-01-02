@@ -479,6 +479,86 @@ class ApolloService {
       };
     }
   }
+
+  /**
+   * Search for organizations by name or domain
+   * Returns the best matching organization with its Apollo ID
+   */
+  async searchOrganization(query: string): Promise<{
+    organizationId: string;
+    name: string;
+    domain?: string;
+    industry?: string;
+    employees?: number;
+  } | null> {
+    if (!this.apiKey) {
+      throw new Error('Apollo API key not configured');
+    }
+
+    // Check if query looks like a domain
+    const isDomain = query.includes('.') && !query.includes(' ');
+    
+    const url = `${this.baseUrl}/mixed_companies/search`;
+    
+    const requestBody = isDomain
+      ? { 
+          organization_domains: [query.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0]],
+          per_page: 1 
+        }
+      : { 
+          q_organization_name: query,
+          per_page: 5  // Get a few results to find best match
+        };
+
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache',
+          'X-Api-Key': this.apiKey,
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!response.ok) {
+        console.error(`Apollo organization search failed: ${response.status}`);
+        return null;
+      }
+
+      const data = await response.json();
+      const organizations = data.organizations || data.accounts || [];
+      
+      if (organizations.length === 0) {
+        return null;
+      }
+
+      // For domain search, take first result
+      // For name search, find best match
+      let bestMatch = organizations[0];
+      
+      if (!isDomain && organizations.length > 1) {
+        // Try to find exact name match (case-insensitive)
+        const exactMatch = organizations.find((org: any) => 
+          org.name?.toLowerCase() === query.toLowerCase()
+        );
+        if (exactMatch) {
+          bestMatch = exactMatch;
+        }
+      }
+
+      return {
+        organizationId: bestMatch.id,
+        name: bestMatch.name,
+        domain: bestMatch.primary_domain || bestMatch.website_url?.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0],
+        industry: bestMatch.industry,
+        employees: bestMatch.estimated_num_employees
+      };
+    } catch (error) {
+      console.error('Apollo organization search error:', error);
+      return null;
+    }
+  }
 }
 
 export const apolloService = new ApolloService();
