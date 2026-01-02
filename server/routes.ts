@@ -42,6 +42,7 @@ import bestPracticesRoutes from "./routes/best-practices.routes";
 import aeHandoffRoutes from "./routes/ae-handoff.routes";
 import waterfallSearchRoutes from "./routes/waterfall-search.routes";
 import managerRoutes from "./routes/manager.routes";
+import sdrWorkflowRoutes from "./routes/sdr-workflow.routes";
 import { inboxRouter } from "./inbox-routes";
 import { authenticate, forbidManager, blockSuperAdminFromSDR } from "./middleware/auth.middleware";
 import { emailVolumeConfig, getCapacityReport, getEstimatedTimeForEmails, EMAIL_VOLUME_PRESETS } from "./config/email-volume.config";
@@ -1687,6 +1688,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Manager routes (FR-M features)
   app.use(managerRoutes);
+
+  // SDR Workflow routes (9-stage step enforcement)
+  app.use("/api/sdr-workflow", sdrWorkflowRoutes);
 
   // Inbox routes (unified reply management)
   app.use("/api/inbox", inboxRouter);

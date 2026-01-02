@@ -707,6 +707,15 @@ export const emailMailboxes = pgTable("email_mailboxes", {
   // Email Signature
   signature: text("signature"),
   
+  // Readiness Flags for SDR Workflow
+  readinessFlags: jsonb("readiness_flags").$type<{
+    spfValid: boolean;
+    dkimValid: boolean;
+    warmupComplete: boolean;
+    lastCheckedAt?: string;
+    errors?: string[];
+  }>().default({ spfValid: false, dkimValid: false, warmupComplete: false }),
+  
   // Metadata
   lastUsedAt: timestamp("last_used_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
@@ -3822,3 +3831,79 @@ export const observabilityEvents = pgTable("observability_events", {
 
 export type ObservabilityEvent = typeof observabilityEvents.$inferSelect;
 export type InsertObservabilityEvent = typeof observabilityEvents.$inferInsert;
+
+// =============================================
+// SDR WORKFLOW PROGRESS (9-Stage Step Enforcement)
+// =============================================
+
+// SDR workflow stages - STRICT ORDER required
+export const sdrWorkflowStageEnum = pgEnum("sdr_workflow_stage", [
+  "readiness",    // Step 1: Profile & mailbox readiness check
+  "upload",       // Step 2: Prospect upload
+  "enrichment",   // Step 3: AI enrichment (RAW → ENRICHED)
+  "sequence",     // Step 4: Sequence creation (DRAFT)
+  "enrollment",   // Step 5: Prospect enrollment (ENRICHED only)
+  "activation",   // Step 6: Sequence activation
+  "sending",      // Step 7: Email sending (background)
+  "replies",      // Step 8: Reply handling
+  "analytics"     // Step 9: Analytics & optimization
+]);
+
+// SDR workflow blocking reason types
+export type SDRWorkflowBlockingReason = {
+  code: string;
+  message: string;
+  module: string;
+  severity: "error" | "warning";
+  metadata?: Record<string, unknown>;
+};
+
+// SDR workflow progress tracking per user
+export const sdrWorkflowProgress = pgTable("sdr_workflow_progress", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }).unique(),
+  
+  // Current workflow stage
+  currentStage: sdrWorkflowStageEnum("current_stage").notNull().default("readiness"),
+  
+  // Step completion timestamps
+  readinessCompletedAt: timestamp("readiness_completed_at"),
+  uploadCompletedAt: timestamp("upload_completed_at"),
+  enrichmentCompletedAt: timestamp("enrichment_completed_at"),
+  sequenceCompletedAt: timestamp("sequence_completed_at"),
+  enrollmentCompletedAt: timestamp("enrollment_completed_at"),
+  activationCompletedAt: timestamp("activation_completed_at"),
+  sendingStartedAt: timestamp("sending_started_at"),
+  repliesDetectedAt: timestamp("replies_detected_at"),
+  analyticsUnlockedAt: timestamp("analytics_unlocked_at"),
+  
+  // Blocking reasons (structured for UI)
+  blockingReasons: jsonb("blocking_reasons").$type<SDRWorkflowBlockingReason[]>().default([]),
+  
+  // Metadata
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  orgIdIdx: index("sdr_workflow_progress_org_id_idx").on(table.organizationId),
+  userIdIdx: index("sdr_workflow_progress_user_id_idx").on(table.userId),
+  stageIdx: index("sdr_workflow_progress_stage_idx").on(table.currentStage),
+}));
+
+export type SDRWorkflowProgress = typeof sdrWorkflowProgress.$inferSelect;
+export type InsertSDRWorkflowProgress = typeof sdrWorkflowProgress.$inferInsert;
+
+export const insertSDRWorkflowProgressSchema = createInsertSchema(sdrWorkflowProgress).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+// Mailbox readiness flags type for emailMailboxes extension
+export type MailboxReadinessFlags = {
+  spfValid: boolean;
+  dkimValid: boolean;
+  warmupComplete: boolean;
+  lastCheckedAt?: string;
+  errors?: string[];
+};
