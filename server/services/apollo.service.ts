@@ -511,6 +511,9 @@ class ApolloService {
         };
 
     try {
+      console.log(`🔍 Apollo org search: query="${query}", isDomain=${isDomain}`);
+      console.log(`📤 Request body:`, JSON.stringify(requestBody));
+      
       const response = await fetch(url, {
         method: 'POST',
         headers: {
@@ -521,13 +524,18 @@ class ApolloService {
         body: JSON.stringify(requestBody),
       });
 
+      console.log(`📥 Apollo response status: ${response.status}`);
+
       if (!response.ok) {
-        console.error(`Apollo organization search failed: ${response.status}`);
+        const errorText = await response.text();
+        console.error(`Apollo organization search failed: ${response.status} - ${errorText}`);
         return null;
       }
 
       const data = await response.json();
+      console.log(`📦 Apollo response data keys: ${Object.keys(data).join(', ')}`);
       const organizations = data.organizations || data.accounts || [];
+      console.log(`📊 Found ${organizations.length} organizations`);
       
       if (organizations.length === 0) {
         return null;

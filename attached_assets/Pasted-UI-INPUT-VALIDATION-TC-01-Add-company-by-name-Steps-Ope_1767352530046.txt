@@ -1,0 +1,325 @@
+UI & INPUT VALIDATION
+TC-01: Add company by name
+
+Steps
+
+Open Advanced Filters
+
+Enter Increff in Target Companies input
+
+Press Enter
+
+Expected Result
+
+Company appears as a badge
+
+Loading indicator shown briefly
+
+Company resolves successfully
+
+No error shown
+
+TC-02: Add company by website domain
+
+Steps
+
+Enter increff.com
+
+Press Enter
+
+Expected Result
+
+Company resolves to same org as Increff
+
+Badge displays standardized company name
+
+Apollo org ID stored internally
+
+TC-03: Add multiple companies
+
+Steps
+
+Add Flipkart
+
+Add Amazon
+
+Add Walmart
+
+Expected Result
+
+All appear as separate removable badges
+
+Each resolves independently
+
+No UI lag or crash
+
+TC-04: Duplicate company prevention
+
+Steps
+
+Add Amazon
+
+Add amazon.com
+
+Expected Result
+
+Only one Amazon badge exists
+
+No duplicate entries allowed
+
+TC-05: Remove company badge
+
+Steps
+
+Click remove (×) on a company badge
+
+Expected Result
+
+Badge disappears
+
+Backend org ID removed from request payload
+
+TC-06: Invalid company handling
+
+Steps
+
+Enter RandomFakeCompanyXYZ
+
+Press Enter
+
+Expected Result
+
+Clear error message: “Company not found”
+
+No badge added
+
+User can retry
+
+2️⃣ FILTER LOGIC ENFORCEMENT
+TC-07: Target Companies acts as HARD FILTER
+
+Steps
+
+Add Increff
+
+Add job title Supply Chain Director
+
+Run search
+
+Expected Result
+
+ALL returned prospects belong to Increff
+
+No external company appears
+
+TC-08: Automatic clearing of org-level filters
+
+Steps
+
+Select Industry = SaaS
+
+Select Company Size = 200–500
+
+Add Target Company = Flipkart
+
+Expected Result
+
+Industry & company size filters are cleared automatically
+
+UI reflects cleared state
+
+Tooltip or note explains behavior
+
+TC-09: Person-level filters remain active
+
+Steps
+
+Add Target Companies = Amazon
+
+Add Job Title = Director of Supply Chain
+
+Add Location = United States
+
+Expected Result
+
+Results only from Amazon
+
+Titles + location applied as AND conditions
+
+TC-10: Multiple job titles within target companies
+
+Steps
+
+Add Target Companies = Amazon
+
+Add Job Titles:
+
+Supply Chain Director
+
+Head of Logistics
+
+Expected Result
+
+OR logic across titles
+
+AND logic with company constraint
+
+3️⃣ AI SEARCH INTEGRATION
+TC-11: AI Search respects Advanced Filters
+
+Steps
+
+Start AI Search
+
+Click “Edit Filters”
+
+Add Target Company = Flipkart
+
+Run AI search
+
+Expected Result
+
+AI does NOT override company filter
+
+Results strictly from Flipkart
+
+TC-12: AI prompt with implicit company intent
+
+Steps
+
+AI prompt:
+“Find supply chain leaders at Amazon”
+
+Run search
+
+Expected Result
+
+Backend auto-applies Amazon as target company
+
+No prospects outside Amazon
+
+TC-13: AI attempt to expand scope
+
+Steps
+
+Add Target Company = Increff
+
+AI prompt:
+“Also include similar SaaS companies”
+
+Expected Result
+
+AI ignores expansion
+
+Results remain limited to Increff only
+
+4️⃣ BACKEND & DATA INTEGRITY
+TC-14: Apollo org ID resolution
+
+Steps
+
+Add amazon.com
+
+Inspect backend request
+
+Expected Result
+
+Apollo organization ID is present
+
+Company name string is not used for filtering
+
+TC-15: No org-level filter leakage
+
+Steps
+
+Add Target Company
+
+Inspect API payload
+
+Expected Result
+
+Industry, size, keywords = null / empty
+
+Target org IDs present
+
+TC-16: Multi-tenant isolation
+
+Steps
+
+Tenant A adds Amazon
+
+Tenant B searches without target companies
+
+Expected Result
+
+No cross-tenant data exposure
+
+Filters scoped per tenant
+
+5️⃣ EDGE CASES & UX
+TC-17: Zero results handling
+
+Steps
+
+Add Target Company = Amazon
+
+Add Job Title = Chief Underwater Basket Weaver
+
+Run search
+
+Expected Result
+
+Message:
+“No matching roles found in selected companies”
+
+No fallback broad search
+
+TC-18: Removing all companies restores org filters
+
+Steps
+
+Add Target Company
+
+Remove all company badges
+
+Expected Result
+
+Industry, company size filters become selectable again
+
+Normal behavior restored
+
+TC-19: Performance test
+
+Steps
+
+Add 10 target companies
+
+Add 3 job titles
+
+Run search
+
+Expected Result
+
+Search completes within acceptable SLA
+
+No timeout or partial results
+
+6️⃣ REGRESSION TESTS (MUST PASS)
+
+Legacy Advanced Filters still work without target companies
+
+AI Search without filters behaves unchanged
+
+Saved searches load correctly with company badges
+
+No crash on rapid add/remove actions
+
+✅ PASS CRITERIA (GO-LIVE CHECKLIST)
+
+Zero prospects outside target companies
+
+No silent AI overrides
+
+Clean error handling
+
+Consistent UI + backend enforcement
