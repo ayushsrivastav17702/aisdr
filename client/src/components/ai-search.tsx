@@ -5,12 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Slider } from "@/components/ui/slider";
 import { useToast } from "@/hooks/use-toast";
 import { api } from "@/lib/api";
-import { SparklesIcon, SearchIcon, SlidersHorizontalIcon, XIcon, ChevronDownIcon, ChevronUpIcon } from "lucide-react";
+import { SparklesIcon, SearchIcon, SlidersHorizontalIcon, XIcon, ChevronDownIcon, ChevronUpIcon, AlertCircleIcon, CheckCircleIcon, EditIcon } from "lucide-react";
 
 interface ActiveFilter {
   type: string;
@@ -32,7 +31,12 @@ interface AdvancedFilters {
   seniorityLevels?: string[];
 }
 
-// Only industries with valid Apollo ID mappings to prevent 422 errors
+interface ParsedFilters {
+  apolloFilters: any;
+  aiFilters: any;
+  originalQuery: string;
+}
+
 const INDUSTRIES = [
   "Technology",
   "SaaS", 
@@ -78,6 +82,8 @@ export default function AISearch() {
   const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilters>({
     prospectCount: 50
   });
+  const [parsedFilters, setParsedFilters] = useState<ParsedFilters | null>(null);
+  const [showFilterPreview, setShowFilterPreview] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
@@ -85,13 +91,12 @@ export default function AISearch() {
   const aiSearchMutation = useMutation({
     mutationFn: api.aiSearch,
     onSuccess: (data) => {
-      // Update active filters based on AI parsing results
       const filters: ActiveFilter[] = [];
       
       if (data.aiFilters.jobTitles?.length) {
         filters.push({
           type: "jobTitles",
-          value: data.aiFilters.jobTitles.join(", "),
+          value: data.aiFilters.jobTitles.join(" OR "),
           icon: "💼"
         });
       }
@@ -99,7 +104,7 @@ export default function AISearch() {
       if (data.aiFilters.industries?.length) {
         filters.push({
           type: "industries", 
-          value: data.aiFilters.industries.join(", "),
+          value: data.aiFilters.industries.join(" OR "),
           icon: "🏢"
         });
       }
@@ -107,8 +112,16 @@ export default function AISearch() {
       if (data.aiFilters.locations?.length) {
         filters.push({
           type: "locations",
-          value: data.aiFilters.locations.join(", "),
+          value: data.aiFilters.locations.join(" OR "),
           icon: "📍"
+        });
+      }
+
+      if (data.aiFilters.companyNames?.length) {
+        filters.push({
+          type: "companies",
+          value: data.aiFilters.companyNames.join(" OR "),
+          icon: "🏛️"
         });
       }
 
@@ -123,27 +136,23 @@ export default function AISearch() {
 
       setActiveFilters(filters);
       
-      // If job queue is not available (no job created), execute Apollo search immediately
-      if (!data.job && data.apolloFilters) {
-        apolloSearchMutation.mutate({ 
-          apolloFilters: data.apolloFilters,
-          extractionName: query.substring(0, 100),
-          tag: "AI Search",
-          prospectCount: 50
-        });
-      } else if (data.job) {
-        // Job queue is available - prospects will appear when job completes
-        toast({
-          title: "AI Search Executed",
-          description: `Processing search job with ${filters.length} filters applied.`,
-        });
-      }
+      setParsedFilters({
+        apolloFilters: data.apolloFilters,
+        aiFilters: data.aiFilters,
+        originalQuery: query
+      });
+      setShowFilterPreview(true);
+      
+      toast({
+        title: "Filters Parsed",
+        description: "Review the filters below before executing the search.",
+      });
     },
     onError: (error) => {
       toast({
         variant: "destructive",
         title: "Search Failed",
-        description: error.message || "Failed to execute AI search",
+        description: error.message || "Failed to parse search query",
       });
     },
   });
@@ -156,47 +165,31 @@ export default function AISearch() {
         params.prospectCount || 50,
         params.extractionName,
         params.tag,
-        params.useWaterfall ?? true  // Default to waterfall for better email coverage
+        params.useWaterfall ?? true
       ),
     onSuccess: (data) => {
-      console.log('🔍 Apollo search mutation onSuccess:', data);
-      console.log('  data.saved:', data.saved);
-      console.log('  data.pagination:', data.pagination);
-      console.log('  data.searchStrategy:', data.searchStrategy);
-      console.log('  data.searchStrategyMessage:', data.searchStrategyMessage);
-      
-      // Invalidate prospects query to show newly saved prospects
       queryClient.invalidateQueries({ queryKey: ["/api/prospects"] });
       
       const totalFound = data.pagination?.total_entries || data.saved;
       
-      console.log('  totalFound:', totalFound);
-      console.log('  Checking if data.saved === 0:', data.saved === 0);
-      
       if (data.saved === 0) {
-        console.log('  ⚠️ Showing "No Prospects Found" toast');
-        
-        // Check if Apollo has data but didn't return it (credits/access issue)
         const totalAvailable = data.pagination?.total_entries || 0;
         if (totalAvailable > 0) {
           toast({
             variant: "destructive",
             title: "Apollo Credits Required",
-            description: `Apollo found ${totalAvailable.toLocaleString()} matching prospects but your account needs credits to access them. Check your Apollo.io subscription or add email credits.`,
+            description: `Apollo found ${totalAvailable.toLocaleString()} matching prospects but your account needs credits to access them.`,
           });
         } else {
           toast({
             variant: "destructive",
             title: "No Prospects Found",
-            description: data.searchStrategyMessage || `No prospects matched your search criteria. Apollo tried multiple search strategies but found no results. Try different search terms or check if Apollo has data for this query.`,
+            description: data.searchStrategyMessage || `No prospects matched your search criteria.`,
           });
         }
         return;
       }
       
-      console.log('  ✅ Showing success toast and navigating');
-      
-      // Show different message with clear breakdown of new vs updated
       let successMessage = '';
       const newCount = data.newCount || 0;
       const updatedCount = data.updatedCount || 0;
@@ -218,7 +211,10 @@ export default function AISearch() {
         description: successMessage,
       });
 
-      // Navigate to Prospects page after a short delay to show the toast
+      setShowFilterPreview(false);
+      setParsedFilters(null);
+      setActiveFilters([]);
+
       setTimeout(() => {
         setLocation("/prospects");
       }, 1500);
@@ -232,7 +228,7 @@ export default function AISearch() {
     },
   });
 
-  const handleSearch = () => {
+  const handleParseQuery = () => {
     if (!query.trim()) {
       toast({
         variant: "destructive",
@@ -245,36 +241,92 @@ export default function AISearch() {
     aiSearchMutation.mutate(query);
   };
 
-  // Helper function to map industries to Apollo IDs (returns null if no mapping)
+  const handleExecuteSearch = () => {
+    if (!parsedFilters) return;
+    
+    const extractionName = advancedFilters.extractionName?.trim() || query.substring(0, 100);
+    const tag = advancedFilters.tag?.trim() || "AI Search";
+    
+    const finalFilters = { ...parsedFilters.apolloFilters };
+    
+    if (advancedFilters.jobTitles?.length) {
+      finalFilters.person_titles = advancedFilters.jobTitles;
+    }
+    if (advancedFilters.countries?.length) {
+      finalFilters.person_locations = advancedFilters.countries;
+    }
+    if (advancedFilters.seniorityLevels?.length) {
+      finalFilters.person_seniorities = advancedFilters.seniorityLevels;
+    }
+    if (advancedFilters.companySizes?.length) {
+      finalFilters.organization_num_employees_ranges = advancedFilters.companySizes;
+    }
+    if (advancedFilters.industries?.length) {
+      const mappedIndustries = advancedFilters.industries
+        .map(mapIndustryToApolloId)
+        .filter((id): id is string => id !== null);
+      if (mappedIndustries.length > 0) {
+        finalFilters.organization_industry_tag_ids = mappedIndustries;
+      }
+    }
+    if (advancedFilters.specificCompanies?.trim()) {
+      const companies = advancedFilters.specificCompanies.split(',').map(c => c.trim()).filter(Boolean);
+      if (companies.length > 0) {
+        finalFilters.q_organization_name = companies.join(' OR ');
+      }
+    }
+    if (advancedFilters.technologies?.trim()) {
+      finalFilters.q_keywords = advancedFilters.technologies;
+    }
+    if (advancedFilters.departments?.trim()) {
+      const depts = advancedFilters.departments.split(',').map(d => d.trim()).filter(Boolean);
+      finalFilters.person_departments = depts;
+    }
+    
+    apolloSearchMutation.mutate({ 
+      apolloFilters: finalFilters,
+      extractionName,
+      tag,
+      prospectCount: advancedFilters.prospectCount || 50
+    });
+  };
+
+  const handleEditFiltersInAdvanced = () => {
+    if (parsedFilters?.aiFilters) {
+      const ai = parsedFilters.aiFilters;
+      setAdvancedFilters({
+        ...advancedFilters,
+        extractionName: advancedFilters.extractionName || query.substring(0, 100),
+        tag: advancedFilters.tag || "AI Search",
+        jobTitles: ai.jobTitles || [],
+        countries: ai.locations || [],
+        specificCompanies: ai.companyNames?.join(", ") || "",
+        industries: ai.industries || [],
+        seniorityLevels: ai.seniority || [],
+        departments: ai.departments?.join(", ") || "",
+        technologies: ai.keywords?.join(", ") || "",
+      });
+    }
+    setShowFilterPreview(false);
+    setParsedFilters(null);
+    setShowAdvancedFilters(true);
+  };
+
   const mapIndustryToApolloId = (industry: string): string | null => {
     const mapping: { [key: string]: string } = {
       'fintech': '5567cdcc7369646289050000',
       'saas': '5567cdcc7369646289040000',
       'healthcare': '5567cdcc7369646289030000',
       'technology': '5567cdcc7369646289020000',
-      'software': '5567cdcc7369646289040000', // Same as SaaS
+      'software': '5567cdcc7369646289040000',
       'financial services': '5567cdcc7369646289010000',
       'finance': '5567cdcc7369646289010000',
       'banking': '5567cdcc7369646289010000',
-      // Note: Industries without mappings will be filtered out
     };
     return mapping[industry.toLowerCase()] || null;
   };
 
-  // Helper function to map seniority to Apollo format
-  const mapSeniorityToApollo = (seniority: string): string => {
-    const mapping: { [key: string]: string } = {
-      'executive': 'c_level',
-      'director': 'director',
-      'manager': 'manager',
-      'senior': 'senior',
-      'entry': 'entry'
-    };
-    return mapping[seniority.toLowerCase()] || seniority;
-  };
-
   const handleAdvancedSearch = () => {
-    // Validate required fields
     if (!advancedFilters.extractionName?.trim()) {
       toast({
         variant: "destructive",
@@ -293,7 +345,6 @@ export default function AISearch() {
       return;
     }
     
-    // Validate at least one filter is set
     if (!advancedFilters.industries?.length && 
         !advancedFilters.countries?.length && 
         !advancedFilters.jobTitles?.length && 
@@ -310,7 +361,6 @@ export default function AISearch() {
       return;
     }
 
-    // Build filters object from advanced filters with proper Apollo formatting
     const filters: any = {};
     
     if (advancedFilters.industries?.length) {
@@ -335,10 +385,9 @@ export default function AISearch() {
       filters.organization_num_employees_ranges = advancedFilters.companySizes;
     }
     if (advancedFilters.specificCompanies) {
-      // Parse comma-separated companies and use first one for q_organization_name
       const companies = advancedFilters.specificCompanies.split(',').map(c => c.trim()).filter(Boolean);
       if (companies.length > 0) {
-        filters.q_organization_name = companies[0];
+        filters.q_organization_name = companies.join(' OR ');
       }
     }
     if (advancedFilters.technologies) {
@@ -349,7 +398,6 @@ export default function AISearch() {
       filters.person_departments = depts;
     }
 
-    // Execute Apollo search with filters, extraction name, tag, and prospect count
     apolloSearchMutation.mutate({
       apolloFilters: filters,
       extractionName: advancedFilters.extractionName,
@@ -366,12 +414,13 @@ export default function AISearch() {
     setActiveFilters([]);
     setQuery("");
     setAdvancedFilters({ prospectCount: 50 });
+    setParsedFilters(null);
+    setShowFilterPreview(false);
   };
 
   return (
     <div className="p-8 border-b border-border bg-gradient-to-br from-primary/5 to-accent/5">
       <div className="max-w-4xl mx-auto space-y-4">
-        {/* AI Search Input */}
         <div className="relative">
           <SparklesIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-accent w-5 h-5" />
           <Input
@@ -380,26 +429,248 @@ export default function AISearch() {
             className="w-full pl-12 pr-32 py-4 text-base rounded-lg border-2 border-border bg-card focus:border-primary focus:ring-2 focus:ring-primary/20"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleSearch()}
+            onKeyDown={(e) => e.key === "Enter" && handleParseQuery()}
             data-testid="input-ai-search"
           />
           <Button
             className="absolute right-2 top-1/2 -translate-y-1/2 px-6 py-2"
-            onClick={handleSearch}
+            onClick={handleParseQuery}
             disabled={aiSearchMutation.isPending || apolloSearchMutation.isPending}
-            data-testid="button-search"
+            data-testid="button-parse-search"
           >
-            {aiSearchMutation.isPending || apolloSearchMutation.isPending ? (
+            {aiSearchMutation.isPending ? (
               <SparklesIcon className="w-4 h-4 mr-2 animate-spin" />
             ) : (
               <SearchIcon className="w-4 h-4 mr-2" />
             )}
-            {aiSearchMutation.isPending ? "Parsing..." : apolloSearchMutation.isPending ? "Fetching..." : "Search"}
+            {aiSearchMutation.isPending ? "Parsing..." : "Parse Query"}
           </Button>
         </div>
 
-        {/* Active Filters Display */}
-        {activeFilters.length > 0 && (
+        {showFilterPreview && parsedFilters && (
+          <div className="bg-card border-2 border-primary/30 rounded-lg p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <AlertCircleIcon className="w-5 h-5 text-amber-500" />
+                <h3 className="font-semibold text-lg">Review Parsed Filters</h3>
+              </div>
+              <Badge variant="outline" className="text-xs">
+                AI Interpretation
+              </Badge>
+            </div>
+            
+            <p className="text-sm text-muted-foreground">
+              Review the filters below before executing the search. Use "Edit in Advanced Filters" for precise control.
+            </p>
+
+            <div className="bg-muted/50 rounded-md p-4 space-y-3">
+              <div className="text-sm font-medium text-muted-foreground">Query: "{parsedFilters.originalQuery}"</div>
+              
+              {parsedFilters.aiFilters.jobTitles?.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-medium min-w-24">Job Titles:</span>
+                  <div className="flex flex-wrap gap-1">
+                    {parsedFilters.aiFilters.jobTitles.map((title: string, i: number) => (
+                      <Badge key={i} variant="secondary" className="text-xs">
+                        {title}
+                        {i < parsedFilters.aiFilters.jobTitles.length - 1 && 
+                          <span className="ml-1 text-amber-600 font-bold">OR</span>
+                        }
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {parsedFilters.aiFilters.locations?.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-medium min-w-24">Locations:</span>
+                  <div className="flex flex-wrap gap-1">
+                    {parsedFilters.aiFilters.locations.map((loc: string, i: number) => (
+                      <Badge key={i} variant="secondary" className="text-xs">
+                        {loc}
+                        {i < parsedFilters.aiFilters.locations.length - 1 && 
+                          <span className="ml-1 text-amber-600 font-bold">OR</span>
+                        }
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {parsedFilters.aiFilters.companyNames?.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-medium min-w-24">Companies:</span>
+                  <div className="flex flex-wrap gap-1">
+                    {parsedFilters.aiFilters.companyNames.map((company: string, i: number) => (
+                      <Badge key={i} variant="secondary" className="text-xs">
+                        {company}
+                        {i < parsedFilters.aiFilters.companyNames.length - 1 && 
+                          <span className="ml-1 text-amber-600 font-bold">OR</span>
+                        }
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {parsedFilters.aiFilters.industries?.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-medium min-w-24">Industries:</span>
+                  <div className="flex flex-wrap gap-1">
+                    {parsedFilters.aiFilters.industries.map((ind: string, i: number) => (
+                      <Badge key={i} variant="secondary" className="text-xs">
+                        {ind}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {parsedFilters.aiFilters.companySize && (
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium min-w-24">Company Size:</span>
+                  <Badge variant="secondary" className="text-xs">
+                    {parsedFilters.aiFilters.companySize.min || 0}+ employees
+                  </Badge>
+                </div>
+              )}
+
+              {parsedFilters.aiFilters.seniority?.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-medium min-w-24">Seniority:</span>
+                  <div className="flex flex-wrap gap-1">
+                    {parsedFilters.aiFilters.seniority.map((level: string, i: number) => (
+                      <Badge key={i} variant="secondary" className="text-xs">
+                        {level}
+                        {i < parsedFilters.aiFilters.seniority.length - 1 && 
+                          <span className="ml-1 text-amber-600 font-bold">OR</span>
+                        }
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {parsedFilters.aiFilters.departments?.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-medium min-w-24">Departments:</span>
+                  <div className="flex flex-wrap gap-1">
+                    {parsedFilters.aiFilters.departments.map((dept: string, i: number) => (
+                      <Badge key={i} variant="secondary" className="text-xs">
+                        {dept}
+                        {i < parsedFilters.aiFilters.departments.length - 1 && 
+                          <span className="ml-1 text-amber-600 font-bold">OR</span>
+                        }
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {parsedFilters.aiFilters.keywords?.length > 0 && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-medium min-w-24">Keywords:</span>
+                  <div className="flex flex-wrap gap-1">
+                    {parsedFilters.aiFilters.keywords.map((kw: string, i: number) => (
+                      <Badge key={i} variant="outline" className="text-xs">
+                        {kw}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {Object.keys(parsedFilters.aiFilters).filter(k => 
+                parsedFilters.aiFilters[k] && 
+                (Array.isArray(parsedFilters.aiFilters[k]) ? parsedFilters.aiFilters[k].length > 0 : true) &&
+                !['jobTitles', 'locations', 'companyNames', 'industries', 'companySize', 'seniority', 'departments', 'keywords'].includes(k)
+              ).length === 0 && 
+              !parsedFilters.aiFilters.jobTitles?.length && 
+              !parsedFilters.aiFilters.locations?.length && 
+              !parsedFilters.aiFilters.companyNames?.length && 
+              !parsedFilters.aiFilters.industries?.length &&
+              !parsedFilters.aiFilters.companySize &&
+              !parsedFilters.aiFilters.seniority?.length &&
+              !parsedFilters.aiFilters.departments?.length &&
+              !parsedFilters.aiFilters.keywords?.length && (
+                <div className="text-sm text-amber-600">
+                  No specific filters extracted. Use Advanced Filters for precise targeting.
+                </div>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
+              <div className="space-y-2">
+                <Label htmlFor="preview-extraction-name">Extraction Name *</Label>
+                <Input
+                  id="preview-extraction-name"
+                  placeholder="e.g., Tech CEOs Q1 2025"
+                  value={advancedFilters.extractionName || ""}
+                  onChange={(e) => setAdvancedFilters({
+                    ...advancedFilters,
+                    extractionName: e.target.value
+                  })}
+                  data-testid="input-preview-extraction-name"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="preview-tag">Tag for Prospects *</Label>
+                <Input
+                  id="preview-tag"
+                  placeholder="e.g., ai-search-q1"
+                  value={advancedFilters.tag || ""}
+                  onChange={(e) => setAdvancedFilters({
+                    ...advancedFilters,
+                    tag: e.target.value
+                  })}
+                  data-testid="input-preview-tag"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-2 justify-end pt-2 border-t">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowFilterPreview(false);
+                  setParsedFilters(null);
+                }}
+                data-testid="button-cancel-preview"
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="outline"
+                onClick={handleEditFiltersInAdvanced}
+                data-testid="button-edit-in-advanced"
+              >
+                <EditIcon className="w-4 h-4 mr-2" />
+                Edit in Advanced Filters
+              </Button>
+              <Button
+                onClick={handleExecuteSearch}
+                disabled={apolloSearchMutation.isPending || !advancedFilters.extractionName?.trim() || !advancedFilters.tag?.trim()}
+                className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700"
+                data-testid="button-execute-search"
+              >
+                {apolloSearchMutation.isPending ? (
+                  <>
+                    <SparklesIcon className="w-4 h-4 mr-2 animate-spin" />
+                    Searching...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircleIcon className="w-4 h-4 mr-2" />
+                    Execute Search
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {activeFilters.length > 0 && !showFilterPreview && (
           <div className="flex flex-wrap gap-2">
             {activeFilters.map((filter, index) => (
               <Badge
@@ -434,7 +705,6 @@ export default function AISearch() {
           </div>
         )}
 
-        {/* Advanced Filters Toggle */}
         <Button
           variant="ghost"
           size="sm"
@@ -443,7 +713,7 @@ export default function AISearch() {
           data-testid="button-advanced-filters"
         >
           <SlidersHorizontalIcon className="w-4 h-4" />
-          Advanced Filters
+          Advanced Filters (Precise Control)
           {showAdvancedFilters ? (
             <ChevronUpIcon className="w-3 h-3" />
           ) : (
@@ -451,16 +721,21 @@ export default function AISearch() {
           )}
         </Button>
 
-        {/* Comprehensive Advanced Filters Panel */}
         {showAdvancedFilters && (
           <div className="bg-card border border-border rounded-lg p-6 space-y-6 max-h-[70vh] overflow-y-auto">
             <div className="space-y-4">
-              <h3 className="text-lg font-semibold">Find Your Ideal Prospects</h3>
-              <p className="text-sm text-muted-foreground">
-                Create detailed targeting criteria to find your exact ideal customer profile
-              </p>
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold">Advanced Filters</h3>
+                  <p className="text-sm text-muted-foreground">
+                    These filters take precedence over AI search. Use for precise targeting.
+                  </p>
+                </div>
+                <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-100">
+                  Source of Truth
+                </Badge>
+              </div>
 
-              {/* Extraction Name & Tag */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="extraction-name">Extraction Name *</Label>
@@ -490,9 +765,13 @@ export default function AISearch() {
                 </div>
               </div>
 
-              {/* Job Titles / Decision Makers */}
               <div className="space-y-2">
-                <Label htmlFor="job-titles">Decision Makers & Job Titles</Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="job-titles">Decision Makers & Job Titles</Label>
+                  <Badge variant="outline" className="text-xs text-amber-600">
+                    OR Logic
+                  </Badge>
+                </div>
                 <Input
                   id="job-titles"
                   placeholder="e.g., CEO, CTO, VP Sales, Merchandiser (separate with commas)"
@@ -506,8 +785,11 @@ export default function AISearch() {
                 {advancedFilters.jobTitles && advancedFilters.jobTitles.length > 0 && (
                   <div className="flex flex-wrap gap-2 mt-2">
                     {advancedFilters.jobTitles.map((title, index) => (
-                      <Badge key={index} variant="secondary" className="text-xs">
+                      <Badge key={index} variant="secondary" className="text-xs flex items-center gap-1">
                         {title}
+                        {index < advancedFilters.jobTitles!.length - 1 && (
+                          <span className="text-amber-600 font-bold ml-1">OR</span>
+                        )}
                         <button
                           onClick={() => {
                             const updated = advancedFilters.jobTitles?.filter((_, i) => i !== index) || [];
@@ -516,7 +798,7 @@ export default function AISearch() {
                               jobTitles: updated
                             });
                           }}
-                          className="ml-2 hover:text-destructive"
+                          className="ml-1 hover:text-destructive"
                           data-testid={`remove-title-${index}`}
                         >
                           ×
@@ -527,13 +809,12 @@ export default function AISearch() {
                 )}
                 <p className="text-xs text-muted-foreground">
                   {advancedFilters.jobTitles && advancedFilters.jobTitles.length > 0 
-                    ? `${advancedFilters.jobTitles.length} decision maker(s) added` 
-                    : "Add multiple job titles separated by commas"
+                    ? `${advancedFilters.jobTitles.length} title(s) - matches ANY of these (OR logic)` 
+                    : "Add multiple job titles separated by commas (OR logic)"
                   }
                 </p>
               </div>
 
-              {/* Industries - Multi-select with Checkboxes */}
               <div className="space-y-2">
                 <Label>Industries (Select Multiple)</Label>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2 p-4 border rounded-md max-h-48 overflow-y-auto" data-testid="industries-checkboxes">
@@ -561,9 +842,13 @@ export default function AISearch() {
                 </div>
               </div>
 
-              {/* Countries - Multi-select with Checkboxes */}
               <div className="space-y-2">
-                <Label>Countries (Select Multiple)</Label>
+                <div className="flex items-center justify-between">
+                  <Label>Countries (Select Multiple)</Label>
+                  <Badge variant="outline" className="text-xs text-amber-600">
+                    OR Logic
+                  </Badge>
+                </div>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2 p-4 border rounded-md max-h-48 overflow-y-auto" data-testid="countries-checkboxes">
                   {COUNTRIES.map((country) => (
                     <div key={country} className="flex items-center space-x-2">
@@ -588,7 +873,6 @@ export default function AISearch() {
                 </div>
               </div>
 
-              {/* Company Size - Multi-select with Checkboxes */}
               <div className="space-y-2">
                 <Label>Company Size (Select Multiple)</Label>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-2 p-4 border rounded-md" data-testid="company-size-checkboxes">
@@ -615,7 +899,6 @@ export default function AISearch() {
                 </div>
               </div>
 
-              {/* Seniority Level - Multi-select with Checkboxes */}
               <div className="space-y-2">
                 <Label>Seniority Level (Select Multiple)</Label>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2 p-4 border rounded-md" data-testid="seniority-checkboxes">
@@ -642,7 +925,6 @@ export default function AISearch() {
                 </div>
               </div>
 
-              {/* Number of Prospects Slider */}
               <div className="space-y-2">
                 <Label htmlFor="prospect-count">Number of Prospects: {advancedFilters.prospectCount || 50}</Label>
                 <Slider
@@ -659,7 +941,6 @@ export default function AISearch() {
                 />
               </div>
 
-              {/* Additional Filters */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label htmlFor="specific-companies">Specific Companies (Optional)</Label>
@@ -703,7 +984,6 @@ export default function AISearch() {
               </div>
             </div>
 
-            {/* Action Buttons */}
             <div className="flex gap-2 justify-end border-t pt-4">
               <Button
                 variant="outline"
