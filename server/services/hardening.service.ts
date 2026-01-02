@@ -1093,6 +1093,230 @@ class HardeningService {
   }
   
   // =============================================
+  // SEQUENCE ACTIVATION VALIDATION
+  // =============================================
+  
+  /**
+   * Comprehensive pre-activation validation for sequences
+   * Returns validation result with specific error codes
+   */
+  async validateSequenceActivation(
+    sequenceId: string,
+    userId: string,
+    organizationId: string
+  ): Promise<{
+    valid: boolean;
+    code?: string;
+    message?: string;
+    details?: Record<string, any>;
+  }> {
+    const { sequences, sequenceProspects, usageCounters } = await import('@shared/schema');
+    
+    // 1. Get sequence and check current status
+    const [sequence] = await db
+      .select()
+      .from(sequences)
+      .where(and(
+        eq(sequences.id, sequenceId),
+        eq(sequences.userId, userId)
+      ))
+      .limit(1);
+    
+    if (!sequence) {
+      return {
+        valid: false,
+        code: 'SEQUENCE_NOT_FOUND',
+        message: 'Sequence not found or access denied',
+      };
+    }
+    
+    // 2. Check if sequence is already active (idempotency)
+    if (sequence.status === 'active' || sequence.status === 'sending') {
+      return {
+        valid: false,
+        code: 'SEQUENCE_ALREADY_ACTIVE',
+        message: `Sequence is already in ${sequence.status} state. Deactivate first to re-activate.`,
+        details: { currentStatus: sequence.status },
+      };
+    }
+    
+    // 3. Check enrolled prospect count
+    const [{ count: prospectCount }] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(sequenceProspects)
+      .where(eq(sequenceProspects.sequenceId, sequenceId));
+    
+    if (prospectCount === 0) {
+      return {
+        valid: false,
+        code: 'SEQUENCE_EMPTY',
+        message: 'Cannot activate sequence with zero enrolled prospects. Enroll prospects first.',
+        details: { enrolledProspects: 0 },
+      };
+    }
+    
+    // 4. Check daily email limit
+    const emailCheck = await this.canUserSendEmail(userId);
+    if (!emailCheck.allowed) {
+      return {
+        valid: false,
+        code: 'DAILY_LIMIT_EXCEEDED',
+        message: emailCheck.reason || 'Daily email limit reached',
+        details: { 
+          current: emailCheck.current, 
+          limit: emailCheck.limit,
+        },
+      };
+    }
+    
+    // 5. Check AI budget if personalization is enabled
+    if (sequence.aiPersonalizationEnabled) {
+      const aiBudgetCheck = await this.checkAIBudget(organizationId);
+      if (!aiBudgetCheck.available) {
+        return {
+          valid: false,
+          code: 'AI_BUDGET_EXHAUSTED',
+          message: aiBudgetCheck.reason || 'AI token budget exhausted for this organization',
+          details: {
+            currentTokens: aiBudgetCheck.currentTokens,
+            limit: aiBudgetCheck.limit,
+          },
+        };
+      }
+    }
+    
+    // 6. Check activation rate limiting (rapid toggle abuse prevention)
+    const ACTIVATION_COOLDOWN_MS = 60000; // 60 seconds cooldown
+    const MAX_TOGGLES_PER_WINDOW = 5;
+    const TOGGLE_WINDOW_MS = 60000; // 1 minute window
+    
+    if (sequence.lastStatusChangeAt) {
+      const timeSinceLastChange = Date.now() - new Date(sequence.lastStatusChangeAt).getTime();
+      if (timeSinceLastChange < ACTIVATION_COOLDOWN_MS) {
+        const remainingSeconds = Math.ceil((ACTIVATION_COOLDOWN_MS - timeSinceLastChange) / 1000);
+        return {
+          valid: false,
+          code: 'ACTIVATION_RATE_LIMITED',
+          message: `Please wait ${remainingSeconds} seconds before toggling activation again.`,
+          details: {
+            cooldownRemaining: remainingSeconds,
+            lastChangeAt: sequence.lastStatusChangeAt,
+          },
+        };
+      }
+    }
+    
+    // Check toggle count in current window
+    if ((sequence.activationToggleCount || 0) >= MAX_TOGGLES_PER_WINDOW) {
+      return {
+        valid: false,
+        code: 'ACTIVATION_RATE_LIMITED',
+        message: `Too many activation toggles. Maximum ${MAX_TOGGLES_PER_WINDOW} changes per minute.`,
+        details: {
+          toggleCount: sequence.activationToggleCount,
+          maxToggles: MAX_TOGGLES_PER_WINDOW,
+        },
+      };
+    }
+    
+    // All checks passed
+    return {
+      valid: true,
+      details: {
+        enrolledProspects: prospectCount,
+        emailsRemaining: emailCheck.limit - emailCheck.current,
+        aiPersonalizationEnabled: sequence.aiPersonalizationEnabled,
+      },
+    };
+  }
+  
+  /**
+   * Check if AI budget is available for the organization
+   */
+  async checkAIBudget(organizationId: string): Promise<{
+    available: boolean;
+    currentTokens: number;
+    limit: number;
+    reason?: string;
+  }> {
+    const { usageCounters } = await import('@shared/schema');
+    
+    // Default limit: 1 million tokens per month (can be extended to tenant settings later)
+    const monthlyLimit = 1000000;
+    
+    // Get current month usage
+    const startOfMonth = new Date();
+    startOfMonth.setDate(1);
+    startOfMonth.setHours(0, 0, 0, 0);
+    
+    const [usage] = await db
+      .select({ totalTokens: sql<number>`COALESCE(SUM(${usageCounters.count}), 0)::int` })
+      .from(usageCounters)
+      .where(and(
+        eq(usageCounters.organizationId, organizationId),
+        eq(usageCounters.counterType, 'ai_tokens'),
+        gte(usageCounters.periodStart, startOfMonth)
+      ));
+    
+    const currentTokens = usage?.totalTokens || 0;
+    
+    if (currentTokens >= monthlyLimit) {
+      return {
+        available: false,
+        currentTokens,
+        limit: monthlyLimit,
+        reason: `Monthly AI token limit reached (${currentTokens.toLocaleString()}/${monthlyLimit.toLocaleString()})`,
+      };
+    }
+    
+    return {
+      available: true,
+      currentTokens,
+      limit: monthlyLimit,
+    };
+  }
+  
+  /**
+   * Record sequence activation toggle for rate limiting
+   * Must be called after successful activation/deactivation
+   */
+  async recordSequenceStatusChange(sequenceId: string, newStatus: string): Promise<void> {
+    const { sequences } = await import('@shared/schema');
+    const now = new Date();
+    
+    // Get current toggle count
+    const [sequence] = await db
+      .select({ 
+        activationToggleCount: sequences.activationToggleCount,
+        lastStatusChangeAt: sequences.lastStatusChangeAt,
+      })
+      .from(sequences)
+      .where(eq(sequences.id, sequenceId))
+      .limit(1);
+    
+    // Reset counter if last change was more than 1 minute ago
+    const TOGGLE_WINDOW_MS = 60000;
+    let newToggleCount = 1;
+    if (sequence?.lastStatusChangeAt) {
+      const timeSinceLastChange = now.getTime() - new Date(sequence.lastStatusChangeAt).getTime();
+      if (timeSinceLastChange < TOGGLE_WINDOW_MS) {
+        newToggleCount = (sequence.activationToggleCount || 0) + 1;
+      }
+    }
+    
+    // Update sequence with new status change timestamp
+    await db
+      .update(sequences)
+      .set({
+        lastStatusChangeAt: now,
+        activationToggleCount: newToggleCount,
+        lastActivatedAt: newStatus === 'active' ? now : undefined,
+        updatedAt: now,
+      })
+      .where(eq(sequences.id, sequenceId));
+  }
+  
+  // =============================================
   // CLEANUP
   // =============================================
   

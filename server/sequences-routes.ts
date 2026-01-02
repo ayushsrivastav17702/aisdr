@@ -574,7 +574,7 @@ router.put("/sequences/:id", authenticate, forbidManager, async (req, res) => {
       return res.status(401).json({ error: "Authentication required" });
     }
 
-    // If activating sequence, check workflow stage for activation
+    // If activating sequence, run comprehensive pre-activation validation
     if (req.body.status === "active") {
       // Workflow stage gate: must be at or past activation stage
       try {
@@ -587,7 +587,7 @@ router.put("/sequences/:id", authenticate, forbidManager, async (req, res) => {
         return res.status(503).json({ error: "Unable to verify workflow stage" });
       }
 
-      // Check automation status
+      // Check automation status (tenant-level kill switch)
       const isPaused = await hardeningService.isAutomationPaused(organizationId);
       if (isPaused) {
         return res.status(503).json({
@@ -596,14 +596,34 @@ router.put("/sequences/:id", authenticate, forbidManager, async (req, res) => {
           code: 'AUTOMATION_PAUSED',
         });
       }
+
+      // Comprehensive pre-activation validation (5 checks)
+      const validation = await hardeningService.validateSequenceActivation(
+        req.params.id,
+        userId,
+        organizationId
+      );
+      
+      if (!validation.valid) {
+        console.warn(`🚫 Sequence activation blocked: ${validation.code} - ${validation.message}`);
+        return res.status(400).json({
+          error: validation.message,
+          code: validation.code,
+          details: validation.details,
+        });
+      }
     }
     
     const sequence = await storage.updateSequence(req.userContext!, req.params.id, req.body);
     
-    // If status changed to active, initialize the sequence and advance workflow
+    // If status changed to active, initialize and record status change
     if (req.body.status === "active") {
       await initializeSequence(req.userContext!, req.params.id);
+      await hardeningService.recordSequenceStatusChange(req.params.id, "active");
       await sdrWorkflowService.tryAutoAdvance(userId);
+    } else if (req.body.status && req.body.status !== "active") {
+      // Record any status change for rate limiting
+      await hardeningService.recordSequenceStatusChange(req.params.id, req.body.status);
     }
     
     res.json(sequence);
@@ -623,7 +643,7 @@ router.patch("/sequences/:id", authenticate, forbidManager, async (req, res) => 
       return res.status(401).json({ error: "Authentication required" });
     }
 
-    // If activating sequence, check workflow stage for activation
+    // If activating sequence, run comprehensive pre-activation validation
     if (req.body.status === "active") {
       // Workflow stage gate: must be at or past activation stage
       try {
@@ -636,7 +656,7 @@ router.patch("/sequences/:id", authenticate, forbidManager, async (req, res) => 
         return res.status(503).json({ error: "Unable to verify workflow stage" });
       }
 
-      // Check automation status
+      // Check automation status (tenant-level kill switch)
       const isPaused = await hardeningService.isAutomationPaused(organizationId);
       if (isPaused) {
         return res.status(503).json({
@@ -645,14 +665,34 @@ router.patch("/sequences/:id", authenticate, forbidManager, async (req, res) => 
           code: 'AUTOMATION_PAUSED',
         });
       }
+
+      // Comprehensive pre-activation validation (5 checks)
+      const validation = await hardeningService.validateSequenceActivation(
+        req.params.id,
+        userId,
+        organizationId
+      );
+      
+      if (!validation.valid) {
+        console.warn(`🚫 Sequence activation blocked: ${validation.code} - ${validation.message}`);
+        return res.status(400).json({
+          error: validation.message,
+          code: validation.code,
+          details: validation.details,
+        });
+      }
     }
     
     const sequence = await storage.updateSequence(req.userContext!, req.params.id, req.body);
     
-    // If status changed to active, initialize the sequence and advance workflow
+    // If status changed to active, initialize and record status change
     if (req.body.status === "active") {
       await initializeSequence(req.userContext!, req.params.id);
+      await hardeningService.recordSequenceStatusChange(req.params.id, "active");
       await sdrWorkflowService.tryAutoAdvance(userId);
+    } else if (req.body.status && req.body.status !== "active") {
+      // Record any status change for rate limiting
+      await hardeningService.recordSequenceStatusChange(req.params.id, req.body.status);
     }
     
     res.json(sequence);
