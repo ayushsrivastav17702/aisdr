@@ -790,6 +790,162 @@ export class SDRWorkflowService {
       readinessFlags: newFlags,
     };
   }
+
+  /**
+   * Ensures the user's workflow is at or past the enrichment stage.
+   * This is used when prospects are added via AI search, which bypasses
+   * the normal readiness → upload flow.
+   * 
+   * DESIGN DECISION: Enrichment intentionally bypasses mailbox/readiness checks.
+   * Rationale:
+   * - Enrichment = data lookup via Apollo/Lusha APIs (NOT email sending)
+   * - Users should be able to enrich prospects without email infrastructure
+   * - Mailbox verification is only required for sending, not data enrichment
+   * - Tenant automation status is still checked separately in routes
+   * 
+   * If no workflow exists, creates one and advances to enrichment.
+   * If workflow exists but is before enrichment, advances to enrichment.
+   * Returns true if enrichment is now accessible.
+   */
+  async ensureStageForEnrichment(userId: string, organizationId: string): Promise<{
+    success: boolean;
+    previousStage: string | null;
+    currentStage: string;
+    autoAdvanced: boolean;
+  }> {
+    const existing = await db
+      .select()
+      .from(sdrWorkflowProgress)
+      .where(eq(sdrWorkflowProgress.userId, userId))
+      .limit(1);
+
+    const now = new Date();
+    let previousStage: string | null = null;
+    let autoAdvanced = false;
+
+    if (existing.length === 0) {
+      // No workflow exists - create one and advance to enrichment
+      const [created] = await db
+        .insert(sdrWorkflowProgress)
+        .values({
+          userId,
+          organizationId,
+          currentStage: "enrichment",
+          readinessCompletedAt: now,
+          uploadCompletedAt: now,
+          blockingReasons: [],
+        })
+        .returning();
+
+      await auditService.log({
+        action: "SDR_WORKFLOW_AUTO_CREATED_FOR_ENRICHMENT",
+        userId,
+        module: "sdr_workflow",
+        details: {
+          resourceId: created.id,
+          organizationId,
+          reason: "Prospects added via AI search - workflow auto-initialized to enrichment stage",
+          timestamp: now.toISOString(),
+        },
+      });
+
+      return {
+        success: true,
+        previousStage: null,
+        currentStage: "enrichment",
+        autoAdvanced: true,
+      };
+    }
+
+    const progress = existing[0];
+    previousStage = progress.currentStage;
+    const currentIndex = this.getStageIndex(progress.currentStage as SDRWorkflowStage);
+    const enrichmentIndex = this.getStageIndex("enrichment");
+
+    if (currentIndex >= enrichmentIndex) {
+      // Already at or past enrichment - no action needed
+      return {
+        success: true,
+        previousStage,
+        currentStage: progress.currentStage,
+        autoAdvanced: false,
+      };
+    }
+
+    // Need to advance to enrichment
+    const updateData: Record<string, unknown> = {
+      currentStage: "enrichment",
+      updatedAt: now,
+      blockingReasons: [],
+    };
+
+    // Mark earlier stages as completed
+    if (currentIndex < this.getStageIndex("readiness") + 1) {
+      updateData.readinessCompletedAt = now;
+    }
+    if (currentIndex < this.getStageIndex("upload") + 1) {
+      updateData.uploadCompletedAt = now;
+    }
+
+    const [updated] = await db
+      .update(sdrWorkflowProgress)
+      .set(updateData)
+      .where(eq(sdrWorkflowProgress.userId, userId))
+      .returning();
+
+    await auditService.log({
+      action: "SDR_WORKFLOW_AUTO_ADVANCED_FOR_ENRICHMENT",
+      userId,
+      module: "sdr_workflow",
+      details: {
+        resourceId: updated.id,
+        organizationId: progress.organizationId,
+        fromStage: previousStage,
+        toStage: "enrichment",
+        reason: "Prospects exist - auto-advanced to allow enrichment",
+        timestamp: now.toISOString(),
+      },
+    });
+
+    return {
+      success: true,
+      previousStage,
+      currentStage: "enrichment",
+      autoAdvanced: true,
+    };
+  }
+
+  /**
+   * Checks if enrichment is allowed for a user.
+   * Unlike assertStage, this method auto-advances the workflow if prospects exist,
+   * making enrichment accessible regardless of the current workflow stage.
+   */
+  async canEnrich(userId: string, organizationId: string): Promise<{
+    allowed: boolean;
+    reason?: string;
+    autoAdvanced?: boolean;
+  }> {
+    // Check if user has any prospects
+    const prospectCount = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(prospects)
+      .where(eq(prospects.userId, userId));
+
+    if (!prospectCount[0] || Number(prospectCount[0].count) === 0) {
+      return {
+        allowed: false,
+        reason: "No prospects to enrich. Add prospects first via AI search or manual upload.",
+      };
+    }
+
+    // User has prospects - ensure workflow is at enrichment stage
+    const result = await this.ensureStageForEnrichment(userId, organizationId);
+
+    return {
+      allowed: result.success,
+      autoAdvanced: result.autoAdvanced,
+    };
+  }
 }
 
 export class WorkflowBlockedError extends Error {
