@@ -682,6 +682,114 @@ export class SDRWorkflowService {
       return null;
     }
   }
+
+  // MODULE 1: Readiness Status Methods
+  async getReadinessStatus(userId: string): Promise<{
+    isReady: boolean;
+    mailboxes: Array<{
+      id: string;
+      email: string;
+      name: string;
+      status: string;
+      readinessFlags: {
+        spfValid: boolean;
+        dkimValid: boolean;
+        warmupComplete: boolean;
+      };
+      isFullyReady: boolean;
+    }>;
+    blockingReasons: SDRWorkflowBlockingReason[];
+  }> {
+    const mailboxes = await db
+      .select()
+      .from(emailMailboxes)
+      .where(eq(emailMailboxes.userId, userId));
+
+    const blockingReasons = await this.checkReadinessBlocks(userId);
+
+    const mailboxDetails = mailboxes.map(m => {
+      const flags = m.readinessFlags as { spfValid?: boolean; dkimValid?: boolean; warmupComplete?: boolean } | null;
+      const readinessFlags = {
+        spfValid: flags?.spfValid ?? false,
+        dkimValid: flags?.dkimValid ?? false,
+        warmupComplete: flags?.warmupComplete ?? false,
+      };
+      
+      return {
+        id: m.id,
+        email: m.email,
+        name: m.name,
+        status: m.status || 'inactive',
+        readinessFlags,
+        isFullyReady: readinessFlags.spfValid && readinessFlags.dkimValid && readinessFlags.warmupComplete,
+      };
+    });
+
+    const hasReadyMailbox = mailboxDetails.some(m => m.isFullyReady && m.status === 'active');
+
+    return {
+      isReady: hasReadyMailbox,
+      mailboxes: mailboxDetails,
+      blockingReasons,
+    };
+  }
+
+  async updateMailboxReadiness(
+    userId: string,
+    mailboxId: string,
+    flags: { spfValid?: boolean; dkimValid?: boolean; warmupComplete?: boolean }
+  ): Promise<{
+    success: boolean;
+    error?: string;
+    readinessFlags?: { spfValid: boolean; dkimValid: boolean; warmupComplete: boolean };
+  }> {
+    // Verify mailbox belongs to user
+    const [mailbox] = await db
+      .select()
+      .from(emailMailboxes)
+      .where(and(
+        eq(emailMailboxes.id, mailboxId),
+        eq(emailMailboxes.userId, userId)
+      ));
+
+    if (!mailbox) {
+      return { success: false, error: "Mailbox not found or not owned by user" };
+    }
+
+    // Merge with existing flags
+    const existingFlags = mailbox.readinessFlags as { spfValid?: boolean; dkimValid?: boolean; warmupComplete?: boolean } | null;
+    const newFlags = {
+      spfValid: flags.spfValid ?? existingFlags?.spfValid ?? false,
+      dkimValid: flags.dkimValid ?? existingFlags?.dkimValid ?? false,
+      warmupComplete: flags.warmupComplete ?? existingFlags?.warmupComplete ?? false,
+    };
+
+    // Update the mailbox
+    await db
+      .update(emailMailboxes)
+      .set({ 
+        readinessFlags: newFlags,
+        updatedAt: new Date(),
+      })
+      .where(eq(emailMailboxes.id, mailboxId));
+
+    await auditService.log({
+      action: "SDR_MAILBOX_READINESS_UPDATED",
+      userId,
+      module: "sdr_workflow",
+      details: {
+        mailboxId,
+        previousFlags: existingFlags,
+        newFlags,
+        timestamp: new Date().toISOString(),
+      },
+    });
+
+    return {
+      success: true,
+      readinessFlags: newFlags,
+    };
+  }
 }
 
 export class WorkflowBlockedError extends Error {

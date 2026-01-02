@@ -232,6 +232,56 @@ router.get("/blocking-reasons", authenticate, async (req: Request, res: Response
   }
 });
 
+// READINESS DETAIL ENDPOINT - Get detailed mailbox readiness status
+router.get("/readiness", authenticate, async (req: Request, res: Response) => {
+  try {
+    const access = await validateWorkflowAccess(req, res);
+    if (!access.allowed) return;
+
+    const readinessStatus = await sdrWorkflowService.getReadinessStatus(access.userId!);
+    
+    return res.json(readinessStatus);
+  } catch (error) {
+    console.error("Error fetching readiness status:", error);
+    return res.status(500).json({ error: "Failed to fetch readiness status" });
+  }
+});
+
+// Update mailbox readiness flags (called when domain verification or warmup completes)
+router.post("/readiness/update-mailbox/:mailboxId", authenticate, async (req: Request, res: Response) => {
+  try {
+    const access = await validateWorkflowAccess(req, res);
+    if (!access.allowed) return;
+
+    const { mailboxId } = req.params;
+    const { spfValid, dkimValid, warmupComplete } = req.body;
+
+    const result = await sdrWorkflowService.updateMailboxReadiness(
+      access.userId!,
+      mailboxId,
+      { spfValid, dkimValid, warmupComplete }
+    );
+
+    if (!result.success) {
+      return res.status(400).json({ error: result.error });
+    }
+
+    // Check if this update allows stage advancement
+    const state = await sdrWorkflowService.getWorkflowState(access.userId!);
+
+    return res.json({
+      success: true,
+      mailboxId,
+      readinessFlags: result.readinessFlags,
+      canAdvance: state?.canAdvance || false,
+      blockingReasons: state?.blockingReasons || [],
+    });
+  } catch (error) {
+    console.error("Error updating mailbox readiness:", error);
+    return res.status(500).json({ error: "Failed to update mailbox readiness" });
+  }
+});
+
 // ADMIN ROUTES - Super admin only with tenant automation guard
 // These routes look up the target user's organization from the workflow record (authoritative source)
 
