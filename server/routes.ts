@@ -45,6 +45,7 @@ import managerRoutes from "./routes/manager.routes";
 import sdrWorkflowRoutes from "./routes/sdr-workflow.routes";
 import { sdrWorkflowService, WorkflowBlockedError } from "./services/sdr-workflow.service";
 import { hardeningService } from "./services/hardening.service";
+import { aiTrackingService } from "./services/ai-tracking.service";
 import { inboxRouter } from "./inbox-routes";
 import { authenticate, forbidManager, blockSuperAdminFromSDR } from "./middleware/auth.middleware";
 import { emailVolumeConfig, getCapacityReport, getEstimatedTimeForEmails, EMAIL_VOLUME_PRESETS } from "./config/email-volume.config";
@@ -867,9 +868,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Enrich prospects (uses job queue if Redis available, otherwise direct enrichment)
+  // Enrich prospects (uses job queue if Redis available, otherwise direct enrichment) - workflow-gated
   app.post("/api/enrich", authenticate, forbidManager, async (req, res) => {
     try {
+      const userId = req.userContext?.userId;
+      const organizationId = req.userContext?.organizationId;
+      
+      if (!userId || !organizationId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      // Workflow stage gate: must be at or past enrichment stage
+      try {
+        await sdrWorkflowService.assertStage(userId, "enrichment");
+      } catch (stageError) {
+        if (stageError instanceof WorkflowBlockedError) {
+          return res.status(403).json({
+            error: "WORKFLOW_BLOCKED",
+            ...stageError.toJSON(),
+          });
+        }
+        console.error("Workflow stage check failed:", stageError);
+        return res.status(503).json({ error: "Unable to verify workflow stage" });
+      }
+
+      // Check tenant automation status - fail-closed
+      try {
+        const isPaused = await hardeningService.isAutomationPaused(organizationId);
+        if (isPaused) {
+          return res.status(403).json({
+            error: "Tenant automation is paused",
+            message: "Cannot enrich prospects while tenant automation is paused.",
+          });
+        }
+      } catch (guardError) {
+        console.error("Failed to check tenant automation status:", guardError);
+        return res.status(503).json({ error: "Unable to verify tenant automation status" });
+      }
+
       const { prospectIds } = enrichmentRequestSchema.parse(req.body);
       
       // Check if Redis/job queue is available
@@ -973,6 +1009,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
             });
             failureCount++;
           }
+        }
+
+        // Track AI/API usage for enrichment
+        await aiTrackingService.trackGeneration({
+          userId,
+          tenantId: organizationId,
+          generationType: 'enrichment',
+          model: 'apollo',
+          provider: 'apollo',
+          promptTokens: 0,
+          completionTokens: 0,
+          success: successCount > 0,
+          metadata: {
+            source: 'api_enrich',
+            prospectsProcessed: prospectIds.length,
+            successCount,
+            failureCount,
+          },
+        });
+
+        // Try to advance workflow stage after successful enrichment
+        if (successCount > 0) {
+          await sdrWorkflowService.tryAutoAdvance(userId);
         }
 
         res.json({ 
@@ -1091,9 +1150,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Waterfall enrichment - tries Apollo → Lusha → Email pattern guessing
+  // Waterfall enrichment - tries Apollo → Lusha → Email pattern guessing (workflow-gated)
   app.post("/api/waterfall-enrich", authenticate, forbidManager, async (req, res) => {
     try {
+      const userId = req.userContext?.userId;
+      const organizationId = req.userContext?.organizationId;
+      
+      if (!userId || !organizationId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      // Workflow stage gate: must be at or past enrichment stage
+      try {
+        await sdrWorkflowService.assertStage(userId, "enrichment");
+      } catch (stageError) {
+        if (stageError instanceof WorkflowBlockedError) {
+          return res.status(403).json({
+            error: "WORKFLOW_BLOCKED",
+            ...stageError.toJSON(),
+          });
+        }
+        console.error("Workflow stage check failed:", stageError);
+        return res.status(503).json({ error: "Unable to verify workflow stage" });
+      }
+
+      // Check tenant automation status - fail-closed
+      try {
+        const isPaused = await hardeningService.isAutomationPaused(organizationId);
+        if (isPaused) {
+          return res.status(403).json({
+            error: "Tenant automation is paused",
+            message: "Cannot enrich prospects while tenant automation is paused.",
+          });
+        }
+      } catch (guardError) {
+        console.error("Failed to check tenant automation status:", guardError);
+        return res.status(503).json({ error: "Unable to verify tenant automation status" });
+      }
+
       const { enrichmentWaterfallService } = await import('./services/enrichment-waterfall.service');
       
       const { prospectIds } = z.object({ 
@@ -1181,6 +1275,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       console.log(`✅ Waterfall enrichment complete: ${successCount} found, ${failureCount} not found`);
 
+      // Track AI/API usage for waterfall enrichment
+      await aiTrackingService.trackGeneration({
+        userId,
+        tenantId: organizationId,
+        generationType: 'enrichment_waterfall',
+        model: 'multi-provider',
+        provider: 'waterfall',
+        promptTokens: 0,
+        completionTokens: 0,
+        success: successCount > 0,
+        metadata: {
+          source: 'api_waterfall_enrich',
+          prospectsProcessed: results.length,
+          successCount,
+          failureCount,
+          sources: {
+            apollo: results.filter(r => r.source === 'apollo').length,
+            lusha: results.filter(r => r.source === 'lusha').length,
+            webSearch: results.filter(r => r.source === 'web_search').length,
+          },
+        },
+      });
+
+      // Try to advance workflow stage after successful enrichment
+      if (successCount > 0) {
+        await sdrWorkflowService.tryAutoAdvance(userId);
+      }
+
       res.json({ 
         results,
         total: results.length,
@@ -1201,9 +1323,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Enrich all unenriched prospects (works without Redis)
+  // Enrich all unenriched prospects (works without Redis) - workflow-gated
   app.post("/api/prospects/enrich-all-new", authenticate, forbidManager, async (req, res) => {
     try {
+      const userId = req.userContext?.userId;
+      const organizationId = req.userContext?.organizationId;
+      
+      if (!userId || !organizationId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      // Workflow stage gate: must be at or past enrichment stage
+      try {
+        await sdrWorkflowService.assertStage(userId, "enrichment");
+      } catch (stageError) {
+        if (stageError instanceof WorkflowBlockedError) {
+          return res.status(403).json({
+            error: "WORKFLOW_BLOCKED",
+            ...stageError.toJSON(),
+          });
+        }
+        console.error("Workflow stage check failed:", stageError);
+        return res.status(503).json({ error: "Unable to verify workflow stage" });
+      }
+
+      // Check tenant automation status - fail-closed
+      try {
+        const isPaused = await hardeningService.isAutomationPaused(organizationId);
+        if (isPaused) {
+          return res.status(403).json({
+            error: "Tenant automation is paused",
+            message: "Cannot enrich prospects while tenant automation is paused.",
+          });
+        }
+      } catch (guardError) {
+        console.error("Failed to check tenant automation status:", guardError);
+        return res.status(503).json({ error: "Unable to verify tenant automation status" });
+      }
+
       const { limit = 50 } = req.body;
       const maxLimit = Math.min(limit, 100);
 
@@ -1321,6 +1478,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       console.log(`✅ Batch enrichment complete: ${successCount}/${unenrichedProspects.length} successful`);
+
+      // Track AI/API usage for batch enrichment
+      await aiTrackingService.trackGeneration({
+        userId,
+        tenantId: organizationId,
+        generationType: 'enrichment_batch',
+        model: 'apollo',
+        provider: 'apollo',
+        promptTokens: 0,
+        completionTokens: 0,
+        success: successCount > 0,
+        metadata: {
+          source: 'api_enrich_all_new',
+          prospectsProcessed: unenrichedProspects.length,
+          successCount,
+          failureCount,
+        },
+      });
+
+      // Try to advance workflow stage after successful enrichment
+      if (successCount > 0) {
+        await sdrWorkflowService.tryAutoAdvance(userId);
+      }
 
       res.json({
         message: `Enriched ${successCount} of ${unenrichedProspects.length} prospects`,
@@ -2417,9 +2597,44 @@ Return ONLY the email body text, no subject line needed.`;
     }
   });
 
-  // Enhanced enrichment with automatic Lusha fallback
+  // Enhanced enrichment with automatic Lusha fallback (workflow-gated)
   app.post("/api/prospects/enrich-with-fallback", authenticate, forbidManager, async (req, res) => {
     try {
+      const userId = req.userContext?.userId;
+      const organizationId = req.userContext?.organizationId;
+      
+      if (!userId || !organizationId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      // Workflow stage gate: must be at or past enrichment stage
+      try {
+        await sdrWorkflowService.assertStage(userId, "enrichment");
+      } catch (stageError) {
+        if (stageError instanceof WorkflowBlockedError) {
+          return res.status(403).json({
+            error: "WORKFLOW_BLOCKED",
+            ...stageError.toJSON(),
+          });
+        }
+        console.error("Workflow stage check failed:", stageError);
+        return res.status(503).json({ error: "Unable to verify workflow stage" });
+      }
+
+      // Check tenant automation status - fail-closed
+      try {
+        const isPaused = await hardeningService.isAutomationPaused(organizationId);
+        if (isPaused) {
+          return res.status(403).json({
+            error: "Tenant automation is paused",
+            message: "Cannot enrich prospects while tenant automation is paused.",
+          });
+        }
+      } catch (guardError) {
+        console.error("Failed to check tenant automation status:", guardError);
+        return res.status(503).json({ error: "Unable to verify tenant automation status" });
+      }
+
       const { prospectId } = req.body;
       
       const prospect = await storage.getProspect(req.userContext!, prospectId);
@@ -2438,6 +2653,29 @@ Return ONLY the email body text, no subject line needed.`;
       if (enrichmentResult.contact) {
         const updatedProspect = await apolloService.convertApolloContactToProspect(enrichmentResult.contact);
         await storage.updateProspect(req.userContext!, prospectId, updatedProspect);
+      }
+
+      // Track AI/API usage for fallback enrichment
+      await aiTrackingService.trackGeneration({
+        userId,
+        tenantId: organizationId,
+        generationType: 'enrichment_fallback',
+        model: enrichmentResult.source || 'apollo',
+        provider: enrichmentResult.source || 'apollo',
+        promptTokens: 0,
+        completionTokens: 0,
+        success: !!enrichmentResult.contact,
+        metadata: {
+          source: 'api_enrich_with_fallback',
+          prospectId,
+          enrichmentSource: enrichmentResult.source,
+          emailFound: !!enrichmentResult.enrichedEmail,
+        },
+      });
+
+      // Try to advance workflow stage after successful enrichment
+      if (enrichmentResult.contact) {
+        await sdrWorkflowService.tryAutoAdvance(userId);
       }
 
       res.json({
