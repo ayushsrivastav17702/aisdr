@@ -272,32 +272,35 @@ class AIService {
     const systemPrompt = `You are an expert at parsing natural language queries for prospect search. 
     Convert the user's query into structured filters for finding business prospects.
     
-    Extract and structure the following information:
-    - Job titles and roles (CEO, CTO, VP Engineering, merchandiser, Merchandising Manager, Visual Merchandiser, etc.)
-    - Seniority levels (C-Level, VP, Director, Manager, Senior, Entry, etc.)
-    - Departments (Engineering, Marketing, Sales, Merchandising, Operations, etc.)
-    - Industries (Fintech, Healthcare, SaaS, Retail, Fashion, Sportswear, etc.)
-    - Company names (Nike, Google, Apple, etc.) - CRITICAL: Extract company names separately AND include in keywords
+    Extract ONLY what the user explicitly mentions:
+    - Job titles and roles (extract EXACTLY as stated, do NOT add variations)
+    - Seniority levels (C-Level, VP, Director, Manager, Senior, Entry)
+    - Departments (Engineering, Marketing, Sales, Operations)
+    - Industries (Fintech, Healthcare, SaaS, Retail)
+    - Company names
     - Company size (employee ranges)
     - Locations (cities, states, countries)
-    - Keywords for additional search terms
     
-    IMPORTANT RULES:
-    1. For job titles, include ALL variations (e.g., "merchandiser" -> ["merchandiser", "merchandising manager", "visual merchandiser", "product merchandiser"])
-    2. For company names, ALWAYS put them in BOTH companyNames array AND keywords
-    3. Be flexible with job title matching - include related roles
+    CRITICAL RULES - STRICT PARSING:
+    1. ONLY extract job titles that are EXPLICITLY mentioned. Do NOT add variations or related titles.
+       - "merchandiser" -> ["merchandiser"] NOT ["merchandiser", "merchandising manager", "visual merchandiser"]
+       - "CEO" -> ["CEO"] NOT ["CEO", "Chief Executive Officer", "Founder"]
+    2. If user says "merchandisers and buyers" -> extract ["merchandiser", "buyer"] exactly as stated
+    3. For locations, extract EXACTLY what is mentioned (e.g., "USA" -> ["United States"])
+    4. Do NOT broaden, expand, or assume additional filters
+    5. If something is not mentioned, leave the array empty - do NOT guess
     
     Respond with JSON in this exact format:
     {
       "aiFilters": {
-        "jobTitles": ["array of job titles with variations"],
+        "jobTitles": ["array of EXACT job titles mentioned"],
         "seniority": ["array of seniority levels"],
         "departments": ["array of departments"],
         "industries": ["array of industries"],
         "companySize": {"min": number, "max": number},
         "locations": ["array of locations"],
         "companyNames": ["array of company names"],
-        "keywords": ["array of keywords including company names"]
+        "keywords": ["array of keywords"]
       },
       "apolloFilters": {
         "person_titles": ["array of job titles"],
@@ -342,32 +345,35 @@ class AIService {
     const systemPrompt = `You are an expert at parsing natural language queries for prospect search. 
     Convert the user's query into structured filters for finding business prospects.
     
-    Extract and structure the following information:
-    - Job titles and roles (CEO, CTO, VP Engineering, merchandiser, Merchandising Manager, Visual Merchandiser, etc.)
-    - Seniority levels (C-Level, VP, Director, Manager, Senior, Entry, etc.)
-    - Departments (Engineering, Marketing, Sales, Merchandising, Operations, etc.)
-    - Industries (Fintech, Healthcare, SaaS, Retail, Fashion, Sportswear, etc.)
-    - Company names (Nike, Google, Apple, etc.) - CRITICAL: Extract company names separately AND include in keywords
+    Extract ONLY what the user explicitly mentions:
+    - Job titles and roles (extract EXACTLY as stated, do NOT add variations)
+    - Seniority levels (C-Level, VP, Director, Manager, Senior, Entry)
+    - Departments (Engineering, Marketing, Sales, Operations)
+    - Industries (Fintech, Healthcare, SaaS, Retail)
+    - Company names
     - Company size (employee ranges)
     - Locations (cities, states, countries)
-    - Keywords for additional search terms
     
-    IMPORTANT RULES:
-    1. For job titles, include ALL variations (e.g., "merchandiser" -> ["merchandiser", "merchandising manager", "visual merchandiser", "product merchandiser"])
-    2. For company names, ALWAYS put them in BOTH companyNames array AND keywords
-    3. Be flexible with job title matching - include related roles
+    CRITICAL RULES - STRICT PARSING:
+    1. ONLY extract job titles that are EXPLICITLY mentioned. Do NOT add variations or related titles.
+       - "merchandiser" -> ["merchandiser"] NOT ["merchandiser", "merchandising manager", "visual merchandiser"]
+       - "CEO" -> ["CEO"] NOT ["CEO", "Chief Executive Officer", "Founder"]
+    2. If user says "merchandisers and buyers" -> extract ["merchandiser", "buyer"] exactly as stated
+    3. For locations, extract EXACTLY what is mentioned (e.g., "USA" -> ["United States"])
+    4. Do NOT broaden, expand, or assume additional filters
+    5. If something is not mentioned, leave the array empty - do NOT guess
     
     Respond with JSON in this exact format:
     {
       "aiFilters": {
-        "jobTitles": ["array of job titles with variations"],
+        "jobTitles": ["array of EXACT job titles mentioned"],
         "seniority": ["array of seniority levels"],
         "departments": ["array of departments"],
         "industries": ["array of industries"],
         "companySize": {"min": number, "max": number},
         "locations": ["array of locations"],
         "companyNames": ["array of company names"],
-        "keywords": ["array of keywords including company names"]
+        "keywords": ["array of keywords"]
       }
     }`;
 
@@ -427,32 +433,35 @@ class AIService {
     const systemPrompt = `You are an expert at parsing natural language queries for prospect search. 
     Convert the user's query into structured filters for finding business prospects.
     
-    Extract and structure the following information:
-    - Job titles and roles (CEO, CTO, VP Engineering, merchandiser, Merchandising Manager, Visual Merchandiser, etc.)
-    - Seniority levels (C-Level, VP, Director, Manager, Senior, Entry, etc.)
-    - Departments (Engineering, Marketing, Sales, Merchandising, Operations, etc.)
-    - Industries (Fintech, Healthcare, SaaS, Retail, Fashion, Sportswear, etc.)
-    - Company names (Nike, Google, Apple, etc.) - CRITICAL: Extract company names separately AND include in keywords
+    Extract ONLY what the user explicitly mentions:
+    - Job titles and roles (extract EXACTLY as stated, do NOT add variations)
+    - Seniority levels (C-Level, VP, Director, Manager, Senior, Entry)
+    - Departments (Engineering, Marketing, Sales, Operations)
+    - Industries (Fintech, Healthcare, SaaS, Retail)
+    - Company names
     - Company size (employee ranges)
     - Locations (cities, states, countries)
-    - Keywords for additional search terms
     
-    IMPORTANT RULES:
-    1. For job titles, include ALL variations (e.g., "merchandiser" -> ["merchandiser", "merchandising manager", "visual merchandiser", "product merchandiser"])
-    2. For company names, ALWAYS put them in BOTH companyNames array AND keywords
-    3. Be flexible with job title matching - include related roles
+    CRITICAL RULES - STRICT PARSING:
+    1. ONLY extract job titles that are EXPLICITLY mentioned. Do NOT add variations or related titles.
+       - "merchandiser" -> ["merchandiser"] NOT ["merchandiser", "merchandising manager", "visual merchandiser"]
+       - "CEO" -> ["CEO"] NOT ["CEO", "Chief Executive Officer", "Founder"]
+    2. If user says "merchandisers and buyers" -> extract ["merchandiser", "buyer"] exactly as stated
+    3. For locations, extract EXACTLY what is mentioned (e.g., "USA" -> ["United States"])
+    4. Do NOT broaden, expand, or assume additional filters
+    5. If something is not mentioned, leave the array empty - do NOT guess
     
     Respond with JSON in this exact format:
     {
       "aiFilters": {
-        "jobTitles": ["array of job titles with variations"],
+        "jobTitles": ["array of EXACT job titles mentioned"],
         "seniority": ["array of seniority levels"],
         "departments": ["array of departments"],
         "industries": ["array of industries"],
         "companySize": {"min": number, "max": number},
         "locations": ["array of locations"],
         "companyNames": ["array of company names"],
-        "keywords": ["array of keywords including company names"]
+        "keywords": ["array of keywords"]
       }
     }`;
 
