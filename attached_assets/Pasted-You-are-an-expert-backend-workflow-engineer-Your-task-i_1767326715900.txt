@@ -1,0 +1,343 @@
+You are an expert backend + workflow engineer.
+
+Your task is to implement a strict, stage-gated SDR workflow system for an AI SDR platform.
+The goal is to prevent users from breaking the platform by enforcing the correct sequence of actions, limits, and readiness checks.
+
+This workflow must be backend-enforced, not UI-only.
+
+🎯 CORE OBJECTIVE
+
+Build a 9-stage SDR workflow such that:
+
+A user cannot skip steps
+
+Each module is locked until prerequisites are completed
+
+All background workers respect workflow state
+
+Every block has clear, machine-readable reasons
+
+The system is safe under scale, concurrency, and abuse
+
+🧱 WORKFLOW STAGES (STRICT ORDER)
+enum SDRWorkflowStage {
+  readiness,
+  upload,
+  enrichment,
+  sequence,
+  enrollment,
+  activation,
+  sending,
+  replies,
+  analytics
+}
+
+
+A user must complete stages sequentially.
+
+🗄️ SCHEMA CHANGES (PHASE 1 — REQUIRED)
+1️⃣ sdrWorkflowProgress (NEW TABLE)
+sdrWorkflowProgress {
+  id UUID PK
+  organizationId UUID
+  userId UUID UNIQUE
+
+  currentStage SDRWorkflowStage
+
+  readinessCompletedAt TIMESTAMP
+  uploadCompletedAt TIMESTAMP
+  enrichmentCompletedAt TIMESTAMP
+  sequenceCompletedAt TIMESTAMP
+  enrollmentCompletedAt TIMESTAMP
+  activationCompletedAt TIMESTAMP
+  sendingStartedAt TIMESTAMP
+  repliesDetectedAt TIMESTAMP
+  analyticsUnlockedAt TIMESTAMP
+
+  blockingReasons JSONB
+  createdAt TIMESTAMP
+  updatedAt TIMESTAMP
+}
+
+2️⃣ Extend mailboxes table
+mailboxes.readinessFlags JSONB
+{
+  spfValid: boolean,
+  dkimValid: boolean,
+  warmupComplete: boolean
+}
+
+🧠 CORE SERVICE — MUST BUILD FIRST
+workflowGuardService.ts
+REQUIRED METHODS
+assertStage(userId, requiredStage)
+
+
+Throws WORKFLOW_BLOCKED
+
+Returns blockingReasons if unmet
+
+advanceStage(userId, toStage)
+
+
+Validates correct stage order
+
+Writes audit log
+
+Updates timestamps
+
+getWorkflowState(userId)
+
+
+Returns currentStage + blockingReasons
+
+block(userId, reasonCode, metadata)
+
+
+Adds structured blockers for UI
+
+📜 AUDIT LOGGING (MANDATORY)
+
+Add audit events:
+
+SDR_WORKFLOW_STAGE_ADVANCED
+
+SDR_WORKFLOW_BLOCKED
+
+SDR_WORKFLOW_RESET
+
+SDR_WORKFLOW_FORCE_ADVANCE (super admin only)
+
+🔐 MODULE-BY-MODULE IMPLEMENTATION RULES
+🔹 MODULE 1 — PROFILE & READINESS
+
+Block everything until complete
+
+Checks:
+
+SPF valid
+
+DKIM valid
+
+Warmup complete
+
+Rules:
+
+If ANY readiness flag is false → block workflow
+
+On success → advance to upload
+
+🔹 MODULE 2 — PROSPECT UPLOAD
+
+Rules:
+
+Gate route with assertStage(upload)
+
+Enforce CSV size + quota
+
+All imported prospects start as RAW
+
+Advance when:
+
+≥1 RAW prospect exists
+
+🔹 MODULE 3 — AI ENRICHMENT
+
+Rules:
+
+Only RAW prospects allowed
+
+Enrichment must update to ENRICHED
+
+Track AI usage
+
+Failures must not advance stage
+
+Advance when:
+
+≥1 ENRICHED prospect exists
+
+🔹 MODULE 4 — SEQUENCE CREATION
+
+Rules:
+
+Must be DRAFT
+
+Templates validated
+
+Block if enrichment not completed
+
+Advance when:
+
+≥1 DRAFT sequence exists
+
+🔹 MODULE 5 — PROSPECT ENROLLMENT
+
+Rules:
+
+ONLY ENRICHED prospects
+
+Preflight checks:
+
+User limits
+
+Manager limits
+
+Tenant pause
+
+Prevent duplicates
+
+Advance when:
+
+≥1 prospect enrolled
+
+🔹 MODULE 6 — SEQUENCE ACTIVATION
+
+Rules:
+
+Enrolled prospects required
+
+Multi-level pause checks
+
+Audit activation
+
+Advance when:
+
+≥1 sequence ACTIVE
+
+🔹 MODULE 7 — EMAIL SENDING (BACKGROUND)
+
+Rules:
+
+Worker must:
+
+Assert workflow stage
+
+Check kill switch
+
+Check daily limits
+
+Do NOT send if blocked
+
+Advance when:
+
+First email successfully sent
+
+🔹 MODULE 8 — REPLY HANDLING
+
+Rules:
+
+IMAP polling must:
+
+Check workflow stage
+
+Respect pause flags
+
+Capture replies with audit trail
+
+Advance when:
+
+≥1 reply detected
+
+🔹 MODULE 9 — ANALYTICS
+
+Rules:
+
+Analytics locked until replies stage
+
+Cache analytics (30–60s)
+
+Paginate all lists
+
+Advance when:
+
+Analytics unlocked explicitly
+
+🔁 BACKGROUND WORKERS — MUST ENFORCE
+
+Every worker must:
+
+assertStage(userId, requiredStage)
+isUserFullyPaused(userId)
+canUserSendEmail(userId)
+
+
+Abort safely if blocked.
+
+🧪 TESTING REQUIREMENTS (MANDATORY)
+
+Create Playwright tests for:
+
+Happy path (full 9-stage completion)
+
+Attempted skips
+
+Partial failures
+
+Pause mid-workflow
+
+Concurrency abuse
+
+Background worker enforcement
+
+🧩 UI INTEGRATION REQUIREMENTS
+
+Every API response must include:
+
+{
+  "workflowStage": "...",
+  "blockingReasons": [...]
+}
+
+
+Frontend must not guess logic.
+
+⚠️ NON-NEGOTIABLE RULES
+
+No UI-only gating
+
+No skipping stages
+
+No silent failures
+
+No background worker bypass
+
+No infra additions (Redis, queues)
+
+🚀 IMPLEMENTATION ORDER (STRICT)
+
+Schema + workflowGuardService
+
+Readiness module
+
+Upload
+
+Enrichment
+
+Sequence + Enrollment
+
+Activation
+
+Sending worker
+
+Reply worker
+
+Analytics gating
+
+🎯 FINAL SUCCESS CRITERIA
+
+If a user:
+
+Skips a step → BLOCKED
+
+Hits a limit → BLOCKED
+
+Tries to abuse → BLOCKED
+
+Pauses mid-flow → SAFE STOP
+
+Scales up → STABLE
+
+✅ Deliverable:
+
+Fully implemented SDR workflow engine with strict stage enforcement, auditability, and scale safety.
