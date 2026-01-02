@@ -2952,4 +2952,109 @@ router.get('/tenants/:id/usage', authenticateSuperAdmin, async (req, res) => {
   }
 });
 
+// =============================================
+// TENANT WORKFLOW MANAGEMENT (Step Enforcement)
+// =============================================
+
+/**
+ * Get tenant workflow progress and automation status
+ * Returns current stage, missing steps, and whether automation can be enabled
+ */
+router.get('/tenants/:id/workflow', authenticateSuperAdmin, async (req, res) => {
+  try {
+    const [workflowProgress, automationStatus] = await Promise.all([
+      superAdminService.getTenantWorkflowProgress(req.params.id),
+      superAdminService.getTenantAutomationStatus(req.params.id),
+    ]);
+
+    res.json({
+      workflowProgress,
+      automationStatus,
+    });
+  } catch (error) {
+    console.error('Error fetching tenant workflow:', error);
+    res.status(500).json({ error: 'Failed to fetch tenant workflow' });
+  }
+});
+
+/**
+ * Mark tenant limits as configured (prerequisite for enabling automation)
+ */
+router.post('/tenants/:id/workflow/limits-configured', authenticateSuperAdmin, requireSuperAdminPermission('canSuspendTenants'), async (req, res) => {
+  try {
+    const progress = await superAdminService.markLimitsConfigured(
+      req.superAdmin!.id,
+      req.params.id
+    );
+
+    res.json({
+      success: true,
+      workflowProgress: progress,
+      message: 'Tenant limits marked as configured',
+    });
+  } catch (error) {
+    console.error('Error marking limits configured:', error);
+    res.status(500).json({ error: 'Failed to mark limits as configured' });
+  }
+});
+
+/**
+ * Enable tenant automation (final workflow step)
+ * Validates all prerequisites before enabling
+ */
+router.post('/tenants/:id/workflow/enable-automation', authenticateSuperAdmin, requireSuperAdminPermission('canSuspendTenants'), async (req, res) => {
+  try {
+    const result = await superAdminService.enableTenantAutomation(
+      req.superAdmin!.id,
+      req.params.id
+    );
+
+    if (!result.success) {
+      return res.status(400).json({
+        success: false,
+        error: result.error,
+        message: 'Prerequisites not met for enabling automation',
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'Tenant automation enabled successfully',
+    });
+  } catch (error) {
+    console.error('Error enabling tenant automation:', error);
+    res.status(500).json({ error: 'Failed to enable tenant automation' });
+  }
+});
+
+/**
+ * Pause tenant automation (Super Admin intervention)
+ */
+router.post('/tenants/:id/workflow/pause-automation', authenticateSuperAdmin, requireSuperAdminPermission('canSuspendTenants'), async (req, res) => {
+  try {
+    const reasonSchema = z.object({
+      reason: z.string().min(1, 'Reason is required').max(500),
+    });
+    
+    const validation = reasonSchema.safeParse(req.body);
+    if (!validation.success) {
+      return res.status(400).json({ error: 'Validation failed', details: validation.error.errors });
+    }
+
+    await superAdminService.pauseTenantAutomation(
+      req.superAdmin!.id,
+      req.params.id,
+      validation.data.reason
+    );
+
+    res.json({
+      success: true,
+      message: 'Tenant automation paused',
+    });
+  } catch (error) {
+    console.error('Error pausing tenant automation:', error);
+    res.status(500).json({ error: 'Failed to pause tenant automation' });
+  }
+});
+
 export default router;

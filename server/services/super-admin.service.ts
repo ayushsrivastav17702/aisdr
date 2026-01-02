@@ -8,6 +8,8 @@ import {
   tenantFeatureFlags,
   tenantConfiguration,
   tenantActivityTimeline,
+  tenantControls,
+  tenantWorkflowProgress,
   managerAccounts,
   managerActivityLogs,
   users,
@@ -17,7 +19,8 @@ import {
   type TenantFeatureFlags,
   type TenantConfiguration,
   type ManagerAccount,
-  type TenantActivityTimelineEntry
+  type TenantActivityTimelineEntry,
+  type TenantWorkflowProgress
 } from '@shared/schema';
 import { eq, and, desc, asc, count, sql, like, or, isNull, gte, lte } from 'drizzle-orm';
 import bcrypt from 'bcrypt';
@@ -346,7 +349,7 @@ class SuperAdminService {
       primaryContactEmail?: string;
       primaryContactPhone?: string;
     }
-  ): Promise<{ organization: typeof organizations.$inferSelect; manager: typeof users.$inferSelect; settings: TenantSettings }> {
+  ): Promise<{ organization: typeof organizations.$inferSelect; manager: typeof users.$inferSelect; settings: TenantSettings; workflowProgress: TenantWorkflowProgress }> {
     const existingSlug = await db
       .select()
       .from(organizations)
@@ -419,13 +422,43 @@ class SuperAdminService {
       })
       .returning();
 
+    // Create tenant controls with automation PAUSED by default (INACTIVE_AUTOMATION)
+    // Super Admin must explicitly enable automation after verifying setup
+    const [controls] = await db
+      .insert(tenantControls)
+      .values({
+        organizationId: organization.id,
+        automationStatus: 'paused', // INACTIVE_AUTOMATION state
+        pausedReason: 'New tenant - automation requires explicit activation',
+        pausedAt: new Date(),
+        pausedBy: superAdminId,
+      })
+      .returning();
+    
+    // Create workflow progress tracking
+    const [workflowProgress] = await db
+      .insert(tenantWorkflowProgress)
+      .values({
+        organizationId: organization.id,
+        currentStage: 'created',
+        createdBy: superAdminId,
+      })
+      .returning();
+
     await this.logAction(superAdminId, 'TENANT_PROVISIONED', 'tenant', organization.id, {
       organizationName: orgData.name,
       managerEmail: orgData.managerEmail,
       plan: orgData.plan || 'trial',
+      automationStatus: 'paused', // Log INACTIVE_AUTOMATION state
+      workflowStage: 'created',
     });
 
-    return { organization, manager: { ...manager, passwordHash: undefined } as any, settings };
+    return { 
+      organization, 
+      manager: { ...manager, passwordHash: undefined } as any, 
+      settings,
+      workflowProgress,
+    };
   }
 
   getPlanLimits(plan: 'trial' | 'starter' | 'growth' | 'enterprise') {
@@ -1622,6 +1655,189 @@ class SuperAdminService {
       .where(and(...conditions));
 
     return { logs, total };
+  }
+
+  // =============================================
+  // TENANT WORKFLOW MANAGEMENT
+  // =============================================
+
+  /**
+   * Get tenant workflow progress
+   */
+  async getTenantWorkflowProgress(organizationId: string): Promise<TenantWorkflowProgress | null> {
+    const [progress] = await db
+      .select()
+      .from(tenantWorkflowProgress)
+      .where(eq(tenantWorkflowProgress.organizationId, organizationId));
+    return progress || null;
+  }
+
+  /**
+   * Check if tenant can enable automation (all prerequisites met)
+   */
+  async canEnableAutomation(organizationId: string): Promise<{ allowed: boolean; reason?: string; missingSteps?: string[] }> {
+    const progress = await this.getTenantWorkflowProgress(organizationId);
+    if (!progress) {
+      return { allowed: false, reason: 'Tenant workflow not found' };
+    }
+
+    const missingSteps: string[] = [];
+
+    // Check: Manager must have logged in (manager_active stage reached)
+    if (!progress.managerActiveAt) {
+      missingSteps.push('Manager has not activated their account');
+    }
+
+    // Check: Limits must be configured/reviewed
+    if (!progress.limitsConfiguredAt) {
+      missingSteps.push('Tenant limits have not been reviewed/configured');
+    }
+
+    if (missingSteps.length > 0) {
+      return { 
+        allowed: false, 
+        reason: 'Prerequisites not met', 
+        missingSteps 
+      };
+    }
+
+    return { allowed: true };
+  }
+
+  /**
+   * Mark tenant limits as configured (Super Admin action)
+   */
+  async markLimitsConfigured(superAdminId: string, organizationId: string): Promise<TenantWorkflowProgress> {
+    const [updated] = await db
+      .update(tenantWorkflowProgress)
+      .set({
+        limitsConfiguredAt: new Date(),
+        limitsConfiguredBy: superAdminId,
+        currentStage: 'limits_configured',
+        updatedAt: new Date(),
+      })
+      .where(eq(tenantWorkflowProgress.organizationId, organizationId))
+      .returning();
+
+    await this.logAction(superAdminId, 'TENANT_LIMITS_CONFIGURED', 'tenant', organizationId, {
+      stage: 'limits_configured',
+    });
+
+    return updated;
+  }
+
+  /**
+   * Enable tenant automation (final workflow step - Super Admin action)
+   */
+  async enableTenantAutomation(superAdminId: string, organizationId: string): Promise<{ success: boolean; error?: string }> {
+    // Check prerequisites
+    const canEnable = await this.canEnableAutomation(organizationId);
+    if (!canEnable.allowed) {
+      return { 
+        success: false, 
+        error: `Cannot enable automation: ${canEnable.reason}. Missing steps: ${canEnable.missingSteps?.join(', ')}` 
+      };
+    }
+
+    // Update workflow progress
+    await db
+      .update(tenantWorkflowProgress)
+      .set({
+        automationEnabledAt: new Date(),
+        automationEnabledBy: superAdminId,
+        currentStage: 'automation_enabled',
+        updatedAt: new Date(),
+      })
+      .where(eq(tenantWorkflowProgress.organizationId, organizationId));
+
+    // Enable automation in tenant controls
+    await db
+      .update(tenantControls)
+      .set({
+        automationStatus: 'active',
+        pausedReason: null,
+        pausedAt: null,
+        pausedBy: null,
+        updatedAt: new Date(),
+      })
+      .where(eq(tenantControls.organizationId, organizationId));
+
+    await this.logAction(superAdminId, 'TENANT_AUTOMATION_ENABLED', 'tenant', organizationId, {
+      stage: 'automation_enabled',
+    });
+
+    return { success: true };
+  }
+
+  /**
+   * Pause tenant automation (Super Admin intervention)
+   */
+  async pauseTenantAutomation(superAdminId: string, organizationId: string, reason: string): Promise<void> {
+    await db
+      .update(tenantControls)
+      .set({
+        automationStatus: 'paused',
+        pausedReason: reason,
+        pausedAt: new Date(),
+        pausedBy: superAdminId,
+        updatedAt: new Date(),
+      })
+      .where(eq(tenantControls.organizationId, organizationId));
+
+    await this.logAction(superAdminId, 'TENANT_AUTOMATION_PAUSED', 'tenant', organizationId, {
+      reason,
+    });
+  }
+
+  /**
+   * Get tenant automation status with workflow info
+   */
+  async getTenantAutomationStatus(organizationId: string): Promise<{
+    automationStatus: 'active' | 'paused';
+    workflowStage: string;
+    canEnableAutomation: boolean;
+    missingSteps?: string[];
+  } | null> {
+    const [controls] = await db
+      .select()
+      .from(tenantControls)
+      .where(eq(tenantControls.organizationId, organizationId));
+
+    const progress = await this.getTenantWorkflowProgress(organizationId);
+    const canEnable = await this.canEnableAutomation(organizationId);
+
+    if (!controls) {
+      return null;
+    }
+
+    return {
+      automationStatus: controls.automationStatus || 'paused',
+      workflowStage: progress?.currentStage || 'created',
+      canEnableAutomation: canEnable.allowed,
+      missingSteps: canEnable.missingSteps,
+    };
+  }
+
+  /**
+   * Mark manager as active (called when manager first logs in)
+   * This is typically called from the auth service when manager logs in
+   */
+  async markManagerActive(organizationId: string, managerId: string): Promise<void> {
+    const progress = await this.getTenantWorkflowProgress(organizationId);
+    if (!progress || progress.managerActiveAt) {
+      // Already marked or no progress record
+      return;
+    }
+
+    await db
+      .update(tenantWorkflowProgress)
+      .set({
+        managerActiveAt: new Date(),
+        managerActivatedBy: managerId,
+        currentStage: 'manager_active',
+        updatedAt: new Date(),
+      })
+      .where(eq(tenantWorkflowProgress.organizationId, organizationId));
   }
 }
 
