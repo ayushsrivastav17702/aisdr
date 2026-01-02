@@ -43,6 +43,8 @@ import aeHandoffRoutes from "./routes/ae-handoff.routes";
 import waterfallSearchRoutes from "./routes/waterfall-search.routes";
 import managerRoutes from "./routes/manager.routes";
 import sdrWorkflowRoutes from "./routes/sdr-workflow.routes";
+import { sdrWorkflowService, WorkflowBlockedError } from "./services/sdr-workflow.service";
+import { hardeningService } from "./services/hardening.service";
 import { inboxRouter } from "./inbox-routes";
 import { authenticate, forbidManager, blockSuperAdminFromSDR } from "./middleware/auth.middleware";
 import { emailVolumeConfig, getCapacityReport, getEstimatedTimeForEmails, EMAIL_VOLUME_PRESETS } from "./config/email-volume.config";
@@ -752,11 +754,51 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Create prospect
+  // Create prospect (workflow-gated: requires upload stage)
   app.post("/api/prospects", authenticate, forbidManager, async (req, res) => {
     try {
+      const userId = req.userContext?.userId;
+      const organizationId = req.userContext?.organizationId;
+      
+      if (!userId || !organizationId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      // Workflow stage gate: must be at or past upload stage
+      try {
+        await sdrWorkflowService.assertStage(userId, "upload");
+      } catch (stageError) {
+        if (stageError instanceof WorkflowBlockedError) {
+          return res.status(403).json({
+            error: "WORKFLOW_BLOCKED",
+            ...stageError.toJSON(),
+          });
+        }
+        // Fail-closed on guard errors
+        console.error("Workflow stage check failed:", stageError);
+        return res.status(503).json({ error: "Unable to verify workflow stage" });
+      }
+
+      // Check tenant automation status - fail-closed
+      try {
+        const isPaused = await hardeningService.isAutomationPaused(organizationId);
+        if (isPaused) {
+          return res.status(403).json({
+            error: "Tenant automation is paused",
+            message: "Cannot create prospects while tenant automation is paused.",
+          });
+        }
+      } catch (guardError) {
+        console.error("Failed to check tenant automation status:", guardError);
+        return res.status(503).json({ error: "Unable to verify tenant automation status" });
+      }
+
       const prospectData = insertProspectSchema.parse(req.body);
-      const prospect = await storage.createProspect(req.userContext!, prospectData);
+      // Set enrichmentStatus to 'new' for fresh prospects (RAW status)
+      const prospect = await storage.createProspect(req.userContext!, {
+        ...prospectData,
+        enrichmentStatus: 'new',
+      });
       res.json(prospect);
     } catch (error) {
       console.error("Create prospect error:", error);
@@ -1417,8 +1459,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // CSV upload and import - Always returns 202 immediately with async processing
-  app.post("/api/import/csv", authenticate, forbidManager, upload.single('file'), async (req, res) => {
+  // Workflow upload stage guard middleware - runs BEFORE multer to prevent file processing
+  const workflowUploadGuard = async (req: any, res: any, next: any) => {
+    try {
+      const userId = req.userContext?.userId;
+      const organizationId = req.userContext?.organizationId;
+      
+      if (!userId || !organizationId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+
+      // Workflow stage gate: must be at or past upload stage
+      try {
+        await sdrWorkflowService.assertStage(userId, "upload");
+      } catch (stageError) {
+        if (stageError instanceof WorkflowBlockedError) {
+          return res.status(403).json({
+            error: "WORKFLOW_BLOCKED",
+            ...stageError.toJSON(),
+          });
+        }
+        console.error("Workflow stage check failed:", stageError);
+        return res.status(503).json({ error: "Unable to verify workflow stage" });
+      }
+
+      // Check tenant automation status - fail-closed
+      try {
+        const isPaused = await hardeningService.isAutomationPaused(organizationId);
+        if (isPaused) {
+          return res.status(403).json({
+            error: "Tenant automation is paused",
+            message: "Cannot import prospects while tenant automation is paused.",
+          });
+        }
+      } catch (guardError) {
+        console.error("Failed to check tenant automation status:", guardError);
+        return res.status(503).json({ error: "Unable to verify tenant automation status" });
+      }
+
+      next();
+    } catch (error) {
+      console.error("Workflow upload guard error:", error);
+      return res.status(503).json({ error: "Guard verification failed" });
+    }
+  };
+
+  // CSV upload and import - Guards run BEFORE multer to prevent file processing for blocked users
+  app.post("/api/import/csv", authenticate, forbidManager, workflowUploadGuard, upload.single('file'), async (req, res) => {
     try {
       if (!req.file) {
         return res.status(400).json({ error: "No file uploaded" });

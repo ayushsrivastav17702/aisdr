@@ -2,6 +2,8 @@ import { Router } from "express";
 import { z } from "zod";
 import { authenticate, forbidManager } from "../middleware/auth.middleware";
 import { waterfallSearchService } from "../services/waterfall-search.service";
+import { sdrWorkflowService, WorkflowBlockedError } from "../services/sdr-workflow.service";
+import { hardeningService } from "../services/hardening.service";
 import { checkQuota } from "../middleware/quota-enforcement.middleware";
 import { db } from "../db";
 import { prospectSearches, apiUsage, prospects, auditLogs } from "@shared/schema";
@@ -94,8 +96,45 @@ router.post("/search", authenticate, forbidManager, async (req, res) => {
   }
 });
 
+// search-and-save is workflow-gated: requires upload stage
 router.post("/search-and-save", authenticate, forbidManager, async (req, res) => {
   try {
+    const userId = req.userContext?.userId;
+    const organizationId = req.userContext?.organizationId;
+    
+    if (!userId || !organizationId) {
+      return res.status(401).json({ success: false, error: "Authentication required" });
+    }
+
+    // Workflow stage gate: must be at or past upload stage
+    try {
+      await sdrWorkflowService.assertStage(userId, "upload");
+    } catch (stageError) {
+      if (stageError instanceof WorkflowBlockedError) {
+        return res.status(403).json({
+          success: false,
+          ...stageError.toJSON(),
+        });
+      }
+      console.error("Workflow stage check failed:", stageError);
+      return res.status(503).json({ success: false, error: "Unable to verify workflow stage" });
+    }
+
+    // Check tenant automation status - fail-closed
+    try {
+      const isPaused = await hardeningService.isAutomationPaused(organizationId);
+      if (isPaused) {
+        return res.status(403).json({
+          success: false,
+          error: "Tenant automation is paused",
+          message: "Cannot save prospects while tenant automation is paused.",
+        });
+      }
+    } catch (guardError) {
+      console.error("Failed to check tenant automation status:", guardError);
+      return res.status(503).json({ success: false, error: "Unable to verify tenant automation status" });
+    }
+
     const { criteria: rawCriteria, extractionName, tag, autoEnrich } = z.object({
       criteria: waterfallSearchSchema,
       extractionName: z.string().optional(),
@@ -107,22 +146,21 @@ router.post("/search-and-save", authenticate, forbidManager, async (req, res) =>
     console.log('Extraction Name:', extractionName);
     console.log('Tag:', tag);
 
-    if (req.userContext?.organizationId) {
-      const requestedLimit = rawCriteria.limit || 50;
-      const preCheck = await checkQuota(req.userContext.organizationId, 'prospects', requestedLimit);
-      if (!preCheck.allowed) {
-        return res.status(429).json({
-          success: false,
-          error: preCheck.message,
-          code: 'QUOTA_EXCEEDED',
-          details: {
-            resource: 'prospects',
-            current: preCheck.current,
-            limit: preCheck.limit,
-            requested: requestedLimit,
-          }
-        });
-      }
+    // organizationId is guaranteed at this point
+    const requestedLimit = rawCriteria.limit || 50;
+    const preCheck = await checkQuota(organizationId, 'prospects', requestedLimit);
+    if (!preCheck.allowed) {
+      return res.status(429).json({
+        success: false,
+        error: preCheck.message,
+        code: 'QUOTA_EXCEEDED',
+        details: {
+          resource: 'prospects',
+          current: preCheck.current,
+          limit: preCheck.limit,
+          requested: requestedLimit,
+        }
+      });
     }
 
     const result = await waterfallSearchService.search(
