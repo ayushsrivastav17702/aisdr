@@ -8,6 +8,9 @@ import { eq, and, sql, desc } from "drizzle-orm";
 import { z } from "zod";
 import { authenticate, forbidManager, blockSuperAdminFromSDR } from "./middleware/auth.middleware";
 import { checkAutomationStatus, throttleOperation, incrementThrottle, trackUsage, checkUserPause, checkDailyEmailLimit, checkEnrollmentConcurrency } from "./middleware/throttle.middleware";
+import { sdrWorkflowService, WorkflowBlockedError } from "./services/sdr-workflow.service";
+import { hardeningService } from "./services/hardening.service";
+import { aiTrackingService } from "./services/ai-tracking.service";
 
 const router = Router();
 
@@ -200,9 +203,41 @@ router.get("/sequences/:id", authenticate, blockSuperAdminFromSDR, async (req, r
   }
 });
 
-// Create sequence
+// Create sequence - workflow-gated
 router.post("/sequences", authenticate, forbidManager, async (req, res) => {
   try {
+    const userId = req.userContext?.userId;
+    const organizationId = req.userContext?.organizationId;
+
+    if (!userId || !organizationId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    // Workflow stage gate: must be at or past sequence stage
+    try {
+      await sdrWorkflowService.assertStage(userId, "sequence");
+    } catch (stageError) {
+      if (stageError instanceof WorkflowBlockedError) {
+        return res.status(403).json(stageError.toJSON());
+      }
+      console.error("Workflow stage check failed:", stageError);
+      return res.status(503).json({ error: "Unable to verify workflow stage" });
+    }
+
+    // Check tenant automation status - fail-closed
+    try {
+      const isPaused = await hardeningService.isAutomationPaused(organizationId);
+      if (isPaused) {
+        return res.status(403).json({
+          error: "Tenant automation is paused",
+          message: "Cannot create sequences while tenant automation is paused.",
+        });
+      }
+    } catch (guardError) {
+      console.error("Failed to check tenant automation status:", guardError);
+      return res.status(503).json({ error: "Unable to verify tenant automation status" });
+    }
+
     const { name, description, type } = req.body;
     
     if (!name) {
@@ -221,6 +256,9 @@ router.post("/sequences", authenticate, forbidManager, async (req, res) => {
       completedProspects: 0,
       settings: null,
     });
+
+    // Try to advance workflow stage after sequence creation
+    await sdrWorkflowService.tryAutoAdvance(userId);
     
     res.json(sequence);
   } catch (error) {
@@ -229,9 +267,41 @@ router.post("/sequences", authenticate, forbidManager, async (req, res) => {
   }
 });
 
-// Generate sequence with AI
+// Generate sequence with AI - workflow-gated
 router.post("/sequences/generate-with-ai", authenticate, forbidManager, async (req, res) => {
   try {
+    const userId = req.userContext?.userId;
+    const organizationId = req.userContext?.organizationId;
+
+    if (!userId || !organizationId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    // Workflow stage gate: must be at or past sequence stage
+    try {
+      await sdrWorkflowService.assertStage(userId, "sequence");
+    } catch (stageError) {
+      if (stageError instanceof WorkflowBlockedError) {
+        return res.status(403).json(stageError.toJSON());
+      }
+      console.error("Workflow stage check failed:", stageError);
+      return res.status(503).json({ error: "Unable to verify workflow stage" });
+    }
+
+    // Check tenant automation status - fail-closed
+    try {
+      const isPaused = await hardeningService.isAutomationPaused(organizationId);
+      if (isPaused) {
+        return res.status(403).json({
+          error: "Tenant automation is paused",
+          message: "Cannot generate sequences while tenant automation is paused.",
+        });
+      }
+    } catch (guardError) {
+      console.error("Failed to check tenant automation status:", guardError);
+      return res.status(503).json({ error: "Unable to verify tenant automation status" });
+    }
+
     const { prompt, name, method } = req.body;
     
     if (!prompt || !name) {
@@ -275,6 +345,27 @@ router.post("/sequences/generate-with-ai", authenticate, forbidManager, async (r
         variables: null,
       });
     }
+
+    // Track AI usage for sequence generation
+    await aiTrackingService.trackGeneration({
+      userId,
+      tenantId: organizationId,
+      generationType: 'sequence_generation',
+      model: 'multi-provider',
+      provider: 'ai-service',
+      promptTokens: 0,
+      completionTokens: 0,
+      success: true,
+      metadata: {
+        source: 'api_sequences_generate_with_ai',
+        sequenceId: sequence.id,
+        stepsGenerated: generatedSequence.steps.length,
+        method: method || 'ai',
+      },
+    });
+
+    // Try to advance workflow stage after sequence creation
+    await sdrWorkflowService.tryAutoAdvance(userId);
     
     res.json({ sequence, steps: generatedSequence.steps });
   } catch (error) {
@@ -380,9 +471,41 @@ const SEQUENCE_TEMPLATES = [
   },
 ];
 
-// Create sequence from template
+// Create sequence from template - workflow-gated
 router.post("/sequences/from-template", authenticate, forbidManager, async (req, res) => {
   try {
+    const userId = req.userContext?.userId;
+    const organizationId = req.userContext?.organizationId;
+
+    if (!userId || !organizationId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    // Workflow stage gate: must be at or past sequence stage
+    try {
+      await sdrWorkflowService.assertStage(userId, "sequence");
+    } catch (stageError) {
+      if (stageError instanceof WorkflowBlockedError) {
+        return res.status(403).json(stageError.toJSON());
+      }
+      console.error("Workflow stage check failed:", stageError);
+      return res.status(503).json({ error: "Unable to verify workflow stage" });
+    }
+
+    // Check tenant automation status - fail-closed
+    try {
+      const isPaused = await hardeningService.isAutomationPaused(organizationId);
+      if (isPaused) {
+        return res.status(403).json({
+          error: "Tenant automation is paused",
+          message: "Cannot create sequences while tenant automation is paused.",
+        });
+      }
+    } catch (guardError) {
+      console.error("Failed to check tenant automation status:", guardError);
+      return res.status(503).json({ error: "Unable to verify tenant automation status" });
+    }
+
     const { templateId } = req.body;
     
     if (!templateId) {
@@ -426,6 +549,9 @@ router.post("/sequences/from-template", authenticate, forbidManager, async (req,
     }
     
     console.log(`✅ Created sequence from template "${template.name}" with ${template.steps.length} steps`);
+
+    // Try to advance workflow stage after sequence creation
+    await sdrWorkflowService.tryAutoAdvance(userId);
     
     res.json({ 
       sequenceId: sequence.id, 
@@ -438,13 +564,31 @@ router.post("/sequences/from-template", authenticate, forbidManager, async (req,
   }
 });
 
-// Update sequence (with automation check for activation)
+// Update sequence (with automation check for activation) - workflow-gated for activation
 router.put("/sequences/:id", authenticate, forbidManager, async (req, res) => {
   try {
-    // Check automation status if activating sequence
-    if (req.body.status === "active" && req.userContext?.organizationId) {
-      const { hardeningService } = await import("./services/hardening.service");
-      const isPaused = await hardeningService.isAutomationPaused(req.userContext.organizationId);
+    const userId = req.userContext?.userId;
+    const organizationId = req.userContext?.organizationId;
+
+    if (!userId || !organizationId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    // If activating sequence, check workflow stage for activation
+    if (req.body.status === "active") {
+      // Workflow stage gate: must be at or past activation stage
+      try {
+        await sdrWorkflowService.assertStage(userId, "activation");
+      } catch (stageError) {
+        if (stageError instanceof WorkflowBlockedError) {
+          return res.status(403).json(stageError.toJSON());
+        }
+        console.error("Workflow stage check failed:", stageError);
+        return res.status(503).json({ error: "Unable to verify workflow stage" });
+      }
+
+      // Check automation status
+      const isPaused = await hardeningService.isAutomationPaused(organizationId);
       if (isPaused) {
         return res.status(503).json({
           error: 'Automation paused',
@@ -456,9 +600,10 @@ router.put("/sequences/:id", authenticate, forbidManager, async (req, res) => {
     
     const sequence = await storage.updateSequence(req.userContext!, req.params.id, req.body);
     
-    // If status changed to active, initialize the sequence
+    // If status changed to active, initialize the sequence and advance workflow
     if (req.body.status === "active") {
       await initializeSequence(req.userContext!, req.params.id);
+      await sdrWorkflowService.tryAutoAdvance(userId);
     }
     
     res.json(sequence);
@@ -468,13 +613,31 @@ router.put("/sequences/:id", authenticate, forbidManager, async (req, res) => {
   }
 });
 
-// Update sequence (PATCH) (with automation check for activation)
+// Update sequence (PATCH) (with automation check for activation) - workflow-gated for activation
 router.patch("/sequences/:id", authenticate, forbidManager, async (req, res) => {
   try {
-    // Check automation status if activating sequence
-    if (req.body.status === "active" && req.userContext?.organizationId) {
-      const { hardeningService } = await import("./services/hardening.service");
-      const isPaused = await hardeningService.isAutomationPaused(req.userContext.organizationId);
+    const userId = req.userContext?.userId;
+    const organizationId = req.userContext?.organizationId;
+
+    if (!userId || !organizationId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    // If activating sequence, check workflow stage for activation
+    if (req.body.status === "active") {
+      // Workflow stage gate: must be at or past activation stage
+      try {
+        await sdrWorkflowService.assertStage(userId, "activation");
+      } catch (stageError) {
+        if (stageError instanceof WorkflowBlockedError) {
+          return res.status(403).json(stageError.toJSON());
+        }
+        console.error("Workflow stage check failed:", stageError);
+        return res.status(503).json({ error: "Unable to verify workflow stage" });
+      }
+
+      // Check automation status
+      const isPaused = await hardeningService.isAutomationPaused(organizationId);
       if (isPaused) {
         return res.status(503).json({
           error: 'Automation paused',
@@ -486,9 +649,10 @@ router.patch("/sequences/:id", authenticate, forbidManager, async (req, res) => 
     
     const sequence = await storage.updateSequence(req.userContext!, req.params.id, req.body);
     
-    // If status changed to active, initialize the sequence
+    // If status changed to active, initialize the sequence and advance workflow
     if (req.body.status === "active") {
       await initializeSequence(req.userContext!, req.params.id);
+      await sdrWorkflowService.tryAutoAdvance(userId);
     }
     
     res.json(sequence);
@@ -509,9 +673,41 @@ router.delete("/sequences/:id", authenticate, forbidManager, async (req, res) =>
   }
 });
 
-// Add step to sequence
+// Add step to sequence - workflow-gated
 router.post("/sequences/:id/steps", authenticate, forbidManager, async (req, res) => {
   try {
+    const userId = req.userContext?.userId;
+    const organizationId = req.userContext?.organizationId;
+
+    if (!userId || !organizationId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    // Workflow stage gate: must be at or past sequence stage
+    try {
+      await sdrWorkflowService.assertStage(userId, "sequence");
+    } catch (stageError) {
+      if (stageError instanceof WorkflowBlockedError) {
+        return res.status(403).json(stageError.toJSON());
+      }
+      console.error("Workflow stage check failed:", stageError);
+      return res.status(503).json({ error: "Unable to verify workflow stage" });
+    }
+
+    // Check tenant automation status - fail-closed
+    try {
+      const isPaused = await hardeningService.isAutomationPaused(organizationId);
+      if (isPaused) {
+        return res.status(403).json({
+          error: "Tenant automation is paused",
+          message: "Cannot modify sequences while tenant automation is paused.",
+        });
+      }
+    } catch (guardError) {
+      console.error("Failed to check tenant automation status:", guardError);
+      return res.status(503).json({ error: "Unable to verify tenant automation status" });
+    }
+
     const { subject, body, stepOrder, delayDays } = req.body;
     
     if (!subject || !body) {
@@ -608,9 +804,27 @@ router.get("/sequences/:id/prospects", authenticate, blockSuperAdminFromSDR, asy
   }
 });
 
-// Add prospects to sequence (with throttling and automation check)
+// Add prospects to sequence (with throttling, automation check, and workflow gate) - workflow-gated
 router.post("/sequences/:id/prospects", authenticate, forbidManager, checkUserPause, checkEnrollmentConcurrency, checkAutomationStatus, throttleOperation('enrollments'), async (req, res) => {
   try {
+    const userId = req.userContext?.userId;
+    const organizationId = req.userContext?.organizationId;
+
+    if (!userId || !organizationId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    // Workflow stage gate: must be at or past enrollment stage
+    try {
+      await sdrWorkflowService.assertStage(userId, "enrollment");
+    } catch (stageError) {
+      if (stageError instanceof WorkflowBlockedError) {
+        return res.status(403).json(stageError.toJSON());
+      }
+      console.error("Workflow stage check failed:", stageError);
+      return res.status(503).json({ error: "Unable to verify workflow stage" });
+    }
+
     const { prospectIds } = req.body;
     
     if (!Array.isArray(prospectIds) || prospectIds.length === 0) {
@@ -628,7 +842,7 @@ router.post("/sequences/:id/prospects", authenticate, forbidManager, checkUserPa
     
     // P0 FIX: Unit-based throttling - check if this batch fits in remaining quota
     const throttleInfo = req.throttleInfo;
-    if (throttleInfo && req.userContext?.organizationId) {
+    if (throttleInfo && organizationId) {
       const remainingCapacity = throttleInfo.limit - throttleInfo.currentCount;
       if (prospectIds.length > remainingCapacity) {
         return res.status(429).json({
@@ -644,7 +858,6 @@ router.post("/sequences/:id/prospects", authenticate, forbidManager, checkUserPa
     }
     
     const sequenceId = req.params.id;
-    const userId = req.userContext!.userId;
     
     const enrolled = await storage.enrollProspects(req.userContext!, sequenceId, prospectIds);
     
@@ -679,8 +892,31 @@ router.post("/sequences/:id/prospects", authenticate, forbidManager, checkUserPa
     }
     
     // Track enrollment usage for throttling and cost guardrails
-    if (req.userContext?.organizationId) {
-      await incrementThrottle(req.userContext.organizationId, 'enrollments', enrolled.length, req.userContext.userId);
+    if (organizationId) {
+      await incrementThrottle(organizationId, 'enrollments', enrolled.length, userId);
+    }
+
+    // Track AI/API usage for enrollment
+    await aiTrackingService.trackGeneration({
+      userId,
+      tenantId: organizationId,
+      generationType: 'enrollment',
+      model: 'internal',
+      provider: 'internal',
+      promptTokens: 0,
+      completionTokens: 0,
+      success: enrolled.length > 0,
+      metadata: {
+        source: 'api_sequences_prospects',
+        sequenceId,
+        prospectsEnrolled: enrolled.length,
+        prospectsRequested: prospectIds.length,
+      },
+    });
+
+    // Try to advance workflow stage after successful enrollment
+    if (enrolled.length > 0) {
+      await sdrWorkflowService.tryAutoAdvance(userId);
     }
     
     res.json({ message: `${enrolled.length} prospects enrolled and emails scheduled`, enrolled });
@@ -954,9 +1190,27 @@ router.post("/sequences/enhanced-personalization", authenticate, forbidManager, 
   }
 });
 
-// Analyze Email Response
+// Analyze Email Response - workflow-gated
 router.post("/sequences/analyze-response", authenticate, forbidManager, async (req, res) => {
   try {
+    const userId = req.userContext?.userId;
+    const organizationId = req.userContext?.organizationId;
+
+    if (!userId || !organizationId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    // Workflow stage gate: must be at or past replies stage
+    try {
+      await sdrWorkflowService.assertStage(userId, "replies");
+    } catch (stageError) {
+      if (stageError instanceof WorkflowBlockedError) {
+        return res.status(403).json(stageError.toJSON());
+      }
+      console.error("Workflow stage check failed:", stageError);
+      return res.status(503).json({ error: "Unable to verify workflow stage" });
+    }
+
     const { analyzeEmailResponse } = await import("./services/enhanced-personalization.service");
     const { originalEmail, prospectResponse, prospectId } = req.body;
     
@@ -965,6 +1219,25 @@ router.post("/sequences/analyze-response", authenticate, forbidManager, async (r
     }
     
     const analysis = await analyzeEmailResponse(originalEmail, prospectResponse, prospectId);
+
+    // Track AI usage for response analysis
+    await aiTrackingService.trackGeneration({
+      userId,
+      tenantId: organizationId,
+      generationType: 'response_analysis',
+      model: 'multi-provider',
+      provider: 'ai-service',
+      promptTokens: 0,
+      completionTokens: 0,
+      success: true,
+      metadata: {
+        source: 'api_sequences_analyze_response',
+        prospectId,
+      },
+    });
+
+    // Try to advance workflow stage after reply analysis
+    await sdrWorkflowService.tryAutoAdvance(userId);
     
     res.json(analysis);
   } catch (error) {
@@ -975,9 +1248,41 @@ router.post("/sequences/analyze-response", authenticate, forbidManager, async (r
   }
 });
 
-// Generate Follow-up Preview
+// Generate Follow-up Preview - workflow-gated
 router.post("/sequences/followup-preview", authenticate, forbidManager, async (req, res) => {
   try {
+    const userId = req.userContext?.userId;
+    const organizationId = req.userContext?.organizationId;
+
+    if (!userId || !organizationId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    // Workflow stage gate: must be at or past replies stage
+    try {
+      await sdrWorkflowService.assertStage(userId, "replies");
+    } catch (stageError) {
+      if (stageError instanceof WorkflowBlockedError) {
+        return res.status(403).json(stageError.toJSON());
+      }
+      console.error("Workflow stage check failed:", stageError);
+      return res.status(503).json({ error: "Unable to verify workflow stage" });
+    }
+
+    // Check tenant automation status - fail-closed
+    try {
+      const isPaused = await hardeningService.isAutomationPaused(organizationId);
+      if (isPaused) {
+        return res.status(403).json({
+          error: "Tenant automation is paused",
+          message: "Cannot generate follow-up preview while tenant automation is paused.",
+        });
+      }
+    } catch (guardError) {
+      console.error("Failed to check tenant automation status:", guardError);
+      return res.status(503).json({ error: "Unable to verify tenant automation status" });
+    }
+
     const { aiFollowUpScheduler } = await import("./services/ai-followup-scheduler.service");
     const { prospectId, emailHistory, followUpType, followUpNumber } = req.body;
     
@@ -1033,6 +1338,26 @@ router.post("/sequences/followup-preview", authenticate, forbidManager, async (r
       followUpType || "gentle_reminder",
       followUpNumber || 1
     );
+
+    // Track AI usage for follow-up preview generation
+    await aiTrackingService.trackGeneration({
+      userId,
+      tenantId: organizationId,
+      generationType: 'followup_preview',
+      model: 'multi-provider',
+      provider: 'ai-service',
+      promptTokens: 0,
+      completionTokens: 0,
+      success: true,
+      metadata: {
+        source: 'api_sequences_followup_preview',
+        prospectId,
+        followUpType: followUpType || "gentle_reminder",
+      },
+    });
+
+    // Try to advance workflow stage after preview generation
+    await sdrWorkflowService.tryAutoAdvance(userId);
     
     res.json(preview);
   } catch (error) {
@@ -1180,9 +1505,41 @@ router.get("/sequences/ai-followup-preview/:prospectId", authenticate, blockSupe
   }
 });
 
-// Send reply to prospect
+// Send reply to prospect - workflow-gated
 router.post("/sequences/send-reply", authenticate, forbidManager, async (req, res) => {
   try {
+    const userId = req.userContext?.userId;
+    const organizationId = req.userContext?.organizationId;
+
+    if (!userId || !organizationId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    // Workflow stage gate: must be at or past sending stage
+    try {
+      await sdrWorkflowService.assertStage(userId, "sending");
+    } catch (stageError) {
+      if (stageError instanceof WorkflowBlockedError) {
+        return res.status(403).json(stageError.toJSON());
+      }
+      console.error("Workflow stage check failed:", stageError);
+      return res.status(503).json({ error: "Unable to verify workflow stage" });
+    }
+
+    // Check tenant automation status - fail-closed
+    try {
+      const isPaused = await hardeningService.isAutomationPaused(organizationId);
+      if (isPaused) {
+        return res.status(403).json({
+          error: "Tenant automation is paused",
+          message: "Cannot send emails while tenant automation is paused.",
+        });
+      }
+    } catch (guardError) {
+      console.error("Failed to check tenant automation status:", guardError);
+      return res.status(503).json({ error: "Unable to verify tenant automation status" });
+    }
+
     const { prospectId, sequenceId, subject, body } = req.body;
     
     if (!prospectId || !subject || !body) {
@@ -1214,11 +1571,6 @@ router.post("/sequences/send-reply", authenticate, forbidManager, async (req, re
         console.log(`🔗 Threading reply - In-Reply-To: ${inReplyTo}`);
       }
     }
-    
-    // Ensure userId is available (should always be present via authenticate middleware)
-    if (!req.userContext?.userId) {
-      return res.status(401).json({ error: "Authentication required" });
-    }
 
     // Add to email queue with immediate sending (scheduled for now)
     const queueItem = await emailQueueService.addToQueue({
@@ -1230,10 +1582,30 @@ router.post("/sequences/send-reply", authenticate, forbidManager, async (req, re
       priority: 1, // High priority
       inReplyTo,
       references,
-      userId: req.userContext.userId, // Pass userId for user-scoped mailbox selection
+      userId, // Pass userId for user-scoped mailbox selection
     });
     
     console.log(`📧 Reply queued for sending: ${queueItem.id}`);
+
+    // Track AI/API usage for sending
+    await aiTrackingService.trackGeneration({
+      userId,
+      tenantId: organizationId,
+      generationType: 'email_send',
+      model: 'internal',
+      provider: 'internal',
+      promptTokens: 0,
+      completionTokens: 0,
+      success: true,
+      metadata: {
+        source: 'api_sequences_send_reply',
+        prospectId,
+        sequenceId: sequenceId || null,
+      },
+    });
+
+    // Try to advance workflow stage after sending
+    await sdrWorkflowService.tryAutoAdvance(userId);
     
     res.json({ 
       success: true, 
