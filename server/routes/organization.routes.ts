@@ -194,16 +194,18 @@ router.get("/organizations/:id/stats", authenticate, async (req, res) => {
 
 router.get("/workspaces", authenticate, async (req, res) => {
   try {
-    const userId = req.userContext!.userId;
-    const { organizationId } = req.query;
+    const userOrgId = req.userContext!.organizationId;
     
-    let query = db.select().from(workspaces);
-    
-    if (organizationId) {
-      query = query.where(eq(workspaces.organizationId, organizationId as string)) as typeof query;
+    // SECURITY: Enforce tenant isolation - only return workspaces from user's organization
+    if (!userOrgId) {
+      return res.status(403).json({ error: "Organization context required" });
     }
     
-    const allWorkspaces = await query.orderBy(desc(workspaces.createdAt));
+    const allWorkspaces = await db
+      .select()
+      .from(workspaces)
+      .where(eq(workspaces.organizationId, userOrgId))
+      .orderBy(desc(workspaces.createdAt));
     
     res.json(allWorkspaces);
   } catch (error) {
@@ -215,11 +217,20 @@ router.get("/workspaces", authenticate, async (req, res) => {
 router.get("/workspaces/:id", authenticate, async (req, res) => {
   try {
     const { id } = req.params;
+    const userOrgId = req.userContext!.organizationId;
+    
+    // SECURITY: Enforce tenant isolation
+    if (!userOrgId) {
+      return res.status(403).json({ error: "Organization context required" });
+    }
     
     const [workspace] = await db
       .select()
       .from(workspaces)
-      .where(eq(workspaces.id, id));
+      .where(and(
+        eq(workspaces.id, id),
+        eq(workspaces.organizationId, userOrgId)
+      ));
     
     if (!workspace) {
       return res.status(404).json({ error: "Workspace not found" });
@@ -235,8 +246,16 @@ router.get("/workspaces/:id", authenticate, async (req, res) => {
 router.post("/workspaces", authenticate, requireAdmin, async (req, res) => {
   try {
     const userId = req.userContext!.userId;
+    const userOrgId = req.userContext!.organizationId;
+    
+    // SECURITY: Enforce tenant isolation - admins can only create workspaces in their own organization
+    if (!userOrgId) {
+      return res.status(403).json({ error: "Organization context required" });
+    }
+    
+    // Prevent cross-tenant workspace creation by ignoring req.body.organizationId
     const workspaceData = {
-      organizationId: req.body.organizationId as string,
+      organizationId: userOrgId, // Always use authenticated user's organization
       name: req.body.name as string,
       slug: (req.body.slug || generateSlug(req.body.name)) as string,
       description: req.body.description as string | undefined,
@@ -271,6 +290,12 @@ router.post("/workspaces", authenticate, requireAdmin, async (req, res) => {
 router.patch("/workspaces/:id", authenticate, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
+    const userOrgId = req.userContext!.organizationId;
+    
+    // SECURITY: Enforce tenant isolation
+    if (!userOrgId) {
+      return res.status(403).json({ error: "Organization context required" });
+    }
     
     const updateData: Record<string, any> = { updatedAt: new Date() };
     const allowedFields = ['name', 'description', 'type', 'parentId', 'settings', 
@@ -285,7 +310,10 @@ router.patch("/workspaces/:id", authenticate, requireAdmin, async (req, res) => 
     const [updatedWorkspace] = await db
       .update(workspaces)
       .set(updateData)
-      .where(eq(workspaces.id, id))
+      .where(and(
+        eq(workspaces.id, id),
+        eq(workspaces.organizationId, userOrgId)
+      ))
       .returning();
     
     if (!updatedWorkspace) {
@@ -305,8 +333,17 @@ router.patch("/workspaces/:id", authenticate, requireAdmin, async (req, res) => 
 router.delete("/workspaces/:id", authenticate, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
+    const userOrgId = req.userContext!.organizationId;
     
-    await db.delete(workspaces).where(eq(workspaces.id, id));
+    // SECURITY: Enforce tenant isolation
+    if (!userOrgId) {
+      return res.status(403).json({ error: "Organization context required" });
+    }
+    
+    await db.delete(workspaces).where(and(
+      eq(workspaces.id, id),
+      eq(workspaces.organizationId, userOrgId)
+    ));
     
     res.json({ success: true, message: "Workspace deleted" });
   } catch (error) {
@@ -318,11 +355,20 @@ router.delete("/workspaces/:id", authenticate, requireAdmin, async (req, res) =>
 router.post("/workspaces/:id/archive", authenticate, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
+    const userOrgId = req.userContext!.organizationId;
+    
+    // SECURITY: Enforce tenant isolation
+    if (!userOrgId) {
+      return res.status(403).json({ error: "Organization context required" });
+    }
     
     const [archivedWorkspace] = await db
       .update(workspaces)
       .set({ status: "archived", archivedAt: new Date(), updatedAt: new Date() })
-      .where(eq(workspaces.id, id))
+      .where(and(
+        eq(workspaces.id, id),
+        eq(workspaces.organizationId, userOrgId)
+      ))
       .returning();
     
     if (!archivedWorkspace) {
@@ -339,11 +385,20 @@ router.post("/workspaces/:id/archive", authenticate, requireAdmin, async (req, r
 router.post("/workspaces/:id/restore", authenticate, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
+    const userOrgId = req.userContext!.organizationId;
+    
+    // SECURITY: Enforce tenant isolation
+    if (!userOrgId) {
+      return res.status(403).json({ error: "Organization context required" });
+    }
     
     const [restoredWorkspace] = await db
       .update(workspaces)
       .set({ status: "active", archivedAt: null, updatedAt: new Date() })
-      .where(eq(workspaces.id, id))
+      .where(and(
+        eq(workspaces.id, id),
+        eq(workspaces.organizationId, userOrgId)
+      ))
       .returning();
     
     if (!restoredWorkspace) {
@@ -361,20 +416,33 @@ router.post("/workspaces/:id/transfer-ownership", authenticate, requireAdmin, as
   try {
     const { id } = req.params;
     const { newOwnerId } = req.body;
+    const userOrgId = req.userContext!.organizationId;
+    
+    // SECURITY: Enforce tenant isolation
+    if (!userOrgId) {
+      return res.status(403).json({ error: "Organization context required" });
+    }
     
     if (!newOwnerId) {
       return res.status(400).json({ error: "New owner ID is required" });
     }
     
-    const [newOwner] = await db.select().from(users).where(eq(users.id, newOwnerId));
+    // SECURITY: Verify new owner is in same organization
+    const [newOwner] = await db.select().from(users).where(and(
+      eq(users.id, newOwnerId),
+      eq(users.organizationId, userOrgId)
+    ));
     if (!newOwner) {
-      return res.status(404).json({ error: "New owner not found" });
+      return res.status(404).json({ error: "New owner not found in your organization" });
     }
     
     const [updatedWorkspace] = await db
       .update(workspaces)
       .set({ ownerId: newOwnerId, updatedAt: new Date() })
-      .where(eq(workspaces.id, id))
+      .where(and(
+        eq(workspaces.id, id),
+        eq(workspaces.organizationId, userOrgId)
+      ))
       .returning();
     
     if (!updatedWorkspace) {

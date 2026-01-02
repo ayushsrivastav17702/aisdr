@@ -1095,10 +1095,30 @@ router.post("/webhooks/email-reply", authenticate, async (req, res) => {
   }
 });
 
-// Webhook: Email opened
+// Webhook: Email opened - requires HMAC signature verification for security
 router.post("/webhooks/email-opened", async (req, res) => {
   try {
-    const { trackingId, timestamp } = req.body;
+    const { trackingId, timestamp, signature } = req.body;
+    
+    // Verify webhook signature to prevent abuse
+    const webhookSecret = process.env.WEBHOOK_SECRET || process.env.SESSION_SECRET;
+    if (webhookSecret) {
+      const crypto = await import('crypto');
+      const expectedSignature = crypto
+        .createHmac('sha256', webhookSecret)
+        .update(`${trackingId}:${timestamp}`)
+        .digest('hex');
+      
+      if (!signature || signature !== expectedSignature) {
+        console.warn('Email open webhook: Invalid signature for trackingId:', trackingId);
+        return res.status(403).json({ error: 'Invalid webhook signature' });
+      }
+    }
+    
+    if (!trackingId) {
+      return res.status(400).json({ error: 'trackingId is required' });
+    }
+    
     res.json({ message: "Email open recorded" });
   } catch (error) {
     console.error("Webhook error:", error);

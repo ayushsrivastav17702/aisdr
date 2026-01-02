@@ -568,6 +568,25 @@ export class EmailQueueService {
       }
       
       // ========================================
+      // DEMO MODE CHECK: Skip real email sends for demo tenants
+      // ========================================
+      const demoCheck = await this.checkDemoMode(email.userId);
+      if (demoCheck.isDemoMode) {
+        console.log(`🎭 [Demo Mode] Email ${email.id} simulated (not sent) - tenant is in demo mode`);
+        
+        await db.update(emailQueue)
+          .set({ 
+            status: 'sent',
+            sentAt: new Date(),
+            deliveredAt: new Date(),
+            lastError: 'Demo mode: Email simulated (not actually sent)',
+          })
+          .where(eq(emailQueue.id, email.id));
+        
+        return true; // Simulate success without sending
+      }
+      
+      // ========================================
       // END DEFENSIVE SAFEGUARDS
       // ========================================
       
@@ -984,6 +1003,42 @@ export class EmailQueueService {
           extra: { prospectId, userId }
         });
       }
+    }
+  }
+
+  /**
+   * Check if a user's organization is in demo mode
+   * Demo mode simulates email sends without actually sending them
+   */
+  private async checkDemoMode(userId: string): Promise<{ isDemoMode: boolean; reason?: string }> {
+    try {
+      // First get user's organizationId
+      const user = await db.query.users.findFirst({
+        where: (users, { eq }) => eq(users.id, userId),
+        columns: { organizationId: true }
+      });
+
+      if (!user?.organizationId) {
+        return { isDemoMode: false };
+      }
+
+      // Check tenant configuration for demo mode
+      const tenantConfig = await db.query.tenantConfiguration.findFirst({
+        where: (tc, { eq }) => eq(tc.organizationId, user.organizationId),
+        columns: { demoModeEnabled: true, demoModeReason: true }
+      });
+
+      if (tenantConfig?.demoModeEnabled) {
+        return { 
+          isDemoMode: true, 
+          reason: tenantConfig.demoModeReason || 'Demo mode enabled for this organization' 
+        };
+      }
+
+      return { isDemoMode: false };
+    } catch (error) {
+      console.error('Failed to check demo mode:', error);
+      return { isDemoMode: false }; // Fail open - allow sends if check fails
     }
   }
 }

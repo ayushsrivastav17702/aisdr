@@ -441,6 +441,72 @@ router.patch('/tenants/:id/configuration', authenticateSuperAdmin, requireSuperA
   }
 });
 
+// Phase 2: Toggle Demo Mode for tenant (sandbox environment)
+const toggleDemoModeSchema = z.object({
+  enabled: z.boolean(),
+  reason: z.string().max(500).optional(),
+});
+
+router.patch('/tenants/:id/demo-mode', authenticateSuperAdmin, requireSuperAdminPermission('canManageBilling'), async (req, res) => {
+  try {
+    const validation = toggleDemoModeSchema.safeParse(req.body);
+    if (!validation.success) {
+      return res.status(400).json({ 
+        error: 'Validation failed', 
+        details: validation.error.errors.map(e => `${e.path.join('.')}: ${e.message}`) 
+      });
+    }
+
+    const { enabled, reason } = validation.data;
+    
+    // Update tenant configuration
+    const [config] = await db
+      .insert(tenantConfiguration)
+      .values({
+        organizationId: req.params.id,
+        demoModeEnabled: enabled,
+        demoModeReason: reason || (enabled ? 'Demo mode enabled by Super Admin' : null),
+        demoModeEnabledAt: enabled ? new Date() : null,
+        demoModeEnabledBy: enabled ? req.superAdmin!.id : null,
+      })
+      .onConflictDoUpdate({
+        target: tenantConfiguration.organizationId,
+        set: {
+          demoModeEnabled: enabled,
+          demoModeReason: reason || (enabled ? 'Demo mode enabled by Super Admin' : null),
+          demoModeEnabledAt: enabled ? new Date() : null,
+          demoModeEnabledBy: enabled ? req.superAdmin!.id : null,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+
+    // Audit log
+    await db.insert(superAdminAuditLogs).values({
+      superAdminId: req.superAdmin!.id,
+      action: enabled ? 'enable_demo_mode' : 'disable_demo_mode',
+      targetType: 'tenant',
+      targetId: req.params.id,
+      details: { enabled, reason },
+      ipAddress: req.ip || null,
+      userAgent: req.get('User-Agent') || null,
+    });
+
+    console.log(`🎭 [Demo Mode] ${enabled ? 'Enabled' : 'Disabled'} for tenant ${req.params.id} by Super Admin ${req.superAdmin!.id}`);
+
+    res.json({ 
+      success: true, 
+      demoModeEnabled: enabled,
+      message: enabled 
+        ? 'Demo mode enabled - emails will be simulated, not actually sent' 
+        : 'Demo mode disabled - emails will be sent normally'
+    });
+  } catch (error: any) {
+    console.error('Error toggling demo mode:', error);
+    res.status(500).json({ error: error.message || 'Failed to toggle demo mode' });
+  }
+});
+
 // Phase 2: Update tenant feature flags (FR-SA4)
 // Keys match database schema column names (camelCase from Drizzle)
 const updateFeatureFlagsSchema = z.object({
@@ -3054,6 +3120,155 @@ router.post('/tenants/:id/workflow/pause-automation', authenticateSuperAdmin, re
   } catch (error) {
     console.error('Error pausing tenant automation:', error);
     res.status(500).json({ error: 'Failed to pause tenant automation' });
+  }
+});
+
+// ============================================
+// DATA RESET TOOLS (Task 6)
+// ============================================
+
+/**
+ * Reset tenant data - selective or full reset
+ * Requires elevated permissions and confirmation
+ */
+const dataResetSchema = z.object({
+  resetType: z.enum(['prospects', 'sequences', 'emails', 'all']),
+  confirmationPhrase: z.string(),
+  reason: z.string().min(10, 'Reason must be at least 10 characters').max(500),
+});
+
+router.post('/tenants/:id/reset-data', authenticateSuperAdmin, requireSuperAdminPermission('canSuspendTenants'), async (req, res) => {
+  try {
+    const validation = dataResetSchema.safeParse(req.body);
+    if (!validation.success) {
+      return res.status(400).json({ 
+        error: 'Validation failed', 
+        details: validation.error.errors.map(e => `${e.path.join('.')}: ${e.message}`) 
+      });
+    }
+
+    const { resetType, confirmationPhrase, reason } = validation.data;
+    const tenantId = req.params.id;
+
+    // Verify confirmation phrase matches expected format
+    const expectedPhrase = `RESET-${tenantId.substring(0, 8).toUpperCase()}`;
+    if (confirmationPhrase !== expectedPhrase) {
+      return res.status(400).json({ 
+        error: 'Confirmation failed',
+        message: `Invalid confirmation phrase. Expected: ${expectedPhrase}`,
+      });
+    }
+
+    // Verify tenant exists
+    const [org] = await db
+      .select({ id: organizations.id, name: organizations.name })
+      .from(organizations)
+      .where(eq(organizations.id, tenantId));
+
+    if (!org) {
+      return res.status(404).json({ error: 'Tenant not found' });
+    }
+
+    let deletedCounts: Record<string, number> = {};
+
+    // Perform selective reset based on type
+    if (resetType === 'prospects' || resetType === 'all') {
+      // Delete prospects (cascades to related records)
+      const prospectResult = await db
+        .delete(prospects)
+        .where(eq(prospects.organizationId, tenantId));
+      deletedCounts.prospects = prospectResult.rowCount || 0;
+    }
+
+    if (resetType === 'sequences' || resetType === 'all') {
+      // Delete sequences (cascades to steps, prospects)
+      const sequenceResult = await db
+        .delete(sequences)
+        .where(eq(sequences.organizationId, tenantId));
+      deletedCounts.sequences = sequenceResult.rowCount || 0;
+    }
+
+    if (resetType === 'emails' || resetType === 'all') {
+      // Delete email queue entries
+      const emailQueueResult = await db
+        .delete(emailQueue)
+        .where(
+          sql`${emailQueue.userId} IN (
+            SELECT id FROM users WHERE organization_id = ${tenantId}
+          )`
+        );
+      deletedCounts.emailQueue = emailQueueResult.rowCount || 0;
+
+      // Delete sent emails
+      const emailsResult = await db
+        .delete(emails)
+        .where(
+          sql`${emails.userId} IN (
+            SELECT id FROM users WHERE organization_id = ${tenantId}
+          )`
+        );
+      deletedCounts.emails = emailsResult.rowCount || 0;
+    }
+
+    // Audit log
+    await db.insert(superAdminAuditLogs).values({
+      superAdminId: req.superAdmin!.id,
+      action: 'reset_tenant_data',
+      targetType: 'tenant',
+      targetId: tenantId,
+      details: { 
+        resetType, 
+        reason,
+        deletedCounts,
+        tenantName: org.name,
+      },
+      ipAddress: req.ip || null,
+      userAgent: req.get('User-Agent') || null,
+    });
+
+    console.log(`🗑️ [Data Reset] Tenant ${tenantId} data reset (type: ${resetType}) by Super Admin ${req.superAdmin!.id}`);
+    console.log(`   Deleted counts:`, deletedCounts);
+
+    res.json({
+      success: true,
+      resetType,
+      deletedCounts,
+      message: `Tenant data reset completed (${resetType})`,
+    });
+  } catch (error: any) {
+    console.error('Error resetting tenant data:', error);
+    res.status(500).json({ error: error.message || 'Failed to reset tenant data' });
+  }
+});
+
+/**
+ * Get reset confirmation phrase for a tenant
+ */
+router.get('/tenants/:id/reset-confirmation', authenticateSuperAdmin, requireSuperAdminPermission('canSuspendTenants'), async (req, res) => {
+  try {
+    const tenantId = req.params.id;
+    
+    // Verify tenant exists
+    const [org] = await db
+      .select({ id: organizations.id, name: organizations.name })
+      .from(organizations)
+      .where(eq(organizations.id, tenantId));
+
+    if (!org) {
+      return res.status(404).json({ error: 'Tenant not found' });
+    }
+
+    const confirmationPhrase = `RESET-${tenantId.substring(0, 8).toUpperCase()}`;
+
+    res.json({
+      tenantId,
+      tenantName: org.name,
+      confirmationPhrase,
+      warning: 'Data reset is irreversible. Please ensure you have a backup if needed.',
+    });
+  } catch (error) {
+    console.error('Error getting reset confirmation:', error);
+    res.status(500).json({ error: 'Failed to get reset confirmation' });
   }
 });
 

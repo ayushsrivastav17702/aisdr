@@ -216,6 +216,35 @@ class AlertAutomationService {
     for (const mailbox of problematicMailboxes) {
       const severity = (mailbox.bounceRate || 0) > 10 || mailbox.status === 'error' ? 'critical' : 'warning';
       
+      // AUTO-PAUSE: If bounce rate > 10%, automatically pause the mailbox to protect deliverability
+      const autoPauseThreshold = 10;
+      if ((mailbox.bounceRate || 0) > autoPauseThreshold && mailbox.status !== 'paused') {
+        await db
+          .update(emailMailboxes)
+          .set({ 
+            status: 'paused',
+            updatedAt: new Date(),
+          })
+          .where(eq(emailMailboxes.id, mailbox.id));
+        
+        console.log(`🚨 [AutoPause] Mailbox ${mailbox.email} auto-paused due to high bounce rate: ${mailbox.bounceRate}%`);
+        
+        results.push({
+          shouldAlert: true,
+          alertType: 'mailbox_auto_paused',
+          severity: 'critical',
+          title: `Mailbox auto-paused: ${mailbox.email}`,
+          message: `Mailbox ${mailbox.email} has been automatically paused due to high bounce rate (${mailbox.bounceRate}%). This protects your email deliverability. Please investigate and fix issues before re-enabling.`,
+          details: {
+            mailboxId: mailbox.id,
+            email: mailbox.email,
+            bounceRate: mailbox.bounceRate,
+            action: 'auto_paused',
+            threshold: autoPauseThreshold,
+          },
+        });
+      }
+      
       results.push({
         shouldAlert: true,
         alertType: 'mailbox_health',
