@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { TrendingUp, TrendingDown, Minus, Mail, Eye, MessageSquare, Download, BarChart3 } from "lucide-react";
+import { TrendingUp, TrendingDown, Minus, Mail, Eye, MessageSquare, Download, BarChart3, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   LineChart,
@@ -57,6 +57,26 @@ interface AnalyticsData {
   trends: TrendPoint[];
   summary: Summary;
   topSequences: TopSequence[];
+}
+
+interface TeamBenchmark {
+  period: string;
+  you: {
+    totalSent: number;
+    openRate: number;
+    replyRate: number;
+  };
+  teamAverage: {
+    totalSent: number;
+    openRate: number;
+    replyRate: number;
+  };
+  comparison: {
+    sentVsTeam: number;
+    openRateVsTeam: number;
+    replyRateVsTeam: number;
+  };
+  teamSize: number;
 }
 
 function ChangeIndicator({ value, suffix = "" }: { value: number; suffix?: string }) {
@@ -118,6 +138,15 @@ export function PersonalAnalytics() {
     queryFn: async () => {
       const res = await fetch(`/api/sdr/analytics?period=${period}`);
       if (!res.ok) throw new Error("Failed to fetch analytics");
+      return res.json();
+    }
+  });
+  
+  const { data: benchmarkData, isLoading: benchmarkLoading } = useQuery<TeamBenchmark>({
+    queryKey: ["/api/sdr/team-benchmark", period],
+    queryFn: async () => {
+      const res = await fetch(`/api/sdr/team-benchmark?period=${period}`);
+      if (!res.ok) throw new Error("Failed to fetch benchmark");
       return res.json();
     }
   });
@@ -330,6 +359,75 @@ export function PersonalAnalytics() {
             </Table>
           </div>
         )}
+        
+        {/* Team Comparison Section - TC-SDR-AN-03 */}
+        <div className="border-t pt-6 mt-6">
+          <div className="flex items-center gap-2 mb-4">
+            <Users className="h-5 w-5 text-muted-foreground" />
+            <h4 className="font-semibold">Team Comparison</h4>
+            <Badge variant="secondary" className="text-xs">Anonymized</Badge>
+          </div>
+          
+          {benchmarkLoading ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <Skeleton className="h-24" />
+              <Skeleton className="h-24" />
+              <Skeleton className="h-24" />
+            </div>
+          ) : benchmarkData ? (
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="border rounded-lg p-4" data-testid="benchmark-sent">
+                  <p className="text-sm text-muted-foreground mb-1">Emails Sent</p>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-2xl font-bold">{benchmarkData.you.totalSent}</span>
+                    <span className="text-sm text-muted-foreground">vs team avg {benchmarkData.teamAverage.totalSent}</span>
+                  </div>
+                  <div className={cn(
+                    "text-sm mt-1",
+                    benchmarkData.comparison.sentVsTeam > 0 ? "text-green-600" : benchmarkData.comparison.sentVsTeam < 0 ? "text-red-600" : "text-muted-foreground"
+                  )}>
+                    {benchmarkData.comparison.sentVsTeam > 0 ? "+" : ""}{benchmarkData.comparison.sentVsTeam}% vs team
+                  </div>
+                </div>
+                
+                <div className="border rounded-lg p-4" data-testid="benchmark-open-rate">
+                  <p className="text-sm text-muted-foreground mb-1">Open Rate</p>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-2xl font-bold">{benchmarkData.you.openRate}%</span>
+                    <span className="text-sm text-muted-foreground">vs team avg {benchmarkData.teamAverage.openRate}%</span>
+                  </div>
+                  <div className={cn(
+                    "text-sm mt-1",
+                    benchmarkData.comparison.openRateVsTeam > 0 ? "text-green-600" : benchmarkData.comparison.openRateVsTeam < 0 ? "text-red-600" : "text-muted-foreground"
+                  )}>
+                    {benchmarkData.comparison.openRateVsTeam > 0 ? "+" : ""}{benchmarkData.comparison.openRateVsTeam} pts vs team
+                  </div>
+                </div>
+                
+                <div className="border rounded-lg p-4" data-testid="benchmark-reply-rate">
+                  <p className="text-sm text-muted-foreground mb-1">Reply Rate</p>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-2xl font-bold">{benchmarkData.you.replyRate}%</span>
+                    <span className="text-sm text-muted-foreground">vs team avg {benchmarkData.teamAverage.replyRate}%</span>
+                  </div>
+                  <div className={cn(
+                    "text-sm mt-1",
+                    benchmarkData.comparison.replyRateVsTeam > 0 ? "text-green-600" : benchmarkData.comparison.replyRateVsTeam < 0 ? "text-red-600" : "text-muted-foreground"
+                  )}>
+                    {benchmarkData.comparison.replyRateVsTeam > 0 ? "+" : ""}{benchmarkData.comparison.replyRateVsTeam} pts vs team
+                  </div>
+                </div>
+              </div>
+              
+              <p className="text-xs text-muted-foreground">
+                Compared against {benchmarkData.teamSize} other team member{benchmarkData.teamSize !== 1 ? 's' : ''} • Individual names are not displayed
+              </p>
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">No team data available</p>
+          )}
+        </div>
       </CardContent>
     </Card>
   );
