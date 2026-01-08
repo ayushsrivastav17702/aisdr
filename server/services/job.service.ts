@@ -240,9 +240,30 @@ class JobService {
               if (enrichedContact) {
                 // Full enrichment successful
                 const enrichedProspect = await apolloService.convertApolloContactToProspect(enrichedContact);
+                const now = new Date().toISOString();
+                const existingFieldSources = (prospect.fieldSources as Record<string, any>) || {};
+                const newFieldSources: Record<string, { source: string; provider?: string; timestamp: string }> = {
+                  ...existingFieldSources,
+                };
+
+                // Track field sources for enriched fields
+                if (enrichedProspect.primaryEmail && enrichedProspect.primaryEmail !== prospect.primaryEmail) {
+                  newFieldSources.primaryEmail = { source: 'enrichment', provider: 'apollo', timestamp: now };
+                }
+                if (enrichedProspect.phoneNumber && enrichedProspect.phoneNumber !== prospect.phoneNumber) {
+                  newFieldSources.phoneNumber = { source: 'enrichment', provider: 'apollo', timestamp: now };
+                }
+                if (enrichedProspect.jobTitle && enrichedProspect.jobTitle !== prospect.jobTitle) {
+                  newFieldSources.jobTitle = { source: 'enrichment', provider: 'apollo', timestamp: now };
+                }
+                if (enrichedProspect.companyName && enrichedProspect.companyName !== prospect.companyName) {
+                  newFieldSources.companyName = { source: 'enrichment', provider: 'apollo', timestamp: now };
+                }
+
                 await storage.updateProspect(ctx, prospect.id, {
                   ...enrichedProspect,
                   enrichmentStatus: 'enriched',
+                  fieldSources: newFieldSources,
                 });
                 successCount++;
               } else {
