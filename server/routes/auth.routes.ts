@@ -286,17 +286,27 @@ router.get('/api/auth/me', authenticate, async (req, res) => {
 
 router.get('/api/auth/config', async (_req, res) => {
   try {
+    // Check if there are users with password login enabled or super admins
     const [passwordUser] = await db
       .select({ count: users.id })
       .from(users)
       .where(eq(users.passwordLoginEnabled, true))
       .limit(1);
     
+    // Also check for super admins (they always use password login)
+    const { superAdmins } = await import('@shared/schema');
+    const [superAdmin] = await db
+      .select({ count: superAdmins.id })
+      .from(superAdmins)
+      .limit(1);
+    
+    const hasPasswordUsers = !!passwordUser || !!superAdmin;
+    
     res.json({
       googleEnabled: oauthService.isGoogleConfigured(),
       microsoftEnabled: oauthService.isMicrosoftConfigured(),
       magicLinkEnabled: !!process.env.RESEND_API_KEY,
-      passwordLoginEnabled: !!passwordUser,
+      passwordLoginEnabled: hasPasswordUsers,
     });
   } catch (error) {
     console.error('Auth config error:', error);
