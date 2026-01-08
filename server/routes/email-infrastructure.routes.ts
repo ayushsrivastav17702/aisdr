@@ -174,13 +174,13 @@ router.patch("/sending-domains/:id", authenticate, requireAdmin, async (req, res
       return res.status(403).json({ error: "Organization context required" });
     }
 
-    const allowedFields = ['isActive', 'isPrimary'];
     const updateData: Record<string, any> = { updatedAt: new Date() };
     
-    for (const field of allowedFields) {
-      if (req.body[field] !== undefined) {
-        updateData[field] = req.body[field];
-      }
+    if (req.body.isActive !== undefined) {
+      updateData.isActive = req.body.isActive;
+    }
+    if (req.body.isPrimary !== undefined) {
+      updateData.isPrimary = req.body.isPrimary;
     }
 
     if (req.body.isPrimary === true) {
