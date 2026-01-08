@@ -26,6 +26,7 @@ import {
   RefreshCwIcon
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { WorkflowProgressTracker } from "@/components/workflow-progress-tracker";
 
 interface EmailActivityStats {
   emailsSentToday: number;
@@ -416,52 +417,7 @@ export default function SDRDashboard() {
           </CardContent>
         </Card>
 
-        {workflowStage && (
-          <Card data-testid="card-workflow-status">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <CheckCircle2Icon className="w-5 h-5" />
-                Workflow Status
-              </CardTitle>
-              <CardDescription>Your current workflow stage</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center gap-4 mb-4">
-                <Badge variant="outline" className="text-lg px-4 py-2">
-                  {workflowStage.currentStage.charAt(0).toUpperCase() + workflowStage.currentStage.slice(1)}
-                </Badge>
-              </div>
-
-              {workflowStage.blockingReasons.length > 0 ? (
-                <Alert variant="destructive">
-                  <AlertTriangleIcon className="h-4 w-4" />
-                  <AlertTitle>Workflow Blocked</AlertTitle>
-                  <AlertDescription>
-                    <ul className="list-disc list-inside mt-2 space-y-1">
-                      {workflowStage.blockingReasons.map((reason: any, i: number) => (
-                        <li key={i}>{reason.message || reason.code || 'Unknown issue'}</li>
-                      ))}
-                    </ul>
-                  </AlertDescription>
-                </Alert>
-              ) : (
-                <div className="flex items-center gap-2 text-green-500">
-                  <CheckCircle2Icon className="w-5 h-5" />
-                  <span>No blocking issues</span>
-                </div>
-              )}
-
-              <div className="mt-4 pt-4 border-t">
-                <Link href="/sdr-workflow">
-                  <Button variant="outline" className="w-full" data-testid="button-view-workflow">
-                    View Full Workflow
-                    <ArrowRightIcon className="w-4 h-4 ml-2" />
-                  </Button>
-                </Link>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+        <WorkflowProgressTracker />
       </div>
     </div>
   );
