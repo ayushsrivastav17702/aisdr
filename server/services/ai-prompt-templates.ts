@@ -24,11 +24,25 @@ PROSPECT DETAILS:
 INCREFF SOLUTIONS (use these specific details):
 {{contentLibrary}}
 
+TONE SETTING: {{tone}}
+- If "professional": Use formal language, complete sentences, avoid contractions
+- If "casual": Use conversational language, contractions allowed, friendly but not unprofessional
+- If "friendly": Warm and approachable, like reaching out to a colleague
+- If "urgent": Direct and action-oriented, emphasize time-sensitivity
+
 CRITICAL RULES:
 1. **Use ONLY the prospect information provided above** - if a field is missing, DO NOT make assumptions or add generic details
 2. **Reference their SPECIFIC role/company** - use their actual job title and company name
 3. **Match their industry** - if they're in fashion/retail/footwear, mention relevant Increff solutions for that vertical
 4. **Be direct and specific** - no fluff, no generic praise, no assumptions
+
+HALLUCINATION PREVENTION (CRITICAL):
+⚠️ If company name is "Unknown" or missing: Use "your company" instead
+⚠️ If industry is "Unknown" or missing: Use role-based language only, do NOT guess the industry
+⚠️ NEVER fabricate company achievements, revenue, news, or recent events
+⚠️ NEVER claim to know specific challenges unless explicitly provided
+⚠️ When data is limited, focus on ROLE-SPECIFIC challenges that are universal to that job title
+⚠️ Do NOT write phrases like "I noticed [company] recently..." unless recent news is explicitly provided
 
 EMAIL STRUCTURE (80 words maximum):
 1. **Subject**: Specific to their role + a clear benefit (e.g., "{{prospectTitle}} - reduce markdown by 26%")
@@ -48,21 +62,24 @@ FORBIDDEN PHRASES:
 ❌ "reaching out to"
 ❌ "leading company"
 ❌ "innovative solutions"
+❌ "I noticed [company] recently..." (unless recent news is provided)
+❌ Any fabricated claims about the company
 ❌ Any generic industry assumptions
 
 REQUIRED:
 ✅ Use their exact job title
-✅ Use their exact company name  
+✅ Use their exact company name (or "your company" if unknown)
 ✅ Include specific numbers from content library (13%, 26%, 36%, etc.)
 ✅ End with a question mark
 ✅ Keep it under 80 words
 ✅ Focus on THEIR problem, not our product
+✅ Match the specified TONE throughout
 
 RESPONSE FORMAT:
 {
   "subject": "Subject line here",
   "body": "Email body here",
-  "reasoning": "Brief explanation of personalization choices"
+  "reasoning": "Brief explanation of personalization choices and tone adherence"
 }
 
 Generate the email now:`;
@@ -78,6 +95,12 @@ PROSPECT CONTEXT:
 PREVIOUS EMAIL CONVERSATION:
 {{previousEmails}}
 
+TONE SETTING: {{tone}}
+- If "professional": Use formal language, complete sentences, avoid contractions
+- If "casual": Use conversational language, contractions allowed, friendly but not unprofessional  
+- If "friendly": Warm and approachable, like reaching out to a colleague
+- If "urgent": Direct and action-oriented, emphasize time-sensitivity
+
 CRITICAL FOLLOW-UP REQUIREMENTS:
 1. **MUST reference the previous email's topic/content** - Show you're following up on the same conversation
 2. Build naturally upon what was discussed in the previous email
@@ -85,7 +108,14 @@ CRITICAL FOLLOW-UP REQUIREMENTS:
 4. Keep it brief (2-3 sentences maximum)
 5. Create gentle urgency without being pushy
 6. Include a different but related call-to-action
-7. Tone: {{tone}}
+7. Match the specified TONE throughout
+
+HALLUCINATION PREVENTION (CRITICAL):
+⚠️ If company is "Unknown": Use "your company" instead
+⚠️ NEVER fabricate what happened since the last email
+⚠️ NEVER claim to have found news or updates about the company
+⚠️ Do NOT invent meetings, calls, or interactions that didn't happen
+⚠️ Stick to role-based value propositions when company data is limited
 
 EXAMPLE GOOD FOLLOW-UP:
 Previous: Discussed inventory challenges at scale
@@ -96,6 +126,7 @@ FORBIDDEN:
 ❌ Ignoring what was discussed in the previous email
 ❌ Generic "just checking in" messages
 ❌ Not referencing the previous conversation
+❌ Fabricating company news or events
 
 If this is step 3 or higher, acknowledge the lack of response professionally and offer an easy out.
 
@@ -107,7 +138,7 @@ RESPONSE FORMAT:
 {
   "subject": "Re: [Reference to previous subject]",
   "body": "Email body here",
-  "reasoning": "Brief explanation of how this follow-up builds on the previous email"
+  "reasoning": "Brief explanation of how this follow-up builds on the previous email and adheres to tone"
 }
 
 Generate the follow-up email that clearly references and builds upon the previous conversation:`;

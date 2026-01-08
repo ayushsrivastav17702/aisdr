@@ -10,6 +10,7 @@ import { eq, and } from "drizzle-orm";
 import { emailQueueService } from "./email-queue.service";
 import { intelligentPersonalizationService } from "./intelligent-personalization.service";
 import { generateEmail } from "./ai-email-generator.service";
+import { resolveTokens, type TokenContext } from "./token-resolution.service";
 import type { RequestContext } from "../storage";
 
 interface ScheduleFirstEmailParams {
@@ -287,6 +288,48 @@ Best regards`;
       const scheduledFor = new Date(Date.now() + delayMs);
 
       console.log(`[SequenceStep] Email scheduled for ${scheduledFor.toISOString()} (delay: ${firstStep.delayDays} days)`);
+
+      // =====================================
+      // STEP 3.5: Resolve custom tokens (including {{custom_ai_line}})
+      // =====================================
+      // Check if content contains {{custom_ai_line}} or other advanced tokens
+      // that need async resolution before queuing
+      const hasCustomAiLine = subject.includes('{{custom_ai_line}}') || body.includes('{{custom_ai_line}}');
+      
+      if (hasCustomAiLine) {
+        console.log(`[SequenceStep] Resolving custom AI tokens for prospect ${prospectId}`);
+        
+        const tokenContext: TokenContext = {
+          prospect,
+          sequenceStep: firstStep.stepOrder,
+        };
+        
+        try {
+          // Resolve tokens in subject
+          if (subject.includes('{{custom_ai_line}}')) {
+            const subjectResult = await resolveTokens(subject, tokenContext);
+            subject = subjectResult.resolvedContent;
+            if (subjectResult.warnings.length > 0) {
+              console.warn(`[SequenceStep] Token warnings in subject:`, subjectResult.warnings);
+            }
+          }
+          
+          // Resolve tokens in body
+          if (body.includes('{{custom_ai_line}}')) {
+            const bodyResult = await resolveTokens(body, tokenContext);
+            body = bodyResult.resolvedContent;
+            if (bodyResult.warnings.length > 0) {
+              console.warn(`[SequenceStep] Token warnings in body:`, bodyResult.warnings);
+            }
+            if (bodyResult.customAiLineGenerated) {
+              console.log(`[SequenceStep] ✅ Custom AI line generated and stored for prospect ${prospectId}`);
+            }
+          }
+        } catch (tokenError) {
+          console.error(`[SequenceStep] Token resolution failed, continuing with original content:`, tokenError);
+          // Continue with unresolved tokens - they'll be handled/warned in email queue
+        }
+      }
 
       // =====================================
       // STEP 4: Add email to queue (BEFORE updating currentStepId)
