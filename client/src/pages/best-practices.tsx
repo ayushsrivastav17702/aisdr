@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { Layout } from "@/components/layout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -132,11 +133,12 @@ export default function BestPracticesPage() {
   };
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold" data-testid="text-page-title">Best Practices Library</h1>
-        <p className="text-muted-foreground mt-1">Templates, guides, and strategies for effective outreach</p>
-      </div>
+    <Layout>
+      <div className="container mx-auto py-6 space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold" data-testid="text-page-title">Best Practices Library</h1>
+          <p className="text-muted-foreground mt-1">Templates, guides, and strategies for effective outreach</p>
+        </div>
 
       <div className="flex flex-col md:flex-row gap-4">
         <div className="relative flex-1">
@@ -367,6 +369,7 @@ export default function BestPracticesPage() {
           ) : null}
         </DialogContent>
       </Dialog>
-    </div>
+      </div>
+    </Layout>
   );
 }

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { Layout } from "@/components/layout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -148,13 +149,14 @@ export default function AEHandoffPage() {
   };
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold" data-testid="text-page-title">AE Handoff Workflow</h1>
-          <p className="text-muted-foreground mt-1">Manage prospect handoffs from SDR to Account Executives</p>
+    <Layout>
+      <div className="container mx-auto py-6 space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold" data-testid="text-page-title">AE Handoff Workflow</h1>
+            <p className="text-muted-foreground mt-1">Manage prospect handoffs from SDR to Account Executives</p>
+          </div>
         </div>
-      </div>
 
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <Card>
@@ -592,6 +594,7 @@ export default function AEHandoffPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+      </div>
+    </Layout>
   );
 }
