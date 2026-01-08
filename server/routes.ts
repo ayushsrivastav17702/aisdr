@@ -43,6 +43,7 @@ import aeHandoffRoutes from "./routes/ae-handoff.routes";
 import waterfallSearchRoutes from "./routes/waterfall-search.routes";
 import managerRoutes from "./routes/manager.routes";
 import sdrWorkflowRoutes from "./routes/sdr-workflow.routes";
+import sdrDashboardRoutes from "./routes/sdr-dashboard.routes";
 import { sdrWorkflowService, WorkflowBlockedError } from "./services/sdr-workflow.service";
 import { hardeningService } from "./services/hardening.service";
 import { aiTrackingService } from "./services/ai-tracking.service";
@@ -2000,6 +2001,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // SDR Workflow routes (9-stage step enforcement)
   app.use("/api/sdr-workflow", sdrWorkflowRoutes);
+
+  // SDR Dashboard routes (personal stats, quota visibility)
+  app.use("/api/sdr", sdrDashboardRoutes);
 
   // Inbox routes (unified reply management)
   app.use("/api/inbox", inboxRouter);
