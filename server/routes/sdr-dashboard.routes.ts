@@ -287,6 +287,90 @@ router.get("/dashboard", authenticate, async (req: Request, res: Response) => {
   }
 });
 
+// Full workflow progress for visualization
+router.get("/workflow-progress", authenticate, async (req: Request, res: Response) => {
+  try {
+    const userId = req.userContext!.userId;
+    
+    const workflowProgress = await db.select()
+      .from(sdrWorkflowProgress)
+      .where(eq(sdrWorkflowProgress.userId, userId))
+      .limit(1);
+    
+    const stages = [
+      { key: "readiness", name: "Readiness", description: "Profile & mailbox setup", completedAtField: "readinessCompletedAt" },
+      { key: "upload", name: "Upload", description: "Prospect import", completedAtField: "uploadCompletedAt" },
+      { key: "enrichment", name: "Enrichment", description: "AI data enrichment", completedAtField: "enrichmentCompletedAt" },
+      { key: "sequence", name: "Sequence", description: "Sequence creation", completedAtField: "sequenceCompletedAt" },
+      { key: "enrollment", name: "Enrollment", description: "Prospect enrollment", completedAtField: "enrollmentCompletedAt" },
+      { key: "activation", name: "Activation", description: "Sequence activation", completedAtField: "activationCompletedAt" },
+      { key: "sending", name: "Sending", description: "Email delivery", completedAtField: "sendingStartedAt" },
+      { key: "replies", name: "Replies", description: "Reply handling", completedAtField: "repliesDetectedAt" },
+      { key: "analytics", name: "Analytics", description: "Performance analysis", completedAtField: "analyticsUnlockedAt" }
+    ];
+    
+    const progress = workflowProgress[0];
+    const currentStage = progress?.currentStage || "readiness";
+    const stageOrder = stages.map(s => s.key);
+    const currentIndex = stageOrder.indexOf(currentStage);
+    
+    const stagesWithStatus = stages.map((stage, index) => {
+      let status: "completed" | "current" | "pending" | "blocked" = "pending";
+      let completedAt: string | null = null;
+      
+      // Handle both existing progress and default "not started" state
+      if (progress) {
+        const fieldName = stage.completedAtField as keyof typeof progress;
+        completedAt = progress[fieldName] as string | null;
+        
+        if (index < currentIndex) {
+          status = "completed";
+        } else if (index === currentIndex) {
+          status = "current";
+          // Check for blocking reasons on current stage
+          const blockingReasons = (progress.blockingReasons || []) as any[];
+          if (blockingReasons.some(r => r.severity === "error")) {
+            status = "blocked";
+          }
+        }
+      } else {
+        // Default state: first stage is current, rest are pending
+        if (index === 0) {
+          status = "current";
+        }
+      }
+      
+      return {
+        ...stage,
+        status,
+        completedAt,
+        index: index + 1
+      };
+    });
+    
+    const blockingReasons = (progress?.blockingReasons || []) as any[];
+    
+    // Calculate progress percentage
+    const completedCount = stagesWithStatus.filter(s => s.status === "completed").length;
+    const progressPercent = Math.round((completedCount / stages.length) * 100);
+    
+    res.json({
+      currentStage,
+      currentStageIndex: currentIndex + 1,
+      totalStages: stages.length,
+      progressPercent,
+      completedCount,
+      stages: stagesWithStatus,
+      blockingReasons,
+      createdAt: progress?.createdAt || null,
+      updatedAt: progress?.updatedAt || null
+    });
+  } catch (error) {
+    console.error("Workflow progress error:", error);
+    res.status(500).json({ error: "Failed to fetch workflow progress" });
+  }
+});
+
 router.get("/quota-bar", authenticate, async (req: Request, res: Response) => {
   try {
     const userId = req.userContext!.userId;
