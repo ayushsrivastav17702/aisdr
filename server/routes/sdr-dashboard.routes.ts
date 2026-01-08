@@ -9,7 +9,7 @@ import {
   emailReplies,
   personalizationResults
 } from "@shared/schema";
-import { eq, and, gte, sql, count, desc } from "drizzle-orm";
+import { eq, and, gte, lt, sql, count, desc, isNotNull } from "drizzle-orm";
 import { authenticate } from "../middleware/auth.middleware";
 
 const router = Router();
@@ -431,6 +431,146 @@ router.get("/quota-bar", authenticate, async (req: Request, res: Response) => {
   } catch (error) {
     console.error("Quota bar error:", error);
     res.status(500).json({ error: "Failed to fetch quota data" });
+  }
+});
+
+// Personal Analytics endpoint with time filters
+router.get("/analytics", authenticate, async (req: Request, res: Response) => {
+  try {
+    const userId = req.userContext!.userId;
+    const { period = "30d" } = req.query;
+    
+    const now = new Date();
+    let startDate: Date;
+    let intervalDays: number;
+    
+    switch (period) {
+      case "7d":
+        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        intervalDays = 1;
+        break;
+      case "30d":
+        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        intervalDays = 1;
+        break;
+      case "90d":
+        startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+        intervalDays = 7;
+        break;
+      default:
+        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+        intervalDays = 1;
+    }
+    
+    // Get daily email stats
+    const emailStats = await db.select({
+      date: sql<string>`DATE(${emails.sentAt})`.as("date"),
+      sent: count(),
+      opened: sql<number>`COUNT(CASE WHEN ${emails.openedAt} IS NOT NULL THEN 1 END)`,
+      replied: sql<number>`COUNT(CASE WHEN ${emails.repliedAt} IS NOT NULL THEN 1 END)`
+    })
+      .from(emails)
+      .where(and(
+        eq(emails.userId, userId),
+        eq(emails.status, "sent"),
+        gte(emails.sentAt, startDate)
+      ))
+      .groupBy(sql`DATE(${emails.sentAt})`)
+      .orderBy(sql`DATE(${emails.sentAt})`);
+    
+    // Get sequence performance
+    const sequencePerformance = await db.select({
+      sequenceId: emails.sequenceId,
+      sequenceName: sequences.name,
+      sent: count(),
+      opened: sql<number>`COUNT(CASE WHEN ${emails.openedAt} IS NOT NULL THEN 1 END)`,
+      replied: sql<number>`COUNT(CASE WHEN ${emails.repliedAt} IS NOT NULL THEN 1 END)`
+    })
+      .from(emails)
+      .leftJoin(sequences, eq(emails.sequenceId, sequences.id))
+      .where(and(
+        eq(emails.userId, userId),
+        eq(emails.status, "sent"),
+        gte(emails.sentAt, startDate),
+        isNotNull(emails.sequenceId)
+      ))
+      .groupBy(emails.sequenceId, sequences.name)
+      .orderBy(desc(count()))
+      .limit(10);
+    
+    // Calculate aggregate metrics
+    const totals = await db.select({
+      totalSent: count(),
+      totalOpened: sql<number>`COUNT(CASE WHEN ${emails.openedAt} IS NOT NULL THEN 1 END)`,
+      totalReplied: sql<number>`COUNT(CASE WHEN ${emails.repliedAt} IS NOT NULL THEN 1 END)`
+    })
+      .from(emails)
+      .where(and(
+        eq(emails.userId, userId),
+        eq(emails.status, "sent"),
+        gte(emails.sentAt, startDate)
+      ));
+    
+    // Get previous period for comparison
+    const previousPeriodStart = new Date(startDate.getTime() - (now.getTime() - startDate.getTime()));
+    const previousTotals = await db.select({
+      totalSent: count(),
+      totalOpened: sql<number>`COUNT(CASE WHEN ${emails.openedAt} IS NOT NULL THEN 1 END)`,
+      totalReplied: sql<number>`COUNT(CASE WHEN ${emails.repliedAt} IS NOT NULL THEN 1 END)`
+    })
+      .from(emails)
+      .where(and(
+        eq(emails.userId, userId),
+        eq(emails.status, "sent"),
+        gte(emails.sentAt, previousPeriodStart),
+        lt(emails.sentAt, startDate)
+      ));
+    
+    const current = totals[0] || { totalSent: 0, totalOpened: 0, totalReplied: 0 };
+    const previous = previousTotals[0] || { totalSent: 0, totalOpened: 0, totalReplied: 0 };
+    
+    const currentOpenRate = current.totalSent > 0 ? (Number(current.totalOpened) / current.totalSent) * 100 : 0;
+    const currentReplyRate = current.totalSent > 0 ? (Number(current.totalReplied) / current.totalSent) * 100 : 0;
+    const previousOpenRate = previous.totalSent > 0 ? (Number(previous.totalOpened) / previous.totalSent) * 100 : 0;
+    const previousReplyRate = previous.totalSent > 0 ? (Number(previous.totalReplied) / previous.totalSent) * 100 : 0;
+    
+    res.json({
+      period,
+      startDate: startDate.toISOString(),
+      endDate: now.toISOString(),
+      trends: emailStats.map(stat => ({
+        date: stat.date,
+        sent: stat.sent,
+        opened: Number(stat.opened),
+        replied: Number(stat.replied),
+        openRate: stat.sent > 0 ? Math.round((Number(stat.opened) / stat.sent) * 100) : 0,
+        replyRate: stat.sent > 0 ? Math.round((Number(stat.replied) / stat.sent) * 100) : 0
+      })),
+      summary: {
+        totalSent: current.totalSent,
+        totalOpened: Number(current.totalOpened),
+        totalReplied: Number(current.totalReplied),
+        openRate: Math.round(currentOpenRate),
+        replyRate: Math.round(currentReplyRate),
+        sentChange: previous.totalSent > 0 
+          ? Math.round(((current.totalSent - previous.totalSent) / previous.totalSent) * 100) 
+          : current.totalSent > 0 ? 100 : 0,
+        openRateChange: Math.round(currentOpenRate - previousOpenRate),
+        replyRateChange: Math.round(currentReplyRate - previousReplyRate)
+      },
+      topSequences: sequencePerformance.map(seq => ({
+        id: seq.sequenceId,
+        name: seq.sequenceName || "Unknown",
+        sent: seq.sent,
+        opened: Number(seq.opened),
+        replied: Number(seq.replied),
+        openRate: seq.sent > 0 ? Math.round((Number(seq.opened) / seq.sent) * 100) : 0,
+        replyRate: seq.sent > 0 ? Math.round((Number(seq.replied) / seq.sent) * 100) : 0
+      }))
+    });
+  } catch (error) {
+    console.error("Personal analytics error:", error);
+    res.status(500).json({ error: "Failed to fetch analytics data" });
   }
 });
 
