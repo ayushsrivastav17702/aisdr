@@ -1,0 +1,151 @@
+C. Email Send, Timing & Threading (TC-SEQ-HARD-21 to 30)
+TC-SEQ-HARD-21: Measure Time-to-Send SLA
+
+Steps
+
+Activate
+
+Track timestamp differences
+
+Expected
+
+Email sent within SLA (e.g. <60s)
+
+TC-SEQ-HARD-22: SMTP Partial Failure
+
+Expected
+
+Retry on failed recipients
+
+No resend to success ones
+
+TC-SEQ-HARD-23: Same Subject, Same Thread
+
+Expected
+
+Follow-ups land in same thread
+
+TC-SEQ-HARD-24: Subject Change Threading Test
+
+Expected
+
+Still threaded using Message-ID / In-Reply-To
+
+TC-SEQ-HARD-25: Reply After Step 1 but Before Step 2 Fires
+
+Expected
+
+Step 2 cancelled
+
+Prospect marked replied
+
+TC-SEQ-HARD-26: Reply Arrives Exactly at Delay Boundary
+
+Expected
+
+No race-triggered follow-up
+
+TC-SEQ-HARD-27: Reply From Alias Email
+
+Expected
+
+Thread still mapped correctly
+
+TC-SEQ-HARD-28: Multiple Replies From Prospect
+
+Expected
+
+Single conversation
+
+No duplicate AI replies
+
+TC-SEQ-HARD-29: Out-of-Office Reply Handling
+
+Expected
+
+No auto-reply escalation
+
+Campaign paused or delayed
+
+TC-SEQ-HARD-30: Spam/Bounce Reply
+
+Expected
+
+Proper classification
+
+Prospect removed
+
+D. Inbox + AI Reply (TC-SEQ-HARD-31 to 40)
+TC-SEQ-HARD-31: Reply Captured <30 Seconds
+
+Expected
+
+Inbox update ≤30s
+
+Notification fired
+
+TC-SEQ-HARD-32: AI Reply Auto-Draft Generation
+
+Expected
+
+Context-aware reply
+
+Correct thread
+
+TC-SEQ-HARD-33: AI Reply Hallucination Test
+
+Expected
+
+No invented facts
+
+Uses known context only
+
+TC-SEQ-HARD-34: AI Reply Delay Under Load
+
+Expected
+
+Draft within SLA
+
+Queue visible if delayed
+
+TC-SEQ-HARD-35: AI Reply With Missing Context
+
+Expected
+
+Neutral fallback reply
+
+TC-SEQ-HARD-36: AI Reply + Manual Edit
+
+Expected
+
+Edited content sent
+
+AI version logged
+
+TC-SEQ-HARD-37: Reply From Forwarded Thread
+
+Expected
+
+Correct prospect mapping
+
+TC-SEQ-HARD-38: Reply After Campaign End
+
+Expected
+
+Still captured
+
+No reactivation
+
+TC-SEQ-HARD-39: Multiple Sequences Same Prospect
+
+Expected
+
+Only one active thread
+
+TC-SEQ-HARD-40: System Restart During Reply Processing
+
+Expected
+
+No lost replies
+
+Idempotent ingestion
