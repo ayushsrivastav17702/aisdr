@@ -304,7 +304,7 @@ export default function APIDocumentationPage() {
                     }}
                     response={{
                       message: "Invitation accepted successfully",
-                      token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+                      token: "<jwt_token>",
                       user: {
                         id: "123",
                         email: "newuser@example.com",
