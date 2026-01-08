@@ -15,7 +15,7 @@ import { observability } from "./observability.service";
  * Supports fallback syntax: {{fieldName|fallback text}}
  * Returns both the rendered content and validation info about unresolved fields.
  */
-function renderMergeFields(content: string, prospect: any): { 
+export function renderMergeFields(content: string, prospect: any): { 
   rendered: string; 
   unresolvedFields: string[];
   usedFallbacks: string[];
@@ -43,7 +43,7 @@ function renderMergeFields(content: string, prospect: any): {
     jobTitle: prospect.title || prospect.jobTitle || '',
     job_title: prospect.title || prospect.jobTitle || '',
     position: prospect.title || prospect.jobTitle || '',
-    industry: prospect.industry || '',
+    industry: prospect.industry || prospect.companyIndustry || '',
     city: prospect.city || '',
     state: prospect.state || '',
     country: prospect.country || '',

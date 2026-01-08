@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import type { Prospect } from '@shared/schema';
+import { renderMergeFields } from '../services/email-queue.service';
 
 const mockProspect: Prospect = {
   id: 'parity-prospect-123',
@@ -89,97 +90,6 @@ vi.mock('../services/openai-helper', () => ({
   }
 }));
 
-function renderMergeFieldsEmulation(content: string, prospect: any): { rendered: string; unresolvedFields: string[]; usedFallbacks: string[] } {
-  if (!content || !prospect) return { rendered: content, unresolvedFields: [], usedFallbacks: [] };
-  
-  const unresolvedFields: string[] = [];
-  const usedFallbacks: string[] = [];
-  
-  const mergeData: Record<string, string> = {
-    firstName: prospect.firstName || '',
-    first_name: prospect.firstName || '',
-    lastName: prospect.lastName || '',
-    last_name: prospect.lastName || '',
-    fullName: [prospect.firstName, prospect.lastName].filter(Boolean).join(' ') || '',
-    full_name: [prospect.firstName, prospect.lastName].filter(Boolean).join(' ') || '',
-    prospectName: prospect.firstName || '',
-    prospect_name: prospect.firstName || '',
-    email: prospect.primaryEmail || prospect.email || '',
-    companyName: prospect.companyName || prospect.company || '',
-    company_name: prospect.companyName || prospect.company || '',
-    company: prospect.companyName || prospect.company || '',
-    title: prospect.title || prospect.jobTitle || '',
-    jobTitle: prospect.title || prospect.jobTitle || '',
-    job_title: prospect.title || prospect.jobTitle || '',
-    industry: prospect.industry || prospect.companyIndustry || '',
-    city: prospect.city || '',
-    seniority: prospect.seniority || '',
-  };
-  
-  const defaultFallbacks: Record<string, string> = {
-    firstName: 'there',
-    first_name: 'there',
-    fullName: 'there',
-    full_name: 'there',
-    prospect_name: 'there',
-    prospectName: 'there',
-    companyName: 'your company',
-    company_name: 'your company',
-    company: 'your company',
-    title: 'your role',
-    jobTitle: 'your role',
-    job_title: 'your role',
-    industry: 'your industry',
-    location: 'your area',
-    seniority: 'leader',
-  };
-  
-  const normalizeKey = (key: string): string[] => {
-    const keys = [key];
-    keys.push(key.replace(/([A-Z])/g, '_$1').toLowerCase());
-    keys.push(key.replace(/_([a-z])/g, (_, c) => c.toUpperCase()));
-    return keys;
-  };
-  
-  const getValue = (fieldName: string): string | undefined => {
-    for (const key of normalizeKey(fieldName)) {
-      if (mergeData[key] && mergeData[key].trim()) {
-        return mergeData[key];
-      }
-    }
-    return undefined;
-  };
-  
-  const getFallback = (fieldName: string): string | undefined => {
-    for (const key of normalizeKey(fieldName)) {
-      if (defaultFallbacks[key]) {
-        return defaultFallbacks[key];
-      }
-    }
-    return undefined;
-  };
-  
-  let rendered = content.replace(/\{\{(\w+)(?:\|([^}]*))?\}\}/g, (match, fieldName, fallback) => {
-    const value = getValue(fieldName);
-    if (value) {
-      return value;
-    }
-    if (fallback !== undefined) {
-      usedFallbacks.push(`${fieldName}→"${fallback}"`);
-      return fallback;
-    }
-    const defaultFallback = getFallback(fieldName);
-    if (defaultFallback) {
-      usedFallbacks.push(`${fieldName}→"${defaultFallback}"`);
-      return defaultFallback;
-    }
-    unresolvedFields.push(fieldName);
-    return '';
-  });
-  
-  return { rendered, unresolvedFields, usedFallbacks };
-}
-
 describe('Token Resolution Parity Tests', () => {
   let resolveTokens: typeof import('../services/token-resolution.service').resolveTokens;
 
@@ -210,7 +120,7 @@ describe('Token Resolution Parity Tests', () => {
 
     it('should match email-queue fallbacks for missing first_name', async () => {
       const tokenServiceResult = await resolveTokens('Hi {{first_name}}', { prospect: minimalProspect });
-      const emailQueueResult = renderMergeFieldsEmulation('Hi {{first_name}}', minimalProspect);
+      const emailQueueResult = renderMergeFields('Hi {{first_name}}', minimalProspect);
 
       expect(tokenServiceResult.resolvedContent).toBe('Hi there');
       expect(emailQueueResult.rendered).toBe('Hi there');
@@ -218,7 +128,7 @@ describe('Token Resolution Parity Tests', () => {
 
     it('should match email-queue fallbacks for missing company', async () => {
       const tokenServiceResult = await resolveTokens('At {{company}}', { prospect: minimalProspect });
-      const emailQueueResult = renderMergeFieldsEmulation('At {{company}}', minimalProspect);
+      const emailQueueResult = renderMergeFields('At {{company}}', minimalProspect);
 
       expect(tokenServiceResult.resolvedContent).toBe('At your company');
       expect(emailQueueResult.rendered).toBe('At your company');
@@ -226,7 +136,7 @@ describe('Token Resolution Parity Tests', () => {
 
     it('should match email-queue fallbacks for missing job_title', async () => {
       const tokenServiceResult = await resolveTokens('As {{job_title}}', { prospect: minimalProspect });
-      const emailQueueResult = renderMergeFieldsEmulation('As {{job_title}}', minimalProspect);
+      const emailQueueResult = renderMergeFields('As {{job_title}}', minimalProspect);
 
       expect(tokenServiceResult.resolvedContent).toBe('As your role');
       expect(emailQueueResult.rendered).toBe('As your role');
@@ -238,7 +148,7 @@ describe('Token Resolution Parity Tests', () => {
       const template = 'Hi {{first_name|friend}} at {{company|a great company}}';
 
       const tokenServiceResult = await resolveTokens(template, { prospect: minimalProspect });
-      const emailQueueResult = renderMergeFieldsEmulation(template, minimalProspect);
+      const emailQueueResult = renderMergeFields(template, minimalProspect);
 
       expect(tokenServiceResult.resolvedContent).toBe('Hi friend at a great company');
       expect(emailQueueResult.rendered).toBe('Hi friend at a great company');
@@ -253,10 +163,28 @@ describe('Token Resolution Parity Tests', () => {
     });
 
     it('should document that email-queue renderMergeFields handles standard tokens AT SEND TIME', () => {
-      const result = renderMergeFieldsEmulation('Hi {{first_name}} at {{company}}', mockProspect);
+      const result = renderMergeFields('Hi {{first_name}} at {{company}}', mockProspect);
       
       expect(result.rendered).toBe('Hi Charlie at MegaCorp');
       expect(result.unresolvedFields).toHaveLength(0);
+    });
+  });
+
+  describe('Industry Field Parity', () => {
+    it('should both resolve {{industry}} from companyIndustry', async () => {
+      const tokenServiceResult = await resolveTokens('In {{industry}}', { prospect: mockProspect });
+      const emailQueueResult = renderMergeFields('In {{industry}}', mockProspect);
+
+      expect(tokenServiceResult.resolvedContent).toBe('In Manufacturing');
+      expect(emailQueueResult.rendered).toBe('In Manufacturing');
+    });
+
+    it('should both use fallback when companyIndustry is missing', async () => {
+      const tokenServiceResult = await resolveTokens('In {{industry}}', { prospect: minimalProspect });
+      const emailQueueResult = renderMergeFields('In {{industry}}', minimalProspect);
+
+      expect(tokenServiceResult.resolvedContent).toBe('In your industry');
+      expect(emailQueueResult.rendered).toBe('In your industry');
     });
   });
 });
