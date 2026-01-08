@@ -1287,6 +1287,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
 
         if (enrichResult.email) {
+          // Build field sources for attribution tracking
+          const existingFieldSources = (prospect.fieldSources as Record<string, any>) || {};
+          const now = new Date().toISOString();
+          const newFieldSources: Record<string, { source: string; provider?: string; timestamp: string }> = {
+            ...existingFieldSources,
+            primaryEmail: {
+              source: 'enrichment',
+              provider: enrichResult.source,
+              timestamp: now,
+            },
+          };
+
           // Update prospect with found email
           const updates: any = {
             primaryEmail: enrichResult.email,
@@ -1294,13 +1306,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
             enrichmentData: {
               ...(prospect.enrichmentData || {}),
               ...enrichResult.enrichmentData,
-              waterfallEnrichedAt: new Date().toISOString(),
+              waterfallEnrichedAt: now,
               emailSource: enrichResult.source,
-            }
+            },
+            fieldSources: newFieldSources,
           };
 
           if (enrichResult.phone && !prospect.phoneNumber) {
             updates.phoneNumber = enrichResult.phone;
+            newFieldSources.phoneNumber = {
+              source: 'enrichment',
+              provider: enrichResult.source,
+              timestamp: now,
+            };
+            updates.fieldSources = newFieldSources;
           }
 
           const updated = await storage.updateProspect(req.userContext!, prospectId, updates);
