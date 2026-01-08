@@ -244,7 +244,8 @@ class AutomationService {
             const [newProspect] = await db.insert(prospectsTable)
               .values({
                 ...prospectData,
-                userId // CRITICAL: Set userId for multi-tenancy
+                userId, // CRITICAL: Set userId for multi-tenancy
+                source: 'automation',
               })
               .returning();
             prospectId = newProspect.id;
