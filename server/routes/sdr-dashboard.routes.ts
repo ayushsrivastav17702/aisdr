@@ -9,9 +9,10 @@ import {
   emailReplies,
   personalizationResults,
   userProfiles,
-  userActivityLogs
+  userActivityLogs,
+  users
 } from "@shared/schema";
-import { eq, and, gte, lt, sql, count, desc, isNotNull } from "drizzle-orm";
+import { eq, and, gte, lt, sql, count, desc, isNotNull, ne } from "drizzle-orm";
 import { authenticate } from "../middleware/auth.middleware";
 
 const router = Router();
@@ -573,6 +574,92 @@ router.get("/analytics", authenticate, async (req: Request, res: Response) => {
   } catch (error) {
     console.error("Personal analytics error:", error);
     res.status(500).json({ error: "Failed to fetch analytics data" });
+  }
+});
+
+// Team Benchmarking - TC-SDR-AN-03
+router.get("/team-benchmark", authenticate, async (req: Request, res: Response) => {
+  try {
+    const userId = req.userContext!.userId;
+    const organizationId = req.userContext!.organizationId;
+    const { period = "30d" } = req.query;
+    
+    const now = new Date();
+    let startDate: Date;
+    
+    switch (period) {
+      case "7d":
+        startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+        break;
+      case "90d":
+        startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+        break;
+      default:
+        startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    }
+    
+    // Get current user's metrics
+    const userMetrics = await db.select({
+      totalSent: count(),
+      totalOpened: sql<number>`COUNT(CASE WHEN ${emails.openedAt} IS NOT NULL THEN 1 END)`,
+      totalReplied: sql<number>`COUNT(CASE WHEN ${emails.repliedAt} IS NOT NULL THEN 1 END)`
+    })
+      .from(emails)
+      .where(and(
+        eq(emails.userId, userId),
+        eq(emails.status, "sent"),
+        gte(emails.sentAt, startDate)
+      ));
+    
+    // Get team average metrics (all users in same org, excluding current user)
+    const teamMetrics = await db.select({
+      totalSent: count(),
+      totalOpened: sql<number>`COUNT(CASE WHEN ${emails.openedAt} IS NOT NULL THEN 1 END)`,
+      totalReplied: sql<number>`COUNT(CASE WHEN ${emails.repliedAt} IS NOT NULL THEN 1 END)`,
+      userCount: sql<number>`COUNT(DISTINCT ${emails.userId})`
+    })
+      .from(emails)
+      .innerJoin(users, eq(emails.userId, users.id))
+      .where(and(
+        sql`${users.organizationId} = ${organizationId}`,
+        ne(emails.userId, userId),
+        eq(emails.status, "sent"),
+        gte(emails.sentAt, startDate)
+      ));
+    
+    const user = userMetrics[0] || { totalSent: 0, totalOpened: 0, totalReplied: 0 };
+    const team = teamMetrics[0] || { totalSent: 0, totalOpened: 0, totalReplied: 0, userCount: 0 };
+    
+    const userOpenRate = user.totalSent > 0 ? (Number(user.totalOpened) / user.totalSent) * 100 : 0;
+    const userReplyRate = user.totalSent > 0 ? (Number(user.totalReplied) / user.totalSent) * 100 : 0;
+    
+    const teamUserCount = Math.max(1, Number(team.userCount) || 1);
+    const teamAvgSent = team.totalSent / teamUserCount;
+    const teamOpenRate = team.totalSent > 0 ? (Number(team.totalOpened) / team.totalSent) * 100 : 0;
+    const teamReplyRate = team.totalSent > 0 ? (Number(team.totalReplied) / team.totalSent) * 100 : 0;
+    
+    res.json({
+      period,
+      you: {
+        totalSent: user.totalSent,
+        openRate: Math.round(userOpenRate * 10) / 10,
+        replyRate: Math.round(userReplyRate * 10) / 10
+      },
+      teamAverage: {
+        totalSent: Math.round(teamAvgSent),
+        openRate: Math.round(teamOpenRate * 10) / 10,
+        replyRate: Math.round(teamReplyRate * 10) / 10
+      },
+      comparison: {
+        sentVsTeam: teamAvgSent > 0 ? Math.round(((user.totalSent - teamAvgSent) / teamAvgSent) * 100) : 0,
+        openRateVsTeam: Math.round((userOpenRate - teamOpenRate) * 10) / 10,
+        replyRateVsTeam: Math.round((userReplyRate - teamReplyRate) * 10) / 10
+      },
+      teamSize: teamUserCount
+    });
+  } catch (error) {
+    console.error("Team benchmark error:", error);
+    res.status(500).json({ error: "Failed to fetch team benchmark data" });
   }
 });
 
