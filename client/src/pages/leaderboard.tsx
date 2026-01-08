@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { Layout } from "@/components/layout";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -104,12 +105,13 @@ export default function LeaderboardPage() {
   };
 
   return (
-    <div className="container mx-auto py-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold" data-testid="text-page-title">Leaderboard & Gamification</h1>
-          <p className="text-muted-foreground mt-1">Track performance and earn badges</p>
-        </div>
+    <Layout>
+      <div className="container mx-auto py-6 space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold" data-testid="text-page-title">Leaderboard & Gamification</h1>
+            <p className="text-muted-foreground mt-1">Track performance and earn badges</p>
+          </div>
         <div className="flex gap-2">
           <Button
             variant="outline"
@@ -331,7 +333,8 @@ export default function LeaderboardPage() {
             </CardContent>
           </Card>
         </div>
+        </div>
       </div>
-    </div>
+    </Layout>
   );
 }
