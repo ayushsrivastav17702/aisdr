@@ -52,7 +52,6 @@ router.patch("/deliverability-settings", authenticate, requireAdmin, async (req,
       return res.status(403).json({ error: "Organization context required" });
     }
 
-    const updateData: Record<string, any> = { updatedAt: new Date() };
     const allowedFields = [
       'globalDailyLimit', 'globalHourlyLimit', 'perProspectMaxEmails', 'minTimeBetweenEmailsHours',
       'hardBounceAction', 'softBounceRetries', 'softBounceAction', 'bounceThresholdPercent',
@@ -62,13 +61,16 @@ router.patch("/deliverability-settings", authenticate, requireAdmin, async (req,
       'linkTrackingEnabled', 'excludeLinksFromTracking',
       'spamComplaintThreshold', 'spamAlertEmails',
       'blacklistMonitoringEnabled', 'blacklistAlertEmails', 'monitoredBlacklists'
-    ];
+    ] as const;
     
-    for (const field of allowedFields) {
-      if (req.body[field] !== undefined) {
-        updateData[field] = req.body[field];
-      }
-    }
+    const allowedSet = new Set<string>(allowedFields);
+    const filteredEntries = Object.entries(req.body).filter(
+      ([key]) => allowedSet.has(key)
+    );
+    const updateData: Record<string, any> = {
+      updatedAt: new Date(),
+      ...Object.fromEntries(filteredEntries)
+    };
 
     let [settings] = await db
       .select()
@@ -370,7 +372,6 @@ router.patch("/footer-compliance", authenticate, requireAdmin, async (req, res) 
       return res.status(403).json({ error: "Organization context required" });
     }
 
-    const updateData: Record<string, any> = { updatedAt: new Date() };
     const allowedFields = [
       'physicalAddressRequired', 'physicalAddress',
       'unsubscribeLinkRequired', 'unsubscribeLinkText', 'unsubscribeLinkPlacement',
@@ -378,13 +379,16 @@ router.patch("/footer-compliance", authenticate, requireAdmin, async (req, res) 
       'includePrivacyLink', 'privacyPolicyUrl',
       'includeTermsLink', 'termsUrl',
       'customFooterHtml', 'customFooterEnabled'
-    ];
+    ] as const;
     
-    for (const field of allowedFields) {
-      if (req.body[field] !== undefined) {
-        updateData[field] = req.body[field];
-      }
-    }
+    const allowedSet = new Set<string>(allowedFields);
+    const filteredEntries = Object.entries(req.body).filter(
+      ([key]) => allowedSet.has(key)
+    );
+    const updateData: Record<string, any> = {
+      updatedAt: new Date(),
+      ...Object.fromEntries(filteredEntries)
+    };
 
     let [settings] = await db
       .select()
