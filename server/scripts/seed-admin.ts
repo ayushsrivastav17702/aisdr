@@ -46,7 +46,6 @@ async function seedAdmin() {
     console.log('---');
     console.log('Login credentials:');
     console.log('Email:', adminEmail);
-    console.log('Password:', adminPassword);
     console.log('---');
     console.log('⚠️  IMPORTANT: Change the default password after first login!');
 
