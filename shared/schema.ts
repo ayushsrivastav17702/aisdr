@@ -5,6 +5,7 @@ import { z } from "zod";
 import { relations } from "drizzle-orm";
 
 // Enums
+export const prospectSourceEnum = pgEnum("prospect_source", ["manual", "csv", "ai_search", "automation", "api"]);
 export const enrichmentStatusEnum = pgEnum("enrichment_status", ["new", "partial", "enriched", "failed"]);
 export const jobStatusEnum = pgEnum("job_status", ["queued", "running", "completed", "failed", "cancelled"]);
 export const jobTypeEnum = pgEnum("job_type", ["enrichment", "import", "search"]);
@@ -37,6 +38,16 @@ export const prospects = pgTable("prospects", {
   tags: text("tags").array(),
   enrichmentStatus: enrichmentStatusEnum("enrichment_status").default("new"),
   enrichmentData: jsonb("enrichment_data"),
+  source: prospectSourceEnum("source").default("manual"),
+  fieldSources: jsonb("field_sources").$type<{
+    primaryEmail?: { source: string; provider?: string; timestamp: string };
+    companyName?: { source: string; provider?: string; timestamp: string };
+    jobTitle?: { source: string; provider?: string; timestamp: string };
+    companyIndustry?: { source: string; provider?: string; timestamp: string };
+    companySize?: { source: string; provider?: string; timestamp: string };
+    linkedinUrl?: { source: string; provider?: string; timestamp: string };
+    phoneNumber?: { source: string; provider?: string; timestamp: string };
+  }>(),
   leadScore: integer("lead_score").default(0),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -45,6 +56,7 @@ export const prospects = pgTable("prospects", {
   emailIdx: index("prospects_email_idx").on(table.primaryEmail),
   apolloIdIdx: index("prospects_apollo_id_idx").on(table.apolloId),
   createdAtIdx: index("prospects_created_at_idx").on(table.createdAt),
+  sourceIdx: index("prospects_source_idx").on(table.source),
 }));
 
 // Searches table
