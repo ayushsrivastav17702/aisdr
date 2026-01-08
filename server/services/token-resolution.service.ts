@@ -18,43 +18,66 @@ export interface TokenContext {
 
 const STANDARD_TOKENS: Record<string, (ctx: TokenContext) => string | undefined> = {
   'first_name': (ctx) => ctx.prospect.firstName || undefined,
+  'firstname': (ctx) => ctx.prospect.firstName || undefined,
   'last_name': (ctx) => ctx.prospect.lastName || undefined,
+  'lastname': (ctx) => ctx.prospect.lastName || undefined,
   'full_name': (ctx) => ctx.prospect.fullName || `${ctx.prospect.firstName || ''} ${ctx.prospect.lastName || ''}`.trim() || undefined,
+  'fullname': (ctx) => ctx.prospect.fullName || `${ctx.prospect.firstName || ''} ${ctx.prospect.lastName || ''}`.trim() || undefined,
+  'prospect_name': (ctx) => ctx.prospect.firstName || undefined,
+  'prospectname': (ctx) => ctx.prospect.firstName || undefined,
   'company': (ctx) => ctx.prospect.companyName || undefined,
   'company_name': (ctx) => ctx.prospect.companyName || undefined,
+  'companyname': (ctx) => ctx.prospect.companyName || undefined,
   'job_title': (ctx) => ctx.prospect.jobTitle || undefined,
+  'jobtitle': (ctx) => ctx.prospect.jobTitle || undefined,
   'title': (ctx) => ctx.prospect.jobTitle || undefined,
   'industry': (ctx) => ctx.prospect.companyIndustry || undefined,
   'company_size': (ctx) => ctx.prospect.companySize || undefined,
+  'companysize': (ctx) => ctx.prospect.companySize || undefined,
   'location': (ctx) => ctx.prospect.contactLocation || ctx.prospect.companyLocation || undefined,
   'city': (ctx) => extractCity(ctx.prospect.contactLocation || ctx.prospect.companyLocation),
   'email': (ctx) => ctx.prospect.primaryEmail || undefined,
   'phone': (ctx) => ctx.prospect.phoneNumber || undefined,
   'linkedin_url': (ctx) => ctx.prospect.linkedinUrl || undefined,
+  'linkedinurl': (ctx) => ctx.prospect.linkedinUrl || undefined,
   'department': (ctx) => ctx.prospect.department || undefined,
   'seniority': (ctx) => ctx.prospect.seniority || undefined,
   'sender_name': (ctx) => ctx.senderName || undefined,
+  'sendername': (ctx) => ctx.senderName || undefined,
   'sender_company': (ctx) => ctx.companyName || 'Increff',
+  'sendercompany': (ctx) => ctx.companyName || 'Increff',
   'sequence_step': (ctx) => ctx.sequenceStep?.toString() || undefined,
+  'sequencestep': (ctx) => ctx.sequenceStep?.toString() || undefined,
   'sequence_name': (ctx) => ctx.sequenceName || undefined,
+  'sequencename': (ctx) => ctx.sequenceName || undefined,
 };
 
 const TOKEN_FALLBACKS: Record<string, string> = {
   'first_name': 'there',
+  'firstname': 'there',
   'last_name': '',
+  'lastname': '',
   'full_name': 'there',
+  'fullname': 'there',
+  'prospect_name': 'there',
+  'prospectname': 'there',
   'company': 'your company',
   'company_name': 'your company',
+  'companyname': 'your company',
   'job_title': 'your role',
+  'jobtitle': 'your role',
   'title': 'your role',
   'industry': 'your industry',
   'company_size': 'your organization',
+  'companysize': 'your organization',
   'location': 'your area',
   'city': 'your city',
   'department': 'your team',
   'seniority': 'professional',
   'sender_name': 'Your Account Team',
+  'sendername': 'Your Account Team',
   'sender_company': 'Increff',
+  'sendercompany': 'Increff',
 };
 
 function extractCity(location: string | undefined | null): string | undefined {
@@ -72,26 +95,31 @@ export async function resolveTokens(
   let customAiLineGenerated = false;
   let resolvedContent = content;
 
-  const tokenPattern = /\{\{([a-zA-Z_]+)\}\}/g;
-  const foundTokens = new Set<string>();
+  const tokenPatternWithFallback = /\{\{([a-zA-Z_]+)(?:\|([^}]*))?\}\}/g;
+  const foundTokens: Array<{ tokenName: string; inlineFallback?: string; fullMatch: string }> = [];
   
   let match;
-  while ((match = tokenPattern.exec(content)) !== null) {
-    foundTokens.add(match[1].toLowerCase());
+  while ((match = tokenPatternWithFallback.exec(content)) !== null) {
+    foundTokens.push({
+      tokenName: match[1].toLowerCase(),
+      inlineFallback: match[2],
+      fullMatch: match[0],
+    });
   }
 
-  for (const tokenName of Array.from(foundTokens)) {
-    const tokenPlaceholder = new RegExp(`\\{\\{${tokenName}\\}\\}`, 'gi');
+  for (const { tokenName, inlineFallback, fullMatch } of foundTokens) {
+    const tokenPlaceholder = fullMatch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const tokenRegex = new RegExp(tokenPlaceholder, 'g');
 
     if (tokenName === 'custom_ai_line') {
       try {
         const aiLine = await generateCustomAiLine(context);
-        resolvedContent = resolvedContent.replace(tokenPlaceholder, aiLine);
+        resolvedContent = resolvedContent.replace(tokenRegex, aiLine);
         customAiLineGenerated = true;
         console.log(`✅ Generated custom AI line for prospect ${context.prospect.id}`);
       } catch (error) {
-        const fallback = generateFallbackAiLine(context);
-        resolvedContent = resolvedContent.replace(tokenPlaceholder, fallback);
+        const fallback = inlineFallback || generateFallbackAiLine(context);
+        resolvedContent = resolvedContent.replace(tokenRegex, fallback);
         warnings.push(`custom_ai_line: AI generation failed, using fallback`);
         console.warn(`⚠️ Custom AI line generation failed for prospect ${context.prospect.id}:`, error);
       }
@@ -102,11 +130,11 @@ export async function resolveTokens(
     if (resolver) {
       const value = resolver(context);
       if (value) {
-        resolvedContent = resolvedContent.replace(tokenPlaceholder, value);
+        resolvedContent = resolvedContent.replace(tokenRegex, value);
       } else {
-        const fallback = TOKEN_FALLBACKS[tokenName];
+        const fallback = inlineFallback !== undefined ? inlineFallback : TOKEN_FALLBACKS[tokenName];
         if (fallback !== undefined) {
-          resolvedContent = resolvedContent.replace(tokenPlaceholder, fallback);
+          resolvedContent = resolvedContent.replace(tokenRegex, fallback);
           warnings.push(`${tokenName}: missing value, using fallback "${fallback}"`);
           console.warn(`⚠️ Token {{${tokenName}}} missing for prospect ${context.prospect.id}, using fallback`);
         } else {
@@ -116,9 +144,15 @@ export async function resolveTokens(
         }
       }
     } else {
-      unresolvedTokens.push(tokenName);
-      warnings.push(`${tokenName}: unknown token`);
-      console.warn(`⚠️ Unknown token {{${tokenName}}} in content`);
+      const fallback = inlineFallback;
+      if (fallback !== undefined) {
+        resolvedContent = resolvedContent.replace(tokenRegex, fallback);
+        warnings.push(`${tokenName}: unknown token, using inline fallback "${fallback}"`);
+      } else {
+        unresolvedTokens.push(tokenName);
+        warnings.push(`${tokenName}: unknown token`);
+        console.warn(`⚠️ Unknown token {{${tokenName}}} in content`);
+      }
     }
   }
 
