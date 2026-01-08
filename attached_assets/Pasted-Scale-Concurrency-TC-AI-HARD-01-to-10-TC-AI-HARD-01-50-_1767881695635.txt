@@ -1,0 +1,283 @@
+Scale & Concurrency (TC-AI-HARD-01 to 10)
+TC-AI-HARD-01: 50 Prospects Personalised Simultaneously
+
+Expected
+
+No timeout
+
+Each gets unique output
+
+TC-AI-HARD-02: 50 Parallel LinkedIn Scrapes
+
+Expected
+
+Rate limits respected
+
+Partial success handled
+
+TC-AI-HARD-03: AI Token Budget Stress
+
+Expected
+
+Prompt truncation safe
+
+No LLM failures
+
+TC-AI-HARD-04: Parallel AI Calls Ordering
+
+Expected
+
+Correct prospect ↔ output mapping
+
+TC-AI-HARD-05: Mixed Data Quality Batch
+
+Expected
+
+Clean prospects high-quality
+
+Weak prospects neutral copy
+
+TC-AI-HARD-06: AI Provider Partial Outage
+
+Expected
+
+Fallback provider used
+
+No campaign crash
+
+TC-AI-HARD-07: Batch Cancel Mid-Processing
+
+Expected
+
+Graceful stop
+
+No half-written data
+
+TC-AI-HARD-08: Memory Leak Test (Long Batch)
+
+Expected
+
+Stable memory usage
+
+TC-AI-HARD-09: Retry Storm Prevention
+
+Expected
+
+Exponential backoff
+
+No API flooding
+
+TC-AI-HARD-10: Batch Resume After Failure
+
+Expected
+
+Continues from last success
+
+B. LinkedIn + News Intelligence (TC-AI-HARD-11 to 20)
+TC-AI-HARD-11: No Recent LinkedIn Activity
+
+Expected
+
+Safe fallback language
+
+TC-AI-HARD-12: Conflicting LinkedIn + News Signals
+
+Expected
+
+Priority logic respected
+
+TC-AI-HARD-13: News From Same Company, Different Region
+
+Expected
+
+Context relevance check
+
+TC-AI-HARD-14: Fake / Low-Authority News
+
+Expected
+
+Ignored
+
+Not referenced
+
+TC-AI-HARD-15: Very Recent News (<24 hrs)
+
+Expected
+
+Correct mention
+
+No speculation
+
+TC-AI-HARD-16: Old News (>1 year)
+
+Expected
+
+Not used
+
+TC-AI-HARD-17: LinkedIn Job Change Detected
+
+Expected
+
+Congratulatory tone used
+
+TC-AI-HARD-18: Multiple Recent Events
+
+Expected
+
+Best relevance selected
+
+TC-AI-HARD-19: News Paywall / Blocked
+
+Expected
+
+Graceful skip
+
+TC-AI-HARD-20: Mismatched Person vs Company
+
+Expected
+
+No incorrect attribution
+
+C. Content Mapping & Sequencing (TC-AI-HARD-21 to 30)
+TC-AI-HARD-21: Map News to Wrong Template
+
+Expected
+
+Prevented by validation
+
+TC-AI-HARD-22: Same News Used for All 50 Prospects
+
+Expected
+
+Still personalized per role
+
+TC-AI-HARD-23: AI Output Similarity Check
+
+Expected
+
+No near-duplicate emails
+
+TC-AI-HARD-24: CTA Misalignment
+
+Expected
+
+CTA matches sequence step
+
+TC-AI-HARD-25: Subject–Body Mismatch
+
+Expected
+
+Consistency enforced
+
+TC-AI-HARD-26: Personalisation Snapshot Lock
+
+Expected
+
+Preview = sent email
+
+TC-AI-HARD-27: Step 2 Uses Step 1 Context
+
+Expected
+
+Continuity maintained
+
+TC-AI-HARD-28: Follow-Up After No Response
+
+Expected
+
+Acknowledges silence correctly
+
+TC-AI-HARD-29: Follow-Up After Soft Reply
+
+Expected
+
+Adjusted tone
+
+TC-AI-HARD-30: Prospect Replies Mid-Batch
+
+Expected
+
+Removed from further AI generation
+
+D. Final Integrity & Failure (TC-AI-HARD-31 to 40)
+TC-AI-HARD-31: AI Output Moderation Failure
+
+Expected
+
+Content blocked
+
+Error surfaced
+
+TC-AI-HARD-32: Unicode / Emoji Injection
+
+Expected
+
+Safe rendering
+
+No send failure
+
+TC-AI-HARD-33: HTML Injection Attempt
+
+Expected
+
+Sanitized output
+
+TC-AI-HARD-34: Prompt Poisoning Attempt
+
+Expected
+
+Ignored
+
+System prompt preserved
+
+TC-AI-HARD-35: Data Drift Between Preview & Send
+
+Expected
+
+Snapshot prevents drift
+
+TC-AI-HARD-36: Restart During AI Generation
+
+Expected
+
+Resume safely
+
+TC-AI-HARD-37: AI Reply Uses Wrong Prospect Data
+
+Expected
+
+Zero cross-contamination
+
+TC-AI-HARD-38: Analytics Attribution Per Prospect
+
+Expected
+
+1:1 accuracy
+
+TC-AI-HARD-39: GDPR / PII Overreach
+
+Expected
+
+No sensitive data leakage
+
+TC-AI-HARD-40: Full Trace JSON Audit
+
+Expected
+
+Prospect → LinkedIn → News → Prompt → Output → Send
+
+🧨 WHEN YOU KNOW THE SYSTEM IS ACTUALLY BROKEN
+
+SEV-1 if any occur:
+
+Duplicate emails
+
+Wrong thread
+
+AI output mismatched to prospect
+
+Reply not captured <30s
+
+Follow-up sent after reply
+
+Same AI content sent to multiple prospects
