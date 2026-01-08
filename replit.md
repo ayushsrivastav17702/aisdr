@@ -28,6 +28,7 @@ The platform is built on a modern web stack, featuring a multi-tenant architectu
 - **Multi-Tenancy**: RequestContext-based data isolation, user invitation system, organization/workspace management, and admin impersonation.
 - **Natural Language Processing**: Converts user queries into structured Apollo.io filters with AI.
 - **Email Sequence Management**: Multi-step sequences, prospect enrollment, tracking, AI personalization, multi-mailbox sending with round-robin rotation.
+- **Token Resolution System**: Comprehensive merge field system supporting standard tokens ({{first_name}}, {{company}}, {{job_title}}), fallback handling with warnings logged for missing values, inline fallback syntax ({{fieldName|fallback}}), and async {{custom_ai_line}} AI-generated personalization integrated before email queuing.
 - **Data Security**: Secure credential encryption (AES-256-CBC) for mailboxes.
 - **Reply Detection & Classification**: IMAP-based polling for automatic reply detection, OOO, bounce, and unsubscribe handling, with AI-powered sentiment and intent analysis. Follow-up emails are properly threaded.
 - **Unified Inbox**: Centralized reply management with AI summaries, filtering, and quick actions.
