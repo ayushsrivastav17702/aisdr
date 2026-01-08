@@ -3,7 +3,7 @@ import { storage, type RequestContext } from "./storage";
 import { generatePersonalizedEmail, type LinkedInData } from "./services/personalization.service";
 import { emailQueueService } from "./services/email-queue.service";
 import { db } from "./db";
-import { sequenceProspects, emailReplies, emailQueue, emails, prospects, personalizationResults } from "@shared/schema";
+import { sequenceProspects, emailReplies, emailQueue, emails, prospects, personalizationResults, userActivityLogs } from "@shared/schema";
 import { eq, and, sql, desc } from "drizzle-orm";
 import { z } from "zod";
 import { authenticate, forbidManager, blockSuperAdminFromSDR } from "./middleware/auth.middleware";
@@ -11,6 +11,27 @@ import { checkAutomationStatus, throttleOperation, incrementThrottle, trackUsage
 import { sdrWorkflowService, WorkflowBlockedError } from "./services/sdr-workflow.service";
 import { hardeningService } from "./services/hardening.service";
 import { aiTrackingService } from "./services/ai-tracking.service";
+
+// Helper to log user activity for audit trail (TC-SDR-AUDIT-01)
+async function logActivity(
+  userId: string,
+  action: string,
+  targetType: string,
+  targetId: string,
+  metadata?: Record<string, any>
+): Promise<void> {
+  try {
+    await db.insert(userActivityLogs).values({
+      userId,
+      action,
+      targetType,
+      targetId,
+      metadata: metadata || null,
+    });
+  } catch (error) {
+    console.error("Failed to log activity:", error);
+  }
+}
 
 const router = Router();
 
@@ -256,6 +277,9 @@ router.post("/sequences", authenticate, forbidManager, async (req, res) => {
       completedProspects: 0,
       settings: null,
     });
+
+    // Log activity for audit trail (TC-SDR-AUDIT-01)
+    await logActivity(userId, "sequence.create", "sequence", sequence.id, { name, type: type || "outbound" });
 
     // Try to advance workflow stage after sequence creation
     await sdrWorkflowService.tryAutoAdvance(userId);
@@ -690,9 +714,15 @@ router.patch("/sequences/:id", authenticate, forbidManager, async (req, res) => 
       await initializeSequence(req.userContext!, req.params.id);
       await hardeningService.recordSequenceStatusChange(req.params.id, "active");
       await sdrWorkflowService.tryAutoAdvance(userId);
+      // Log activity for audit trail (TC-SDR-AUDIT-01)
+      await logActivity(userId, "sequence.activate", "sequence", req.params.id, { name: sequence?.name });
+    } else if (req.body.status === "paused") {
+      await hardeningService.recordSequenceStatusChange(req.params.id, "paused");
+      await logActivity(userId, "sequence.pause", "sequence", req.params.id, { name: sequence?.name });
     } else if (req.body.status && req.body.status !== "active") {
       // Record any status change for rate limiting
       await hardeningService.recordSequenceStatusChange(req.params.id, req.body.status);
+      await logActivity(userId, "sequence.update", "sequence", req.params.id, { status: req.body.status });
     }
     
     res.json(sequence);
@@ -705,7 +735,12 @@ router.patch("/sequences/:id", authenticate, forbidManager, async (req, res) => 
 // Delete sequence
 router.delete("/sequences/:id", authenticate, forbidManager, async (req, res) => {
   try {
+    const userId = req.userContext?.userId;
     await storage.deleteSequence(req.userContext!, req.params.id);
+    // Log activity for audit trail (TC-SDR-AUDIT-01)
+    if (userId) {
+      await logActivity(userId, "sequence.delete", "sequence", req.params.id, {});
+    }
     res.json({ success: true });
   } catch (error) {
     console.error("Error deleting sequence:", error);
@@ -957,6 +992,11 @@ router.post("/sequences/:id/prospects", authenticate, forbidManager, checkUserPa
     // Try to advance workflow stage after successful enrollment
     if (enrolled.length > 0) {
       await sdrWorkflowService.tryAutoAdvance(userId);
+      // Log activity for audit trail (TC-SDR-AUDIT-01)
+      await logActivity(userId, "prospect.enroll", "sequence", sequenceId, { 
+        count: enrolled.length, 
+        prospectIds: prospectIds.slice(0, 10) // Limit metadata size
+      });
     }
     
     res.json({ message: `${enrolled.length} prospects enrolled and emails scheduled`, enrolled });

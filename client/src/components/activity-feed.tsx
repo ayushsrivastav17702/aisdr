@@ -59,7 +59,8 @@ const TARGET_TYPES = [
   { value: "email", label: "Emails" },
   { value: "sequence", label: "Sequences" },
   { value: "prospect", label: "Prospects" },
-  { value: "campaign", label: "Campaigns" }
+  { value: "campaign", label: "Campaigns" },
+  { value: "system", label: "System Actions" }
 ];
 
 function getActionIcon(action: string, targetType: string | null) {
