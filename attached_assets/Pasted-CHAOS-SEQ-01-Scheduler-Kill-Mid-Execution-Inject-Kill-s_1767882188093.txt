@@ -1,0 +1,510 @@
+CHAOS-SEQ-01: Scheduler Kill Mid-Execution
+
+Inject
+
+Kill scheduler worker while 50 prospects are queued
+
+Observe
+
+No duplicate sends on restart
+
+Unsent prospects resume correctly
+
+Failure =
+
+Duplicate emails OR lost prospects
+
+CHAOS-SEQ-02: Activate → Pause → Kill → Resume
+
+Inject
+
+Activate sequence
+
+Pause within 1s
+
+Kill backend
+
+Restart
+
+Expect
+
+Final state = paused
+
+No scheduler job alive
+
+CHAOS-SEQ-03: Dual Activation Race
+
+Inject
+
+Trigger activation from 2 sessions simultaneously
+
+Expect
+
+Single campaign execution
+
+Idempotent activation key enforced
+
+CHAOS-SEQ-04: Delay Boundary Collision
+
+Inject
+
+Reply arrives exactly at delay expiry (±1s)
+
+Expect
+
+Follow-up cancelled
+
+Reply wins
+
+CHAOS-SEQ-05: Clock Skew Chaos
+
+Inject
+
+Advance system clock +5 min
+
+Revert back
+
+Expect
+
+No early or double sends
+
+CHAOS-SEQ-06: Quota Flip Mid-Batch
+
+Inject
+
+Reduce daily quota during active send batch
+
+Expect
+
+Immediate halt
+
+Already-sent emails logged
+
+Remaining paused
+
+CHAOS-SEQ-07: Mailbox Disconnect During SMTP Send
+
+Inject
+
+Drop SMTP connection mid-send
+
+Expect
+
+Retry with idempotency
+
+No resend to successful recipients
+
+CHAOS-SEQ-08: Sequence Deletion While Jobs Exist
+
+Inject
+
+Delete active sequence
+
+Expect
+
+Jobs canceled safely
+
+No orphan executions
+
+CHAOS-SEQ-09: Prospect Removed While Job Queued
+
+Inject
+
+Remove prospect during pending step
+
+Expect
+
+Job canceled
+
+No ghost send
+
+CHAOS-SEQ-10: Restart During Delay Countdown
+
+Inject
+
+Restart backend during delay timer
+
+Expect
+
+Delay resumes correctly
+
+No reset or skip
+
+CHAOS-SEQ-11: Thread Header Loss
+
+Inject
+
+Strip In-Reply-To header artificially
+
+Expect
+
+Fallback threading via Message-ID
+
+No new thread created
+
+CHAOS-SEQ-12: Duplicate Message-ID Injection
+
+Inject
+
+Force duplicate Message-ID
+
+Expect
+
+Send rejected or regenerated
+
+No provider error cascade
+
+CHAOS-SEQ-13: Reply Storm
+
+Inject
+
+5 replies arrive within 2 seconds
+
+Expect
+
+Single conversation
+
+No multiple AI replies
+
+CHAOS-SEQ-14: OOO + Human Reply Mix
+
+Inject
+
+Auto-reply + human reply
+
+Expect
+
+Human reply wins
+
+Sequence stops
+
+CHAOS-SEQ-15: Bounce After Send Confirmation
+
+Inject
+
+SMTP confirms send → bounce arrives later
+
+Expect
+
+Prospect marked bounced
+
+Removed from future steps
+
+CHAOS-SEQ-16: Campaign Resume After Partial Failure
+
+Inject
+
+Fail 20% sends
+
+Resume campaign
+
+Expect
+
+Only failed prospects retried
+
+CHAOS-SEQ-17: Massive Parallel Activation
+
+Inject
+
+Activate 20 sequences at once
+
+Expect
+
+Fair scheduling
+
+No starvation
+
+CHAOS-SEQ-18: Inbox Sync Restart
+
+Inject
+
+Kill inbox sync worker mid-fetch
+
+Expect
+
+Replies not lost
+
+Idempotent ingestion
+
+CHAOS-SEQ-19: DB Transaction Partial Commit (Simulated)
+
+Inject
+
+Fail after prospect state update but before send log
+
+Expect
+
+Recovery reconciles state
+
+No resend
+
+CHAOS-SEQ-20: Full System Restart During Active Campaign
+
+Inject
+
+Restart all services
+
+Expect
+
+Zero duplicate emails
+
+State fully restored
+
+🧨 CHAOS TEST GROUP 2: AI PERSONALISATION CHAOS (20 tests)
+CHAOS-AI-01: 50-Prospec Batch + AI Timeout
+
+Inject
+
+Force LLM timeout for 10 prospects
+
+Expect
+
+Partial success
+
+Failed ones retry / fallback
+
+No campaign crash
+
+CHAOS-AI-02: LLM Provider Outage
+
+Inject
+
+Disable primary provider
+
+Expect
+
+Fallback provider used
+
+Prompt parity preserved
+
+CHAOS-AI-03: Prompt Truncation Chaos
+
+Inject
+
+Exceed token limit with LinkedIn + news
+
+Expect
+
+Safe truncation
+
+No malformed prompts
+
+CHAOS-AI-04: Cross-Prospect Data Leak Test
+
+Inject
+
+High concurrency generation
+
+Expect
+
+Zero content bleed between prospects
+
+CHAOS-AI-05: Same News for All 50 Prospects
+
+Inject
+
+Inject identical news source
+
+Expect
+
+Still unique personalization per role
+
+CHAOS-AI-06: LinkedIn Rate-Limit Hit
+
+Inject
+
+Force 429s
+
+Expect
+
+Backoff + partial enrichment
+
+Neutral fallback copy
+
+CHAOS-AI-07: Fake News Injection
+
+Inject
+
+Low-authority article
+
+Expect
+
+Filtered out
+
+Not referenced
+
+CHAOS-AI-08: News vs LinkedIn Conflict
+
+Inject
+
+Conflicting signals
+
+Expect
+
+Priority logic enforced
+
+CHAOS-AI-09: Batch Cancel Mid-Generation
+
+Inject
+
+Cancel campaign at 60%
+
+Expect
+
+No writes after cancel
+
+Clean state
+
+CHAOS-AI-10: Restart During AI Generation
+
+Inject
+
+Kill AI worker
+
+Expect
+
+Resume from last completed prospect
+
+CHAOS-AI-11: Hallucination Trap Prompt
+
+Inject
+
+Non-existent company
+
+Expect
+
+Neutral language
+
+No fabricated claims
+
+CHAOS-AI-12: Unsafe Content Injection
+
+Inject
+
+Sensitive prompt input
+
+Expect
+
+Moderation blocks output
+
+CHAOS-AI-13: Preview vs Send Drift
+
+Inject
+
+Delay between preview and send
+
+Expect
+
+Snapshot locked
+
+Identical content sent
+
+CHAOS-AI-14: Same Prospect in Two Sequences
+
+Inject
+
+Parallel AI generation
+
+Expect
+
+Single active context
+
+No duplicate AI outputs
+
+CHAOS-AI-15: Follow-Up Context Loss
+
+Inject
+
+Drop step-1 context
+
+Expect
+
+Safe generic follow-up
+
+CHAOS-AI-16: AI Reply During High Load
+
+Inject
+
+20 replies at once
+
+Expect
+
+Drafts generated correctly
+
+SLA respected
+
+CHAOS-AI-17: AI Reply Thread Misrouting
+
+Inject
+
+Similar subject lines
+
+Expect
+
+Correct thread mapping
+
+CHAOS-AI-18: Prompt Poisoning Attempt
+
+Inject
+
+Prospect data contains instructions
+
+Expect
+
+System prompt dominates
+
+CHAOS-AI-19: Unicode / Emoji Storm
+
+Inject
+
+Unicode-heavy LinkedIn content
+
+Expect
+
+Safe rendering
+
+No send failure
+
+CHAOS-AI-20: Full Trace Loss Simulation
+
+Inject
+
+Drop audit write
+
+Expect
+
+Send blocked
+
+Trace required to proceed
+
+🚨 CHAOS SUCCESS CRITERIA (NON-NEGOTIABLE)
+
+If ANY occur → FAIL
+
+Duplicate emails
+
+Wrong prospect personalization
+
+Wrong thread
+
+Follow-up after reply
+
+AI output mismatch preview vs send
+
+Lost replies
+
+🧠 HOW TO RUN THIS PRACTICALLY (NOW)
+
+Use feature flags to inject failures
+
+Add kill switches to:
+
+scheduler
+
+AI workers
+
+inbox sync
+
+Log idempotency keys everywhere
+
+Store personalization snapshots
