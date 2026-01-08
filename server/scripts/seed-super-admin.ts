@@ -55,7 +55,6 @@ async function seedSuperAdmin() {
     console.log('---');
     console.log('Login credentials:');
     console.log('Email:', superAdminEmail);
-    console.log('Password:', superAdminPassword);
     console.log('---');
     console.log('⚠️  IMPORTANT: Change the default password after first login!');
     console.log('⚠️  Access the Super Admin portal at: /super-admin/login');
