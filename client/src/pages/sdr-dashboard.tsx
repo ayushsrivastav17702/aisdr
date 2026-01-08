@@ -28,6 +28,8 @@ import {
 import { formatDistanceToNow } from "date-fns";
 import { WorkflowProgressTracker } from "@/components/workflow-progress-tracker";
 import { PersonalAnalytics } from "@/components/personal-analytics";
+import { SendingPreferences } from "@/components/sending-preferences";
+import { ActivityFeed } from "@/components/activity-feed";
 
 interface EmailActivityStats {
   emailsSentToday: number;
@@ -422,6 +424,10 @@ export default function SDRDashboard() {
       </div>
 
       <PersonalAnalytics />
+
+      <SendingPreferences />
+
+      <ActivityFeed />
     </div>
   );
 }

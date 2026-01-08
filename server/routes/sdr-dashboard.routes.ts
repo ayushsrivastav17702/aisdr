@@ -7,7 +7,9 @@ import {
   userControls,
   sdrWorkflowProgress,
   emailReplies,
-  personalizationResults
+  personalizationResults,
+  userProfiles,
+  userActivityLogs
 } from "@shared/schema";
 import { eq, and, gte, lt, sql, count, desc, isNotNull } from "drizzle-orm";
 import { authenticate } from "../middleware/auth.middleware";
@@ -571,6 +573,176 @@ router.get("/analytics", authenticate, async (req: Request, res: Response) => {
   } catch (error) {
     console.error("Personal analytics error:", error);
     res.status(500).json({ error: "Failed to fetch analytics data" });
+  }
+});
+
+// ============================================
+// SENDING PREFERENCES
+// ============================================
+
+interface SendingPreferences {
+  sendWindowStart: number;
+  sendWindowEnd: number;
+  excludeWeekends: boolean;
+  defaultTone: 'professional' | 'casual' | 'consultative' | 'direct';
+  defaultSignature: string;
+  timezone: string;
+}
+
+router.get("/preferences", authenticate, async (req: Request, res: Response) => {
+  try {
+    const userId = req.userContext!.userId;
+    
+    const profile = await db.select()
+      .from(userProfiles)
+      .where(eq(userProfiles.userId, userId))
+      .limit(1);
+    
+    const prefs = profile[0]?.preferences || {};
+    const defaults: SendingPreferences = {
+      sendWindowStart: prefs.sendWindowStart ?? 9,
+      sendWindowEnd: prefs.sendWindowEnd ?? 17,
+      excludeWeekends: prefs.excludeWeekends ?? true,
+      defaultTone: prefs.defaultTone ?? 'professional',
+      defaultSignature: prefs.defaultSignature ?? '',
+      timezone: profile[0]?.timezone ?? 'UTC'
+    };
+    
+    res.json(defaults);
+  } catch (error) {
+    console.error("Get preferences error:", error);
+    res.status(500).json({ error: "Failed to fetch preferences" });
+  }
+});
+
+router.patch("/preferences", authenticate, async (req: Request, res: Response) => {
+  try {
+    const userId = req.userContext!.userId;
+    const updates = req.body as Partial<SendingPreferences>;
+    
+    // Validate inputs
+    if (updates.sendWindowStart !== undefined && (updates.sendWindowStart < 0 || updates.sendWindowStart > 23)) {
+      return res.status(400).json({ error: "Send window start must be 0-23" });
+    }
+    if (updates.sendWindowEnd !== undefined && (updates.sendWindowEnd < 0 || updates.sendWindowEnd > 23)) {
+      return res.status(400).json({ error: "Send window end must be 0-23" });
+    }
+    if (updates.defaultTone && !['professional', 'casual', 'consultative', 'direct'].includes(updates.defaultTone)) {
+      return res.status(400).json({ error: "Invalid tone" });
+    }
+    
+    // Get existing profile
+    const existing = await db.select()
+      .from(userProfiles)
+      .where(eq(userProfiles.userId, userId))
+      .limit(1);
+    
+    const currentPrefs = existing[0]?.preferences || {};
+    const newPrefs = {
+      ...currentPrefs,
+      ...(updates.sendWindowStart !== undefined && { sendWindowStart: updates.sendWindowStart }),
+      ...(updates.sendWindowEnd !== undefined && { sendWindowEnd: updates.sendWindowEnd }),
+      ...(updates.excludeWeekends !== undefined && { excludeWeekends: updates.excludeWeekends }),
+      ...(updates.defaultTone !== undefined && { defaultTone: updates.defaultTone }),
+      ...(updates.defaultSignature !== undefined && { defaultSignature: updates.defaultSignature })
+    };
+    
+    const newTimezone = updates.timezone || existing[0]?.timezone || 'UTC';
+    
+    if (existing.length > 0) {
+      await db.update(userProfiles)
+        .set({ 
+          preferences: newPrefs,
+          timezone: newTimezone,
+          updatedAt: new Date()
+        })
+        .where(eq(userProfiles.userId, userId));
+    } else {
+      await db.insert(userProfiles).values({
+        userId,
+        preferences: newPrefs,
+        timezone: newTimezone
+      });
+    }
+    
+    res.json({ 
+      success: true, 
+      sendWindowStart: newPrefs.sendWindowStart ?? 9,
+      sendWindowEnd: newPrefs.sendWindowEnd ?? 17,
+      excludeWeekends: newPrefs.excludeWeekends ?? true,
+      defaultTone: newPrefs.defaultTone ?? 'professional',
+      defaultSignature: newPrefs.defaultSignature ?? '',
+      timezone: newTimezone
+    });
+  } catch (error) {
+    console.error("Update preferences error:", error);
+    res.status(500).json({ error: "Failed to update preferences" });
+  }
+});
+
+// ============================================
+// ACTIVITY FEED
+// ============================================
+
+router.get("/activity", authenticate, async (req: Request, res: Response) => {
+  try {
+    const userId = req.userContext!.userId;
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(req.query.limit as string) || 20));
+    const offset = (page - 1) * limit;
+    const actionFilter = req.query.action as string | undefined;
+    const targetType = req.query.targetType as string | undefined;
+    
+    // 90-day retention
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - 90);
+    
+    const conditions = [
+      eq(userActivityLogs.userId, userId),
+      gte(userActivityLogs.createdAt, cutoffDate)
+    ];
+    
+    if (actionFilter) {
+      conditions.push(sql`${userActivityLogs.action} ILIKE ${`%${actionFilter}%`}`);
+    }
+    if (targetType) {
+      conditions.push(eq(userActivityLogs.targetType, targetType));
+    }
+    
+    const [activities, totalResult] = await Promise.all([
+      db.select()
+        .from(userActivityLogs)
+        .where(and(...conditions))
+        .orderBy(desc(userActivityLogs.createdAt))
+        .limit(limit)
+        .offset(offset),
+      db.select({ count: count() })
+        .from(userActivityLogs)
+        .where(and(...conditions))
+    ]);
+    
+    const total = totalResult[0]?.count || 0;
+    
+    res.json({
+      activities: activities.map(a => ({
+        id: a.id,
+        action: a.action,
+        targetType: a.targetType,
+        targetId: a.targetId,
+        metadata: a.metadata,
+        duration: a.duration,
+        createdAt: a.createdAt?.toISOString()
+      })),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit)
+      }
+    });
+  } catch (error) {
+    console.error("Activity feed error:", error);
+    res.status(500).json({ error: "Failed to fetch activity feed" });
   }
 });
 
