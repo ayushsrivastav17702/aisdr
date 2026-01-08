@@ -413,7 +413,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
                   const created = await storage.createProspect(req.userContext!, {
                     userId: req.userContext!.userId,
                     ...prospectData,
-                    tags: tag ? [tag] : undefined
+                    tags: tag ? [tag] : undefined,
+                    source: 'ai_search',
                   });
                   savedProspects.push(created);
                   newCount++;
@@ -633,7 +634,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const created = await storage.createProspect(req.userContext!, {
               userId: req.userContext!.userId,
               ...prospectData,
-              tags: tag ? [tag] : undefined
+              tags: tag ? [tag] : undefined,
+              source: 'ai_search',
             });
             savedProspects.push(created);
             newCount++;
@@ -836,6 +838,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const prospect = await storage.createProspect(req.userContext!, {
         ...prospectData,
         enrichmentStatus: 'new',
+        source: 'manual',
       });
       res.json(prospect);
     } catch (error) {

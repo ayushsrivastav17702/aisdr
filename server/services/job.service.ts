@@ -435,6 +435,7 @@ class JobService {
               const prospect = await storage.createProspect(ctx, {
                 ...prospectData,
                 userId: ctx.userId,
+                source: 'ai_search',
               });
               prospects.push(prospect);
             }
@@ -513,6 +514,7 @@ class JobService {
   private mapCSVRowToProspect(row: any, fieldMappings: Record<string, string>, userId: string): InsertProspect {
     const prospect: InsertProspect = {
       userId,
+      source: 'csv',
     };
     
     for (const [csvField, prospectField] of Object.entries(fieldMappings)) {
