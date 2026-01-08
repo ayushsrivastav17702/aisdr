@@ -169,25 +169,25 @@ export class MailboxService {
   }
 
   decrypt(encrypted: string): string {
-    if (encrypted.includes(":")) {
-      const algorithm = "aes-256-cbc";
-      const key = crypto.scryptSync(this.encryptionKey, "salt", 32);
-      
-      const parts = encrypted.split(":");
-      const iv = Buffer.from(parts[0], "hex");
-      const encryptedText = parts[1];
-      
-      const decipher = crypto.createDecipheriv(algorithm, key, iv);
-      let decrypted = decipher.update(encryptedText, "hex", "utf8");
-      decrypted += decipher.final("utf8");
-      
-      return decrypted;
-    } else {
-      const decipher = crypto.createDecipher("aes-256-cbc", this.encryptionKey);
-      let decrypted = decipher.update(encrypted, "hex", "utf8");
-      decrypted += decipher.final("utf8");
-      return decrypted;
+    if (!encrypted.includes(":")) {
+      throw new Error(
+        "Legacy encrypted data detected. Data must be re-encrypted using the secure format. " +
+        "Please update the stored credentials for this mailbox."
+      );
     }
+    
+    const algorithm = "aes-256-cbc";
+    const key = crypto.scryptSync(this.encryptionKey, "salt", 32);
+    
+    const parts = encrypted.split(":");
+    const iv = Buffer.from(parts[0], "hex");
+    const encryptedText = parts[1];
+    
+    const decipher = crypto.createDecipheriv(algorithm, key, iv);
+    let decrypted = decipher.update(encryptedText, "hex", "utf8");
+    decrypted += decipher.final("utf8");
+    
+    return decrypted;
   }
 
   async getAllMailboxes(): Promise<EmailMailbox[]> {
