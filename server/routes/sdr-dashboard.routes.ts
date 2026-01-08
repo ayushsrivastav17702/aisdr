@@ -17,6 +17,52 @@ import { authenticate } from "../middleware/auth.middleware";
 
 const router = Router();
 
+// Helper to log user activity for audit trail
+async function logUserActivity(
+  userId: string,
+  action: string,
+  targetType: string | null = null,
+  targetId: string | null = null,
+  metadata: Record<string, any> | null = null,
+  req?: Request
+): Promise<void> {
+  try {
+    await db.insert(userActivityLogs).values({
+      userId,
+      action,
+      targetType,
+      targetId,
+      metadata,
+      ipAddress: req?.ip || null,
+      userAgent: req?.headers?.["user-agent"] || null,
+    });
+  } catch (error) {
+    console.error("Failed to log user activity:", error);
+  }
+}
+
+// Helper to log system-generated events
+export async function logSystemActivity(
+  userId: string,
+  action: string,
+  metadata: Record<string, any> | null = null,
+  targetId: string | null = null
+): Promise<void> {
+  try {
+    await db.insert(userActivityLogs).values({
+      userId,
+      action,
+      targetType: "system",
+      targetId,
+      metadata,
+      ipAddress: null,
+      userAgent: "system",
+    });
+  } catch (error) {
+    console.error("Failed to log system activity:", error);
+  }
+}
+
 interface EmailActivityStats {
   emailsSentToday: number;
   emailsSentThisWeek: number;

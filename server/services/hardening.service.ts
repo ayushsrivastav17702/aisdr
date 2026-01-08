@@ -9,6 +9,7 @@ import {
   idempotencyKeys,
   organizations,
   users,
+  userActivityLogs,
   type TenantControl,
   type ThrottleWindow,
   type ManagerQuota,
@@ -17,6 +18,28 @@ import {
   type UsageCounter,
 } from '@shared/schema';
 import { eq, and, sql, gte, lte, desc, isNull, or } from 'drizzle-orm';
+
+// Helper to log system-generated events for audit trail
+async function logSystemEvent(
+  userId: string,
+  action: string,
+  metadata: Record<string, any> | null = null,
+  targetId: string | null = null
+): Promise<void> {
+  try {
+    await db.insert(userActivityLogs).values({
+      userId,
+      action,
+      targetType: "system",
+      targetId,
+      metadata,
+      ipAddress: null,
+      userAgent: "system",
+    });
+  } catch (error) {
+    console.error("Failed to log system event:", error);
+  }
+}
 
 class HardeningService {
   // =============================================
@@ -673,6 +696,13 @@ class HardeningService {
     const limit = controls.maxEmailsPerDay || 200;
     
     if (current >= limit) {
+      // Log system event for audit trail (TC-SDR-AUDIT-02)
+      logSystemEvent(userId, "quota.daily_email_limit_reached", {
+        current,
+        limit,
+        reason: "Daily email limit reached",
+      }).catch(() => {});
+      
       return {
         allowed: false,
         current,
@@ -726,6 +756,13 @@ class HardeningService {
     const limit = controls.maxConcurrentEnrollments || 5;
     
     if (current >= limit) {
+      // Log system event for audit trail (TC-SDR-AUDIT-02)
+      logSystemEvent(userId, "quota.enrollment_limit_reached", {
+        current,
+        limit,
+        reason: "Concurrent enrollment limit reached",
+      }).catch(() => {});
+      
       return {
         allowed: false,
         current,
