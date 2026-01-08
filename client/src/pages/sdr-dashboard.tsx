@@ -30,6 +30,7 @@ import { WorkflowProgressTracker } from "@/components/workflow-progress-tracker"
 import { PersonalAnalytics } from "@/components/personal-analytics";
 import { SendingPreferences } from "@/components/sending-preferences";
 import { ActivityFeed } from "@/components/activity-feed";
+import { Layout } from "@/components/layout";
 
 interface EmailActivityStats {
   emailsSentToday: number;
@@ -162,40 +163,44 @@ export default function SDRDashboard() {
 
   if (isLoading) {
     return (
-      <div className="p-6 space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <Skeleton className="h-8 w-48" />
-            <Skeleton className="h-4 w-64 mt-2" />
+      <Layout>
+        <div className="p-6 space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <Skeleton className="h-8 w-48" />
+              <Skeleton className="h-4 w-64 mt-2" />
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {[1, 2, 3, 4].map((i) => (
+              <Skeleton key={i} className="h-32" />
+            ))}
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <Skeleton className="h-64" />
+            <Skeleton className="h-64" />
           </div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[1, 2, 3, 4].map((i) => (
-            <Skeleton key={i} className="h-32" />
-          ))}
-        </div>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <Skeleton className="h-64" />
-          <Skeleton className="h-64" />
-        </div>
-      </div>
+      </Layout>
     );
   }
 
   if (error) {
     return (
-      <div className="p-6">
-        <Alert variant="destructive">
-          <AlertCircleIcon className="h-4 w-4" />
-          <AlertTitle>Error loading dashboard</AlertTitle>
-          <AlertDescription>
-            Failed to load your dashboard data. Please try again.
-            <Button variant="outline" size="sm" className="ml-4" onClick={() => refetch()}>
-              Retry
-            </Button>
-          </AlertDescription>
-        </Alert>
-      </div>
+      <Layout>
+        <div className="p-6">
+          <Alert variant="destructive">
+            <AlertCircleIcon className="h-4 w-4" />
+            <AlertTitle>Error loading dashboard</AlertTitle>
+            <AlertDescription>
+              Failed to load your dashboard data. Please try again.
+              <Button variant="outline" size="sm" className="ml-4" onClick={() => refetch()}>
+                Retry
+              </Button>
+            </AlertDescription>
+          </Alert>
+        </div>
+      </Layout>
     );
   }
 
@@ -208,19 +213,20 @@ export default function SDRDashboard() {
   const resetTimeFormatted = formatDistanceToNow(new Date(quotaSnapshot.resetTime), { addSuffix: true });
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold" data-testid="text-dashboard-title">My Dashboard</h1>
-          <p className="text-muted-foreground mt-1">
-            Track your performance and quota usage
-          </p>
+    <Layout>
+      <div className="p-6 space-y-6 max-w-7xl mx-auto">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold" data-testid="text-dashboard-title">My Dashboard</h1>
+            <p className="text-muted-foreground mt-1">
+              Track your performance and quota usage
+            </p>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => refetch()} data-testid="button-refresh-dashboard">
+            <RefreshCwIcon className="w-4 h-4 mr-2" />
+            Refresh
+          </Button>
         </div>
-        <Button variant="outline" size="sm" onClick={() => refetch()} data-testid="button-refresh-dashboard">
-          <RefreshCwIcon className="w-4 h-4 mr-2" />
-          Refresh
-        </Button>
-      </div>
 
       {hasHardStops && (
         <Alert variant="destructive" data-testid="alert-hard-stops">
@@ -428,6 +434,7 @@ export default function SDRDashboard() {
       <SendingPreferences />
 
       <ActivityFeed />
-    </div>
+      </div>
+    </Layout>
   );
 }
