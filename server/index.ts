@@ -24,7 +24,6 @@ console.log('📍 DATABASE_URL exists:', !!process.env.DATABASE_URL);
 console.log('📍 PORT:', process.env.PORT);
 console.log('📍 SESSION_SECRET exists:', !!process.env.SESSION_SECRET);
 console.log('📍 OPENAI_API_KEY exists:', !!process.env.OPENAI_API_KEY);
-console.log('📍 PERPLEXITY_API_KEY exists:', !!process.env.PERPLEXITY_API_KEY);
 console.log('📍 LUSHA_API_KEY exists:', !!process.env.LUSHA_API_KEY);
 
 try {
