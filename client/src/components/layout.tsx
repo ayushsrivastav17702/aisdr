@@ -47,7 +47,8 @@ interface NavItem {
 }
 
 const routeLabels: Record<string, string> = {
-  '/': 'AI Search',
+  '/': 'My Dashboard',
+  '/ai-search': 'AI Search',
   '/prospects': 'Prospects',
   '/import': 'Import',
   '/sequences': 'Sequences',
@@ -112,7 +113,8 @@ export function Layout({ children }: LayoutProps) {
 
   // Regular user navigation (SDR platform) - per User PRD FR-U1 to FR-U15
   const mainNavItems: NavItem[] = [
-    { href: '/', icon: <SparklesIcon className="w-4 h-4" />, label: 'AI Search' },
+    { href: '/', icon: <Home className="w-4 h-4" />, label: 'My Dashboard' },
+    { href: '/ai-search', icon: <SparklesIcon className="w-4 h-4" />, label: 'AI Search' },
     { href: '/prospects', icon: <UsersIcon className="w-4 h-4" />, label: 'Prospects' },
     { href: '/ai-prospecting', icon: <Search className="w-4 h-4" />, label: 'AI Prospecting' },
     { href: '/sequences', icon: <ListTodo className="w-4 h-4" />, label: 'Sequences' },

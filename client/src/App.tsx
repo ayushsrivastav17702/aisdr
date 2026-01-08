@@ -100,6 +100,11 @@ function Router() {
       {/* SDR Routes - blocked for managers */}
       <Route path="/">
         <ProtectedRoute blockManager>
+          <SDRDashboard />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/ai-search">
+        <ProtectedRoute blockManager>
           <Dashboard />
         </ProtectedRoute>
       </Route>
