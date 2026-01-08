@@ -42,6 +42,7 @@ import AIProspectingPage from "@/pages/ai-prospecting";
 import CampaignDashboard from "@/pages/campaign-dashboard";
 import CreateCampaign from "@/pages/create-campaign";
 import ManagerDashboard from "@/pages/manager-dashboard";
+import SDRDashboard from "@/pages/sdr-dashboard";
 import CreateTenant from "@/pages/create-tenant";
 import StatusPage from "@/pages/status-page";
 import InboxPage from "@/pages/inbox";
@@ -155,6 +156,16 @@ function Router() {
       <Route path="/leaderboard">
         <ProtectedRoute blockManager>
           <LeaderboardPage />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/my-dashboard">
+        <ProtectedRoute blockManager>
+          <SDRDashboard />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/sdr-dashboard">
+        <ProtectedRoute blockManager>
+          <SDRDashboard />
         </ProtectedRoute>
       </Route>
       <Route path="/best-practices">

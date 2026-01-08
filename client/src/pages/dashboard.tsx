@@ -37,6 +37,7 @@ import {
   ArrowRightLeft
 } from "lucide-react";
 import { HelpTooltip } from "@/components/HelpTooltip";
+import { QuotaBar } from "@/components/quota-bar";
 
 export default function Dashboard() {
   const [selectedProspectIds, setSelectedProspectIds] = useState<string[]>([]);
@@ -167,6 +168,16 @@ export default function Dashboard() {
             <span>Enrichment</span>
           </Button>
           
+          <Button
+            variant="ghost"
+            className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
+            onClick={() => setLocation("/my-dashboard")}
+            data-testid="nav-my-dashboard"
+          >
+            <BarChart3Icon className="w-4 h-4" />
+            <span>My Dashboard</span>
+          </Button>
+
           <Button
             variant="ghost"
             className="w-full justify-start gap-3 text-muted-foreground hover:bg-muted"
@@ -305,6 +316,9 @@ export default function Dashboard() {
 
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col overflow-hidden">
+        {/* Quota Bar - Persistent visibility */}
+        <QuotaBar />
+        
         {/* Email Verification Banner */}
         <div className="px-8 pt-4">
           <EmailVerificationBanner />

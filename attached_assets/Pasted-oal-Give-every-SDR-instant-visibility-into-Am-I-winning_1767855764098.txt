@@ -1,0 +1,165 @@
+oal: Give every SDR instant visibility into “Am I winning today?”
+
+Core Widgets
+
+Email Activity
+
+Emails sent today / week
+
+Replies received
+
+Open & reply rate (rolling 7/30 days)
+
+Quota Snapshot
+
+Emails used vs limit (progress bar)
+
+Active enrollments vs limit
+
+Campaign Health
+
+Active campaigns (Running / Paused / Blocked)
+
+Campaigns stuck due to workflow issues
+
+Personalization Usage
+
+% emails using dynamic tokens
+
+Missing-token failure count
+
+Acceptance Criteria
+
+Data scoped strictly to logged-in SDR
+
+Updates near-real-time (≤5 min delay)
+
+Click-through from widget → filtered deep view
+
+2️⃣ P0 — Quota Visibility & Enforcement Transparency
+
+Goal: No SDR should ever ask “Why did my campaign stop?”
+
+Required UI
+
+Persistent quota bar (header or dashboard)
+
+Tooltip showing:
+
+Max limit
+
+Current usage
+
+Reset time (cron-based)
+
+Hard-stop reasons clearly surfaced:
+
+“Email limit reached”
+
+“Enrollment cap exceeded”
+
+Acceptance Criteria
+
+Quotas visible before action (pre-submit warnings)
+
+Same enforcement logic as backend (no UI-only checks)
+
+3️⃣ P1 — Workflow Progress Visualization (9-Stage)
+
+Goal: Make the platform feel deterministic, not magical.
+
+UX Pattern
+
+Horizontal or vertical 9-step tracker
+
+Each stage shows:
+
+Status: Pending / Passed / Blocked
+
+Timestamp when completed
+
+Blocking reason (if any)
+
+“Fix this” CTA (deep link)
+
+Example
+
+❌ Stage 4: Mailbox Warm-up
+Reason: Domain reputation too low
+Action: Warm mailbox for 3 days
+
+Acceptance Criteria
+
+Stages auto-update from backend state
+
+Blocked stages must expose exact failure reason
+
+4️⃣ P1 — Personal Analytics (SDR-Level Intelligence)
+
+Goal: Turn SDRs into self-optimizing operators.
+
+Views Needed
+
+Trend Analysis
+
+Reply rate over time
+
+Volume vs response correlation
+
+Top Performers
+
+Best-performing sequences
+
+Best-performing templates
+
+Benchmarking
+
+SDR vs team average (anonymized)
+
+SDR percentile ranking
+
+Acceptance Criteria
+
+Time filters (7 / 30 / 90 days)
+
+Campaign + sequence drill-down
+
+Exportable (CSV)
+
+5️⃣ P2 — Self-Service Sending Preferences
+
+Goal: Reduce dependency on Managers for micro-optimizations.
+
+Configurable by SDR
+
+Send window (time + days)
+
+Timezone override
+
+Tone preference (formal / neutral / casual)
+
+Email signature per mailbox
+
+Guardrails
+
+Manager-defined hard limits override SDR settings
+
+6️⃣ P2 — Activity Feed / Audit Trail
+
+Goal: Build trust and debuggability.
+
+Feed Includes
+
+User actions (campaign created, paused, edited)
+
+System actions (auto-paused, quota hit, warm-up enforced)
+
+Errors & retries
+
+Acceptance Criteria
+
+Filterable (system vs user)
+
+Read-only, scoped to own account
+
+90-day retention minimum
