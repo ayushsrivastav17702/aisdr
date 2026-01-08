@@ -1397,6 +1397,12 @@ export const userProfiles = pgTable("user_profiles", {
     slackNotifications?: boolean;
     weeklyDigest?: boolean;
     theme?: string;
+    // SDR Sending Preferences
+    sendWindowStart?: number; // Hour 0-23
+    sendWindowEnd?: number; // Hour 0-23
+    excludeWeekends?: boolean;
+    defaultTone?: 'professional' | 'casual' | 'consultative' | 'direct';
+    defaultSignature?: string;
   }>(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
