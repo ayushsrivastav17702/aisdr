@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
 import { WorkflowProgressTracker } from "@/components/workflow-progress-tracker";
+import { PersonalAnalytics } from "@/components/personal-analytics";
 
 interface EmailActivityStats {
   emailsSentToday: number;
@@ -419,6 +420,8 @@ export default function SDRDashboard() {
 
         <WorkflowProgressTracker />
       </div>
+
+      <PersonalAnalytics />
     </div>
   );
 }
