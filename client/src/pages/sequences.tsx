@@ -20,7 +20,8 @@ import {
   Users, MessageSquare, Zap, BarChart3, Settings, Plus, RefreshCw, 
   Sparkles, X, Trash2, Mail, Send, Eye, Target,
   Clock, TrendingUp, Play, Pause, ArrowLeft, FileText, WandIcon,
-  Search, Filter, Grid3x3, List, MoreVertical, Copy, Edit2, MailOpen, Reply, Loader2
+  Search, Filter, Grid3x3, List, MoreVertical, Copy, Edit2, MailOpen, Reply, Loader2,
+  AlertTriangle
 } from "lucide-react";
 import { PersonalizationWizard } from "@/components/PersonalizationWizard";
 import { AutomationModal } from "@/components/AutomationModal";
@@ -2356,6 +2357,27 @@ function ProspectsTab({ sequenceId, prospects, isLoading }: { sequenceId: string
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
+  // Fetch quota data for pre-action warning
+  const { data: quotaData } = useQuery<{
+    emailsUsed: number;
+    emailLimit: number;
+    enrollmentsUsed: number;
+    enrollmentLimit: number;
+  }>({
+    queryKey: ["/api/sdr/quota"],
+    enabled: showEnrollModal,
+  });
+
+  // Calculate quota percentages (guard against divide-by-zero)
+  const emailQuotaPercent = quotaData && quotaData.emailLimit > 0 
+    ? (quotaData.emailsUsed / quotaData.emailLimit) * 100 
+    : 0;
+  const enrollmentQuotaPercent = quotaData && quotaData.enrollmentLimit > 0 
+    ? (quotaData.enrollmentsUsed / quotaData.enrollmentLimit) * 100 
+    : 0;
+  const showQuotaWarning = emailQuotaPercent >= 95 || enrollmentQuotaPercent >= 95;
+  const quotaExceeded = emailQuotaPercent >= 100 || enrollmentQuotaPercent >= 100;
+
   // Load prospects with backend search
   const { data: allProspects } = useQuery({
     queryKey: ["/api/prospects", { search: debouncedSearchTerm, limit: 100 }],
@@ -2458,6 +2480,40 @@ function ProspectsTab({ sequenceId, prospects, isLoading }: { sequenceId: string
               Select prospects from your database to enroll in this sequence
             </p>
           </DialogHeader>
+          
+          {/* Pre-Action Quota Warning (TC-SDR-QUOTA-04) */}
+          {quotaExceeded && (
+            <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-lg p-3 flex items-start gap-2" data-testid="alert-quota-exceeded">
+              <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-red-800 dark:text-red-200">
+                  Daily limit reached
+                </p>
+                <p className="text-sm text-red-600 dark:text-red-400">
+                  {emailQuotaPercent >= 100 && `Email quota: ${quotaData?.emailsUsed}/${quotaData?.emailLimit} used. `}
+                  {enrollmentQuotaPercent >= 100 && `Enrollment quota: ${quotaData?.enrollmentsUsed}/${quotaData?.enrollmentLimit} used.`}
+                  {' '}Enrollment is blocked until quota resets.
+                </p>
+              </div>
+            </div>
+          )}
+          
+          {showQuotaWarning && !quotaExceeded && (
+            <div className="bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg p-3 flex items-start gap-2" data-testid="alert-quota-warning">
+              <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+              <div>
+                <p className="text-sm font-medium text-amber-800 dark:text-amber-200">
+                  Approaching daily limit
+                </p>
+                <p className="text-sm text-amber-600 dark:text-amber-400">
+                  {emailQuotaPercent >= 95 && `Email quota: ${quotaData?.emailsUsed}/${quotaData?.emailLimit} (${Math.round(emailQuotaPercent)}% used). `}
+                  {enrollmentQuotaPercent >= 95 && `Enrollment quota: ${quotaData?.enrollmentsUsed}/${quotaData?.enrollmentLimit} (${Math.round(enrollmentQuotaPercent)}% used).`}
+                  {' '}Consider limiting your selection.
+                </p>
+              </div>
+            </div>
+          )}
+
           <div className="space-y-4 flex-1 overflow-hidden flex flex-col">
             {/* Search Input */}
             <div className="relative">
@@ -2534,10 +2590,10 @@ function ProspectsTab({ sequenceId, prospects, isLoading }: { sequenceId: string
                     enrollMutation.mutate(selectedForEnrollment);
                   }
                 }}
-                disabled={selectedForEnrollment.length === 0 || enrollMutation.isPending}
+                disabled={selectedForEnrollment.length === 0 || enrollMutation.isPending || quotaExceeded}
                 data-testid="button-confirm-enroll"
               >
-                {enrollMutation.isPending ? 'Enrolling...' : `Enroll ${selectedForEnrollment.length} Prospect${selectedForEnrollment.length !== 1 ? 's' : ''}`}
+                {quotaExceeded ? 'Quota Exceeded' : enrollMutation.isPending ? 'Enrolling...' : `Enroll ${selectedForEnrollment.length} Prospect${selectedForEnrollment.length !== 1 ? 's' : ''}`}
               </Button>
             </div>
           </div>
