@@ -8,6 +8,7 @@ import { HelpProvider } from "@/contexts/help-context";
 import { ProtectedRoute } from "@/components/protected-route";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { OnboardingWizard } from "@/components/onboarding-wizard";
+import { OnboardingTooltips } from "@/components/onboarding-tooltips";
 import { CookieConsent } from "@/components/CookieConsent";
 import Dashboard from "@/pages/dashboard";
 import Sequences from "@/pages/sequences";
@@ -46,6 +47,7 @@ import SDRDashboard from "@/pages/sdr-dashboard";
 import CreateTenant from "@/pages/create-tenant";
 import StatusPage from "@/pages/status-page";
 import InboxPage from "@/pages/inbox";
+import UserGuidePage from "@/pages/user-guide";
 import NotFound from "@/pages/not-found";
 import { ImpersonationBanner } from "@/components/impersonation-banner";
 
@@ -212,6 +214,12 @@ function Router() {
       <Route path="/super-admin" component={SuperAdminDashboard} />
       {/* Public Status Page */}
       <Route path="/status" component={StatusPage} />
+      {/* User Guide - accessible by all authenticated users */}
+      <Route path="/user-guide">
+        <ProtectedRoute>
+          <UserGuidePage />
+        </ProtectedRoute>
+      </Route>
       <Route component={NotFound} />
     </Switch>
   );
@@ -227,6 +235,7 @@ function App() {
               <Toaster />
               <ImpersonationBanner />
               <OnboardingWizard />
+              <OnboardingTooltips />
               <CookieConsent />
               <Router />
             </TooltipProvider>
