@@ -1,0 +1,304 @@
+SDR User Module – Step-by-Step User Guide
+
+This guide helps a new SDR (User) go from first login to booking meetings, covering every module and step in the correct order. Follow this sequentially for best results.
+
+1. First Login & Account Setup
+Step 1.1: Login
+
+Use credentials shared by your Manager
+
+On first login, you’ll be prompted to update your password
+
+Step 1.2: Complete Your Profile
+
+Navigate to Profile Settings
+
+Update:
+
+Name & role
+
+Timezone (critical for send timing)
+
+Preferred language (if applicable)
+
+✅ Outcome: Your account is active and personalized
+
+2. Connect Your Mailbox
+Step 2.1: Add Mailbox
+
+Go to Mailbox Settings
+
+Click Connect Mailbox
+
+Choose provider (Google / Outlook)
+
+Complete OAuth authentication
+
+Step 2.2: Verify Mailbox Health
+
+Ensure status = Connected & Verified
+
+Send a test email if available
+
+⚠️ Sequences and campaigns will NOT run without a connected mailbox
+
+3. Understand the 9-Stage Workflow
+
+Your account progresses through mandatory stages:
+
+Profile Ready
+
+Mailbox Connected
+
+Prospect Added
+
+Sequence Created
+
+Personalization Configured
+
+Delay Rules Set
+
+Campaign Activated
+
+Emails Sent
+
+Analytics Available
+
+Each stage must be completed to move forward.
+
+4. Prospect Discovery & Import
+Option A: AI Prospect Search
+
+Go to Prospects → AI Search
+
+Enter a natural language query
+
+Example: “US SaaS companies, 50–200 employees, Head of Sales”
+
+Review parsed filters
+
+Run search
+
+Option B: Import Prospects
+
+Upload CSV or add manually
+
+Required fields:
+
+Email
+
+First name
+
+Company name
+
+Step 4.3: Data Enrichment
+
+System auto-enriches using:
+
+LinkedIn
+
+Company data
+
+News & intent signals
+
+✅ Outcome: Prospects are enriched and ready
+
+5. Create a Sequence
+Step 5.1: Create New Sequence
+
+Go to Sequences → Create New
+
+Name your sequence clearly
+
+Example: “US SaaS – Cold Outreach – Q1”
+
+Step 5.2: Add Steps
+
+Supported step types:
+
+Email
+
+Wait / Delay
+
+Example structure:
+
+Email 1
+
+Wait 2 days
+
+Email 2
+
+Wait 3 days
+
+Email 3
+
+6. Configure AI Personalization
+Step 6.1: Enable AI Personalization
+
+Toggle AI Personalization ON
+
+Step 6.2: Select Personalization Inputs
+
+AI can use:
+
+LinkedIn headline & recent activity
+
+Company description
+
+Recent company news
+
+Job role & seniority
+
+Step 6.3: Preview Personalization
+
+Preview samples for 5–10 prospects
+
+Lock content once satisfied
+
+⚠️ Always review previews to avoid hallucinations
+
+7. Set Delay & Send Rules
+Step 7.1: Delay Configuration
+
+Define wait time between steps (hours or days)
+
+Step 7.2: Send Window
+
+Configure allowed send days
+
+Configure send hours (local timezone)
+
+8. Add Prospects to Sequence
+Step 8.1: Select Prospects
+
+Filter prospects
+
+Select individually or bulk select
+
+Step 8.2: Enroll in Sequence
+
+Click Add to Sequence
+
+Confirm enrollment
+
+System validates:
+
+Email limits
+
+Active enrollments
+
+Campaign quotas
+
+9. Activate Campaign
+Step 9.1: Final Checklist
+
+Ensure:
+
+Mailbox connected
+
+Sequence active
+
+Personalization locked
+
+Delays configured
+
+Step 9.2: Activate
+
+Click Activate Campaign
+
+Campaign status changes to Running
+
+10. Monitor Email Sending
+What Happens Automatically
+
+Emails are sent one-by-one
+
+Delays respected
+
+Provider delivery acknowledged
+
+Expected Timelines
+
+Personalization: seconds per prospect
+
+Email send: queued → provider → sent
+
+11. Reply Management (Inbox)
+Step 11.1: View Replies
+
+Go to Inbox
+
+Replies appear in the same thread
+
+Step 11.2: AI Reply Assistance (If Enabled)
+
+AI suggests reply drafts
+
+You can edit or send manually
+
+Step 11.3: Manual Actions
+
+Reply
+
+Pause prospect
+
+Mark as Interested / Not Interested
+
+12. Analytics & Performance Tracking
+What You Can Track
+
+Emails sent
+
+Open & reply rates
+
+Campaign performance
+
+Sequence effectiveness
+
+Use Analytics To
+
+Improve copy
+
+Adjust delays
+
+Stop underperforming sequences
+
+13. Quotas & Limits
+
+You are limited by:
+
+Emails per day
+
+Active enrollments
+
+Active campaigns
+
+Always check quota before launching new campaigns.
+
+14. Common Mistakes to Avoid
+
+Activating campaigns without previews
+
+Adding too many prospects at once
+
+Ignoring reply handling
+
+Overlapping sequences
+
+15. Daily SDR Workflow (Recommended)
+
+Check Inbox replies
+
+Review campaign health
+
+Add new prospects
+
+Launch or optimize sequences
+
+Review analytics
+
+Final Note
+
+This system is designed to enforce best practices. If something is blocked, the platform will tell you what and why. Follow the workflow and you’ll avoid most issues.
+
+I’ve created a complete step-by-step SDR User Guide in the canvas that a first-time user can follow end-to-end without help — from login → mailbox → prospects → sequences → AI personalization → activation → replies → analytics.
