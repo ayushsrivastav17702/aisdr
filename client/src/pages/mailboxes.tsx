@@ -4,6 +4,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -227,9 +228,8 @@ function EditMailboxDialog({
             <>
               <div>
                 <Label htmlFor="smtpPassword">SMTP Password (optional)</Label>
-                <Input
+                <PasswordInput
                   id="smtpPassword"
-                  type="password"
                   value={smtpPassword}
                   onChange={(e) => setSmtpPassword(e.target.value)}
                   placeholder="Leave empty to keep current"
@@ -242,9 +242,8 @@ function EditMailboxDialog({
 
               <div>
                 <Label htmlFor="imapPassword">IMAP Password (optional)</Label>
-                <Input
+                <PasswordInput
                   id="imapPassword"
-                  type="password"
                   value={imapPassword}
                   onChange={(e) => setImapPassword(e.target.value)}
                   placeholder="Leave empty to keep current"
@@ -535,8 +534,7 @@ function AddMailboxButton() {
               </div>
               <div>
                 <Label>SMTP Password</Label>
-                <Input
-                  type="password"
+                <PasswordInput
                   value={smtpPassword}
                   onChange={(e) => setSmtpPassword(e.target.value)}
                   placeholder="••••••••"
@@ -549,8 +547,7 @@ function AddMailboxButton() {
           {provider === "sendgrid" && (
             <div>
               <Label>SendGrid API Key</Label>
-              <Input
-                type="password"
+              <PasswordInput
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
                 placeholder="SG.xxxxxxxxxxxxxxxx"

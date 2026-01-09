@@ -4,6 +4,7 @@ import { useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -405,9 +406,8 @@ export default function CreateTenant() {
 
                 <div className="space-y-2">
                   <Label htmlFor="managerPassword">Temporary Password</Label>
-                  <Input
+                  <PasswordInput
                     id="managerPassword"
-                    type="password"
                     placeholder="Enter a temporary password"
                     value={formData.managerPassword}
                     onChange={(e) => setFormData({ ...formData, managerPassword: e.target.value })}
