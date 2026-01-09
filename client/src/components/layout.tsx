@@ -57,6 +57,7 @@ const routeLabels: Record<string, string> = {
   '/content-management': 'Content',
   '/enrichment': 'Enrichment',
   '/analytics': 'Analytics',
+  '/user-guide': 'User Guide',
   '/leaderboard': 'Leaderboard',
   '/best-practices': 'Best Practices',
   '/ae-handoff': 'AE Handoff',
@@ -127,6 +128,7 @@ export function Layout({ children }: LayoutProps) {
   ];
 
   const engagementNavItems: NavItem[] = [
+    { href: '/user-guide', icon: <BookOpen className="w-4 h-4" />, label: 'User Guide' },
     { href: '/leaderboard', icon: <Trophy className="w-4 h-4" />, label: 'Leaderboard' },
     { href: '/best-practices', icon: <BookOpen className="w-4 h-4" />, label: 'Best Practices' },
     { href: '/ae-handoff', icon: <ArrowRightLeft className="w-4 h-4" />, label: 'AE Handoff' },
