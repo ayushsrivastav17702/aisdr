@@ -565,11 +565,13 @@ export class AuthService {
     // Hash new password
     const hashedPassword = await this.hashPassword(newPassword);
 
-    // Update user password
+    // Update user password and enable password login
     await db
       .update(users)
       .set({ 
         passwordHash: hashedPassword,
+        passwordLoginEnabled: true,
+        forcePasswordReset: false,
         updatedAt: new Date()
       })
       .where(eq(users.id, validation.userId));
