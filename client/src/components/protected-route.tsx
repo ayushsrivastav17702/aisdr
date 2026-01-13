@@ -20,23 +20,31 @@ export function ProtectedRoute({ children, requireAdmin = false, requireManagerO
     }
   }, [isLoading, isAuthenticated, setLocation]);
 
+  // Helper to check if user has manager/admin access
+  const hasManagerAccess = user?.isManager || user?.role === 'admin' || user?.role === 'manager';
+  
+  // For requireAdmin, only allow users with manager role who are NOT flagged as pure managers
+  // This allows org-admins (role='manager' but isManager=false) but blocks pure managers (isManager=true)
   useEffect(() => {
-    if (!isLoading && isAuthenticated && requireAdmin && user?.role !== 'admin') {
-      setLocation('/');
+    if (!isLoading && isAuthenticated && requireAdmin) {
+      const isAdminUser = (user?.role === 'admin' || user?.role === 'manager') && !user?.isManager;
+      if (!isAdminUser) {
+        setLocation('/');
+      }
     }
   }, [isLoading, isAuthenticated, requireAdmin, user, setLocation]);
 
   // Block regular users from manager/admin routes
   useEffect(() => {
     if (!isLoading && isAuthenticated && requireManagerOrAdmin) {
-      const isAllowed = user?.isManager || user?.role === 'admin';
-      if (!isAllowed) {
+      if (!hasManagerAccess) {
         setLocation('/');
       }
     }
-  }, [isLoading, isAuthenticated, requireManagerOrAdmin, user?.isManager, user?.role, setLocation]);
+  }, [isLoading, isAuthenticated, requireManagerOrAdmin, hasManagerAccess, setLocation]);
 
-  // Block managers from accessing SDR-only routes
+  // Block managers from accessing SDR-only routes (only use isManager flag, not role)
+  // This allows admins with role='manager' but isManager=false to access SDR routes
   useEffect(() => {
     if (!isLoading && isAuthenticated && blockManager && user?.isManager) {
       setLocation('/manager/dashboard');
@@ -55,19 +63,22 @@ export function ProtectedRoute({ children, requireAdmin = false, requireManagerO
     return null;
   }
 
-  if (requireAdmin && user?.role !== 'admin') {
-    return null;
-  }
-
-  // Block regular users from manager/admin routes
-  if (requireManagerOrAdmin) {
-    const isAllowed = user?.isManager || user?.role === 'admin';
-    if (!isAllowed) {
+  // For requireAdmin, only allow org-admins (role='manager' but isManager=false)
+  if (requireAdmin) {
+    const isAdminUser = (user?.role === 'admin' || user?.role === 'manager') && !user?.isManager;
+    if (!isAdminUser) {
       return null;
     }
   }
 
-  // Block managers from SDR routes
+  // Block regular users from manager/admin routes
+  if (requireManagerOrAdmin) {
+    if (!hasManagerAccess) {
+      return null;
+    }
+  }
+
+  // Block managers from SDR routes (only use isManager flag)
   if (blockManager && user?.isManager) {
     return null;
   }

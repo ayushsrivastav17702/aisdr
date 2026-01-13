@@ -7,7 +7,7 @@ interface AuthUser {
   emailVerified: boolean;
   firstName: string | null;
   lastName: string | null;
-  role: 'admin' | 'user';
+  role: 'admin' | 'manager' | 'user';
   status: 'active' | 'inactive' | 'suspended';
   isManager: boolean;
 }

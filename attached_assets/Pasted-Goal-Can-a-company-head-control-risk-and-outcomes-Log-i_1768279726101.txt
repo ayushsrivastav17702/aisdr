@@ -1,0 +1,96 @@
+Goal: Can a company head control risk and outcomes?
+
+Log in as MANAGER (Company Admin).
+
+USER & ACCESS CONTROL
+1. Create a new user (SDR)
+2. Assign role and permissions
+3. Restrict:
+   - Emails/day
+   - Campaign creation
+   - Sending without approval
+
+CAMPAIGN GOVERNANCE
+4. Create a campaign but REQUIRE approval
+5. Review AI-generated messages
+6. Approve / reject / request regeneration
+7. Pause campaign mid-run and verify instant stop
+
+VISIBILITY
+8. Locate dashboards showing:
+   - Active campaigns
+   - Emails sent
+   - Errors or failures
+9. Drill into a single user and verify:
+   - What they sent
+   - When
+   - To whom
+
+RISK SCENARIOS
+10. Simulate:
+    - Bad AI message
+    - Wrong persona targeting
+11. Identify:
+    - How manager detects this
+    - How fast they can stop it
+
+CONTROL TEST
+12. Attempt to:
+    - Override user actions
+    - Disable a user instantly
+
+REPORT:
+- Can a manager confidently roll this out to 10–20 SDRs?
+- Where does control feel weak or missing?
+- What would block a VP Sales from approving rollout?
+
+3️⃣ USER (SDR) VERIFICATION PROMPT
+
+Goal: Will SDRs trust this tool enough to actually use it?
+
+Log in as USER (SDR).
+
+ONBOARDING
+1. Start with zero context
+2. Attempt to create a campaign without guidance
+3. Note confusion points or missing explanations
+
+AI TRUST TEST
+4. Generate an outreach message
+5. Identify:
+   - Why AI chose this angle
+   - What inputs were used
+6. Edit message manually and regenerate alternatives
+
+SAFETY & CONFIDENCE
+7. Preview final message before sending
+8. Attempt to send:
+   - Incorrect message
+   - Low-quality message
+9. Check if system blocks or warns
+
+CONTROL & RECOVERY
+10. Pause campaign yourself
+11. Undo or modify messages
+12. Understand what data is being sent externally
+
+REPORT:
+- Would an SDR trust this with their name?
+- Where does AI feel like a black box?
+- What would cause SDRs to bypass or avoid this tool?
+
+4️⃣ FINAL CROSS-ROLE SALES READINESS CHECK
+Based on all three roles:
+
+Answer clearly:
+1. What could cause reputational damage?
+2. What could cause email domain burn?
+3. What could cause internal blame on AI?
+
+Categorize blockers:
+- Must-fix before first paid customer
+- Can-fix after 3–5 customers
+- Scale-only issues
+
+Give a final verdict:
+SELL NOW / SELL WITH LIMITS / DO NOT SELL
