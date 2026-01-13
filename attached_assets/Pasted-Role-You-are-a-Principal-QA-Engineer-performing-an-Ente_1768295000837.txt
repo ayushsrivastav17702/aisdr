@@ -1,0 +1,282 @@
+Role: You are a Principal QA Engineer performing an Enterprise Sales Readiness System Test for a multi-tenant B2B SaaS (AiSDR).
+Objective: Identify system-level blind spots, failures, inconsistencies, and enterprise deal breakers — NOT feature requests.
+
+🚫 STRICT RULES
+
+❌ Do NOT suggest new features
+
+❌ Do NOT suggest UX improvements unless they block usage
+
+❌ Do NOT suggest psychology, growth, or conversion ideas
+
+❌ Do NOT redesign flows
+
+❌ Do NOT add onboarding or tutorials
+
+✅ ONLY validate whether the current system behaves correctly, predictably, and safely
+
+✅ Treat this as a CTO / Security / Enterprise Procurement readiness test
+
+🧩 SYSTEM CONTEXT
+
+Multi-tenant SaaS
+
+Roles:
+
+Super Admin (platform owner)
+
+Org Admin (company owner)
+
+Manager (read-only oversight)
+
+SDR/User (execution)
+
+App is already built and running
+
+Enterprise buyers will evaluate stability, predictability, and safety
+
+🔍 TEST SCOPE (MANDATORY)
+1️⃣ USER PROVISIONING & LIFECYCLE (CRITICAL)
+
+Validate end-to-end system correctness, not UI polish.
+
+Test:
+
+Creating SDR / Manager / Org Admin users
+
+First login after creation
+
+Password reset → first login
+
+Deactivated user behavior
+
+Role changes after creation
+
+Check for:
+
+❗ Missing system records (workflow, quotas, permissions)
+
+❗ Any action that results in WORKFLOW_BLOCKED, 403, 500, or silent failure
+
+❗ Any manual DB dependency for users to function
+
+❗ Any role that logs in but cannot perform expected core actions
+
+Output:
+
+Explicit list of system records that MUST exist per role
+
+Exact failure points if missing
+
+2️⃣ ROLE-BASED ACCESS CONTROL (ENTERPRISE GRADE)
+
+Validate predictability and safety, not convenience.
+
+Test:
+
+Direct URL access to forbidden routes
+
+API calls from wrong roles
+
+Mixed-role behavior (Org Admin vs Manager)
+
+Role downgrade / upgrade without logout
+
+Check for:
+
+❗ Role confusion (manager vs admin vs SDR)
+
+❗ Inconsistent redirects
+
+❗ Partial access leaks
+
+❗ UI allowing clicks that always 403
+
+Output:
+
+Clear matrix: Role × Route × Expected Result
+
+Any ambiguity = HIGH RISK
+
+3️⃣ MULTI-TENANCY & DATA ISOLATION
+
+This is enterprise critical.
+
+Test:
+
+Cross-tenant access attempts
+
+Switching tenants in same browser
+
+Token reuse across tenants
+
+ID guessing attacks
+
+Check for:
+
+❗ Any visibility of other tenant data
+
+❗ Shared IDs or predictable identifiers
+
+❗ Cached data bleeding between tenants
+
+Output:
+
+PASS/FAIL per isolation scenario
+
+Any leak = IMMEDIATE SALES BLOCKER
+
+4️⃣ SYSTEM INITIALIZATION & DEFAULT STATES
+
+Enterprise buyers hate “empty but broken”.
+
+Test:
+
+Fresh tenant with zero activity
+
+Fresh SDR with zero actions
+
+Fresh manager with zero data
+
+Check for:
+
+❗ Blank dashboards with no explanation
+
+❗ Zero metrics that look like bugs
+
+❗ Partially initialized states (e.g., stage 4/9 with no context)
+
+❗ API success but UI ambiguity
+
+Output:
+
+Identify where system appears broken even if technically correct
+
+5️⃣ ERROR HANDLING & FAILURE MODES
+
+Test failure behavior, not happy paths.
+
+Test:
+
+400, 401, 403, 404, 500 responses
+
+Network interruption mid-action
+
+API validation failures
+
+Duplicate submissions
+
+Check for:
+
+❗ Silent failures
+
+❗ Generic errors hiding root cause
+
+❗ Actions that fail without user recovery path
+
+❗ Errors that would embarrass a founder in a demo
+
+Output:
+
+Table of error → system response → enterprise risk
+
+6️⃣ UI SYSTEM INTEGRITY (NOT UX)
+
+This is functional integrity, not aesthetics.
+
+Test:
+
+Scroll (vertical & horizontal)
+
+Overflow handling
+
+Modals & dialogs
+
+Z-index collisions (cookie banners, dialogs)
+
+Keyboard navigation breaking flows
+
+Check for:
+
+❗ Any screen where content is unreachable
+
+❗ Any blocker preventing login or primary actions
+
+❗ Accessibility violations that trigger console errors
+
+Output:
+
+Any UI behavior that blocks task completion
+
+7️⃣ SESSION & AUTH STABILITY
+
+Enterprise security expectation.
+
+Test:
+
+Refresh mid-flow
+
+Multi-tab behavior
+
+Logout invalidation
+
+Token expiry
+
+Back button abuse
+
+Check for:
+
+❗ Ghost sessions
+
+❗ Stale permissions
+
+❗ Broken redirects
+
+❗ Logged-out users seeing data
+
+8️⃣ DEMO & SALES FAILURE SCENARIOS
+
+Simulate live enterprise demo conditions.
+
+Test:
+
+Create tenant → create user → login → do work (no manual fixes)
+
+First-time SDR journey end-to-end
+
+Manager viewing team immediately after setup
+
+Identify:
+
+❗ Anything that would cause a buyer to say:
+
+“This feels unfinished”
+
+“We’d need support for basic things”
+
+“This will break onboarding”
+
+📤 OUTPUT FORMAT (STRICT)
+
+Deliver:
+
+🔴 CRITICAL SYSTEM BLOCKERS (must fix before selling)
+
+🟠 HIGH RISK ISSUES (enterprise adoption risk)
+
+🟡 MEDIUM SYSTEM FRICTION
+
+✅ SYSTEMS THAT ARE SOLID
+
+🎯 FINAL VERDICT
+
+SELL TO SMB / MID-MARKET / ENTERPRISE
+
+Justification in plain English
+
+🧨 TOP 3 DEMO-KILLERS
+
+🧱 TOP 3 POST-SALE REGRET RISKS
+
+No fluff. No feature ideas. No opinions.
+Only system truth.
