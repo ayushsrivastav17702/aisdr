@@ -1,0 +1,235 @@
+bjective:
+Enforce strict production ≡ pre-production parity for configuration, builds, database schema, protocols, and deployment safety.
+This is a blocking requirement — deployment must fail automatically if parity is violated.
+
+1️⃣ CONFIGURATION DRIFT LOCK (HARD BLOCK)
+
+Requirement: Create a single source of truth for runtime configuration.
+
+Actions Required:
+
+Create a canonical config manifest (e.g. config.manifest.json) listing:
+
+All required ENV variables
+
+Feature flags
+
+Defaults
+
+On application boot:
+
+Validate that every key exists
+
+Fail fast if:
+
+A config exists in prod but not in pre-prod
+
+A config exists in pre-prod but not prod
+
+Explicit Checks:
+
+ENV variable names must match exactly
+
+SEARCH_MODE must match across environments
+
+AI toggles must match across environments
+
+Rate limits must match across environments
+
+Email provider + SMTP headers must match across environments
+
+Failure Mode:
+❌ App must refuse to start with a fatal error
+❌ CI must fail deployment
+
+2️⃣ IMMUTABLE BUILD ENFORCEMENT
+
+Requirement: Build once, promote everywhere.
+
+Actions Required:
+
+Generate a build fingerprint (hash or image digest) at build time
+
+Persist this fingerprint as metadata
+
+At deploy time:
+
+Validate that prod artifact hash === pre-prod artifact hash
+
+CI Rules:
+
+If prod build hash ≠ pre-prod build hash → FAIL PIPELINE
+
+No environment-specific builds allowed
+
+3️⃣ DATABASE SAFETY GUARANTEES
+A. Schema Parity Validation
+
+Before deployment:
+
+Run automated schema diff between pre-prod and prod
+
+Explicitly assert existence of:
+
+emailQueue.messageId
+
+Transactional bulk enrollment logic
+
+Hashed invitation tokens
+
+Rule:
+❌ No automatic migrations in prod
+❌ Deploy fails without dry-run verification
+
+B. Backward Compatibility Enforcement
+
+Automated pre-deploy test must validate:
+
+Emails without messageId do not crash
+
+Legacy invitations still resolve
+
+Existing sequences load normally
+
+Required Outcome:
+
+No crashes
+
+Only graceful fallbacks
+
+No data corruption
+
+4️⃣ PROTOCOL-LEVEL POST-DEPLOY SMOKE TESTS (MANDATORY)
+
+Immediately after deployment, run blocking health checks:
+
+Email Threading
+
+Send email A
+
+Reply from real inbox
+
+Send follow-up
+
+Assert:
+
+Same thread
+
+Correct In-Reply-To
+
+Message-ID persisted
+
+Bulk Enrollment Transaction Integrity
+
+Attempt enrollment of 50 prospects
+
+Force failure mid-transaction
+
+Assert:
+
+Zero enrollments
+
+Zero orphan rows
+
+No partial writes
+
+Deterministic Search Verification
+
+Run query:
+
+merchandisers south-africa puma
+
+
+Assert:
+
+Result count identical to pre-prod
+
+No AI-based variance
+
+5️⃣ CANARY DEPLOYMENT ENFORCEMENT
+
+Deployment must proceed in phases:
+
+Phase 1: Internal Canary Tenant
+
+Real inbox
+
+Real domain
+
+Monitor:
+
+Email threading
+
+Reply capture
+
+Enrollment atomicity
+
+Phase 2: Limited External Tenant
+
+Single approved customer
+
+Read-only monitoring
+
+No bulk sends
+
+❌ Full rollout blocked unless both phases pass
+
+6️⃣ OBSERVABILITY & VERIFICATION LOGGING
+
+Add explicit verification logs, not generic errors.
+
+Required log signatures:
+
+[TX_COMMIT] enrollProspects success count=50
+[THREAD_MATCH] reply matched messageId=...
+[FALLBACK_USED] personalization minimal template
+
+
+Rule:
+
+If prod logs differ materially from pre-prod → flag incident automatically
+
+7️⃣ DEPLOYMENT KILL-SWITCHES (MANDATORY)
+
+Before deploy, confirm live switches exist for:
+
+SEARCH_MODE
+
+AI_PERSONALIZATION
+
+EMAIL_SEND
+
+BULK_ENROLL
+
+Hard Rule:
+❌ No deploy if any switch cannot be toggled instantly
+
+8️⃣ FINAL DEPLOYMENT GATE (AUTOMATED)
+
+Deployment is allowed only if ALL checks return TRUE:
+
+Same build artifact
+
+Same ENV variables
+
+Same DB schema
+
+Email threading verified post-deploy
+
+Bulk enrollment rollback verified
+
+Canary tenants validated
+
+Kill switches confirmed
+
+If any check fails → Abort deploy
+
+🚨 NON-NEGOTIABLE CONSTRAINTS
+
+Do NOT add new features
+
+Do NOT change product behavior
+
+Do NOT rely on manual verification
+
+Everything must be automated or fail closed
