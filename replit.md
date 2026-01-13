@@ -74,6 +74,7 @@ The platform is built on a modern web stack, featuring a multi-tenant architectu
 - **Manager Pause via UserControls**: Extend cascade pause logic to recognize manager pauses in userControls table in addition to managerQuotas.
 
 ## Recent Changes (January 2026)
+- **Alias Reply Matching via References Header**: Reply detection now uses RFC 5322 References header chain as fallback when In-Reply-To is missing. Handles mobile client replies, email forwarding, and alias sender scenarios where prospect replies from a different email address. Supports both string and string[] References formats (mailparser compatibility).
 - **Atomic Bulk Enrollment**: Wrapped `storage.enrollProspects` in `db.transaction` for all-or-nothing semantics. Prevents partial enrollments when errors occur mid-batch - if any operation fails (cancel emails, supersede previous, insert new), entire batch rolls back.
 - **Search Query Normalization**: Enhanced deterministic search mode with plural-to-singular mapping (merchandisers→merchandiser, analysts→analyst) and hyphen/underscore replacement (south-africa→south africa) for consistent keyword matching.
 - **Email Threading Fix (RFC 5322)**: Follow-up emails now include `messageId`, `inReplyTo`, and `references` headers for proper thread continuity in Gmail/Outlook. Previous message IDs are stored in `emailQueue` table and passed to subsequent emails.
