@@ -1,0 +1,269 @@
+{
+  "version": "1.0.0",
+  "description": "Canonical configuration manifest for production parity enforcement",
+  "generated": "2026-01-13",
+  "categories": {
+    "core": {
+      "description": "Core application settings - MUST match across environments",
+      "variables": {
+        "NODE_ENV": {
+          "required": true,
+          "type": "string",
+          "allowedValues": ["development", "production", "test"],
+          "parityRequired": false,
+          "description": "Environment mode"
+        },
+        "DATABASE_URL": {
+          "required": true,
+          "type": "string",
+          "parityRequired": false,
+          "description": "PostgreSQL connection string"
+        },
+        "SESSION_SECRET": {
+          "required": true,
+          "type": "string",
+          "minLength": 32,
+          "parityRequired": false,
+          "description": "JWT/session signing secret"
+        }
+      }
+    },
+    "feature_flags": {
+      "description": "Feature toggles - MUST match across environments for parity",
+      "variables": {
+        "SEARCH_MODE": {
+          "required": false,
+          "type": "string",
+          "allowedValues": ["ai", "deterministic"],
+          "default": "ai",
+          "parityRequired": true,
+          "description": "Search mode: AI-based or deterministic rule-based"
+        },
+        "AI_PERSONALIZATION_ENABLED": {
+          "required": false,
+          "type": "boolean",
+          "default": true,
+          "parityRequired": true,
+          "description": "Enable AI-powered email personalization"
+        },
+        "EMAIL_SEND_ENABLED": {
+          "required": false,
+          "type": "boolean",
+          "default": true,
+          "parityRequired": true,
+          "description": "Kill switch for email sending"
+        },
+        "BULK_ENROLL_ENABLED": {
+          "required": false,
+          "type": "boolean",
+          "default": true,
+          "parityRequired": true,
+          "description": "Kill switch for bulk enrollment"
+        },
+        "DEMO_MODE": {
+          "required": false,
+          "type": "boolean",
+          "default": false,
+          "parityRequired": true,
+          "description": "Demo mode for sandbox email simulation"
+        }
+      }
+    },
+    "rate_limits": {
+      "description": "Rate limiting configuration - MUST match across environments",
+      "variables": {
+        "EMAIL_VOLUME_PRESET": {
+          "required": false,
+          "type": "string",
+          "allowedValues": ["conservative", "medium", "high", "enterprise"],
+          "default": "medium",
+          "parityRequired": true,
+          "description": "Email volume preset"
+        },
+        "MAX_EMAILS_PER_DAY": {
+          "required": false,
+          "type": "number",
+          "default": 5000,
+          "parityRequired": true,
+          "description": "Maximum emails per day"
+        },
+        "MAX_CONCURRENT_ENROLLMENTS": {
+          "required": false,
+          "type": "number",
+          "default": 100,
+          "parityRequired": true,
+          "description": "Maximum concurrent enrollments"
+        },
+        "RATE_LIMIT_WINDOW_MS": {
+          "required": false,
+          "type": "number",
+          "default": 60000,
+          "parityRequired": true,
+          "description": "Rate limit window in milliseconds"
+        }
+      }
+    },
+    "ai_providers": {
+      "description": "AI provider configuration",
+      "variables": {
+        "OPENAI_API_KEY": {
+          "required": false,
+          "type": "string",
+          "parityRequired": false,
+          "description": "OpenAI API key"
+        },
+        "OPENAI_API_KEY_BACKUP": {
+          "required": false,
+          "type": "string",
+          "parityRequired": false,
+          "description": "Backup OpenAI API key"
+        },
+        "ANTHROPIC_API_KEY": {
+          "required": false,
+          "type": "string",
+          "parityRequired": false,
+          "description": "Anthropic API key"
+        },
+        "OPEN_ROUTER": {
+          "required": false,
+          "type": "string",
+          "parityRequired": false,
+          "description": "OpenRouter API key"
+        },
+        "AI_PROVIDER": {
+          "required": false,
+          "type": "string",
+          "allowedValues": ["openai", "anthropic", "openrouter"],
+          "default": "openai",
+          "parityRequired": true,
+          "description": "Preferred AI provider"
+        }
+      }
+    },
+    "email_infrastructure": {
+      "description": "Email sending configuration",
+      "variables": {
+        "RESEND_API_KEY": {
+          "required": false,
+          "type": "string",
+          "parityRequired": false,
+          "description": "Resend API key for email sending"
+        },
+        "ENCRYPTION_KEY": {
+          "required": false,
+          "type": "string",
+          "parityRequired": false,
+          "description": "AES-256 encryption key for mailbox credentials"
+        },
+        "SMTP_FROM_EMAIL": {
+          "required": false,
+          "type": "string",
+          "parityRequired": true,
+          "description": "Default from email address"
+        },
+        "SMTP_FROM_NAME": {
+          "required": false,
+          "type": "string",
+          "parityRequired": true,
+          "description": "Default from name"
+        }
+      }
+    },
+    "external_services": {
+      "description": "External service API keys",
+      "variables": {
+        "APOLLO_API_KEY": {
+          "required": false,
+          "type": "string",
+          "parityRequired": false,
+          "description": "Apollo.io API key"
+        },
+        "LUSHA_API_KEY": {
+          "required": false,
+          "type": "string",
+          "parityRequired": false,
+          "description": "Lusha API key"
+        },
+        "PERPLEXITY_API_KEY": {
+          "required": false,
+          "type": "string",
+          "parityRequired": false,
+          "description": "Perplexity AI API key"
+        }
+      }
+    },
+    "infrastructure": {
+      "description": "Infrastructure configuration",
+      "variables": {
+        "REDIS_DISABLED": {
+          "required": false,
+          "type": "boolean",
+          "default": false,
+          "parityRequired": true,
+          "description": "Disable Redis/BullMQ"
+        },
+        "UPSTASH_REDIS_URL": {
+          "required": false,
+          "type": "string",
+          "parityRequired": false,
+          "description": "Upstash Redis URL"
+        },
+        "SENTRY_DSN": {
+          "required": false,
+          "type": "string",
+          "parityRequired": false,
+          "description": "Sentry DSN for error monitoring"
+        }
+      }
+    }
+  },
+  "killSwitches": [
+    {
+      "name": "SEARCH_MODE",
+      "description": "Toggle between AI and deterministic search",
+      "values": ["ai", "deterministic"],
+      "instant": true
+    },
+    {
+      "name": "AI_PERSONALIZATION_ENABLED",
+      "description": "Enable/disable AI personalization",
+      "values": ["true", "false"],
+      "instant": true
+    },
+    {
+      "name": "EMAIL_SEND_ENABLED",
+      "description": "Enable/disable email sending",
+      "values": ["true", "false"],
+      "instant": true
+    },
+    {
+      "name": "BULK_ENROLL_ENABLED",
+      "description": "Enable/disable bulk enrollment",
+      "values": ["true", "false"],
+      "instant": true
+    }
+  ],
+  "schemaRequirements": [
+    {
+      "table": "email_queue",
+      "column": "message_id",
+      "type": "varchar",
+      "required": true,
+      "description": "RFC 5322 Message-ID for email threading"
+    },
+    {
+      "table": "user_invitations",
+      "column": "token",
+      "type": "varchar",
+      "required": true,
+      "description": "Hashed invitation token"
+    },
+    {
+      "table": "sequence_prospects",
+      "column": "id",
+      "type": "varchar",
+      "required": true,
+      "description": "Bulk enrollment support"
+    }
+  ]
+}
