@@ -776,7 +776,50 @@ export class ReplyDetectionService {
         }
       }
 
-      // Fallback: Match by prospect email + subject pattern
+      // Fallback 1: Try References header chain (handles alias/forwarded replies)
+      if (!matchedEmail && references) {
+        // References can be string (space-separated) or string[] (from mailparser)
+        let refIds: string[] = [];
+        if (Array.isArray(references)) {
+          refIds = references.map(r => String(r).replace(/[<>]/g, '').trim()).filter(Boolean);
+        } else if (typeof references === 'string') {
+          refIds = references.split(/\s+/).filter(Boolean).map(r => r.replace(/[<>]/g, '').trim());
+        }
+        
+        if (refIds.length > 0) {
+          console.log(`🔍 Trying References header match (${refIds.length} refs): ${refIds.slice(0, 3).join(', ')}...`);
+          
+          // Try each Reference (most recent first typically)
+          for (const refId of refIds) {
+            const normalizedRefId = refId.includes('<') ? refId : `<${refId}>`;
+            const [emailRecord] = await db
+              .select()
+              .from(emails)
+              .where(eq(emails.messageId, normalizedRefId))
+              .limit(1);
+
+            if (emailRecord) {
+              console.log(`✅ Matched reply by References header: ${normalizedRefId} (alias sender: ${fromEmail})`);
+              matchedEmailRecord = emailRecord;
+              
+              const [queueItem] = await db
+                .select()
+                .from(emailQueue)
+                .where(eq(emailQueue.id, emailRecord.trackingId || ''))
+                .limit(1);
+              
+              matchedEmail = queueItem || {
+                prospectId: emailRecord.prospectId,
+                sequenceId: emailRecord.sequenceId,
+                subject: emailRecord.subject,
+              };
+              break;
+            }
+          }
+        }
+      }
+
+      // Fallback 2: Match by prospect email + subject pattern
       if (!matchedEmail) {
         const sentEmails = await db
           .select()
