@@ -1,0 +1,126 @@
+What’s Poor (From an Enterprise Buyer’s Eye)
+1️⃣ Excessive Empty Space = “Unfinished”
+
+80% of the screen is blank
+
+Feels like a placeholder, not a serious platform
+
+Enterprise users subconsciously equate density with capability
+
+Impact:
+“Is this all the product does?”
+
+2️⃣ No Value Proposition Above the Fold
+
+The screen only says:
+
+Welcome to AiSDR
+
+It does not answer:
+
+What does this tool do?
+
+Why should I trust it?
+
+Is this for SDRs, Managers, or Enterprises?
+
+Enterprise expectation:
+A one-line positioning statement minimum.
+
+3️⃣ Visual Hierarchy Is Flat
+
+Logo, title, buttons all feel same weight
+
+No focal point
+
+No visual confidence
+
+This looks like a consumer login, not a revenue-critical system.
+
+4️⃣ “Contact support” on Login Screen = Red Flag
+
+This line:
+
+Don't have an account? Contact support
+
+Signals:
+
+Closed system
+
+Manual ops
+
+Not self-serve
+
+Not scalable
+
+CTO / VP Sales reaction:
+“How many things require support tickets?”
+
+5️⃣ Google Sign-In as Primary for Enterprise = Questionable
+
+Google SSO is fine — but:
+
+No mention of SSO, SAML, security, or compliance
+
+No enterprise reassurance
+
+It feels startup-grade, not enterprise-grade.
+
+What’s NOT the Problem (Important)
+
+Clean
+
+Not ugly
+
+Works functionally
+
+No bugs visible
+
+So this is not a UI failure — it’s a perception failure.
+
+Why This Matters (Sales Reality)
+
+This screen is often seen by:
+
+CTOs
+
+Security teams
+
+Managers during eval
+
+SDRs on Day 1
+
+If the first impression feels light, they assume:
+
+Shallow workflows
+
+Immature system
+
+Weak edge-case handling
+(ironically the exact things you’ve worked hard to fix)
+
+Minimum Fix (Without Redesigning the App)
+
+You don’t need a full redesign. Just signal seriousness.
+
+Add:
+
+Short value statement
+
+“AI-powered outbound system for SDR teams — search, personalize, sequence, and reply in one workflow.”
+
+Role clarity
+
+“Built for SDRs, Managers, and Revenue Leaders”
+
+Trust signals (tiny)
+
+“Secure • Multi-tenant • Enterprise-ready”
+
+Even text-only helps
+
+Reduce dead space
+
+Add subtle background gradient or pattern
+
+Or split layout (left info, right login)
