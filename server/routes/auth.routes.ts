@@ -489,7 +489,8 @@ router.post('/api/auth/invitations', authenticate, requireAdmin, invitationRateL
       email,
       role,
       req.user.id,
-      inviterName
+      inviterName,
+      req.user.organizationId
     );
 
     res.json({
