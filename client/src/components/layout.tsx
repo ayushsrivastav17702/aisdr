@@ -191,8 +191,8 @@ export function Layout({ children }: LayoutProps) {
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
-      <aside className="w-60 bg-card border-r border-border flex flex-col">
+    <div className="flex h-screen bg-background">
+      <aside className="w-60 bg-card border-r border-border flex flex-col flex-shrink-0">
         <div className="p-6 border-b border-border">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center">

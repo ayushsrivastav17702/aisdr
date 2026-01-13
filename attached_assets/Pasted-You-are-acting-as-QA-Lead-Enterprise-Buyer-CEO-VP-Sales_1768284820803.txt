@@ -1,0 +1,268 @@
+You are acting as:
+• QA Lead
+• Enterprise Buyer (CEO / VP Sales)
+• First-time end user (SDR)
+
+Your goal is NOT to confirm features.
+Your goal is to identify ANY blind spot that could:
+- Break a sales demo
+- Reduce buyer trust
+- Cause churn after payment
+- Create operational or reputational risk
+
+You must test the system as it exists today.
+DO NOT assume future features.
+DO NOT excuse issues as “out of scope”.
+
+For every issue found, classify it as:
+🔴 CRITICAL – Must fix before selling
+🟠 HIGH – Can sell but limits enterprise adoption
+🟡 MEDIUM – UX friction, causes confusion
+🟢 LOW – Polish / nice-to-have
+
+For each issue, report:
+1. Where it occurs (role + screen)
+2. What the user experiences
+3. Why this is dangerous commercially
+4. Exact recommendation (not vague)
+1️⃣ GLOBAL PLATFORM TESTS (ALL ROLES)
+markdown
+Copy code
+Test the following across Super Admin, Org Admin, Manager, and SDR:
+
+A. SCROLL & LAYOUT
+1. Verify vertical scrolling works on all screens
+2. Verify horizontal scrolling works for tables
+3. Test at:
+   - 13" screen
+   - 125% browser zoom
+   - Window resize
+4. Check for:
+   - Content cut off
+   - Inaccessible buttons
+   - Fixed containers blocking scroll
+
+Flag ANY missing scroll as 🔴 CRITICAL.
+
+B. EMPTY STATES
+Test screens with:
+- No data
+- First login
+- No sequences
+- No prospects
+- No campaigns
+- No team members
+
+For each empty state:
+- Does it explain WHY it is empty?
+- Does it tell the user what to do next?
+
+Blank screens = 🔴 CRITICAL
+
+C. LOADING & FEEDBACK
+Trigger async actions:
+- AI generation
+- Prospect search
+- Campaign creation
+- Save / update actions
+
+Check:
+- Loading indicators
+- Disabled buttons
+- Duplicate action prevention
+
+Silent waiting = 🟠 HIGH
+
+D. ERROR HANDLING
+Force:
+- 401
+- 403
+- Quota exceeded
+- AI failure
+- No prospects found
+
+Errors must:
+- Explain the reason
+- Suggest next action
+Generic errors = 🟠 HIGH
+2️⃣ SUPER ADMIN BLIND-SPOT TESTING
+markdown
+Copy code
+Login as SUPER ADMIN.
+
+A. TENANT SAFETY
+1. Create multiple tenants
+2. Switch between tenants
+3. Attempt to access tenant data incorrectly
+
+Any data leakage = 🔴 CRITICAL
+
+B. GLOBAL CONTROL
+4. Suspend a tenant
+5. Confirm:
+   - All campaigns stop
+   - No emails can be sent
+6. Reactivate tenant and verify state restoration
+
+C. AUDITABILITY
+7. Identify audit logs for:
+   - Tenant creation
+   - Suspension
+   - Admin actions
+
+Missing logs = 🟠 HIGH
+
+D. DESTRUCTIVE ACTIONS
+8. Delete tenant (if available)
+9. Verify:
+   - Data removal
+   - No orphan records
+
+Report:
+- Would a CTO trust this platform?
+- What would block an enterprise security review?
+3️⃣ ORG ADMIN (CONTROL ROLE) BLIND-SPOTS
+markdown
+Copy code
+Login as ORG ADMIN.
+
+A. ROLE CLARITY
+1. Is it obvious this role has full control?
+2. Are permissions clearly explained?
+
+Confusion = 🟠 HIGH
+
+B. USER & RISK CONTROL
+3. Create SDR and Manager users
+4. Deactivate a user
+5. Reset passwords
+6. Change quotas / limits
+
+Test:
+- Are changes immediate?
+- Is confirmation shown?
+
+C. EMERGENCY SCENARIOS
+7. Simulate a bad campaign
+8. Attempt to stop everything quickly
+
+If stopping is slow or unclear = 🔴 CRITICAL
+
+D. DESTRUCTIVE SAFETY
+9. Attempt delete / deactivate actions
+10. Confirm confirmation modals exist
+
+One-click destruction = 🟠 HIGH
+
+Report:
+- Would a CEO sleep peacefully using this?
+4️⃣ MANAGER (OVERSIGHT ROLE) BLIND-SPOTS
+markdown
+Copy code
+Login as MANAGER.
+
+A. ROLE EXPECTATION TEST
+1. On first login, is it clear this role is read-only?
+2. Is there a banner or explanation?
+
+If unclear = 🔴 CRITICAL (sales confusion)
+
+B. VISIBILITY
+3. View team activity
+4. View campaign metrics
+5. Drill into:
+   - User
+   - Campaign
+   - Message history
+
+Test:
+- Can manager answer “who sent what and when”?
+
+C. BLOCKED ACTIONS
+6. Attempt restricted actions (edit, pause)
+7. Verify:
+   - Clear explanation
+   - Not a silent failure
+
+403 without explanation = 🟠 HIGH
+
+D. TRUST TEST
+8. Ask:
+   - Can manager detect a bad situation?
+   - Can they escalate correctly?
+
+Report:
+- What would frustrate a VP Sales?
+5️⃣ SDR (EXECUTION ROLE) BLIND-SPOTS
+markdown
+Copy code
+Login as SDR with ZERO context.
+
+A. ONBOARDING
+1. Try to create a sequence immediately
+2. Note confusion points
+3. Identify missing guidance
+
+B. AI TRUST TEST
+4. Generate AI messages
+5. Verify:
+   - Preview before send
+   - Regenerate option
+   - Explanation of why AI chose this angle
+
+Black-box AI = 🟠 HIGH
+
+C. CONTROL & SAFETY
+6. Pause own campaign
+7. Undo / edit before send
+8. Hit quota limits
+
+Check:
+- Are limits explained?
+- Is next step clear?
+
+D. EMOTIONAL TEST
+9. Ask:
+   - Would I trust this with my name?
+   - Would I bypass this tool?
+
+Report:
+- What would make SDRs avoid using this?
+6️⃣ ROLE TRANSITION & EDGE CASES
+markdown
+Copy code
+Test:
+1. Promote SDR → Manager
+2. Promote Manager → Org Admin
+3. Deactivate → Reactivate user
+
+Check:
+- Permission leakage
+- Stale UI
+- Incorrect access
+
+Any leakage = 🔴 CRITICAL
+7️⃣ SALES & DEMO KILLER CHECK
+markdown
+Copy code
+Answer explicitly:
+
+1. What would embarrass the founder during a live demo?
+2. What would make a buyer say “this feels rushed”?
+3. What would cause post-sale regret?
+
+Categorize issues as:
+- Must fix before ANY sale
+- Must fix before ENTERPRISE sale
+- Can defer safely
+8️⃣ FINAL VERDICT
+vbnet
+Copy code
+Give a clear verdict:
+• DO NOT SELL
+• SELL TO SMB ONLY
+• SELL TO ENTERPRISE WITH DISCLOSURES
+• FULLY ENTERPRISE READY
+
+Justify the verdict in plain language.
+No technical jargon.

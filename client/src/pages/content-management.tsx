@@ -55,9 +55,9 @@ export default function ContentManagement() {
 
   return (
     <>
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div className="flex h-screen bg-background">
       {/* Sidebar Navigation */}
-      <aside className="w-60 bg-card border-r border-border flex flex-col">
+      <aside className="w-60 bg-card border-r border-border flex flex-col flex-shrink-0">
         <div className="p-6 border-b border-border">
           <div className="flex items-center gap-3">
             <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-primary to-accent flex items-center justify-center">
@@ -105,7 +105,7 @@ export default function ContentManagement() {
       </aside>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="flex-1 flex flex-col overflow-auto">
         {/* Header */}
         <header className="border-b border-border bg-card">
           <div className="flex items-center justify-between p-6">
