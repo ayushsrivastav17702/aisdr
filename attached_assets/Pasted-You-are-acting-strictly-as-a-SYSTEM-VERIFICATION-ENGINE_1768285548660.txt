@@ -1,0 +1,260 @@
+You are acting strictly as a SYSTEM VERIFICATION ENGINEER.
+
+Your task is to test the platform ONLY at the SYSTEM level.
+Do NOT evaluate UX, psychology, messaging, or product design.
+Do NOT suggest new features.
+Do NOT assume human intent.
+
+Test only:
+- Access control
+- State correctness
+- Data isolation
+- Failure handling
+- Deterministic behavior
+- Idempotency
+- Consistency across roles
+
+All findings must be based on:
+• observable behavior
+• system responses
+• data state
+• logs / API responses
+
+Classify issues as:
+CRITICAL – violates correctness, safety, or isolation
+HIGH – inconsistent or unsafe under scale or failure
+MEDIUM – incorrect but recoverable
+LOW – edge-case inconsistency
+
+For every issue report:
+1. Preconditions
+2. Action performed
+3. Expected system behavior
+4. Actual system behavior
+5. Data/state impact
+1️⃣ AUTHENTICATION & AUTHORIZATION INTEGRITY
+markdown
+Copy code
+Test for ALL roles (Super Admin, Org Admin, Manager, SDR):
+
+1. Attempt direct API access to restricted endpoints
+2. Attempt role escalation via:
+   - token reuse
+   - modified role fields
+   - stale sessions
+3. Attempt access after:
+   - role downgrade
+   - user deactivation
+   - tenant suspension
+
+Verify:
+- 401 vs 403 correctness
+- No data returned on failure
+- No partial payloads
+- Session invalidation is immediate
+
+Any data exposure = CRITICAL
+2️⃣ TENANT & DATA ISOLATION (ENTERPRISE CORE)
+markdown
+Copy code
+Create multiple tenants with overlapping:
+- user emails
+- sequence names
+- campaign names
+- prospect identifiers
+
+Test:
+1. Cross-tenant queries
+2. Cross-tenant ID guessing
+3. Cached responses across tenants
+
+Verify:
+- No cross-tenant reads
+- No cross-tenant writes
+- No shared identifiers leaking
+
+Any cross-tenant visibility = CRITICAL
+3️⃣ ROLE PERMISSION CONSISTENCY
+markdown
+Copy code
+For each role:
+
+1. Enumerate all accessible routes
+2. Attempt forbidden actions via:
+   - UI
+   - direct API calls
+3. Capture:
+   - response code
+   - state mutation (if any)
+
+Verify:
+- Forbidden actions do NOT mutate state
+- UI blocking matches API blocking
+- No silent failures
+
+State mutation on forbidden action = CRITICAL
+4️⃣ STATE MACHINE VALIDATION (WORKFLOWS)
+markdown
+Copy code
+Identify all system states for:
+- SDR workflow
+- Sequences
+- Campaigns
+- Users
+
+For each entity:
+1. Transition state forward
+2. Attempt invalid transitions
+3. Interrupt transitions mid-action (refresh, logout)
+
+Verify:
+- Invalid transitions are rejected
+- Partial transitions do not persist
+- State remains consistent after interruption
+
+Inconsistent state = CRITICAL
+5️⃣ IDEMPOTENCY & DUPLICATE ACTION HANDLING
+diff
+Copy code
+Trigger same action multiple times:
+- Create sequence
+- Activate campaign
+- Pause campaign
+- Create user
+- Reset password
+
+Test:
+- Rapid clicks
+- Duplicate API calls
+- Retry after timeout
+
+Verify:
+- No duplicate records
+- No conflicting states
+- Same request = same outcome
+
+Duplicate side effects = HIGH
+6️⃣ CONCURRENCY & MULTI-USER CONFLICTS
+markdown
+Copy code
+Simulate concurrent actions:
+1. Two sessions modifying same entity
+2. Admin action + SDR action simultaneously
+3. Pause + resume at same time
+
+Verify:
+- Last-write consistency OR
+- Explicit conflict rejection
+
+Race condition side effects = CRITICAL
+7️⃣ FAILURE & RECOVERY BEHAVIOR
+diff
+Copy code
+Simulate failures during:
+- AI generation
+- Campaign activation
+- Prospect fetch
+- Database write
+
+Interrupt via:
+- API timeout
+- server restart
+- network failure
+
+Verify:
+- No partial writes
+- No orphan records
+- System recovers to valid state
+
+Orphaned or corrupted records = CRITICAL
+8️⃣ SESSION & TOKEN LIFECYCLE
+markdown
+Copy code
+Test:
+1. Logout behavior
+2. Token expiry
+3. Password reset invalidation
+4. Multi-session login
+
+Verify:
+- Old tokens are rejected
+- Password reset invalidates sessions
+- Deactivated users lose access immediately
+
+Session persistence after revocation = CRITICAL
+9️⃣ LIMITS & GUARDRAIL ENFORCEMENT
+diff
+Copy code
+Test enforced limits:
+- Quotas
+- Rate limits
+- Max entities (users, sequences, campaigns)
+
+Attempt:
+- Exceeding limits
+- Bypassing via API
+- Concurrent limit breaches
+
+Verify:
+- Hard enforcement
+- No partial execution beyond limits
+
+Limit bypass = CRITICAL
+🔟 DATA LIFECYCLE & DELETION
+markdown
+Copy code
+Test:
+1. User deletion
+2. Tenant suspension
+3. Tenant deletion (if supported)
+
+Verify:
+- Data is inaccessible immediately
+- No background jobs continue
+- No reactivation leaks old state
+
+Residual data access = CRITICAL
+1️⃣1️⃣ OBSERVABILITY & TRACEABILITY (SYSTEM ONLY)
+markdown
+Copy code
+For every critical action:
+- Can it be traced to:
+  - actor
+  - timestamp
+  - entity affected
+
+Verify:
+- Logs exist
+- Logs are consistent
+- Logs match system state
+
+Untraceable actions = HIGH
+1️⃣2️⃣ SYSTEM CONSISTENCY CHECK
+diff
+Copy code
+Compare:
+- UI state
+- API response
+- Database state
+
+Verify:
+- No divergence
+- No stale UI masking backend state
+
+Mismatch = HIGH
+1️⃣3️⃣ FINAL SYSTEM VERDICT
+sql
+Copy code
+Answer strictly:
+
+1. Does the system maintain correctness under failure?
+2. Does the system prevent unauthorized state mutation?
+3. Does the system maintain tenant isolation under all conditions?
+
+Verdict options:
+❌ SYSTEM NOT ENTERPRISE SAFE
+⚠️ ENTERPRISE SAFE WITH KNOWN LIMITATIONS
+✅ ENTERPRISE SAFE
+
+Justify using only system behavior and evidence.
+No opinions.
