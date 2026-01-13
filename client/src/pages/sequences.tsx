@@ -139,7 +139,7 @@ const SEQUENCE_TEMPLATES = [
 ];
 
 function SequencesList() {
-  const { data: sequences, isLoading } = useQuery({
+  const { data: sequencesData, isLoading } = useQuery<{ sequences: any[]; total: number }>({
     queryKey: ["/api/sequences"],
   });
   
@@ -147,7 +147,7 @@ function SequencesList() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 
-  const sequencesList = Array.isArray(sequences) ? sequences : [];
+  const sequencesList = Array.isArray(sequencesData?.sequences) ? sequencesData.sequences : [];
 
   // Filter and search sequences
   const filteredSequences = sequencesList.filter((seq: any) => {
