@@ -35,9 +35,10 @@ export class InvitationService {
     email: string,
     role: 'admin' | 'user',
     invitedBy: string,
-    inviterName: string
+    inviterName: string,
+    organizationId?: string | null
   ): Promise<{ id: string; inviteUrl: string }> {
-    const invitation = await authService.createInvitation(email, role, invitedBy);
+    const invitation = await authService.createInvitation(email, role, invitedBy, organizationId);
     
     const baseUrl = process.env.REPLIT_DEV_DOMAIN 
       ? `https://${process.env.REPLIT_DEV_DOMAIN}` 

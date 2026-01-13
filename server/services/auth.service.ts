@@ -330,7 +330,8 @@ export class AuthService {
   async createInvitation(
     email: string,
     role: 'admin' | 'user',
-    invitedBy: string
+    invitedBy: string,
+    organizationId?: string | null
   ): Promise<{ id: string; token: string; expiresAt: Date }> {
     const existingUser = await db.select().from(users).where(eq(users.email, email)).limit(1);
     if (existingUser.length > 0) {
@@ -343,6 +344,7 @@ export class AuthService {
 
     const [invitation] = await db.insert(userInvitations).values({
       email,
+      organizationId: organizationId || null,
       role,
       invitedBy,
       token: hashedToken,
@@ -359,7 +361,7 @@ export class AuthService {
     };
   }
 
-  async validateInvitation(token: string): Promise<{ id: string; email: string; role: string } | null> {
+  async validateInvitation(token: string): Promise<{ id: string; email: string; role: string; organizationId: string | null } | null> {
     const invitations = await db
       .select()
       .from(userInvitations)
@@ -377,6 +379,7 @@ export class AuthService {
           id: invitation.id,
           email: invitation.email,
           role: invitation.role,
+          organizationId: invitation.organizationId,
         };
       }
     }
@@ -409,6 +412,7 @@ export class AuthService {
       role: invitation.role as 'admin' | 'user',
       passwordHash,
       status: 'active',
+      organizationId: invitation.organizationId,
     }).returning();
 
     await db
@@ -417,6 +421,18 @@ export class AuthService {
       .where(eq(userInvitations.id, invitation.id));
 
     await this.logAuditEvent(user.id, 'invitation_accepted', { invitationId: invitation.id });
+
+    // Auto-initialize SDR workflow for user role (prevents WORKFLOW_BLOCKED error)
+    if (user.role === 'user' && invitation.organizationId) {
+      try {
+        const { sdrWorkflowService } = await import('./sdr-workflow.service');
+        await sdrWorkflowService.getOrCreateProgress(user.id, invitation.organizationId);
+        console.log(`✅ Workflow initialized for new SDR user: ${user.email}`);
+      } catch (workflowError) {
+        console.error(`⚠️ Failed to initialize workflow for user ${user.email}:`, workflowError);
+        // Continue - user creation succeeded, workflow can be initialized later
+      }
+    }
 
     // Normalize role: DB stores 'admin' for managers, but we return 'manager'
     const normalizedRole = user.role === 'admin' ? 'manager' : user.role;
@@ -430,6 +446,7 @@ export class AuthService {
       status: user.status as 'active' | 'inactive' | 'suspended',
       emailVerified: user.emailVerified || false,
       organizationId: user.organizationId,
+      createdBy: invitation.invitedBy,
       isManager: false, // Newly invited users are not managers
     };
   }

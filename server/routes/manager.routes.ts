@@ -14,6 +14,7 @@ import { authenticate, requireManager } from "../middleware/auth.middleware";
 import { auditService } from "../services/audit.service";
 import { cacheService } from "../services/cache.service";
 import { invitationService } from "../services/invitation.service";
+import { sdrWorkflowService } from "../services/sdr-workflow.service";
 import bcrypt from "bcrypt";
 import crypto from "crypto";
 
@@ -270,6 +271,17 @@ router.post("/api/manager/users", authenticate, requireManager, async (req, res)
       organizationId: userContext.organizationId,
       createdBy: currentUser.id,
     }).returning();
+
+    // Auto-initialize SDR workflow for user role (prevents WORKFLOW_BLOCKED error)
+    if (newUser.role === 'user' && userContext.organizationId) {
+      try {
+        await sdrWorkflowService.getOrCreateProgress(newUser.id, userContext.organizationId);
+        console.log(`✅ Workflow initialized for new SDR user: ${newUser.email}`);
+      } catch (workflowError) {
+        console.error(`⚠️ Failed to initialize workflow for user ${newUser.email}:`, workflowError);
+        // Continue - user creation succeeded, workflow can be initialized later
+      }
+    }
 
     const inviteToken = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
