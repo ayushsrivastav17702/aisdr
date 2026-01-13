@@ -1,0 +1,200 @@
+5️⃣ REPLIES NOT CAPTURED WITHIN 30 SECONDS
+
+Goal: Break reply ingestion.
+
+Reply immediately after send
+
+Reply after 1 minute
+
+Reply after server restart
+
+Reply with attachment
+
+Reply from mobile client
+
+Reply-all vs reply
+
+Reply with modified subject
+
+Reply from alias email
+
+Reply twice quickly
+
+Reply after follow-up scheduled
+
+Reply during rate limit window
+
+Reply when webhook delayed
+
+Reply when IMAP reconnects
+
+Reply after bounce
+
+Reply after unsubscribe
+
+Break condition:
+❌ Reply delayed, missed, duplicated, or mis-mapped
+
+6️⃣ AI REPLY SENT AS NEW THREAD
+
+Goal: Kill email protocol correctness.
+
+AI reply without In-Reply-To
+
+AI reply with wrong Message-ID
+
+AI reply after manual reply
+
+AI reply after follow-up sent
+
+AI reply after thread restart
+
+AI reply to forwarded email
+
+AI reply after subject edited
+
+AI reply with regenerated content
+
+AI reply after inbox reconnect
+
+AI reply using different sender
+
+AI reply to older email
+
+AI reply when emailQueue missing ID
+
+AI reply during retry
+
+AI reply after partial failure
+
+AI reply after system deploy
+
+Break condition:
+❌ AI reply appears as new conversation
+
+7️⃣ MANUAL REPLY SENT AS NEW THREAD
+
+Goal: Prove centralized send logic.
+
+Manual reply bypasses emailQueue
+
+Manual reply after refresh
+
+Manual reply after AI reply
+
+Manual reply after follow-up
+
+Manual reply with edited subject
+
+Manual reply after attachment added
+
+Manual reply from different browser
+
+Manual reply during server lag
+
+Manual reply after logout/login
+
+Manual reply after campaign paused
+
+Manual reply after unsubscribe
+
+Manual reply after bounce
+
+Manual reply when messageId missing
+
+Manual reply with copied content
+
+Manual reply after state mismatch
+
+Break condition:
+❌ Manual reply not threaded → system broken
+
+8️⃣ TENANT → MANAGER ACTIVATION FAILS
+
+Goal: Break identity lifecycle.
+
+Create tenant → create manager → no invite sent
+
+Invite link expired
+
+Invite link reused
+
+Manager exists but password null
+
+Manager logs in without activation
+
+Manager activation after org delete
+
+Manager activation after role change
+
+Manager activation after resend invite
+
+Manager activation after email change
+
+Manager activation during deploy
+
+Manager activation with weak password
+
+Manager activation blocked silently
+
+Manager activation creates duplicate user
+
+Manager activation without orgId
+
+Manager activation stuck in pending
+
+Break condition:
+❌ Manager cannot self-activate cleanly
+
+9️⃣ MANAGER CANNOT CREATE SDR / PASSWORD HANDOFF BROKEN
+
+Goal: Break user onboarding chain.
+
+Manager creates SDR → no invite
+
+Invite sent but no password set
+
+Invite link invalid
+
+SDR created without role
+
+SDR created without orgId
+
+SDR cannot login first time
+
+Manager tries to resend invite
+
+Duplicate SDR created
+
+SDR activation after manager logout
+
+SDR activation after server restart
+
+SDR activation blocked by rate limit
+
+SDR activation sets wrong role
+
+SDR activation missing workflow
+
+SDR activation works but cannot create sequence
+
+SDR activation requires DB fix
+
+Break condition:
+❌ Manager cannot onboard SDR end-to-end
+
+🧨 HOW TO USE THIS
+
+For each test log:
+
+Input
+
+Expected behavior
+
+Actual behavior
+
+Error/log output
+
+State after failure
+
+If ANY break condition triggers → system is not production safe.
