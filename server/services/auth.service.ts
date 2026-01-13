@@ -361,7 +361,7 @@ export class AuthService {
     };
   }
 
-  async validateInvitation(token: string): Promise<{ id: string; email: string; role: string; organizationId: string | null } | null> {
+  async validateInvitation(token: string): Promise<{ id: string; email: string; role: string; organizationId: string | null; invitedBy: string } | null> {
     const invitations = await db
       .select()
       .from(userInvitations)
@@ -380,6 +380,7 @@ export class AuthService {
           email: invitation.email,
           role: invitation.role,
           organizationId: invitation.organizationId,
+          invitedBy: invitation.invitedBy,
         };
       }
     }
@@ -398,22 +399,45 @@ export class AuthService {
       throw new Error('Invalid or expired invitation');
     }
 
-    const existingUser = await db.select().from(users).where(eq(users.email, invitation.email)).limit(1);
-    if (existingUser.length > 0) {
-      throw new Error('User with this email already exists');
-    }
-
+    const existingUsers = await db.select().from(users).where(eq(users.email, invitation.email)).limit(1);
     const passwordHash = await this.hashPassword(password);
-
-    const [user] = await db.insert(users).values({
-      email: invitation.email,
-      firstName,
-      lastName,
-      role: invitation.role as 'admin' | 'user',
-      passwordHash,
-      status: 'active',
-      organizationId: invitation.organizationId,
-    }).returning();
+    
+    let user;
+    
+    if (existingUsers.length > 0) {
+      const existingUser = existingUsers[0];
+      
+      // If user exists but is already active, reject
+      if (existingUser.status === 'active') {
+        throw new Error('User with this email already exists and is active');
+      }
+      
+      // Activate the pending user (manager-created flow)
+      [user] = await db.update(users)
+        .set({
+          firstName: firstName || existingUser.firstName,
+          lastName: lastName || existingUser.lastName,
+          passwordHash,
+          status: 'active',
+          forcePasswordReset: false,
+          updatedAt: new Date(),
+        })
+        .where(eq(users.id, existingUser.id))
+        .returning();
+      
+      console.log(`✅ Activated pending user: ${user.email}`);
+    } else {
+      // Create new user (standard invitation flow)
+      [user] = await db.insert(users).values({
+        email: invitation.email,
+        firstName,
+        lastName,
+        role: invitation.role as 'admin' | 'user',
+        passwordHash,
+        status: 'active',
+        organizationId: invitation.organizationId,
+      }).returning();
+    }
 
     await db
       .update(userInvitations)
@@ -423,14 +447,17 @@ export class AuthService {
     await this.logAuditEvent(user.id, 'invitation_accepted', { invitationId: invitation.id });
 
     // Auto-initialize SDR workflow for user role (prevents WORKFLOW_BLOCKED error)
-    if (user.role === 'user' && invitation.organizationId) {
+    if (user.role === 'user' && (invitation.organizationId || user.organizationId)) {
       try {
         const { sdrWorkflowService } = await import('./sdr-workflow.service');
-        await sdrWorkflowService.getOrCreateProgress(user.id, invitation.organizationId);
-        console.log(`✅ Workflow initialized for new SDR user: ${user.email}`);
+        const orgId = invitation.organizationId || user.organizationId;
+        if (orgId) {
+          await sdrWorkflowService.getOrCreateProgress(user.id, orgId);
+          console.log(`✅ Workflow initialized for SDR user: ${user.email}`);
+        }
       } catch (workflowError) {
         console.error(`⚠️ Failed to initialize workflow for user ${user.email}:`, workflowError);
-        // Continue - user creation succeeded, workflow can be initialized later
+        // Continue - user activation succeeded, workflow can be initialized later
       }
     }
 

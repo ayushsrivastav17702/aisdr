@@ -284,12 +284,13 @@ router.post("/api/manager/users", authenticate, requireManager, async (req, res)
     }
 
     const inviteToken = crypto.randomBytes(32).toString('hex');
+    const hashedToken = await bcrypt.hash(inviteToken, 10);
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
     await db.insert(userInvitations).values({
       email: email.toLowerCase(),
       role: role === 'admin' ? 'admin' : 'user',
       invitedBy: currentUser.id,
-      token: inviteToken,
+      token: hashedToken,
       expiresAt,
       organizationId: userContext.organizationId,
     });
@@ -383,19 +384,21 @@ router.post("/api/manager/users/:userId/resend-invite", authenticate, requireMan
     if (existingInvite) {
       // Update existing invitation with new token, expiry, and current role
       inviteToken = crypto.randomBytes(32).toString('hex');
+      const hashedToken = await bcrypt.hash(inviteToken, 10);
       expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
       await db.update(userInvitations)
-        .set({ token: inviteToken, expiresAt, role: userRole })
+        .set({ token: hashedToken, expiresAt, role: userRole })
         .where(eq(userInvitations.id, existingInvite.id));
     } else {
       // Create new invitation
       inviteToken = crypto.randomBytes(32).toString('hex');
+      const hashedToken = await bcrypt.hash(inviteToken, 10);
       expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
       await db.insert(userInvitations).values({
         email: user.email,
         role: userRole,
         invitedBy: currentUser.id,
-        token: inviteToken,
+        token: hashedToken,
         expiresAt,
         organizationId: userContext.organizationId,
       });
