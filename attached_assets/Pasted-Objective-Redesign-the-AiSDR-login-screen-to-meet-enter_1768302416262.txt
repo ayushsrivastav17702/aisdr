@@ -1,0 +1,195 @@
+Objective:
+Redesign the AiSDR login screen to meet enterprise software standards, prioritizing trust, control, and seriousness over marketing or visual excitement.
+
+This is NOT a marketing page.
+This is NOT a landing page.
+This is NOT a branding experiment.
+
+1️⃣ CORE DESIGN PRINCIPLES (NON-NEGOTIABLE)
+
+The login screen must communicate:
+
+Stability
+
+Security
+
+Control
+
+Enterprise readiness
+
+It must not:
+
+Sell features
+
+Explain the product
+
+Use marketing language
+
+Use large gradients, illustrations, or split-screen layouts
+
+If a design choice increases “wow” but reduces “trust” → reject it.
+
+2️⃣ LAYOUT REQUIREMENTS
+✅ Required
+
+Single-column, centered layout
+
+Login card is the primary and dominant element
+
+Calm, neutral background (light or very subtle gradient)
+
+Login action visually dominant
+
+❌ Forbidden
+
+Split-screen layouts
+
+Feature bullet points
+
+Hero copy
+
+Product marketing sections
+
+Large background gradients
+
+“AI-Powered”, “Modern”, “Revolutionary” language
+
+3️⃣ CONTENT RULES (VERY IMPORTANT)
+Allowed Text (MAXIMUM)
+
+You may include only:
+
+Product name/logo
+
+“Welcome back”
+
+ONE short positioning line (max 12 words)
+
+Login buttons
+
+Subtle trust indicators
+
+Approved Positioning Line Examples (Pick ONE)
+
+“Secure outbound execution platform for revenue teams”
+
+“Enterprise outbound platform with role-based access”
+
+“Sales execution system for SDRs and revenue teams”
+
+❌ Do NOT add:
+
+Feature lists
+
+AI explanations
+
+Benefits
+
+Use cases
+
+4️⃣ TRUST SIGNALS (MANDATORY, SUBTLE)
+
+Under the login buttons, add small, quiet text such as:
+
+SOC2-aligned • Multi-tenant • Role-based access • SSO ready
+
+Rules:
+
+No icons
+
+No badges
+
+No hover effects
+
+No links
+
+This is reassurance, not promotion
+
+5️⃣ AUTH OPTIONS
+
+Google Sign-In is allowed
+
+Email login is allowed
+
+Do NOT make Google visually dominant over email
+
+Do NOT mention “Contact support” unless unavoidable
+
+If access is invite-only, phrase it calmly:
+
+“Access is managed by your organization administrator”
+
+6️⃣ VISUAL TONE
+Must Feel Like:
+
+Salesforce
+
+Atlassian
+
+Linear
+
+Notion (authenticated areas)
+
+Must NOT Feel Like:
+
+Webflow landing page
+
+Startup marketing site
+
+Pitch deck
+
+AI demo app
+
+7️⃣ WHAT NOT TO TOUCH
+
+Authentication logic
+
+Role routing
+
+Session handling
+
+Security flows
+
+Existing APIs
+
+This is UI and copy only.
+
+8️⃣ SUCCESS CRITERIA (TEST THIS)
+
+Show the login screen to:
+
+A CTO
+
+A VP Sales
+
+An Enterprise IT admin
+
+If their reaction is:
+
+“Okay, this looks solid.”
+
+You succeeded.
+
+If their reaction is:
+
+“What does this tool do?”
+or
+“Why am I seeing marketing copy?”
+
+You failed.
+
+🚫 ABSOLUTE FAIL CONDITIONS
+
+The task is considered FAILED if:
+
+Features are listed on the login screen
+
+Large gradients dominate the page
+
+Marketing copy exceeds one sentence
+
+Login action feels secondary to visuals
+
+✅ FINAL GOAL (ONE SENTENCE)
+
+Make the login screen feel like entering a control room, not a sales pitch.
