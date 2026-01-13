@@ -1,11 +1,12 @@
 import OpenAI from 'openai';
-import { storage } from '../storage';
+import { storage, RequestContext } from '../storage';
 import type { Prospect } from '@shared/schema';
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 export interface EnhancedPersonalizationRequest {
   prospectId: string;
+  organizationId: string;
   includeLinkedInData?: boolean;
   customPrompt?: string;
   emailSettings?: {
@@ -23,28 +24,48 @@ export interface EnhancedPersonalizationResult {
   reasoning: string;
   keyInsights: string[];
   followUpRecommendation: string;
+  personalizationSource: 'ai' | 'fallback';
 }
 
 export async function generateEnhancedPersonalizedEmail(
   request: EnhancedPersonalizationRequest
 ): Promise<EnhancedPersonalizationResult> {
+  const ctx: RequestContext = { organizationId: request.organizationId };
+  
+  // FAULT TOLERANCE: Cache prospect BEFORE try block so fallback never needs to re-query
+  // This ensures we can always generate fallback even if storage becomes unavailable
+  let cachedProspect: Prospect | undefined;
+  
   try {
-    const prospect = await storage.getProspect(request.prospectId);
-    if (!prospect) {
-      throw new Error(`Prospect with ID ${request.prospectId} not found`);
-    }
-
+    cachedProspect = await storage.getProspect(ctx, request.prospectId);
+  } catch (fetchError) {
+    console.error('⚠️ Failed to fetch prospect, returning minimal template:', fetchError);
+    // Storage unavailable - return minimal template immediately
+    return getMinimalSafeTemplate();
+  }
+  
+  if (!cachedProspect) {
+    console.warn(`⚠️ Prospect ${request.prospectId} not found, returning minimal template`);
+    return getMinimalSafeTemplate();
+  }
+  
+  try {
     if (!process.env.OPENAI_API_KEY) {
-      console.warn("OpenAI API key not configured, using fallback");
-      return generateFallbackPersonalization(prospect);
+      console.warn("⚠️ OpenAI API key not configured, using fallback personalization");
+      return generateFallbackPersonalization(cachedProspect);
     }
 
-    // Fetch content from content library
-    const contentLibraryItems = await storage.getContentLibraryItems();
-    console.log(`Fetched ${contentLibraryItems.length} content items from library`);
+    // Fetch content from content library (non-critical - proceed even if fails)
+    let contentLibraryItems: any[] = [];
+    try {
+      contentLibraryItems = await storage.getContentLibraryItems(ctx);
+      console.log(`Fetched ${contentLibraryItems.length} content items from library`);
+    } catch (contentError) {
+      console.warn('⚠️ Failed to fetch content library, proceeding without it:', contentError);
+    }
 
-    const enrichedContext = buildEnrichedContext(prospect, request, contentLibraryItems);
-    const emailPrompt = buildEmailPrompt(prospect, enrichedContext, request);
+    const enrichedContext = buildEnrichedContext(cachedProspect, request, contentLibraryItems);
+    const emailPrompt = buildEmailPrompt(cachedProspect, enrichedContext, request);
 
     const response = await openai.chat.completions.create({
       model: "gpt-4o",
@@ -64,9 +85,10 @@ export async function generateEnhancedPersonalizedEmail(
 
     const emailData = JSON.parse(response.choices[0].message.content || '{}');
 
+    console.log(`✅ AI personalization successful for prospect ${request.prospectId}`);
     return {
-      subject: emailData.subject || `Quick question about ${prospect.jobTitle} priorities`,
-      content: emailData.content || generateFallbackEmailBody(prospect),
+      subject: emailData.subject || `Quick question about ${cachedProspect.jobTitle} priorities`,
+      content: emailData.content || generateFallbackEmailBody(cachedProspect),
       personalizationScore: emailData.personalizationScore || 75,
       personalizationFactors: emailData.personalizationFactors || [
         "Prospect name and title",
@@ -75,17 +97,28 @@ export async function generateEnhancedPersonalizedEmail(
       ],
       reasoning: emailData.reasoning || "AI-generated personalized email",
       keyInsights: emailData.keyInsights || ["Professional context"],
-      followUpRecommendation: emailData.followUpRecommendation || "Follow up in 3-5 days if no response"
+      followUpRecommendation: emailData.followUpRecommendation || "Follow up in 3-5 days if no response",
+      personalizationSource: 'ai' as const
     };
 
   } catch (error) {
-    console.error('Enhanced personalization failed:', error);
-    const prospect = await storage.getProspect(request.prospectId);
-    if (prospect) {
-      return generateFallbackPersonalization(prospect);
-    }
-    throw error;
+    console.error('⚠️ Enhanced personalization failed, using fallback:', error);
+    // Use cached prospect - no need to re-query storage
+    return generateFallbackPersonalization(cachedProspect);
   }
+}
+
+function getMinimalSafeTemplate(): EnhancedPersonalizationResult {
+  return {
+    subject: 'Quick question',
+    content: `Hi,\n\nI wanted to reach out and share how we help companies like yours drive growth and efficiency.\n\nWould you be open to a brief call to discuss?\n\nBest regards`,
+    personalizationScore: 20,
+    personalizationFactors: [],
+    reasoning: 'Minimal template - prospect not available',
+    keyInsights: [],
+    followUpRecommendation: 'Follow up in 3 days',
+    personalizationSource: 'fallback' as const
+  };
 }
 
 function buildEnrichedContext(
@@ -199,6 +232,8 @@ function generateFallbackPersonalization(prospect: Prospect): EnhancedPersonaliz
   const name = prospect.firstName || 'there';
   const company = prospect.companyName || 'your company';
   
+  console.log(`📝 Using fallback personalization for ${prospect.firstName} at ${company}`);
+  
   return {
     subject: `Quick question about ${company}`,
     content: generateFallbackEmailBody(prospect),
@@ -206,7 +241,8 @@ function generateFallbackPersonalization(prospect: Prospect): EnhancedPersonaliz
     personalizationFactors: ["Prospect name", "Company name"],
     reasoning: "Generated using fallback template (AI unavailable)",
     keyInsights: ["Basic prospect information"],
-    followUpRecommendation: "Follow up in 3 days if no response"
+    followUpRecommendation: "Follow up in 3 days if no response",
+    personalizationSource: 'fallback' as const
   };
 }
 

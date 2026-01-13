@@ -111,15 +111,74 @@ class CampaignExecutionService {
 
     if (!prospect || !prospect.primaryEmail) return false;
 
+    const isFollowUp = actualIndex > 0;
+    let parentEmailId: string | undefined;
+    let inReplyTo: string | undefined;
+    let references: string | undefined;
+    let previousEmailContent: string | undefined;
+    let previousEmailSubject: string | undefined;
+    
+    // CRITICAL: Fetch previous email from emailQueue - the authoritative source for messageId
+    // The messageId is populated in emailQueue after send, not in emails table
+    if (isFollowUp) {
+      // Get the most recent SENT email from emailQueue (where messageId is stored)
+      const [previousQueuedEmail] = await db.select()
+        .from(emailQueue)
+        .where(and(
+          eq(emailQueue.prospectId, enrollment.prospectId),
+          eq(emailQueue.sequenceId, sequence.id),
+          eq(emailQueue.status, 'sent'),
+          eq(emailQueue.userId, userId),
+          sql`${emailQueue.messageId} IS NOT NULL`
+        ))
+        .orderBy(desc(emailQueue.sentAt))
+        .limit(1);
+      
+      // RFC 5322 Email Threading: Set In-Reply-To and References headers from emailQueue
+      if (previousQueuedEmail?.messageId) {
+        inReplyTo = previousQueuedEmail.messageId;
+        // Build full references chain for proper threading
+        references = previousQueuedEmail.references 
+          ? `${previousQueuedEmail.references} ${previousQueuedEmail.messageId}`
+          : previousQueuedEmail.messageId;
+        previousEmailContent = previousQueuedEmail.body;
+        previousEmailSubject = previousQueuedEmail.subject;
+        console.log(`📧 Threading follow-up email: In-Reply-To=${inReplyTo}`);
+      }
+      
+      // Also get parent from emails table for backward compatibility
+      const [previousEmail] = await db.select()
+        .from(emails)
+        .where(and(
+          eq(emails.prospectId, enrollment.prospectId),
+          eq(emails.sequenceId, sequence.id)
+        ))
+        .orderBy(desc(emails.createdAt))
+        .limit(1);
+      
+      parentEmailId = previousEmail?.id;
+      
+      // Use emails table content if emailQueue didn't have it
+      if (!previousEmailContent && previousEmail?.content) {
+        previousEmailContent = previousEmail.content;
+      }
+    }
+
     let subject = currentStep.subject || '';
     let content = currentStep.body || '';
 
     if (sequence.aiPersonalizationEnabled) {
       try {
+        // CRITICAL: Pass previous email content for thread-aware follow-ups
+        const previousEmails = previousEmailContent 
+          ? [previousEmailContent.substring(0, 2000)] // Truncate to 2KB for prompt efficiency
+          : undefined;
+        
         const generated = await generateEmail({
           prospectId: prospect.id,
           emailType: actualIndex === 0 ? 'cold_outreach' : 'follow_up',
           sequenceStep: actualIndex + 1,
+          previousEmails,
           tone: 'professional',
         }, prospect);
         subject = generated.subject;
@@ -133,22 +192,6 @@ class CampaignExecutionService {
     if (!mailbox) return false;
 
     const trackingResult = emailTrackingService.generateTrackingPixel(enrollment.prospectId);
-    
-    const isFollowUp = actualIndex > 0;
-    let parentEmailId: string | undefined;
-    
-    if (isFollowUp) {
-      const [previousEmail] = await db.select()
-        .from(emails)
-        .where(and(
-          eq(emails.prospectId, enrollment.prospectId),
-          eq(emails.sequenceId, sequence.id)
-        ))
-        .orderBy(desc(emails.createdAt))
-        .limit(1);
-      
-      parentEmailId = previousEmail?.id;
-    }
 
     const [email] = await db.insert(emails)
       .values({
@@ -178,6 +221,10 @@ class CampaignExecutionService {
         status: 'pending',
         priority: 5,
         scheduledFor: new Date(),
+        stepOrder: actualIndex + 1,
+        // CRITICAL: Email threading headers for RFC 5322 compliance
+        inReplyTo,
+        references,
       });
 
     const nextStepIndex = actualIndex + 1;

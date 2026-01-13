@@ -1,0 +1,330 @@
+You are acting as a Principal Backend + Systems Engineer.
+
+Your task is NOT to add features.
+Your task is to FIX BROKEN SYSTEM PRIMITIVES so the product behaves like a real sales system, not a demo.
+
+You must prioritize:
+- Determinism over AI magic
+- Correctness over UI
+- Protocol correctness over UX hacks
+
+Below are NON-NEGOTIABLE system failures that must be resolved.
+Fix them end-to-end (backend + state + persistence + protocol).
+1️⃣ AI SEARCH MUST BE DETERMINISTIC (CRITICAL)
+Problem
+AI search queries like:
+"merchandisers south africa puma"
+
+Return:
+
+1 prospect
+
+Or inconsistent results
+Even when 30–40 matching prospects exist.
+
+Currently:
+
+AI is being used as the source of truth for discovery
+
+Results are non-repeatable and incomplete
+
+Required Fix (SYSTEM LEVEL)
+Separate discovery from ranking
+
+Implement deterministic base search using filters:
+
+Title contains (merchandiser, buyer, planner)
+
+Company = Puma
+
+Location = South Africa
+
+AI may ONLY:
+
+Rank results
+
+Reorder
+
+Summarize
+
+AI must NEVER be the only retrieval mechanism
+
+Acceptance Criteria
+Same query → same result set
+
+Result count reflects actual data
+
+AI failure does NOT reduce result count
+
+2️⃣ AI PERSONALIZATION PIPELINE MUST BE FAULT-TOLERANT
+Problem
+AI personalization depends on:
+
+LinkedIn scraping
+
+Latest news lookup
+
+Content library mapping
+
+Failures cause:
+
+Empty personalization
+
+Hallucinated output
+
+Silent degradation
+
+Required Fix
+Build a multi-stage pipeline with hard fallbacks:
+
+Use stored prospect + company metadata FIRST
+
+External fetch (LinkedIn/news) is OPTIONAL, not mandatory
+
+If external fetch fails → fallback to safe template
+
+Every stage must return a status:
+
+SUCCESS
+
+PARTIAL
+
+FALLBACK_USED
+
+Persist personalization inputs used for auditability
+
+Acceptance Criteria
+Personalization never blocks sequence creation
+
+Output always has a known source
+
+No silent failures
+
+3️⃣ EMAIL THREADING MUST BE PROTOCOL-CORRECT (CRITICAL)
+Problem
+Replies (AI or manual) go as NEW emails
+
+Follow-ups break the thread
+
+Conversation context is lost
+
+This is a hard protocol violation, not a feature gap.
+
+Required Fix
+Implement proper email threading using:
+
+Message-ID
+
+In-Reply-To
+
+References headers
+
+Persist thread identifiers per prospect + sequence
+
+All replies and follow-ups MUST:
+
+Use original Message-ID
+
+Stay in same thread
+
+Acceptance Criteria
+Gmail/Outlook shows single conversation thread
+
+Replies never appear as fresh emails
+
+Follow-ups inherit thread context
+
+4️⃣ FOLLOW-UP PERSONALIZATION MUST RESPECT THREAD CONTEXT
+Problem
+Follow-ups regenerate content without awareness of:
+
+Previous email
+
+Previous personalization
+
+Follow-ups are detached from original context
+
+Required Fix
+Follow-up generation must receive:
+
+Previous message body
+
+Previous personalization metadata
+
+Thread ID
+
+AI prompt must explicitly state:
+“This is a follow-up in an existing conversation. Do not restart.”
+
+Acceptance Criteria
+Follow-up references prior message naturally
+
+No repetition of first-touch content
+
+Sent in same email thread
+
+5️⃣ AI PERSONALIZATION AT SCALE MUST BE TRANSACTIONAL
+Problem
+Bulk AI personalization (e.g., 50 prospects):
+
+Generates content
+
+But does NOT attach to sequences
+
+Scheduling breaks
+
+Follow-ups fail
+
+Required Fix
+Make personalization + sequence attachment atomic
+
+Either:
+
+All prospects are added to sequence with content
+
+OR none are (rollback)
+
+Persist personalization as a sequence step artifact
+
+Acceptance Criteria
+Personalized emails appear inside sequence steps
+
+Scheduler picks them up automatically
+
+Follow-ups resolve correctly
+
+6️⃣ REPLY INGESTION MUST BE EVENT-DRIVEN
+Problem
+Replies not captured within 30 seconds
+
+Polling-based ingestion
+
+Missed or delayed replies
+
+Required Fix
+Implement event-driven ingestion:
+
+Webhooks (preferred)
+
+Or reliable IMAP IDLE
+
+Replies must:
+
+Be captured in near real-time
+
+Be mapped to correct prospect + thread
+
+Persist reply timestamp + source
+
+Acceptance Criteria
+Replies appear within seconds, not minutes
+
+No duplicate replies
+
+No missed replies
+
+7️⃣ AI & MANUAL REPLIES MUST SHARE SAME THREAD LOGIC
+Problem
+AI replies go as new thread
+
+Manual replies also go as new thread
+
+This confirms threading is not implemented centrally.
+
+Required Fix
+Centralize outbound email sending logic
+
+Thread handling must NOT depend on UI path
+
+AI and manual replies use same send pipeline
+
+Acceptance Criteria
+Identical behavior regardless of reply type
+
+Thread integrity always preserved
+
+8️⃣ TENANT → MANAGER ACTIVATION FLOW IS BROKEN
+Problem
+New tenant created
+
+Manager created
+
+Manager not activated
+
+Password not set
+
+Required Fix
+Enforce deterministic identity lifecycle:
+
+CREATED → INVITED → ACTIVATED
+
+Manager must:
+
+Receive activation link
+
+Set password
+
+Login without DB intervention
+
+Acceptance Criteria
+No user exists in “half-active” state
+
+No manual password setting
+
+Activation is self-serve
+
+9️⃣ MANAGER → SDR USER CREATION FLOW IS INCOMPLETE
+Problem
+Manager portal lacks proper user onboarding
+
+No copyable credentials
+
+No clean invite flow
+
+Required Fix
+SDR creation must:
+
+Trigger invitation email
+
+Allow SDR to set password
+
+Bind SDR to manager + org
+
+No plaintext passwords
+
+No manual sharing
+
+Acceptance Criteria
+Manager can onboard SDR end-to-end
+
+SDR logs in on first attempt
+
+No support involvement required
+
+10️⃣ GLOBAL ACCEPTANCE CRITERIA (NON-NEGOTIABLE)
+Before marking complete, validate:
+
+No manual DB edits required
+
+No AI step blocks core flow
+
+No email sent without thread context
+
+No user stuck in unusable state
+
+System behaves same for 1 user or 100 users
+
+If any item fails → DO NOT SHIP.
+
+FINAL INSTRUCTION
+sql
+Copy code
+Do NOT add new features.
+Do NOT add UI polish.
+Do NOT optimize prompts.
+
+Fix the system so:
+- It behaves predictably
+- It respects email protocols
+- It supports real sales workflows
+- It survives scale without human babysitting
