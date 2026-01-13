@@ -65,9 +65,9 @@ export default function Dashboard() {
 
 
   return (
-    <div className="flex h-screen overflow-hidden bg-background">
+    <div className="flex h-screen bg-background">
       {/* Sidebar Navigation */}
-      <aside className="w-60 bg-card border-r border-border flex flex-col">
+      <aside className="w-60 bg-card border-r border-border flex flex-col flex-shrink-0">
         {/* Logo & Brand */}
         <div className="p-6 border-b border-border">
           <div className="flex items-center gap-3">
@@ -315,7 +315,7 @@ export default function Dashboard() {
       </aside>
 
       {/* Main Content Area */}
-      <main className="flex-1 flex flex-col overflow-hidden">
+      <main className="flex-1 flex flex-col overflow-auto">
         {/* Quota Bar - Persistent visibility */}
         <QuotaBar />
         
