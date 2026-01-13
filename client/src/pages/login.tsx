@@ -4,10 +4,9 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { PasswordInput } from '@/components/ui/password-input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Separator } from '@/components/ui/separator';
-import { Loader2, KeyRound, ChevronDown, ChevronUp, Users } from 'lucide-react';
+import { Loader2, ChevronDown, ChevronUp, Users } from 'lucide-react';
 import { SiGoogle } from 'react-icons/si';
 import { BsMicrosoft } from 'react-icons/bs';
 import { useQuery } from '@tanstack/react-query';
@@ -118,8 +117,8 @@ export default function LoginPage() {
 
   if (configLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
-        <Loader2 className="w-6 h-6 animate-spin text-slate-400" />
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
       </div>
     );
   }
@@ -127,220 +126,216 @@ export default function LoginPage() {
   const hasOAuthOptions = authConfig?.googleEnabled || authConfig?.microsoftEnabled;
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-slate-50 dark:bg-slate-950 px-4">
-      {/* Logo */}
-      <div className="mb-8">
-        <div className="flex items-center gap-2">
-          <div className="w-9 h-9 bg-slate-900 dark:bg-white rounded-lg flex items-center justify-center">
-            <span className="text-sm font-semibold text-white dark:text-slate-900">AI</span>
+    <div className="min-h-screen flex flex-col" style={{ backgroundColor: '#ffffff' }}>
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col items-center justify-center px-4 py-12">
+        {/* Logo */}
+        <div className="mb-8">
+          <div className="flex items-center justify-center gap-2">
+            <div className="w-10 h-10 bg-[#0176D3] rounded flex items-center justify-center">
+              <span className="text-base font-bold text-white">AI</span>
+            </div>
+            <span className="text-2xl font-bold text-gray-900">AiSDR</span>
           </div>
-          <span className="text-xl font-semibold text-slate-900 dark:text-white">AiSDR</span>
         </div>
-      </div>
 
-      {/* Login Card */}
-      <Card className="w-full max-w-sm border-slate-200 dark:border-slate-800 shadow-sm">
-        <CardHeader className="space-y-1 pb-4">
-          <CardTitle className="text-xl font-semibold text-center text-slate-900 dark:text-white">
-            Welcome back
-          </CardTitle>
-          <CardDescription className="text-center text-slate-500 dark:text-slate-400">
-            Secure outbound platform for revenue teams
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {error && (
-            <Alert variant="destructive" data-testid="alert-login-error">
-              <AlertDescription>{error}</AlertDescription>
-            </Alert>
-          )}
+        {/* Login Box */}
+        <div className="w-full max-w-[360px]">
+          <div className="bg-white border border-gray-200 rounded-lg shadow-sm p-8">
+            <h1 className="text-xl font-normal text-gray-900 text-center mb-6">
+              Log in to your account
+            </h1>
 
-          {successMessage && (
-            <Alert data-testid="alert-success">
-              <AlertDescription className="text-green-700 dark:text-green-400">
-                {successMessage}
-              </AlertDescription>
-            </Alert>
-          )}
+            {error && (
+              <Alert variant="destructive" className="mb-4" data-testid="alert-login-error">
+                <AlertDescription className="text-sm">{error}</AlertDescription>
+              </Alert>
+            )}
 
-          {/* Account Selection UI */}
-          {multipleAccounts && (
-            <div className="space-y-4" data-testid="account-selection">
-              <Alert>
-                <Users className="h-4 w-4" />
-                <AlertDescription>
-                  Multiple accounts found. Select one to continue.
+            {successMessage && (
+              <Alert className="mb-4" data-testid="alert-success">
+                <AlertDescription className="text-sm text-green-700">
+                  {successMessage}
                 </AlertDescription>
               </Alert>
-              <div className="space-y-2">
-                {multipleAccounts.map((account, index) => (
-                  <Button
-                    key={account.id}
-                    type="button"
-                    variant="outline"
-                    className="w-full h-11 justify-start text-sm"
-                    onClick={() => handleAccountSelect(account.id)}
-                    disabled={isSubmitting}
-                    data-testid={`button-select-account-${index}`}
-                  >
-                    <Users className="mr-3 h-4 w-4 text-slate-400" />
-                    <span className="flex flex-col items-start">
-                      <span className="font-medium">Account {index + 1}</span>
-                      <span className="text-xs text-slate-500">
-                        {account.organizationId ? `Org: ${account.organizationId.slice(0, 8)}...` : 'Personal'}
-                      </span>
-                    </span>
-                  </Button>
-                ))}
-              </div>
-              <Button
-                type="button"
-                variant="ghost"
-                className="w-full text-sm"
-                onClick={handleBackToLogin}
-                data-testid="button-back-to-login"
-              >
-                Back
-              </Button>
-            </div>
-          )}
+            )}
 
-          {/* OAuth Options */}
-          {!multipleAccounts && hasOAuthOptions && (
-            <div className="space-y-2">
-              {authConfig?.googleEnabled && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full h-10 text-sm font-normal"
-                  onClick={handleGoogleLogin}
-                  disabled={isSubmitting}
-                  data-testid="button-google-login"
-                >
-                  <SiGoogle className="mr-2 h-4 w-4" />
-                  Continue with Google
-                </Button>
-              )}
-
-              {authConfig?.microsoftEnabled && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full h-10 text-sm font-normal"
-                  onClick={handleMicrosoftLogin}
-                  disabled={isSubmitting}
-                  data-testid="button-microsoft-login"
-                >
-                  <BsMicrosoft className="mr-2 h-4 w-4" />
-                  Continue with Microsoft
-                </Button>
-              )}
-            </div>
-          )}
-
-          {/* Email/Password Login */}
-          {!multipleAccounts && authConfig?.passwordLoginEnabled && (
-            <>
-              {hasOAuthOptions && (
-                <div className="relative my-3">
-                  <div className="absolute inset-0 flex items-center">
-                    <Separator className="w-full" />
-                  </div>
-                  <div className="relative flex justify-center text-xs">
-                    <span className="bg-white dark:bg-slate-950 px-2 text-slate-400">or</span>
-                  </div>
-                </div>
-              )}
-
-              {!showPasswordLogin ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  className="w-full h-10 text-sm font-normal text-slate-600 dark:text-slate-300"
-                  onClick={() => setShowPasswordLogin(true)}
-                  data-testid="button-show-password-login"
-                >
-                  <KeyRound className="mr-2 h-4 w-4" />
-                  Continue with email
-                  <ChevronDown className="ml-auto h-4 w-4" />
-                </Button>
-              ) : (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Email login</span>
-                    <Button
+            {/* Account Selection */}
+            {multipleAccounts && (
+              <div className="space-y-3" data-testid="account-selection">
+                <p className="text-sm text-gray-600 mb-3">
+                  Multiple accounts found. Select one to continue.
+                </p>
+                <div className="space-y-2">
+                  {multipleAccounts.map((account, index) => (
+                    <button
+                      key={account.id}
                       type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="h-6 px-2"
-                      onClick={() => setShowPasswordLogin(false)}
+                      className="w-full h-11 px-4 flex items-center border border-gray-300 rounded hover:bg-gray-50 transition-colors"
+                      onClick={() => handleAccountSelect(account.id)}
+                      disabled={isSubmitting}
+                      data-testid={`button-select-account-${index}`}
                     >
-                      <ChevronUp className="h-4 w-4" />
-                    </Button>
-                  </div>
+                      <Users className="mr-3 h-4 w-4 text-gray-400" />
+                      <span className="flex flex-col items-start text-sm">
+                        <span className="font-medium text-gray-900">Account {index + 1}</span>
+                        <span className="text-xs text-gray-500">
+                          {account.organizationId ? `Org: ${account.organizationId.slice(0, 8)}...` : 'Personal'}
+                        </span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  className="w-full text-sm text-[#0176D3] hover:underline mt-2"
+                  onClick={handleBackToLogin}
+                  data-testid="button-back-to-login"
+                >
+                  Back to login
+                </button>
+              </div>
+            )}
 
-                  <form onSubmit={handlePasswordLogin} className="space-y-3">
-                    <div className="space-y-1.5">
-                      <Label htmlFor="email" className="text-sm text-slate-600 dark:text-slate-400">Email</Label>
-                      <Input
+            {/* OAuth Options */}
+            {!multipleAccounts && hasOAuthOptions && (
+              <div className="space-y-3">
+                {authConfig?.googleEnabled && (
+                  <button
+                    type="button"
+                    className="w-full h-10 px-4 flex items-center justify-center gap-2 border border-gray-300 rounded text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                    onClick={handleGoogleLogin}
+                    disabled={isSubmitting}
+                    data-testid="button-google-login"
+                  >
+                    <SiGoogle className="h-4 w-4" />
+                    Log In with Google
+                  </button>
+                )}
+
+                {authConfig?.microsoftEnabled && (
+                  <button
+                    type="button"
+                    className="w-full h-10 px-4 flex items-center justify-center gap-2 border border-gray-300 rounded text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                    onClick={handleMicrosoftLogin}
+                    disabled={isSubmitting}
+                    data-testid="button-microsoft-login"
+                  >
+                    <BsMicrosoft className="h-4 w-4" />
+                    Log In with Microsoft
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Divider */}
+            {!multipleAccounts && authConfig?.passwordLoginEnabled && hasOAuthOptions && (
+              <div className="relative my-5">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-gray-200"></div>
+                </div>
+                <div className="relative flex justify-center text-xs">
+                  <span className="bg-white px-3 text-gray-500">OR</span>
+                </div>
+              </div>
+            )}
+
+            {/* Email/Password Login */}
+            {!multipleAccounts && authConfig?.passwordLoginEnabled && (
+              <>
+                {!showPasswordLogin ? (
+                  <button
+                    type="button"
+                    className="w-full h-10 px-4 flex items-center justify-center gap-2 border border-gray-300 rounded text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                    onClick={() => setShowPasswordLogin(true)}
+                    data-testid="button-show-password-login"
+                  >
+                    Log In with Email
+                    <ChevronDown className="h-4 w-4" />
+                  </button>
+                ) : (
+                  <form onSubmit={handlePasswordLogin} className="space-y-4">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-sm text-gray-600">Email login</span>
+                      <button
+                        type="button"
+                        className="text-xs text-[#0176D3] hover:underline"
+                        onClick={() => setShowPasswordLogin(false)}
+                      >
+                        Hide
+                      </button>
+                    </div>
+
+                    <div>
+                      <label htmlFor="email" className="block text-sm text-gray-700 mb-1">
+                        Email
+                      </label>
+                      <input
                         id="email"
                         type="email"
+                        className="w-full h-9 px-3 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-[#0176D3] focus:border-transparent"
                         placeholder="you@company.com"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         required
                         disabled={isSubmitting}
-                        className="h-9"
                         data-testid="input-email"
                       />
                     </div>
 
-                    <div className="space-y-1.5">
-                      <Label htmlFor="password" className="text-sm text-slate-600 dark:text-slate-400">Password</Label>
-                      <PasswordInput
+                    <div>
+                      <label htmlFor="password" className="block text-sm text-gray-700 mb-1">
+                        Password
+                      </label>
+                      <input
                         id="password"
+                        type="password"
+                        className="w-full h-9 px-3 border border-gray-300 rounded text-sm focus:outline-none focus:ring-2 focus:ring-[#0176D3] focus:border-transparent"
                         placeholder="Enter password"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
                         required
                         disabled={isSubmitting}
-                        className="h-9"
                         data-testid="input-password"
                       />
                     </div>
 
-                    <Button
+                    <button
                       type="submit"
-                      className="w-full h-9"
+                      className="w-full h-10 bg-[#0176D3] text-white rounded text-sm font-medium hover:bg-[#014486] transition-colors disabled:opacity-50"
                       disabled={isSubmitting}
                       data-testid="button-login"
                     >
                       {isSubmitting ? (
-                        <>
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Signing in...
-                        </>
+                        <span className="flex items-center justify-center gap-2">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Logging in...
+                        </span>
                       ) : (
-                        'Sign in'
+                        'Log In'
                       )}
-                    </Button>
+                    </button>
                   </form>
-                </div>
-              )}
-            </>
-          )}
-        </CardContent>
-      </Card>
+                )}
+              </>
+            )}
+          </div>
 
-      {/* Trust Signals - Subtle text only */}
-      <p className="mt-6 text-xs text-slate-400 dark:text-slate-500 text-center">
-        SOC2-aligned · Multi-tenant · Role-based access · SSO ready
-      </p>
+          {/* Footer Links */}
+          <div className="mt-6 text-center">
+            <p className="text-xs text-gray-500">
+              Access is managed by your organization administrator
+            </p>
+          </div>
+        </div>
+      </div>
 
-      {/* Access Info */}
-      <p className="mt-4 text-xs text-slate-400 dark:text-slate-500 text-center">
-        Access is managed by your organization administrator
-      </p>
+      {/* Bottom Bar */}
+      <div className="py-4 border-t border-gray-100">
+        <p className="text-xs text-gray-400 text-center">
+          Multi-tenant · Role-based access · SSO ready
+        </p>
+      </div>
     </div>
   );
 }
