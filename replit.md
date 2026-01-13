@@ -24,13 +24,13 @@ The platform is built on a modern web stack, featuring a multi-tenant architectu
 - **Database**: PostgreSQL with Drizzle ORM.
 - **AI Integration**: Multi-provider AI system with automatic fallback (OpenAI, OpenRouter, Anthropic) for NLP, email generation, and sentiment analysis.
 - **Job Queue**: BullMQ (requires Redis/Upstash) for background tasks like automation scheduling.
-- **Authentication & Security**: Enterprise-grade passwordless authentication (Google/Microsoft OAuth, Magic Link), JWT sessions, bcrypt, CSRF protection, role-based access (User, Manager, Super Admin), and comprehensive audit logging. Role-based access control (RBAC) rules are enforced via middleware to prevent unauthorized SDR execution by Managers and Super Admins.
+- **Authentication & Security**: Enterprise-grade passwordless authentication (Google/Microsoft OAuth, Magic Link), JWT sessions, bcrypt, CSRF protection, role-based access (User, Manager, Super Admin), and comprehensive audit logging.
 - **Multi-Tenancy**: RequestContext-based data isolation, user invitation system, organization/workspace management, and admin impersonation.
 - **Natural Language Processing**: Converts user queries into structured Apollo.io filters with AI.
 - **Email Sequence Management**: Multi-step sequences, prospect enrollment, tracking, AI personalization, multi-mailbox sending with round-robin rotation.
-- **Token Resolution System**: Comprehensive merge field system supporting standard tokens ({{first_name}}, {{company}}, {{job_title}}), fallback handling with warnings logged for missing values, inline fallback syntax ({{fieldName|fallback}}), and async {{custom_ai_line}} AI-generated personalization integrated before email queuing.
+- **Token Resolution System**: Comprehensive merge field system supporting standard tokens, fallback handling, inline fallback syntax, and async AI-generated personalization.
 - **Data Security**: Secure credential encryption (AES-256-CBC) for mailboxes.
-- **Reply Detection & Classification**: IMAP-based polling for automatic reply detection, OOO, bounce, and unsubscribe handling, with AI-powered sentiment and intent analysis. Follow-up emails are properly threaded.
+- **Reply Detection & Classification**: IMAP-based polling for automatic reply detection, OOO, bounce, and unsubscribe handling, with AI-powered sentiment and intent analysis.
 - **Unified Inbox**: Centralized reply management with AI summaries, filtering, and quick actions.
 - **Template Management**: Message template library with performance tracking, variable replacement, and AI-powered generation.
 - **AI Usage Tracking**: Comprehensive token usage tracking with cost calculation across multiple AI providers.
@@ -40,47 +40,15 @@ The platform is built on a modern web stack, featuring a multi-tenant architectu
 - **Duplicate Detection**: Intelligent checks by email, Apollo ID, LinkedIn URL, and name+company.
 - **Advanced Search**: Revenue range, technology stack, and funding stage filtering with multi-strategy Apollo search fallback.
 - **Admin Infrastructure**: Comprehensive admin settings including email infrastructure, API access, email deliverability, AI configuration, and multi-channel notifications.
-- **Super Admin System**: Comprehensive platform-level tenant management including provisioning, status, plan upgrades, configuration, manager account creation, quota enforcement, and alert automation. Includes time-series analytics, broadcast messaging, impersonation, and platform health monitoring. Performance optimizations for Super Admin dashboards and listings include N+1 query elimination, in-memory caching, keyset pagination, approximate counts, and filter optimization.
-- **Tenant Activation Workflow**: Step-by-step workflow enforcement for tenant onboarding. New tenants start with `automationStatus='paused'` (INACTIVE_AUTOMATION). Workflow stages: (1) Created - tenant/manager provisioned, (2) Manager Active - first manager login recorded, (3) Limits Configured - Super Admin reviews and confirms limits, (4) Automation Enabled - explicit enablement after prerequisites met. Backend validates all prerequisites before allowing automation; frontend gates Enable button on `canEnableAutomation` flag with missing steps surfaced in UI.
-- **Manager Dashboard**: Implemented at `/manager/dashboard` for team management, campaign oversight, performance analytics, and resource allocation tracking, with `requireManager` middleware for access control. Manager-level safeguards include hard limits on active campaigns, sequences, users, and prospects, and a Manager Kill Switch to pause operations.
-- **Multi-Provider Waterfall Search System**: Intelligent prospect search system that cascades through multiple providers (Perplexity AI, Apollo.io, Lusha, OpenRouter) to maximize result coverage while optimizing costs, featuring accumulating mode, smart deduplication, cost optimization, error resilience, and usage tracking.
-- **Performance Fixes**: Prospect enrollment N+1 query elimination and asynchronous CSV upload processing.
-- **RBAC Hardening**: Implemented kill switch for tenant automation, rate limiting via throttle middleware (enrollments, prospects, emails, AI calls), batch limits for prospect enrollment, sequence activation guards, and exponential backoff for email retries. Pagination guards are enforced on data exports and prospect listings. Universal Kill Switch is enforced across background services (automation-worker, reply-detection, intelligent-personalization, email-queue). Unit-based throttling prevents quota gaming.
-- **User/SDR Safeguards**: User-level quotas (maxEmailsPerDay, maxConcurrentEnrollments, maxRetriesPerCampaign) with kill switch. Cascade pause checks (user → manager → tenant). Daily email limits with automatic reset. Enrollment concurrency caps (DB-backed). DB-level deduplication via unique constraint on sequenceProspects. Middleware guards on HTTP endpoints with observability event emission. Background worker enforcement with deferral tracking (separate from retry attempts) and max deferral limits.
-- **SDR Workflow System (Phase 1 Complete)**: 9-stage step enforcement system (readiness → upload → enrichment → sequence → enrollment → activation → sending → replies → analytics) with sequential advancement validation. Schema includes `sdrWorkflowProgress` table with stage tracking and timestamps. Core service (`sdr-workflow.service.ts`) provides `assertStage`, `advanceStage`, `block`, `forceAdvance`, `resetWorkflow`, `tryAutoAdvance` methods. API routes enforce fail-closed security: all SDR routes use `validateWorkflowAccess` helper checking role (blocks managers/super_admins) and tenant automation status; admin routes (reset, force-advance) look up authoritative organizationId from workflow record. All workflow transitions emit audit events with organizationId and resourceId.
-- **Production Hardening (Phase 1 Complete)**: Cross-tenant workspace isolation enforced across all CRUD operations (GET, POST, PATCH, DELETE, archive, restore, transfer-ownership). Quota middleware returns 500 on errors (fail-closed). HMAC signature verification on email webhooks. Auto-pause mailbox on >10% bounce rate. Demo mode for sandbox email simulation without actual sends. Data reset tools with confirmation phrase verification for Super Admins. Observability service for AI cost tracking, throttle violations, and queue depth monitoring.
-- **SDR Dashboard (Complete)**: Comprehensive dashboard at `/sdr-dashboard` with:
-  - **Email Activity Stats**: Real-time metrics for emails sent (today/week), replies received, open rates (7d/30d), reply rates
-  - **Quota Visibility**: Email/enrollment usage vs limits, active campaigns count, reset time, hard-stop reasons with visual indicators
-  - **Campaign Health**: Running/paused/blocked/draft sequence counts with blocked sequence details and fix CTAs
-  - **AI Personalization Usage**: Personalization rate, total vs personalized emails, missing token failure alerts
-  - **9-Stage Workflow Progress Tracker**: Visual tracker with status indicators, completion timestamps, blocking reasons, and action CTAs
-  - **Personal Analytics**: Time-filtered trend charts (7d/30d/90d), period-over-period comparisons, top performing sequences, CSV export
-  - **Self-Service Sending Preferences**: Send window (start/end hours), timezone, exclude weekends toggle, default tone, email signature
-  - **Activity Feed**: Paginated user activity log with 90-day retention, search by action, filter by target type
-
-### P1 Roadmap (Future Work)
-- **Cost-Based Throttling**: Implement AI token usage tracking, provider cost weighting, monthly spend limits per tenant, and cost alerts.
-- **Auto-Pause Rules**: Introduce automatic triggers for pausing tenants based on spend spikes, queue backlogs, or error storms.
-- **Super Admin Visibility Dashboard**: Develop real-time operational visibility for queue depth, AI usage trends, throttle violations, and tenant health scores.
-- **Manager-Level Quotas**: Implement explicit quota allocation per manager within tenant limits, allowing managers to subdivide quotas to SDRs.
-- **Manager Spend Visibility**: Provide managers with dashboards showing AI tokens, email volume, and estimated costs per campaign/sequence.
-- **Campaign Health Scoring**: Introduce soft health signals (bounce rate, reply rate, AI error rate) and visual indicators for campaign performance.
-- **Auto-Throttle at Manager Level**: Implement soft throttles for managers before tenant pause triggers.
-- **Manager Abuse Alerts**: Develop alerts for sudden volume spikes, queue backlogs, and anomaly detection for usage patterns per manager.
-- **Manager Change Audit Trail**: Implement manager-level activity logs for actions like campaign creation, limit changes, and bulk uploads.
-- **[NEXT PATCH] Atomic Send Limits**: Combine check+increment in single transaction for email send limits to prevent race conditions on concurrent sends.
-- **Service-Layer Telemetry**: Add observability events to service-layer rejections (recordEmailSent failures, auto-pause triggers) for complete visibility.
-- **Manager Pause via UserControls**: Extend cascade pause logic to recognize manager pauses in userControls table in addition to managerQuotas.
-
-## Recent Changes (January 2026)
-- **Alias Reply Matching via References Header**: Reply detection now uses RFC 5322 References header chain as fallback when In-Reply-To is missing. Handles mobile client replies, email forwarding, and alias sender scenarios where prospect replies from a different email address. Supports both string and string[] References formats (mailparser compatibility).
-- **Atomic Bulk Enrollment**: Wrapped `storage.enrollProspects` in `db.transaction` for all-or-nothing semantics. Prevents partial enrollments when errors occur mid-batch - if any operation fails (cancel emails, supersede previous, insert new), entire batch rolls back.
-- **Search Query Normalization**: Enhanced deterministic search mode with plural-to-singular mapping (merchandisers→merchandiser, analysts→analyst) and hyphen/underscore replacement (south-africa→south africa) for consistent keyword matching.
-- **Email Threading Fix (RFC 5322)**: Follow-up emails now include `messageId`, `inReplyTo`, and `references` headers for proper thread continuity in Gmail/Outlook. Previous message IDs are stored in `emailQueue` table and passed to subsequent emails.
-- **Thread-Aware AI Follow-ups**: AI email generation now receives `previousEmails` context (truncated to 2KB) for follow-up emails, enabling contextually aware responses that reference prior communication.
-- **Deterministic Search Mode**: Added `SEARCH_MODE=deterministic` environment variable option that uses rule-based keyword extraction instead of AI for consistent, reproducible search results. Supports country-level location keywords (e.g., "south africa") for international queries.
-- **AI Personalization Fault Tolerance**: Enhanced personalization service now includes `personalizationSource` tracking ('ai' | 'fallback'), proper error handling with graceful fallback, and RequestContext integration for multi-tenant isolation.
+- **Super Admin System**: Comprehensive platform-level tenant management including provisioning, status, plan upgrades, configuration, manager account creation, quota enforcement, and alert automation. Includes time-series analytics, broadcast messaging, impersonation, and platform health monitoring.
+- **Tenant Activation Workflow**: Step-by-step workflow enforcement for tenant onboarding with validation of prerequisites for automation.
+- **Manager Dashboard**: Implemented at `/manager/dashboard` for team management, campaign oversight, performance analytics, and resource allocation tracking, with `requireManager` middleware for access control and manager-level safeguards.
+- **Multi-Provider Waterfall Search System**: Intelligent prospect search system that cascades through multiple providers to maximize result coverage while optimizing costs, featuring accumulating mode, smart deduplication, cost optimization, error resilience, and usage tracking.
+- **RBAC Hardening**: Implemented kill switch for tenant automation, rate limiting, batch limits for prospect enrollment, sequence activation guards, and exponential backoff for email retries. Pagination guards are enforced on data exports and prospect listings. Universal Kill Switch is enforced across background services.
+- **User/SDR Safeguards**: User-level quotas with kill switch, cascade pause checks, daily email limits with automatic reset, enrollment concurrency caps, DB-level deduplication, middleware guards, and background worker enforcement.
+- **SDR Workflow System**: 9-stage step enforcement system for SDR workflow (readiness → upload → enrichment → sequence → enrollment → activation → sending → replies → analytics) with sequential advancement validation and API routes enforcing fail-closed security.
+- **Production Hardening**: Cross-tenant workspace isolation, quota middleware returning 500 on errors, HMAC signature verification on email webhooks, auto-pause mailbox on high bounce rates, demo mode, data reset tools, and observability service.
+- **SDR Dashboard**: Comprehensive dashboard at `/sdr-dashboard` with email activity stats, quota visibility, campaign health, AI personalization usage, 9-stage workflow progress tracker, personal analytics, self-service sending preferences, and an activity feed.
 
 ## External Dependencies
 - **Apollo.io**: Prospect search, data enrichment, and bulk matching API.

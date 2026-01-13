@@ -1,6 +1,7 @@
 import { configValidator } from '../config/config-validator.service';
 import { validateSchemaRequirements, validateBackwardCompatibility } from './schema-parity-check';
 import { loadBuildFingerprint, validateBuildParity, generateBuildFingerprint } from './build-fingerprint';
+import { runPostDeploySmokeTests } from './post-deploy-smoke-tests';
 import fs from 'fs';
 import path from 'path';
 
@@ -157,6 +158,27 @@ export async function runDeploymentGate(): Promise<DeploymentGateResult> {
     details: `${configValidator.getKillSwitches().length} switches configured`,
     blocking: true,
   });
+
+  console.log('7️⃣  Running post-deploy smoke tests...');
+  try {
+    const smokeTestResult = await runPostDeploySmokeTests();
+    const failedTests = smokeTestResult.tests.filter(t => !t.passed);
+    checks.push({
+      name: 'Post-deploy smoke tests',
+      passed: smokeTestResult.passed,
+      details: smokeTestResult.passed 
+        ? `${smokeTestResult.tests.length} tests passed` 
+        : `${failedTests.length} test(s) failed: ${failedTests.map(t => t.name).join(', ')}`,
+      blocking: true,
+    });
+  } catch (error) {
+    checks.push({
+      name: 'Post-deploy smoke tests',
+      passed: false,
+      details: error instanceof Error ? error.message : 'Smoke tests failed to run',
+      blocking: true,
+    });
+  }
 
   const allPassed = checks.filter(c => c.blocking).every(c => c.passed);
 
