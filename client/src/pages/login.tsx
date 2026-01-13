@@ -112,7 +112,7 @@ export default function LoginPage() {
 
   if (configLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#f8f9fa' }}>
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: '#F8FAFC' }}>
         <Loader2 className="w-5 h-5 animate-spin text-gray-400" />
       </div>
     );
@@ -121,39 +121,39 @@ export default function LoginPage() {
   const hasOAuthOptions = authConfig?.googleEnabled || authConfig?.microsoftEnabled;
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4" style={{ backgroundColor: '#f8f9fa' }}>
+    <div className="min-h-screen flex flex-col items-center justify-center px-4" style={{ backgroundColor: '#F8FAFC' }}>
       {/* Login Card - Anchored, with physical presence */}
       <div 
         className="w-full max-w-[400px]"
         style={{
           backgroundColor: '#ffffff',
-          border: '1px solid #e5e7eb',
+          border: '1px solid #E5E7EB',
           borderRadius: '8px',
-          boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px -1px rgba(0, 0, 0, 0.05)',
+          boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.03)',
         }}
       >
         {/* Logo Header */}
-        <div className="px-10 pt-10 pb-6 border-b border-gray-100">
+        <div className="px-10 pt-10 pb-6 border-b" style={{ borderColor: '#E5E7EB' }}>
           <div className="flex items-center justify-center gap-3">
             <div 
-              className="w-11 h-11 flex items-center justify-center"
+              className="w-12 h-12 flex items-center justify-center"
               style={{ 
                 backgroundColor: '#0176D3', 
                 borderRadius: '6px' 
               }}
             >
-              <span className="text-lg font-bold text-white">AI</span>
+              <span className="text-xl font-bold text-white tracking-tight">AI</span>
             </div>
-            <span className="text-2xl font-semibold text-gray-900">AiSDR</span>
+            <span className="text-2xl font-bold tracking-tight" style={{ color: '#111827' }}>AiSDR</span>
           </div>
-          <p className="text-center text-sm text-gray-500 mt-3">
+          <p className="text-center text-sm mt-3" style={{ color: '#6B7280' }}>
             Enterprise outbound system
           </p>
         </div>
 
         {/* Login Form */}
         <div className="px-10 py-8">
-          <h1 className="text-lg font-medium text-gray-900 text-center mb-6">
+          <h1 className="text-base font-medium text-center mb-6" style={{ color: '#374151' }}>
             Log in to your account
           </h1>
 

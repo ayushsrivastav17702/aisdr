@@ -1,0 +1,202 @@
+Objective
+
+Design a secure, enterprise login experience for AiSDR that communicates trust, authority, and system-level seriousness — not marketing, not friendliness.
+
+This is an internal access portal, not a landing page.
+
+1. Brand & Tone
+
+Tone keywords
+
+Secure
+
+Authoritative
+
+Calm
+
+Professional
+
+Enterprise-grade
+
+SOC2 / Ops-first
+
+Explicitly avoid
+
+Playful language
+
+Illustrations
+
+Emojis
+
+Gradients inside the form
+
+Startup “vibes”
+
+Marketing copy
+
+This should feel closer to:
+
+Stripe Dashboard • AWS Console • Linear Admin • Notion Enterprise
+
+2. Layout Structure
+Page Layout
+
+Centered login card
+
+Neutral background (#F8FAFC or equivalent)
+
+No visual noise outside the card
+
+Plenty of negative space
+
+Card Structure (Top → Bottom)
+
+Brand Header
+
+AiSDR logo (slightly larger than current)
+
+Subtitle under logo:
+
+Enterprise outbound system
+
+Thin divider line below header (very subtle)
+
+Authentication Section
+
+Title:
+
+Log in to your account
+
+Google SSO button (primary secondary action)
+
+Divider with OR
+
+Email + Password fields
+
+Primary CTA: Log in
+
+Trust Footer (Microcopy)
+
+Small muted text:
+
+SOC2-ready • Encrypted • Role-based access
+
+Access Control Note
+
+Outside the card, very subtle:
+
+Access is managed by your organization administrator
+
+3. Visual Styling Rules
+Card
+
+Background: pure white
+
+Border: 1px solid #E5E7EB
+
+Border-radius: medium (not pill)
+
+Shadow: very soft, low elevation
+
+Padding: generous (breathing room)
+
+Typography
+
+System font or Inter
+
+Clear hierarchy:
+
+Logo title → strongest
+
+Section header → medium
+
+Labels → small, neutral
+
+No bold overuse
+
+Buttons
+
+Primary (Log in)
+
+Solid brand blue
+
+Slightly taller height
+
+Sharp confidence (not overly rounded)
+
+Secondary (Google)
+
+Neutral border
+
+Same width as primary
+
+No drop shadow
+
+4. Copy Guidelines
+Allowed
+
+Functional
+
+Clear
+
+Neutral
+
+Security-oriented
+
+Not Allowed
+
+“Welcome back 👋”
+
+“Let’s get started”
+
+“We missed you”
+
+Any emotional language
+
+5. UX Behavior
+
+Google login is visible but not dominant
+
+Email login can collapse/expand
+
+Clear error states (red border + single-line message)
+
+No animations beyond basic hover/focus
+
+Keyboard-accessible
+
+6. Emotional Goal (Very Important)
+
+When a user sees this screen, they should think:
+
+“This looks boring — but in a banking / admin / ops way.”
+
+That equals trust.
+
+7. Success Criteria
+
+This login screen should:
+
+Not impress designers
+
+Not excite marketers
+
+Instantly reassure enterprise buyers
+
+Feel safe to use daily
+
+Blend invisibly into serious workflows
+
+One Honest Verdict on Your Current Version
+
+You’re 70% there.
+
+What’s missing is:
+
+Slightly stronger card presence
+
+More confident typography hierarchy
+
+A bit more “this is a system” weight
+
+You’re polishing now — not redesigning.
