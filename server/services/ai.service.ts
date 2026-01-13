@@ -577,10 +577,27 @@ class AIService {
     const commonWords = ['the', 'a', 'an', 'in', 'on', 'to', 'of', 'and', 'or', 'with', 'find', 'looking', 'search', 'get', 'at', 'from', 'for'];
     const words = query.split(/\s+/);
     
-    const lowerQuery = query.toLowerCase();
+    // NORMALIZE: Replace hyphens/underscores with spaces for matching (e.g., "south-africa" → "south africa")
+    // This ensures queries like "south-africa" match location keyword "south africa"
+    const lowerQuery = query.toLowerCase().replace(/[-_]/g, ' ');
+    
+    // PLURAL HANDLING: Map plural job titles to singular for extraction
+    // e.g., "merchandisers" → "merchandiser", "analysts" → "analyst"
+    const normalizedQuery = lowerQuery
+      .replace(/merchandisers?/gi, 'merchandiser')
+      .replace(/analysts?/gi, 'analyst')
+      .replace(/engineers?/gi, 'engineer')
+      .replace(/developers?/gi, 'developer')
+      .replace(/managers?/gi, 'manager')
+      .replace(/directors?/gi, 'director')
+      .replace(/coordinators?/gi, 'coordinator')
+      .replace(/planners?/gi, 'planner')
+      .replace(/designers?/gi, 'designer')
+      .replace(/architects?/gi, 'architect')
+      .replace(/buyers?/gi, 'buyer');
     
     const extractedTitles = jobTitleKeywords.filter(keyword => 
-      lowerQuery.includes(keyword)
+      normalizedQuery.includes(keyword) || lowerQuery.includes(keyword)
     );
     
     const extractedLocations = locationKeywords.filter(keyword => 

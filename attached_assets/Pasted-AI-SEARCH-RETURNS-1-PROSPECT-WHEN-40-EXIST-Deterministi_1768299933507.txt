@@ -1,0 +1,186 @@
+AI SEARCH RETURNS 1 PROSPECT WHEN 40 EXIST
+
+(Deterministic search + enrichment failure)
+
+Goal: Prove search completeness, determinism, and enrichment dependency.
+
+Same query executed 5 times → compare result counts
+
+Same query with AI on vs deterministic mode → mismatch count
+
+Remove AI service → search should still return full dataset
+
+Query with country typo (“south-africa”) → zero vs partial results
+
+Query with plural roles (“merchandisers”) → dropped matches
+
+Query reordered (“puma south africa merchandisers”) → result variance
+
+Query with uppercase/lowercase variance → result change
+
+Search returns <5 results → bulk enrichment enabled?
+
+Search returns 1 result → enrichment mandatory path triggered?
+
+Enrichment API timeout → search results lost?
+
+Partial enrichment success → emails missing?
+
+Enrichment retries create duplicates?
+
+Enrichment failure blocks sequence creation?
+
+Enrichment success but emails not persisted
+
+Search result IDs differ between identical queries
+
+Break condition:
+❌ Search count is inconsistent OR enrichment required to “fix” search
+
+2️⃣ AI PERSONALIZATION DEPENDS ON LINKEDIN + NEWS + CONTENT LIBRARY
+
+Goal: Kill all external dependencies and observe behavior.
+
+Block LinkedIn fetch → does personalization crash?
+
+Block news API → empty personalization?
+
+Content library empty → hallucinated output?
+
+LinkedIn rate limit → partial data corruption?
+
+News returns irrelevant article → wrong personalization
+
+Company has no news → exception thrown?
+
+Prospect missing LinkedIn URL → pipeline break?
+
+One prospect fails → entire batch fails?
+
+AI timeout mid-generation → orphan records?
+
+AI returns malformed text → persisted?
+
+Retry generates different content → state mismatch
+
+Personalization source not logged
+
+Personalization saved but not linked to prospect
+
+Fallback template not used when AI fails
+
+Silent failure (no error, no content)
+
+Break condition:
+❌ Any external failure blocks email generation or corrupts state
+
+3️⃣ FOLLOW-UP PERSONALIZATION + SAME THREAD REQUIREMENT
+
+Goal: Test thread continuity + contextual awareness.
+
+Send follow-up without original Message-ID
+
+Follow-up after server restart
+
+Follow-up after emailQueue cleanup
+
+Follow-up scheduled before first email sent
+
+Follow-up AI prompt missing previous content
+
+Follow-up sent with new subject line
+
+Follow-up references wrong previous email
+
+Follow-up generated but not threaded
+
+Follow-up created manually vs AI → different behavior
+
+Follow-up after reply received
+
+Follow-up after bounce
+
+Follow-up after unsubscribe
+
+Follow-up after prospect moved sequence
+
+Follow-up after personalization regenerated
+
+Follow-up after original email deleted
+
+Break condition:
+❌ Follow-up appears as new thread OR ignores prior context
+
+4️⃣ BULK AI PERSONALIZATION (50 AT ONCE) NOT ADDED TO SEQUENCE
+
+Goal: Break transactional integrity.
+
+Generate 50 personalizations → check sequence steps
+
+Generate 50 → restart server mid-process
+
+Generate 50 → AI fails at item 23
+
+Generate 50 → partial persistence
+
+Generate 50 → schedule triggers before save
+
+Generate 50 → duplicates created
+
+Generate 50 → none added to sequence
+
+Generate 50 → follow-ups missing
+
+Generate 50 → only first email attached
+
+Generate 50 → race condition on save
+
+Generate 50 → memory spike
+
+Generate 50 → timeout causes orphan records
+
+Generate 50 → retry creates duplicates
+
+Generate 50 → UI shows success, DB empty
+
+Generate 50 → scheduler ignores them
+
+Break condition:
+❌ Personalization not atomically bound to sequence
+
+5️⃣ REPLIES NOT CAPTURED WITHIN 30 SECONDS
+
+Goal: Break reply ingestion.
+
+Reply immediately after send
+
+Reply after 1 minute
+
+Reply after server restart
+
+Reply with attachment
+
+Reply from mobile client
+
+Reply-all vs reply
+
+Reply with modified subject
+
+Reply from alias email
+
+Reply twice quickly
+
+Reply after follow-up scheduled
+
+Reply during rate limit window
+
+Reply when webhook delayed
+
+Reply when IMAP reconnects
+
+Reply after bounce
+
+Reply after unsubscribe
+
+Break condition:
+❌ Reply delayed, missed, duplicated, or mis-mapped
