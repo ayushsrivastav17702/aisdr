@@ -42,6 +42,7 @@ import {
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, inArray, and, or, ilike, count, sql, SQL } from "drizzle-orm";
+import { verificationLogger } from "./services/verification-logging.service";
 
 export type RequestContext = {
   userId: string;
@@ -897,6 +898,13 @@ export class DatabaseStorage implements IStorage {
         .returning();
       
       console.log(`[Enrollment Batch TX] Enrolled ${enrolled.length} prospects in sequence ${sequenceId}`);
+      
+      verificationLogger.txCommit('enrollProspects', enrolled.length, {
+        sequenceId,
+        supersededCount: previousEnrollments.length,
+        userId: effectiveUserId,
+      });
+      
       return enrolled;
     });
   }
