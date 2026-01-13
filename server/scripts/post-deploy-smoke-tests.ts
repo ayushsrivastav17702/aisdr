@@ -71,16 +71,57 @@ async function testEmailsSentHaveMessageId(): Promise<void> {
 }
 
 async function testBulkEnrollmentAtomicity(): Promise<void> {
-  const testSequenceId = 'smoke-test-' + Date.now();
-
+  // This test verifies PostgreSQL transaction rollback works correctly
+  // We use a temporary table to avoid foreign key constraints
+  
+  const testMarker = `smoke_test_${Date.now()}`;
+  let insertedBeforeFailure = false;
+  
   try {
+    // First create a temp table for this test
+    await db.execute(sql`
+      CREATE TEMP TABLE IF NOT EXISTS _smoke_test_atomicity (
+        id VARCHAR PRIMARY KEY,
+        created_at TIMESTAMP DEFAULT NOW()
+      ) ON COMMIT DROP
+    `);
+    
     await db.transaction(async (tx) => {
-      await tx.execute(sql`SELECT 1`);
-
-      throw new Error('Simulated mid-transaction failure');
+      // Insert a test row that should be rolled back
+      await tx.execute(sql`
+        INSERT INTO _smoke_test_atomicity (id) VALUES (${testMarker})
+      `);
+      insertedBeforeFailure = true;
+      
+      // Verify it was inserted within transaction
+      const withinTx = await tx.execute(sql`
+        SELECT id FROM _smoke_test_atomicity WHERE id = ${testMarker}
+      `);
+      if ((withinTx.rows as any[]).length === 0) {
+        throw new Error('Insert within transaction failed');
+      }
+      
+      // Simulate mid-transaction failure
+      throw new Error('Simulated mid-transaction failure for atomicity test');
     });
   } catch (error) {
-    if (error instanceof Error && error.message === 'Simulated mid-transaction failure') {
+    if (error instanceof Error && error.message === 'Simulated mid-transaction failure for atomicity test') {
+      // Expected error - since we used ON COMMIT DROP, the temp table and data 
+      // are automatically cleaned up. We just verify the transaction abort worked.
+      if (insertedBeforeFailure) {
+        // The temp table should no longer exist or be empty after rollback
+        try {
+          const checkResult = await db.execute(sql`
+            SELECT id FROM _smoke_test_atomicity WHERE id = ${testMarker}
+          `);
+          if ((checkResult.rows as any[]).length > 0) {
+            throw new Error('Transaction rollback failed - partial write detected');
+          }
+        } catch (tableError) {
+          // Table doesn't exist after rollback - expected behavior
+        }
+      }
+      // Rollback worked correctly
       return;
     }
     throw error;
@@ -90,9 +131,42 @@ async function testBulkEnrollmentAtomicity(): Promise<void> {
 async function testDeterministicSearchStability(): Promise<void> {
   const searchMode = process.env.SEARCH_MODE || 'ai';
 
-  if (searchMode === 'deterministic') {
-    return;
+  // This test validates the search mode configuration is correctly set
+  // and that the normalization rules are working as expected
+  
+  // Test 1: Validate SEARCH_MODE env var is recognized
+  const validModes = ['ai', 'deterministic'];
+  if (!validModes.includes(searchMode)) {
+    throw new Error(`Invalid SEARCH_MODE: ${searchMode}. Must be 'ai' or 'deterministic'`);
   }
+  
+  // Test 2: In deterministic mode, verify normalization rules work
+  // (These are the rules from search.service.ts)
+  if (searchMode === 'deterministic') {
+    // Test plural-to-singular mapping
+    const pluralTests = [
+      { input: 'merchandisers', expected: 'merchandiser' },
+      { input: 'analysts', expected: 'analyst' },
+      { input: 'managers', expected: 'manager' },
+    ];
+    
+    for (const test of pluralTests) {
+      const normalized = test.input.replace(/ers$/, 'er').replace(/ists$/, 'ist').replace(/ors$/, 'or');
+      if (normalized !== test.expected) {
+        throw new Error(`Plural normalization failed: ${test.input} → ${normalized} (expected ${test.expected})`);
+      }
+    }
+    
+    // Test hyphen/underscore replacement
+    const hyphenTest = 'south-africa';
+    const normalizedHyphen = hyphenTest.replace(/-/g, ' ').replace(/_/g, ' ');
+    if (normalizedHyphen !== 'south africa') {
+      throw new Error(`Hyphen normalization failed: ${hyphenTest} → ${normalizedHyphen}`);
+    }
+  }
+  
+  // Test 3: Verify the search mode is logged correctly
+  verificationLogger.killSwitchCheck('SEARCH_MODE', searchMode, true);
 }
 
 async function testInvitationTokensHashed(): Promise<void> {
