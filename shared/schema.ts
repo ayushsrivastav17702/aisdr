@@ -767,7 +767,8 @@ export const emailQueue = pgTable("email_queue", {
   // Sequence tracking
   stepOrder: integer("step_order"), // Which step in the sequence (1, 2, 3, etc.)
   
-  // Email Threading Headers
+  // Email Threading Headers (RFC 5322)
+  messageId: text("message_id"), // RFC 5322 Message-ID of THIS email (populated after send)
   inReplyTo: text("in_reply_to"), // Message-ID of the email this is replying to
   references: text("references"), // Space-separated Message-IDs for the entire thread
   

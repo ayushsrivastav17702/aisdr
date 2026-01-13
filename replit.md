@@ -73,6 +73,12 @@ The platform is built on a modern web stack, featuring a multi-tenant architectu
 - **Service-Layer Telemetry**: Add observability events to service-layer rejections (recordEmailSent failures, auto-pause triggers) for complete visibility.
 - **Manager Pause via UserControls**: Extend cascade pause logic to recognize manager pauses in userControls table in addition to managerQuotas.
 
+## Recent Changes (January 2026)
+- **Email Threading Fix (RFC 5322)**: Follow-up emails now include `messageId`, `inReplyTo`, and `references` headers for proper thread continuity in Gmail/Outlook. Previous message IDs are stored in `emailQueue` table and passed to subsequent emails.
+- **Thread-Aware AI Follow-ups**: AI email generation now receives `previousEmails` context (truncated to 2KB) for follow-up emails, enabling contextually aware responses that reference prior communication.
+- **Deterministic Search Mode**: Added `SEARCH_MODE=deterministic` environment variable option that uses rule-based keyword extraction instead of AI for consistent, reproducible search results. Supports country-level location keywords (e.g., "south africa") for international queries.
+- **AI Personalization Fault Tolerance**: Enhanced personalization service now includes `personalizationSource` tracking ('ai' | 'fallback'), proper error handling with graceful fallback, and RequestContext integration for multi-tenant isolation.
+
 ## External Dependencies
 - **Apollo.io**: Prospect search, data enrichment, and bulk matching API.
 - **OpenAI**: Primary AI provider.

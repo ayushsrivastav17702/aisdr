@@ -89,20 +89,20 @@ export class SequenceExecutorService {
           }
           
           // 2. Determine the prospect's last completed step
-          // Use the emails table (canonical sent log) instead of email_queue
-          const lastSentEmail = await db.query.emails.findFirst({
+          // Use the emailQueue table which has stepOrder for tracking sequence progress
+          const lastSentQueueItem = await db.query.emailQueue.findFirst({
             where: and(
-              eq(emails.prospectId, enrollment.prospectId),
-              eq(emails.sequenceId, enrollment.sequenceId),
-              eq(emails.status, 'sent')
+              eq(emailQueue.prospectId, enrollment.prospectId),
+              eq(emailQueue.sequenceId, enrollment.sequenceId),
+              eq(emailQueue.status, 'sent')
             ),
-            orderBy: desc(emails.sentAt)
+            orderBy: desc(emailQueue.sentAt)
           });
           
           // Determine the next step order from the last sent email's stepOrder
           // CRITICAL: Handle null stepOrder gracefully - if last email has null stepOrder,
           // we can't reliably determine what comes next, so default to 0
-          const lastStepOrder = (lastSentEmail?.stepOrder != null) ? lastSentEmail.stepOrder : 0;
+          const lastStepOrder = (lastSentQueueItem?.stepOrder != null) ? lastSentQueueItem.stepOrder : 0;
           const nextStepOrder = lastStepOrder + 1;
 
           // 3. Look up the configuration for the next step
@@ -144,7 +144,7 @@ export class SequenceExecutorService {
 
           // 4. Check if the delay has passed
           // Delay starts from the last sent time (or enrollment time for Step 1)
-          const lastEventTime = lastSentEmail?.sentAt || enrollment.enrolledAt;
+          const lastEventTime = lastSentQueueItem?.sentAt || enrollment.enrolledAt;
           
           if (!lastEventTime) {
             console.warn(`[SequenceExecutor] No event time for enrollment ${enrollment.id}, skipping`);
@@ -258,26 +258,34 @@ export class SequenceExecutorService {
         });
       }
       
-      // THREADING: Get the most recent sent email to this prospect in this sequence
+      // THREADING: Get the most recent sent email from emailQueue (the authoritative source for messageId)
       // This allows follow-up emails to appear in the same thread as the original
       let inReplyTo: string | undefined;
       let references: string | undefined;
       let originalSubject: string | undefined;
+      let previousEmailContext: string | undefined;
       
-      const previousEmail = await db.query.emails.findFirst({
+      // CRITICAL: Use emailQueue table - this is where messageId is populated after send
+      const previousQueuedEmail = await db.query.emailQueue.findFirst({
         where: and(
-          eq(emails.prospectId, prospectId),
-          eq(emails.sequenceId, sequenceId),
-          eq(emails.status, 'sent'),
-          sql`${emails.messageId} IS NOT NULL`
+          eq(emailQueue.prospectId, prospectId),
+          eq(emailQueue.sequenceId, sequenceId),
+          eq(emailQueue.status, 'sent'),
+          eq(emailQueue.userId, userId),
+          sql`${emailQueue.messageId} IS NOT NULL`
         ),
-        orderBy: desc(emails.sentAt)
+        orderBy: desc(emailQueue.sentAt)
       });
       
-      if (previousEmail?.messageId) {
-        inReplyTo = previousEmail.messageId;
-        references = previousEmail.messageId;
-        originalSubject = previousEmail.subject;
+      if (previousQueuedEmail?.messageId) {
+        inReplyTo = previousQueuedEmail.messageId;
+        // Build references chain - include all previous messageIds for full thread
+        references = previousQueuedEmail.references 
+          ? `${previousQueuedEmail.references} ${previousQueuedEmail.messageId}`
+          : previousQueuedEmail.messageId;
+        originalSubject = previousQueuedEmail.subject;
+        // Build context for thread-aware AI generation (truncate to 2KB)
+        previousEmailContext = `Subject: ${previousQueuedEmail.subject}\n\n${(previousQueuedEmail.body || '').substring(0, 2000)}`;
         console.log(`[SequenceExecutor] 🔗 Threading follow-up to Message-ID: ${inReplyTo}`);
       }
       

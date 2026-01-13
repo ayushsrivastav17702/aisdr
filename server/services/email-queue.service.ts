@@ -578,7 +578,6 @@ export class EmailQueueService {
           .set({ 
             status: 'sent',
             sentAt: new Date(),
-            deliveredAt: new Date(),
             lastError: 'Demo mode: Email simulated (not actually sent)',
           })
           .where(eq(emailQueue.id, email.id));
@@ -688,7 +687,8 @@ export class EmailQueueService {
       if (result.success) {
         const sentAt = new Date();
         
-        // Update email queue status with rendered content (reset deferral counter on success)
+        // Update email queue status with rendered content and Message-ID (reset deferral counter on success)
+        // CRITICAL: Store messageId in emailQueue - this is the authoritative source for threading
         await db
           .update(emailQueue)
           .set({
@@ -696,6 +696,7 @@ export class EmailQueueService {
             sentAt,
             subject: renderedSubject, // Store rendered subject
             body: renderedBody, // Store rendered body
+            messageId: result.messageId, // CRITICAL: Store Message-ID for RFC 5322 threading
             deferralAttempts: 0, // Reset deferral counter on successful send
           })
           .where(eq(emailQueue.id, email.id));
@@ -1022,9 +1023,11 @@ export class EmailQueueService {
         return { isDemoMode: false };
       }
 
+      const orgId = user.organizationId;
+      
       // Check tenant configuration for demo mode
       const tenantConfig = await db.query.tenantConfiguration.findFirst({
-        where: (tc, { eq }) => eq(tc.organizationId, user.organizationId),
+        where: (tc, { eq }) => eq(tc.organizationId, orgId),
         columns: { demoModeEnabled: true, demoModeReason: true }
       });
 

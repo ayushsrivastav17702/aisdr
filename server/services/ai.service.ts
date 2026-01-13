@@ -131,6 +131,26 @@ class AIService {
   }> {
     const preferredProvider = process.env.AI_PROVIDER || 'openai';
     
+    // DETERMINISM FIX: Check if deterministic mode is enabled
+    // In deterministic mode, we ALWAYS use keyword extraction first for consistent results
+    // AI can optionally enhance but never replace the base filters
+    const useDeterministicMode = process.env.SEARCH_MODE === 'deterministic';
+    
+    if (useDeterministicMode) {
+      console.log('🔒 DETERMINISTIC MODE: Using rule-based filter extraction (SEARCH_MODE=deterministic)');
+      const deterministicResult = this.fallbackKeywordExtraction(query);
+      
+      // Log the deterministic filters for auditability
+      console.log('📊 Deterministic filters extracted:', JSON.stringify({
+        jobTitles: deterministicResult.aiFilters.jobTitles,
+        locations: deterministicResult.aiFilters.locations,
+        companies: deterministicResult.aiFilters.companyNames,
+        industries: deterministicResult.aiFilters.industries,
+      }));
+      
+      return deterministicResult;
+    }
+    
     // If AI_PROVIDER is explicitly set to openrouter, try that first
     if (preferredProvider === 'openrouter' && this.openRouter) {
       try {
@@ -507,23 +527,33 @@ class AIService {
     ];
     
     const locationKeywords = [
-      // North America
+      // Countries (critical for deterministic search - queries like "south africa puma")
+      'united states', 'usa', 'us', 'canada', 'mexico', 'brazil', 'argentina',
+      'united kingdom', 'uk', 'england', 'germany', 'france', 'spain', 'italy',
+      'netherlands', 'belgium', 'switzerland', 'austria', 'sweden', 'norway',
+      'denmark', 'finland', 'poland', 'ireland', 'portugal',
+      'australia', 'new zealand', 'japan', 'china', 'india', 'south korea', 'korea',
+      'singapore', 'hong kong', 'taiwan', 'indonesia', 'malaysia', 'thailand',
+      'vietnam', 'philippines',
+      'south africa', 'nigeria', 'kenya', 'egypt', 'morocco',
+      'uae', 'united arab emirates', 'saudi arabia', 'israel', 'turkey',
+      // North America Cities
       'nyc', 'new york', 'san francisco', 'sf', 'bay area', 'boston', 'austin',
       'seattle', 'los angeles', 'la', 'chicago', 'miami', 'atlanta', 'denver',
       'dallas', 'houston', 'portland', 'philadelphia', 'dc', 'washington',
       'toronto', 'vancouver', 'montreal',
-      // Europe
+      // Europe Cities
       'london', 'paris', 'berlin', 'amsterdam', 'madrid', 'barcelona', 'rome',
       'dublin', 'stockholm', 'copenhagen', 'oslo', 'helsinki', 'zurich', 'geneva',
       'munich', 'frankfurt', 'vienna', 'brussels', 'lisbon',
-      // Asia Pacific
-      'singapore', 'hong kong', 'tokyo', 'shanghai', 'beijing', 'seoul',
+      // Asia Pacific Cities
+      'tokyo', 'shanghai', 'beijing', 'seoul',
       'bangalore', 'mumbai', 'delhi', 'hyderabad', 'sydney', 'melbourne',
       'auckland', 'bangkok', 'manila', 'jakarta', 'kuala lumpur',
-      // Middle East & Africa
+      // Middle East & Africa Cities
       'dubai', 'abu dhabi', 'tel aviv', 'riyadh', 'cairo', 'johannesburg',
       'cape town', 'nairobi',
-      // Latin America
+      // Latin America Cities
       'mexico city', 'são paulo', 'rio de janeiro', 'buenos aires', 'santiago',
       'bogota', 'lima'
     ];
