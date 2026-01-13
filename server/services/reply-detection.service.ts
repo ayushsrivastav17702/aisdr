@@ -9,6 +9,7 @@ import sequenceStepService from "./sequence-step.service";
 import { Sentry, isSentryEnabled } from "../sentry";
 import { emailQueueService } from "./email-queue.service";
 import { hardeningService } from "./hardening.service";
+import { verificationLogger } from "./verification-logging.service";
 
 /**
  * Comprehensive reply classification result
@@ -760,6 +761,7 @@ export class ReplyDetectionService {
 
         if (emailRecord) {
           console.log(`✅ Matched reply by Message-ID: ${inReplyTo}`);
+          verificationLogger.threadMatch('messageId', inReplyTo, emailRecord.prospectId);
           matchedEmailRecord = emailRecord;
           
           const [queueItem] = await db
@@ -800,6 +802,7 @@ export class ReplyDetectionService {
 
             if (emailRecord) {
               console.log(`✅ Matched reply by References header: ${normalizedRefId} (alias sender: ${fromEmail})`);
+              verificationLogger.threadMatch('references', normalizedRefId, emailRecord.prospectId);
               matchedEmailRecord = emailRecord;
               
               const [queueItem] = await db
@@ -861,11 +864,13 @@ export class ReplyDetectionService {
           const exactMatch = potentialMatches.find(m => m.subjectMatch);
           matchedEmail = exactMatch ? exactMatch.email : potentialMatches[0].email;
           console.log(`✅ Matched reply by subject/sender: ${fromEmail} -> prospect ${matchedEmail.prospectId}`);
+          verificationLogger.threadMatch('subject', subject, matchedEmail.prospectId);
         }
       }
 
       if (!matchedEmail) {
         console.log(`⚠️ Could not match reply from ${fromEmail} to any sent email (Subject: "${subject}")`);
+        verificationLogger.threadFallback('no_match', fromEmail, subject);
         return true;
       }
 
