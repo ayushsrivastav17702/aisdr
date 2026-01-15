@@ -148,7 +148,9 @@ const csrfExcludedPrefixes = [
   '/api/super-admin',
 ];
 
-const isTestEnvironment = process.env.NODE_ENV === 'test' || process.env.DEMO_MODE === 'true';
+function isTestEnv(): boolean {
+  return process.env.NODE_ENV === 'test' || process.env.DEMO_MODE === 'true';
+}
 
 app.use((req, res, next) => {
   if (csrfExcludedPaths.includes(req.path) || 
@@ -157,7 +159,10 @@ app.use((req, res, next) => {
     return next();
   }
   
-  if (isTestEnvironment && req.headers.authorization?.startsWith('Bearer ')) {
+  const hasTestHeader = req.headers['x-test-bypass'] === 'true';
+  const hasBearerToken = req.headers.authorization?.startsWith('Bearer ');
+  
+  if (hasTestHeader && hasBearerToken && isTestEnv()) {
     return next();
   }
   

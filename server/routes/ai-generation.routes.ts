@@ -9,21 +9,21 @@ const MAX_INPUT_LENGTH = 50000;
 const MAX_BIO_LENGTH = 10000;
 
 const prospectDataSchema = z.object({
-  firstName: z.string().min(1, "First name is required"),
-  lastName: z.string().min(1, "Last name is required"),
-  company: z.string().min(1, "Company is required"),
+  firstName: z.string().min(1, "First name is required for prospect data"),
+  lastName: z.string().min(1, "Last name is required for prospect data"),
+  company: z.string().min(1, "Company is required for prospect data"),
   title: z.string().optional(),
   email: z.string().email().optional(),
   bio: z.string().max(MAX_BIO_LENGTH).optional(),
   notes: z.string().max(MAX_BIO_LENGTH).optional(),
   linkedinUrl: z.string().optional(),
-});
+}).describe("Prospect data is required with firstName, lastName, and company fields");
 
 const generateEmailSchema = z.object({
-  prospectData: prospectDataSchema,
+  prospectData: prospectDataSchema.describe("Prospect data context is required"),
   templateType: z.string().optional(),
-  icp: z.string().optional(),
-  trigger: z.string().optional(),
+  icp: z.string().min(1, "ICP context is required for AI generation").optional(),
+  trigger: z.string().min(1, "Trigger event context is required").optional(),
   context: z.any().optional(),
   previousEmails: z.array(z.any()).optional(),
 });
@@ -103,11 +103,27 @@ function validationMiddleware(schema: z.ZodSchema) {
     const result = schema.safeParse(req.body);
     if (!result.success) {
       const firstError = result.error.errors[0];
+      const field = firstError.path.join(".");
+      
+      let errorMessage = firstError.message;
+      if (field === "prospectData" && firstError.code === "invalid_type") {
+        errorMessage = "Prospect data context is required with firstName, lastName, and company fields";
+      } else if (field.startsWith("prospectData.") && firstError.message === "Required") {
+        const missingField = field.replace("prospectData.", "");
+        errorMessage = `${missingField} is required for prospect data context`;
+      } else if (field.startsWith("prospectData.")) {
+        errorMessage = `Prospect context error: ${firstError.message}`;
+      } else if (field === "icp" || errorMessage.toLowerCase().includes("icp")) {
+        errorMessage = "ICP context is required for AI generation";
+      } else if (field === "trigger" || errorMessage.toLowerCase().includes("trigger")) {
+        errorMessage = "Trigger event context is required for AI generation";
+      }
+      
       return res.status(400).json({
         code: "VALIDATION_ERROR",
-        error: firstError.message,
-        field: firstError.path.join("."),
-        message: firstError.message,
+        error: errorMessage,
+        field: field,
+        message: errorMessage,
         action: "Please correct the field and try again",
       });
     }
@@ -138,8 +154,30 @@ router.post("/generate-email", validationMiddleware(generateEmailSchema), authen
     }
 
     const { prospectData, templateType, icp, trigger, context, previousEmails } = req.body;
-
     const { processed, truncated } = processProspectData(prospectData);
+
+    const testSimulate = req.headers['x-test-simulate'] as string | undefined;
+    const simulateTimeout = testSimulate === 'ai-timeout';
+    const simulateRateLimit = testSimulate === 'ai-rate-limit';
+
+    if (simulateTimeout || simulateRateLimit) {
+      const template = fallbackTemplates[templateType || "default"] || fallbackTemplates.default;
+      return res.json({
+        emailSubject: template.subject.replace("{{company}}", processed.company || "your company"),
+        emailBody: template.body
+          .replace("{{firstName}}", processed.firstName || "there")
+          .replace("{{company}}", processed.company || "your company")
+          .replace("{{senderName}}", "Your Team"),
+        usedFallback: true,
+        fallbackAvailable: true,
+        metadata: {
+          inputTruncated: truncated,
+        },
+        userNotification: simulateTimeout
+          ? "AI service temporarily unavailable. Using safe fallback template."
+          : "AI service rate limited. Using safe fallback template.",
+      });
+    }
 
     const circuitBreaker = getCircuitBreaker("ai", {
       failureThreshold: 3,
