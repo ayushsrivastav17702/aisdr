@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { formatDistanceToNow } from "date-fns";
@@ -22,6 +22,8 @@ import {
   Sparkles,
   MoreVertical,
 } from "lucide-react";
+import { AIReplySuggestionPanel, type ReplySuggestion } from "@/components/AIReplySuggestionPanel";
+import { useAuth } from "@/contexts/auth-context";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -75,6 +77,10 @@ export default function InboxPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [sentimentFilter, setSentimentFilter] = useState<string>("all");
   const [intentFilter, setIntentFilter] = useState<string>("all");
+  const [aiSuggestion, setAiSuggestion] = useState<ReplySuggestion | null>(null);
+  const [isLoadingAiSuggestion, setIsLoadingAiSuggestion] = useState(false);
+  const [composedReply, setComposedReply] = useState("");
+  const { token } = useAuth();
 
   const { data: replies, isLoading } = useQuery<ReplyWithDetails[]>({
     queryKey: ["/api/inbox/replies"],
@@ -123,10 +129,49 @@ export default function InboxPage() {
 
   const handleSelectReply = (reply: ReplyWithDetails) => {
     setSelectedReply(reply);
+    setAiSuggestion(null);
+    setComposedReply("");
     if (!reply.processed) {
       markAsReadMutation.mutate(reply.id);
     }
   };
+
+  const fetchAiSuggestion = async (reply: ReplyWithDetails) => {
+    if (!token || !reply.replyContent) return;
+    
+    setIsLoadingAiSuggestion(true);
+    try {
+      const response = await fetch('/api/ai/suggest-reply', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          prospectId: reply.prospectId,
+          replyContent: reply.replyContent,
+          replyType: reply.replyType,
+          sentiment: reply.sentiment,
+          intent: reply.intent
+        })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        setAiSuggestion(data);
+      }
+    } catch (error) {
+      console.error('Failed to fetch AI suggestion:', error);
+    } finally {
+      setIsLoadingAiSuggestion(false);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedReply && (selectedReply.intent === 'objection' || selectedReply.intent === 'question' || selectedReply.intent === 'not_now')) {
+      fetchAiSuggestion(selectedReply);
+    }
+  }, [selectedReply?.id]);
 
   return (
     <div className="container mx-auto p-6 max-w-7xl">
@@ -473,9 +518,15 @@ export default function InboxPage() {
                           <Reply className="h-4 w-4 mr-2" />
                           Compose Reply
                         </Button>
-                        <Button size="sm" variant="outline" data-testid="button-generate-reply">
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          onClick={() => selectedReply && fetchAiSuggestion(selectedReply)}
+                          disabled={isLoadingAiSuggestion}
+                          data-testid="button-generate-reply"
+                        >
                           <Sparkles className="h-4 w-4 mr-2" />
-                          Generate AI Reply
+                          {isLoadingAiSuggestion ? 'Generating...' : 'Generate AI Reply'}
                         </Button>
                         {selectedReply.intent === "meeting_request" && (
                           <Button size="sm" variant="outline" data-testid="button-schedule-meeting">
@@ -485,6 +536,22 @@ export default function InboxPage() {
                         )}
                       </div>
                     </div>
+
+                    {/* AI Reply Suggestion Panel */}
+                    {(aiSuggestion || isLoadingAiSuggestion) && (
+                      <div className="mt-6 pt-6 border-t">
+                        <AIReplySuggestionPanel
+                          suggestion={aiSuggestion}
+                          isLoading={isLoadingAiSuggestion}
+                          onInsertReply={(reply) => {
+                            setComposedReply(reply);
+                          }}
+                          onRefresh={() => selectedReply && fetchAiSuggestion(selectedReply)}
+                          onDismiss={() => setAiSuggestion(null)}
+                          prospectReply={selectedReply?.replyContent || undefined}
+                        />
+                      </div>
+                    )}
                   </ScrollArea>
                 </CardContent>
               </>
