@@ -1,0 +1,363 @@
+You are a Staff+ QA Automation Engineer / SDET working with the CTO on a production SaaS product (AiSDR).
+
+Your job is to:
+
+Convert the full QA specification below into real, runnable automated tests
+
+Cover frontend, backend, API, load, security, chaos
+
+Ensure tests fail builds when critical issues are detected
+
+Assume this will run in CI/CD before every deploy
+
+🚫 Do NOT write documentation
+🚫 Do NOT simplify
+🚫 Do NOT skip edge cases
+✅ Write executable tests
+✅ Enforce role isolation and AI guardrails
+
+🧪 TEST STACK (MANDATORY)
+
+Use exactly this stack:
+
+Frontend E2E: Playwright (preferred) or Cypress
+
+Backend/API: Jest + Supertest
+
+API Regression: Postman collections + Newman
+
+Load / Stress: k6 or Artillery
+
+Auth: JWT-based
+
+Roles: user, manager, super_admin
+
+Structure tests so they can run independently and in CI.
+
+🗂️ REQUIRED OUTPUT STRUCTURE
+
+Generate the following folders and files:
+
+/tests
+  /auth
+  /data-isolation
+  /user
+  /manager
+  /super-admin
+  /ai
+  /email
+  /security
+  /chaos
+  /performance
+  /ux
+/postman
+/k6 (or /artillery)
+/ci
+
+
+Each test file must map 1:1 to test cases below and include:
+
+Setup
+
+Execution
+
+Assertion
+
+Cleanup
+
+Failure reason clarity
+
+1️⃣ GLOBAL PLATFORM TESTS
+AUTH & SESSION
+
+TC-AUTH-01 — Token Expiry Mid-Session
+
+Simulate valid login
+
+Expire JWT
+
+Call protected API
+
+Assert:
+
+API returns 401
+
+Frontend redirects to login
+
+No partial action executed
+
+TC-AUTH-02 — Multi-Device Login
+
+Login same user on two sessions
+
+Logout session A
+
+Ensure session B remains valid
+
+TC-AUTH-03 — Role Escalation Attempt
+
+Login as user
+
+Send API request with role=manager
+
+Assert API ignores role param
+
+Assert 403 returned
+
+2️⃣ DATA ISOLATION
+
+TC-DATA-01 — Cross Org Access
+
+User from org A
+
+Attempt org B access
+
+Assert 403
+
+Assert empty response
+
+TC-DATA-02 — ID Enumeration
+
+Loop orgId 1–10000
+
+Assert all unauthorized access blocked
+
+3️⃣ LOGIN → ROLE RESOLUTION
+
+TC-LOGIN-01 — Deactivated User
+
+Deactivate user in DB
+
+Attempt login
+
+Assert explicit error
+
+Assert no token issued
+
+TC-LOGIN-02 — Partial DB Failure
+
+Mock DB read failure
+
+Attempt login
+
+Assert safe failure
+
+Assert no session created
+
+4️⃣ USER ROLE — AUTOMATED FLOWS
+ONBOARDING
+
+TC-USER-ONB-01 — Skip Required Steps
+
+Skip ICP selection
+
+Attempt campaign launch
+
+Assert block + actionable error
+
+TC-USER-ONB-02 — Resume Incomplete Setup
+
+Exit mid-onboarding
+
+Re-login
+
+Assert resume state restored
+
+CAMPAIGN CREATION
+
+TC-CAMP-01 — Empty Inputs
+
+Iterate all required fields
+
+Assert campaign blocked when missing
+
+TC-CAMP-02 — Conflicting AI Signals
+
+persona=Enterprise
+
+subject_strategy=Curiosity
+
+Assert AI overrides to Executive-Safe
+
+Assert decision reason logged
+
+5️⃣ AI GENERATION
+
+TC-AI-01 — LLM Timeout
+
+Simulate AI timeout
+
+Assert fallback template used
+
+Assert user notified
+
+TC-AI-02 — Token Overflow
+
+Send extremely long inputs
+
+Assert truncation
+
+Assert AI succeeds
+
+TC-AI-03 — No Context Guardrail
+
+Missing ICP + trigger
+
+Assert AI generation blocked
+
+6️⃣ EXECUTION (EMAIL SEND)
+
+TC-SEND-01 — Provider Down
+
+Simulate email API outage
+
+Assert retries queued
+
+Assert UI shows “Delayed”
+
+TC-SEND-02 — Partial Batch Failure
+
+Send 100 emails
+
+Force 20 failures
+
+Assert:
+
+80 sent
+
+20 failed
+
+No duplicates on retry
+
+7️⃣ MANAGER ROLE
+
+TC-MGR-01 — Metrics Accuracy
+
+Compare backend events vs dashboard
+
+Assert exact match
+
+TC-MGR-02 — Cache Staleness
+
+Simulate rapid updates
+
+Assert dashboard refreshes within SLA
+
+TC-MGR-03 — Approval Enforcement
+
+Campaign requires approval
+
+User attempts launch
+
+Assert blocked
+
+TC-MGR-04 — API Bypass Attempt
+
+Direct launch API call
+
+Assert 403
+
+8️⃣ SUPER ADMIN (HIGH RISK)
+
+TC-SA-01 — Org Deletion Confirmation
+
+Attempt delete without confirmation
+
+Assert blocked
+
+TC-SA-02 — Audit Logs
+
+Perform all admin actions
+
+Assert immutable audit log exists
+
+TC-SA-03 — Config Rollback
+
+Change global AI config
+
+Rollback
+
+Assert state restored
+
+9️⃣ PERFORMANCE & LOAD
+
+TC-LOAD-01 — AI Burst
+
+1000 concurrent AI requests
+
+Assert no crash
+
+Assert SLA met
+
+TC-LOAD-02 — Campaign Spike
+
+500 campaigns in 10 min
+
+Assert queue drains safely
+
+🔟 CHAOS / FAILURE TESTS
+
+TC-CHAOS-01 — DB Partial Failure
+
+Kill read replica
+
+Assert no writes lost
+
+Assert UI degraded state shown
+
+TC-CHAOS-02 — Rate Limit
+
+Simulate 429s
+
+Assert exponential backoff
+
+1️⃣1️⃣ SECURITY
+
+TC-SEC-01 — Prompt Injection
+
+Inject malicious prompt
+
+Assert AI refuses
+
+TC-SEC-02 — PII Leak
+
+Assert logs never contain:
+
+Emails
+
+Tokens
+
+Full prompts
+
+1️⃣2️⃣ UX FAILURES
+
+TC-UX-01 — Silent Failure
+
+Trigger backend failure
+
+Assert explicit UI error
+
+TC-UX-02 — False Success
+
+Backend fails
+
+UI must NOT show success
+
+🚦 CI/CD GATING (MANDATORY)
+
+Configure pipeline so deployment is BLOCKED if:
+
+Any auth test fails
+
+Any data isolation test fails
+
+Any AI sends without context
+
+Any super admin action lacks audit logs
+
+✅ FINAL INSTRUCTION TO REPLIT
+
+Generate actual automated test code, mocks, fixtures, CI hooks, and failure assertions.
+Do not summarize.
+Do not skip edge cases.
+Assume this runs against production-like staging.
