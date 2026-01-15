@@ -331,6 +331,277 @@ Body: Would it be okay if I stopped reaching out?
 30. HONEST EXIT
 Body: Feels like timing isn't right. I'll step back unless you say otherwise.
 
+═══════════════════════════════════════════════════════════════════════════════
+                    SUBJECT LINES — PSYCHOLOGY + AI DECISIONING
+═══════════════════════════════════════════════════════════════════════════════
+
+CORE TRUTH (Gong + HubSpot):
+Subject lines don't "sell". They remove friction to open.
+
+AI must optimize for:
+• Cognitive ease
+• Expectation safety
+• Pattern disruption (without hype)
+
+───────────────────────────────────────────────────────────────
+A. CURIOSITY (Unknown Buyer / Cold ICP)
+───────────────────────────────────────────────────────────────
+WHEN AI SHOULD USE:
+- No prior engagement
+- Mid-market or SMB
+- First touch only
+
+WHY IT WORKS:
+Humans open to close open loops, not to buy.
+
+HIGH-SIGNAL VARIANTS:
+• "Quick question, {{FirstName}}"
+• "Worth exploring?"
+• "Outbound at {{Company}}"
+• "Saw something interesting"
+
+WHEN NOT TO USE:
+❌ Enterprise
+❌ CFO / Legal / Security personas
+❌ Trigger-based outreach (wastes context)
+
+───────────────────────────────────────────────────────────────
+B. PATTERN INTERRUPT (Gong-tested, NOT gimmicky)
+───────────────────────────────────────────────────────────────
+WHEN AI SHOULD USE:
+- Buyer sees a lot of outbound
+- SDR / RevOps / Sales leaders
+- LinkedIn + Email combo
+
+WHY IT WORKS:
+Violates expectation without triggering spam filters.
+
+PROVEN VARIANTS:
+• "This is not a template"
+• "No pitch inside"
+• "Most teams miss this"
+
+RISK GUARDRAIL (Important):
+If email body sounds templated, this backfires badly.
+AI must verify body originality before allowing these.
+
+───────────────────────────────────────────────────────────────
+C. DATA-BASED (Credibility-Driven)
+───────────────────────────────────────────────────────────────
+WHEN AI SHOULD USE:
+- RevOps, Ops, Growth roles
+- Scale-stage companies
+- Insight-led email body
+
+WHY IT WORKS:
+Executives open emails that teach, not tease.
+
+STRONG VARIANTS:
+• "Where outbound breaks at scale"
+• "Why reply rates drop after month 3"
+• "A pattern we're seeing across SDR teams"
+
+───────────────────────────────────────────────────────────────
+D. EXECUTIVE-SAFE (Enterprise / Founder / CXO)
+───────────────────────────────────────────────────────────────
+WHEN AI SHOULD USE:
+- Enterprise domain
+- Title contains: CXO, VP, Head
+- Founder-led sales
+
+WHY IT WORKS:
+Executives punish hype. Neutral = safe.
+
+PROVEN VARIANTS:
+• "15 mins?"
+• "Brief intro"
+• "Quick intro — {{Company}}"
+
+📋 SUBJECT LINE DECISION TREE (AI-READY)
+─────────────────────────────────────────
+If persona = Enterprise OR CXO
+  → Executive-Safe
+
+Else if trigger_present = true
+  → Context-based subject
+
+Else if buyer_unknown = true
+  → Curiosity
+
+Else if founder_email = true
+  → Plain text, no framing
+
+Else
+  → Data-based
+
+═══════════════════════════════════════════════════════════════════════════════
+                    OBJECTION HANDLING — REAL SALES (GONG LOGIC)
+═══════════════════════════════════════════════════════════════════════════════
+
+PRINCIPLE:
+Objections = interest with friction
+
+AI MUST:
+• Never argue
+• Never defend
+• Never push feature-first
+
+───────────────────────────────────────────────────────────────
+OBJECTION: "We already use a tool"
+───────────────────────────────────────────────────────────────
+WHAT IT ACTUALLY MEANS:
+• "Don't make me rethink my stack"
+• "Switching cost anxiety"
+• "I don't see delta value yet"
+
+❌ BAD RESPONSE (What AI Must Avoid):
+"We integrate with your tools and offer better features…"
+
+✅ SOFT RESPONSE (Conversation Unlock):
+"Makes sense — most teams do.
+Usually the issue isn't tools, it's how context is created before sending."
+
+✅ DIRECT RESPONSE (If Pushed):
+"Totally fair. AiSDR doesn't replace your stack — it replaces the manual thinking before outreach."
+
+MANAGER COACHING RULE:
+• Reframe process, not product
+• If prospect defends tool → you went feature-first too early
+
+───────────────────────────────────────────────────────────────
+OBJECTION: "Send me more info"
+───────────────────────────────────────────────────────────────
+GONG INSIGHT:
+This is NOT a buying signal.
+
+WHAT IT REALLY MEANS:
+• No urgency
+• No clarity
+• Polite deflection
+
+BEST RESPONSE (Question > Deck):
+"Happy to — before I do, what are you hoping to learn?"
+
+IF THEY DON'T REPLY:
+→ Send one short follow-up
+→ Then disengage (respect > pressure)
+
+═══════════════════════════════════════════════════════════════════════════════
+                    INDUSTRY GUIDES (ENABLEMENT-LEVEL)
+═══════════════════════════════════════════════════════════════════════════════
+
+───────────────────────────────────────────────────────────────
+GUIDE 1: MODERN SAAS OUTBOUND (HubSpot + Gong Synthesis)
+───────────────────────────────────────────────────────────────
+WHY OUTBOUND BROKE:
+• Personalization became fake
+• Automation removed relevance
+• SDRs optimized for volume, not thought
+
+WINNING MODEL:
+Context → Hypothesis → Question → Conversation
+
+EXECUTION CHECKLIST (AI-Enforced):
+✓ 1 insight per message
+✓ 1 persona per sequence
+✓ 1 CTA per touch
+✓ No pitch before reply
+
+───────────────────────────────────────────────────────────────
+GUIDE 2: FOUNDER-LED SALES (Deel Playbook)
+───────────────────────────────────────────────────────────────
+WHY FOUNDER SALES WORKS:
+• Trust > polish
+• Speed > process
+• Authority > collateral
+
+WHEN FOUNDERS SHOULD SELL:
+• New ICP
+• Enterprise pilots
+• Early GTM
+
+FOUNDER EMAIL RULES (Hard Rules):
+❌ Decks
+❌ Case studies
+❌ Jargon
+✅ Clear thinking
+✅ Plain language
+✅ One sharp question
+
+═══════════════════════════════════════════════════════════════════════════════
+                    COLD OUTREACH PLAYBOOKS (AI-EXECUTABLE)
+═══════════════════════════════════════════════════════════════════════════════
+
+───────────────────────────────────────────────────────────────
+MULTI-CHANNEL SEQUENCE (Gong-backed)
+───────────────────────────────────────────────────────────────
+DAY-BY-DAY:
+Day 1: Context email
+Day 3: LinkedIn view + connect
+Day 5: Short follow-up (≤40 words)
+Day 7: LinkedIn message
+Day 10: Breakup
+
+WHY IT WORKS:
+• Familiarity bias
+• Non-intrusive presence
+• Conversation > conversion
+
+AI GUARDRAILS:
+• No CTA repetition
+• No channel spam
+• No pitch before reply
+
+═══════════════════════════════════════════════════════════════════════════════
+                    FOLLOW-UP STRATEGIES (WHERE DEALS ARE WON)
+═══════════════════════════════════════════════════════════════════════════════
+
+HUBSPOT INSIGHT:
+80% of replies come after the 3rd touch.
+
+FOLLOW-UP TYPES:
+
+NUDGE:
+"Just checking if this is relevant, or not worth pursuing right now."
+
+PRIORITY CHECK:
+"Should I assume outbound isn't a focus at the moment?"
+
+BREAKUP (Gong-tested):
+"I'll pause outreach for now — feel free to reach out if this becomes relevant."
+
+AI RULE:
+Breakup emails increase replies when done respectfully.
+
+═══════════════════════════════════════════════════════════════════════════════
+                    MEETING BOOKING — EXECUTION SCIENCE
+═══════════════════════════════════════════════════════════════════════════════
+
+CTA FORMULA:
+❌ "Let me know a good time"
+✅ "Open to a 15-min conversation this week?"
+
+EXECUTIVE RULES:
+• No calendar links in email #1
+• Time-boxed ask
+• Problem-first framing
+
+═══════════════════════════════════════════════════════════════════════════════
+                    VIDEO TUTORIALS (CURATED ENABLEMENT)
+═══════════════════════════════════════════════════════════════════════════════
+
+HUBSPOT VIDEOS:
+• Cold Email Best Practices (~12 min) - Best for SDRs
+• Follow-up Cadences That Convert (~15 min) - SDRs / Managers
+
+GONG LABS VIDEOS:
+• Top Objection Handling Calls (~10 min) - Best for SDRs
+• Why Personalization Fails (~8 min) - RevOps / Managers
+
+DEEL VIDEOS:
+• Founder-Led Sales Lessons (~20 min) - Best for Founders
+• Selling to Global Teams (~18 min) - Founders / Enterprise sellers
+
 🚫 HARD GUARDRAILS (BLOCK IF VIOLATED)
 - Message sounds like a pitch in First Touch
 - More than one CTA exists
@@ -339,6 +610,9 @@ Body: Feels like timing isn't right. I'll step back unless you say otherwise.
 - Calendar links are used in first email
 - Fake personalization tokens detected
 - Template shown without context match
+- Pattern interrupt subject with templated body
+- Deck/case study in founder email
+- Multiple questions in single message
 `;
 
 // ============================================================================

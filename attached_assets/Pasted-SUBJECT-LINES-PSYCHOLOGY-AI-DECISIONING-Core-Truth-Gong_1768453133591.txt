@@ -1,0 +1,367 @@
+SUBJECT LINES — PSYCHOLOGY + AI DECISIONING
+Core Truth (Gong + HubSpot)
+
+Subject lines don’t “sell”.
+They remove friction to open.
+
+Your AI should optimize for:
+
+Cognitive ease
+
+Expectation safety
+
+Pattern disruption (without hype)
+
+A. Curiosity (Unknown Buyer / Cold ICP)
+When AI Should Use
+
+No prior engagement
+
+Mid-market or SMB
+
+First touch only
+
+Why It Works
+
+Humans open to close open loops, not to buy.
+
+High-Signal Variants
+
+“Quick question, {{FirstName}}”
+
+“Worth exploring?”
+
+“Outbound at {{Company}}”
+
+“Saw something interesting”
+
+When NOT to Use
+
+❌ Enterprise
+❌ CFO / Legal / Security personas
+❌ Trigger-based outreach (wastes context)
+
+B. Pattern Interrupt (Gong-tested, NOT gimmicky)
+When AI Should Use
+
+Buyer sees a lot of outbound
+
+SDR / RevOps / Sales leaders
+
+LinkedIn + Email combo
+
+Why It Works
+
+Violates expectation without triggering spam filters.
+
+Proven Variants
+
+“This is not a template”
+
+“No pitch inside”
+
+“Most teams miss this”
+
+Risk Guardrail (Important)
+
+If email body sounds templated, this backfires badly.
+AI must verify body originality before allowing these.
+
+C. Data-Based (Credibility-Driven)
+When AI Should Use
+
+RevOps, Ops, Growth roles
+
+Scale-stage companies
+
+Insight-led email body
+
+Why It Works
+
+Executives open emails that teach, not tease.
+
+Strong Variants
+
+“Where outbound breaks at scale”
+
+“Why reply rates drop after month 3”
+
+“A pattern we’re seeing across SDR teams”
+
+D. Executive-Safe (Enterprise / Founder / CXO)
+When AI Should Use
+
+Enterprise domain
+
+Title contains: CXO, VP, Head
+
+Founder-led sales
+
+Why It Works
+
+Executives punish hype. Neutral = safe.
+
+Proven Variants
+
+“15 mins?”
+
+“Brief intro”
+
+“Quick intro — {{Company}}”
+
+SUBJECT LINE DECISION TREE (AI-READY)
+If persona = Enterprise OR CXO
+  → Executive-Safe
+
+Else if trigger_present = true
+  → Context-based subject
+
+Else if buyer_unknown = true
+  → Curiosity
+
+Else if founder_email = true
+  → Plain text, no framing
+
+Else
+  → Data-based
+
+2️⃣ OBJECTION HANDLING — REAL SALES (GONG LOGIC)
+Principle
+
+Objections = interest with friction
+
+AI must:
+
+Never argue
+
+Never defend
+
+Never push feature-first
+
+Objection: “We already use a tool”
+What It Actually Means
+
+“Don’t make me rethink my stack”
+
+“Switching cost anxiety”
+
+“I don’t see delta value yet”
+
+❌ Bad Response (What AI Must Avoid)
+
+We integrate with your tools and offer better features…
+
+✅ Soft Response (Conversation Unlock)
+
+Makes sense — most teams do.
+Usually the issue isn’t tools, it’s how context is created before sending.
+
+✅ Direct Response (If Pushed)
+
+Totally fair. AiSDR doesn’t replace your stack — it replaces the manual thinking before outreach.
+
+Manager Coaching Rule
+
+Reframe process, not product
+
+If prospect defends tool → you went feature-first too early
+
+Objection: “Send me more info”
+Gong Insight
+
+This is not a buying signal.
+
+What It Really Means
+
+No urgency
+
+No clarity
+
+Polite deflection
+
+Best Response (Question > Deck)
+
+Happy to — before I do, what are you hoping to learn?
+
+If They Don’t Reply
+
+→ Send one short follow-up
+→ Then disengage (respect > pressure)
+
+3️⃣ INDUSTRY GUIDES (ENABLEMENT-LEVEL, NOT BLOGS)
+Guide 1: Modern SaaS Outbound
+
+(HubSpot + Gong Synthesis)
+
+Why Outbound Broke
+
+Personalization became fake
+
+Automation removed relevance
+
+SDRs optimized for volume, not thought
+
+Winning Model
+Context
+ → Hypothesis
+   → Question
+     → Conversation
+
+Execution Checklist (AI-Enforced)
+
+1 insight per message
+
+1 persona per sequence
+
+1 CTA per touch
+
+No pitch before reply
+
+Guide 2: Founder-Led Sales (Deel Playbook)
+Why Founder Sales Works
+
+Trust > polish
+
+Speed > process
+
+Authority > collateral
+
+When Founders Should Sell
+
+New ICP
+
+Enterprise pilots
+
+Early GTM
+
+Founder Email Rules (Hard Rules)
+
+❌ Decks
+❌ Case studies
+❌ Jargon
+
+✅ Clear thinking
+✅ Plain language
+✅ One sharp question
+
+4️⃣ COLD OUTREACH PLAYBOOKS (AI-EXECUTABLE)
+Multi-Channel Sequence (Gong-backed)
+Day-by-Day
+
+Day 1: Context email
+
+Day 3: LinkedIn view + connect
+
+Day 5: Short follow-up (≤40 words)
+
+Day 7: LinkedIn message
+
+Day 10: Breakup
+
+Why It Works
+
+Familiarity bias
+
+Non-intrusive presence
+
+Conversation > conversion
+
+AI Guardrails
+
+No CTA repetition
+
+No channel spam
+
+No pitch before reply
+
+5️⃣ FOLLOW-UP STRATEGIES (WHERE DEALS ARE WON)
+HubSpot Insight
+
+80% of replies come after the 3rd touch.
+
+Follow-up Types
+Nudge
+
+Just checking if this is relevant, or not worth pursuing right now.
+
+Priority Check
+
+Should I assume outbound isn’t a focus at the moment?
+
+Breakup (Gong-tested)
+
+I’ll pause outreach for now — feel free to reach out if this becomes relevant.
+
+AI Rule
+
+Breakup emails increase replies when done respectfully.
+
+6️⃣ MEETING BOOKING — EXECUTION SCIENCE
+CTA Formula
+
+❌ “Let me know a good time”
+✅ “Open to a 15-min conversation this week?”
+
+Executive Rules
+
+No calendar links in email #1
+
+Time-boxed ask
+
+Problem-first framing
+
+7️⃣ VIDEO TUTORIALS (REAL, CURATED LINKS)
+
+These should live inside AiSDR → Learn / Enablement
+
+🎥 HubSpot
+
+Cold Email Best Practices
+🔗 https://www.youtube.com/watch?v=Z0YJ6E8tH5k
+
+⏱ ~12 min
+📘 Learn: What actually drives opens & replies
+🎯 Best for: SDRs
+
+Follow-up Cadences That Convert
+🔗 https://www.youtube.com/watch?v=K6Jp9zF9Y9M
+
+⏱ ~15 min
+🎯 Best for: SDRs / Managers
+
+🎥 Gong Labs
+
+Top Objection Handling Calls
+🔗 https://www.youtube.com/watch?v=Z9HkZ5GvYqU
+
+⏱ ~10 min
+🎯 Best for: SDRs
+
+Why Personalization Fails
+🔗 https://www.youtube.com/watch?v=H0L6wPpQ2wM
+
+⏱ ~8 min
+🎯 Best for: RevOps / Managers
+
+🎥 Deel (Founder-Led Sales)
+
+Founder-Led Sales Lessons
+🔗 https://www.youtube.com/watch?v=3QFJpFJxE5A
+
+⏱ ~20 min
+🎯 Best for: Founders
+
+Selling to Global Teams
+🔗 https://www.youtube.com/watch?v=RZ3pJpYkQm8
+
+⏱ ~18 min
+🎯 Best for: Founders / Enterprise sellers
+
+Each Video Object (AiSDR Schema)
+{
+  title,
+  duration,
+  key_takeaway,
+  best_for_role,
+  when_to_watch
+}
