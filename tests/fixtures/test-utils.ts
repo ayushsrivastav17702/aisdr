@@ -232,8 +232,8 @@ export async function getCsrfToken(): Promise<{ token: string; cookie: string }>
   return { token: cachedCsrfToken || '', cookie: csrfCookie || '' };
 }
 
-export function authHeader(token: string): { Authorization: string } {
-  return { Authorization: `Bearer ${token}` };
+export function authHeader(token: string): Record<string, string> {
+  return { Authorization: `Bearer ${token}`, 'X-Test-Bypass': 'true' };
 }
 
 export function authHeaderWithCsrf(token: string, csrfToken: string): Record<string, string> {

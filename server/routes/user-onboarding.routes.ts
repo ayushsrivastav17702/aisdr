@@ -73,4 +73,34 @@ router.post("/onboarding-state", authenticate, async (req, res) => {
   }
 });
 
+const userQuotas = new Map<string, { emailsSent: number; resetAt: Date }>();
+
+router.get("/quota", authenticate, (req, res) => {
+  if (!req.userContext) {
+    return res.status(401).json({ error: "Authentication required" });
+  }
+
+  const dailyLimit = 500;
+  const userId = req.userContext.userId;
+  const now = new Date();
+  const userQuota = userQuotas.get(userId);
+
+  if (!userQuota || userQuota.resetAt < now) {
+    userQuotas.set(userId, { emailsSent: 0, resetAt: new Date(now.getTime() + 24 * 60 * 60 * 1000) });
+    return res.json({
+      emailsRemaining: dailyLimit,
+      dailyLimit,
+      emailsSent: 0,
+      resetAt: new Date(now.getTime() + 24 * 60 * 60 * 1000).toISOString(),
+    });
+  }
+
+  res.json({
+    emailsRemaining: Math.max(0, dailyLimit - userQuota.emailsSent),
+    dailyLimit,
+    emailsSent: userQuota.emailsSent,
+    resetAt: userQuota.resetAt.toISOString(),
+  });
+});
+
 export default router;

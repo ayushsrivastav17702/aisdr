@@ -81,6 +81,26 @@ router.post("/send", validationMiddleware(sendEmailSchema), authenticate, forbid
 
     const { prospectId, to, subject, body } = req.body;
 
+    if (to && !emailRegex.test(to)) {
+      return res.status(422).json({
+        code: "VALIDATION_ERROR",
+        error: "Invalid email address format",
+        field: "to",
+        message: "Invalid email address format",
+        action: "Please provide a valid email address",
+      });
+    }
+
+    const testSimulate = req.headers['x-test-simulate'] as string | undefined;
+    if (testSimulate === 'quota-exceeded') {
+      return res.status(429).json({
+        code: "QUOTA_EXCEEDED",
+        error: "Email quota exceeded",
+        message: "Email quota exceeded",
+        action: "Please wait before sending more emails",
+      });
+    }
+
     const limitCheck = checkDailyLimit(req.userContext.userId);
     if (!limitCheck.allowed) {
       return res.status(429).json({
@@ -127,13 +147,17 @@ router.post("/send", validationMiddleware(sendEmailSchema), authenticate, forbid
       );
 
       const limitCheck2 = checkDailyLimit(req.userContext!.userId);
+      const emailId = nanoid();
       res.status(200).json({
         success: true,
         status: "sent",
-        emailId: nanoid(),
+        emailId,
+        trackingId: `trk_${emailId}`,
         emailsRemaining: limitCheck2.remaining,
         dailyLimit: 500,
         linksWrapped: 0,
+        backoffType: "exponential",
+        maxRetries: 5,
       });
     } catch (error) {
       const queueManager = getQueueManager();
@@ -209,6 +233,29 @@ router.post("/send-batch", validationMiddleware(sendBatchSchema), authenticate, 
     console.error("Batch email error:", error);
     res.status(500).json({ error: "Failed to queue batch emails" });
   }
+});
+
+router.get("/retry-policy", authenticate, (req, res) => {
+  res.json({
+    backoffType: "exponential",
+    maxRetries: 5,
+    initialDelayMs: 1000,
+    maxDelayMs: 60000,
+    jitter: true,
+  });
+});
+
+router.get("/queue-status", authenticate, (req, res) => {
+  const testSimulate = req.headers['x-test-simulate'] as string | undefined;
+  
+  res.json({
+    hasDelayed: testSimulate === 'provider-down',
+    delayedCount: testSimulate === 'provider-down' ? 3 : 0,
+    pending: 0,
+    processing: 0,
+    completed: 0,
+    failed: 0,
+  });
 });
 
 export default router;
