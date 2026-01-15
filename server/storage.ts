@@ -13,6 +13,7 @@ import {
   contentLibrary,
   automationRuns,
   unsubscribes,
+  users,
   type Prospect, 
   type InsertProspect,
   type Search,
@@ -1007,8 +1008,30 @@ export class DatabaseStorage implements IStorage {
     return result || undefined;
   }
 
-  // Content Library
+  // Content Library - Organization-scoped (shared across all users in org)
   async getContentLibraryItems(ctx: RequestContext): Promise<ContentLibraryItem[]> {
+    // Content library items should be accessible to all users in the same organization
+    // First get all users in the current user's organization, then fetch their content items
+    if (ctx.organizationId) {
+      // Get all user IDs in the same organization
+      const orgUsers = await db.select({ id: users.id })
+        .from(users)
+        .where(eq(users.organizationId, ctx.organizationId));
+      
+      const userIds = orgUsers.map(u => u.id);
+      
+      if (userIds.length > 0) {
+        // Fetch content items from any user in the organization
+        const items = await db.select()
+          .from(contentLibrary)
+          .where(inArray(contentLibrary.userId, userIds))
+          .orderBy(desc(contentLibrary.createdAt));
+        
+        return items;
+      }
+    }
+    
+    // Fallback to user-scoped query if no organization context
     let query = db.select().from(contentLibrary).orderBy(desc(contentLibrary.createdAt));
     
     const whereClause = scopedWhere(contentLibrary, ctx);
@@ -1016,10 +1039,31 @@ export class DatabaseStorage implements IStorage {
       query = query.where(whereClause) as any;
     }
     
-    return await query;
+    const items = await query;
+    return items;
   }
 
   async getContentLibraryItem(ctx: RequestContext, id: string): Promise<ContentLibraryItem | undefined> {
+    // Content library items are organization-scoped
+    if (ctx.organizationId) {
+      const orgUsers = await db.select({ id: users.id })
+        .from(users)
+        .where(eq(users.organizationId, ctx.organizationId));
+      
+      const userIds = orgUsers.map(u => u.id);
+      
+      if (userIds.length > 0) {
+        const [item] = await db.select()
+          .from(contentLibrary)
+          .where(and(
+            eq(contentLibrary.id, id),
+            inArray(contentLibrary.userId, userIds)
+          ));
+        return item || undefined;
+      }
+    }
+    
+    // Fallback to user-scoped
     const whereClause = scopedWhere(contentLibrary, ctx, [eq(contentLibrary.id, id)]);
     if (!whereClause) {
       return undefined;
