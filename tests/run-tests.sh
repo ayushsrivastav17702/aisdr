@@ -62,6 +62,11 @@ run_ux() {
     npx vitest run tests/ux/ --config $CONFIG
 }
 
+run_resilience() {
+    echo "🔄 Running resilience tests..."
+    npx vitest run tests/resilience/ --config $CONFIG
+}
+
 run_performance() {
     echo "⚡ Running performance tests..."
     npx vitest run tests/performance/ --config $CONFIG
@@ -114,6 +119,9 @@ case "$1" in
     ux)
         run_ux
         ;;
+    resilience)
+        run_resilience
+        ;;
     performance)
         run_performance
         ;;
@@ -142,6 +150,7 @@ case "$1" in
         echo "  security      - Run security tests"
         echo "  chaos         - Run chaos/failure tests"
         echo "  ux            - Run UX failure tests"
+        echo "  resilience    - Run resilience infrastructure tests"
         echo "  performance   - Run performance tests"
         echo "  watch         - Run tests in watch mode"
         echo "  coverage      - Run tests with coverage"
