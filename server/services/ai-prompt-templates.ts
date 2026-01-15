@@ -616,6 +616,252 @@ DEEL VIDEOS:
 `;
 
 // ============================================================================
+// SUBJECT LINE INTELLIGENCE - STRICT OUTPUT RULES
+// ============================================================================
+
+export const SUBJECT_LINE_INTELLIGENCE = `
+ROLE: You are selecting subject lines for AiSDR. Your role is to SELECT subject lines, not teach subject line theory.
+
+═══════════════════════════════════════════════════════════════════════════════
+                    STRICT SEPARATION OF CONCERNS (MANDATORY)
+═══════════════════════════════════════════════════════════════════════════════
+
+1. ENABLEMENT CONTENT (READ-ONLY - NEVER OUTPUT)
+- Long-form guides, psychology explanations, decision trees, research references
+- These inform decisions but must NEVER appear in output
+
+2. DECISION LOGIC (INTERNAL ONLY)
+- Uses enablement rules internally to classify:
+  - Persona
+  - Company size
+  - Campaign stage
+  - Trigger presence
+- Decision logic outputs ONLY:
+  - subject_category (Curiosity | Pattern Interrupt | Data-Based | Executive-Safe)
+  - selection_reason (1 short sentence, internal use only)
+
+3. EXECUTION OUTPUT (SUBJECT LINE FIELD)
+- Outputs ONLY actual subject line strings
+- No explanations, no headings, no bullets, no formatting
+
+═══════════════════════════════════════════════════════════════════════════════
+                    HARD OUTPUT RULES (NON-NEGOTIABLE)
+═══════════════════════════════════════════════════════════════════════════════
+
+Subject line MUST be:
+- Single line
+- Under 60 characters
+- Plain text only
+
+Output format MUST be an array of strings:
+["Brief intro", "Quick question, {{firstName}}"]
+
+═══════════════════════════════════════════════════════════════════════════════
+                    AUTOMATIC REJECTION RULES
+═══════════════════════════════════════════════════════════════════════════════
+
+REJECT and do NOT output content if:
+- Text length > 60 characters
+- Contains newlines
+- Contains headings, bullets, or numbered lists
+- Contains words like:
+  "When to use", "Why it works", "Decision tree", "Guide", "Optimize for"
+- Contains more than one sentence
+- Contains explanations, theory, or research language
+
+═══════════════════════════════════════════════════════════════════════════════
+                    SUBJECT LINE SELECTION LOGIC
+═══════════════════════════════════════════════════════════════════════════════
+
+PERSONA-BASED SELECTION:
+
+If persona = Enterprise OR CXO
+  → Executive-Safe subject lines ONLY
+  Examples: "Brief intro", "15 mins?", "Quick intro — {{companyName}}"
+
+If trigger_present = true
+  → Context-specific subject line based on trigger
+  Examples: "Hiring SDRs?", "After your recent round", "Scaling outbound into new markets?"
+
+If buyer_unknown = true AND first_touch = true
+  → Curiosity subject lines
+  Examples: "Quick question, {{firstName}}", "Worth exploring?", "Saw something interesting"
+
+If founder_email = true
+  → Plain-text, neutral subject line
+  Examples: "Founder to founder", "Why we built this"
+
+Else
+  → Data-Based subject lines
+  Examples: "Where outbound breaks at scale", "A pattern we're seeing"
+
+═══════════════════════════════════════════════════════════════════════════════
+                    APPROVED SUBJECT LINE BANK
+═══════════════════════════════════════════════════════════════════════════════
+
+CURIOSITY (Unknown buyer / Cold ICP / First touch):
+- "Quick question, {{firstName}}"
+- "Worth exploring?"
+- "Outbound at {{companyName}}"
+- "Saw something interesting"
+
+PATTERN INTERRUPT (High-volume buyers / SDR/RevOps/Sales leaders):
+- "This is not a template"
+- "No pitch inside"
+- "Most teams miss this"
+- "Probably not relevant"
+
+DATA-BASED (RevOps / Ops / Growth / Scale-stage):
+- "Where outbound breaks at scale"
+- "Why reply rates drop after month 3"
+- "A pattern we're seeing across SDR teams"
+
+EXECUTIVE-SAFE (Enterprise / Founder / CXO):
+- "15 mins?"
+- "Brief intro"
+- "Quick intro — {{companyName}}"
+
+TRIGGER-BASED:
+- "Hiring SDRs?"
+- "After your recent round"
+- "Scaling outbound into new markets?"
+
+FOLLOW-UP:
+- "Re: {{previousSubject}}"
+- "Following up"
+- "Quick check"
+
+BREAKUP:
+- "Should we talk?"
+- "Permission to close?"
+- "Stepping back"
+
+═══════════════════════════════════════════════════════════════════════════════
+                    FALLBACK BEHAVIOR
+═══════════════════════════════════════════════════════════════════════════════
+
+If no valid subject line can be safely selected:
+Output ONLY: ["Quick question, {{firstName}}"]
+
+═══════════════════════════════════════════════════════════════════════════════
+                    ABSOLUTE RULE
+═══════════════════════════════════════════════════════════════════════════════
+
+Under no circumstances should enablement or educational content appear inside a subject line field.
+The output must be ready for direct insertion into an email subject field.
+`;
+
+// ============================================================================
+// SUBJECT LINE SELECTION FUNCTION (For AI to use)
+// ============================================================================
+
+export interface SubjectLineContext {
+  persona?: 'enterprise' | 'cxo' | 'sdr' | 'revops' | 'growth' | 'founder' | 'manager' | 'unknown';
+  companySize?: 'smb' | 'mid_market' | 'enterprise';
+  campaignStage?: 'first_touch' | 'follow_up' | 'objection' | 'breakup' | 're_engagement';
+  triggerPresent?: boolean;
+  triggerType?: 'hiring' | 'funding' | 'expansion' | 'new_role' | 'none';
+  isFounderEmail?: boolean;
+  buyerUnknown?: boolean;
+  firstName?: string;
+  companyName?: string;
+  previousSubject?: string;
+}
+
+export function selectSubjectLineCategory(context: SubjectLineContext): {
+  category: 'curiosity' | 'pattern_interrupt' | 'data_based' | 'executive_safe' | 'trigger_based' | 'follow_up' | 'breakup';
+  reason: string;
+  suggestions: string[];
+} {
+  const { persona, campaignStage, triggerPresent, isFounderEmail, buyerUnknown, firstName, companyName, previousSubject } = context;
+
+  // Decision tree based on SUBJECT_LINE_INTELLIGENCE rules
+  if (persona === 'enterprise' || persona === 'cxo') {
+    return {
+      category: 'executive_safe',
+      reason: 'Enterprise or CXO persona requires neutral, professional subject lines',
+      suggestions: ['Brief intro', '15 mins?', companyName ? `Quick intro — ${companyName}` : 'Quick intro']
+    };
+  }
+
+  if (triggerPresent && context.triggerType && context.triggerType !== 'none') {
+    const triggerSubjects: Record<string, string[]> = {
+      hiring: ['Hiring SDRs?', 'Saw the job posts'],
+      funding: ['After your recent round', 'Congrats on the raise'],
+      expansion: ['Scaling outbound into new markets?', 'New region, new outbound?'],
+      new_role: ['Congrats on the new role', 'Saw the announcement']
+    };
+    return {
+      category: 'trigger_based',
+      reason: `${context.triggerType} trigger detected - using context-specific subject`,
+      suggestions: triggerSubjects[context.triggerType] || ['Saw something interesting']
+    };
+  }
+
+  if (isFounderEmail) {
+    return {
+      category: 'executive_safe',
+      reason: 'Founder email requires plain-text, neutral subject lines',
+      suggestions: ['Founder to founder', 'Why we built this', 'Brief intro']
+    };
+  }
+
+  if (campaignStage === 'breakup') {
+    return {
+      category: 'breakup',
+      reason: 'Breakup stage requires closing-focused subjects',
+      suggestions: ['Should we talk?', 'Permission to close?', 'Stepping back']
+    };
+  }
+
+  if (campaignStage === 'follow_up' || campaignStage === 'objection') {
+    return {
+      category: 'follow_up',
+      reason: 'Follow-up stage should reference previous thread',
+      suggestions: previousSubject ? [`Re: ${previousSubject}`, 'Following up', 'Quick check'] : ['Following up', 'Quick check']
+    };
+  }
+
+  if (buyerUnknown && campaignStage === 'first_touch') {
+    return {
+      category: 'curiosity',
+      reason: 'Unknown buyer on first touch - curiosity drives opens',
+      suggestions: [
+        firstName ? `Quick question, ${firstName}` : 'Quick question',
+        'Worth exploring?',
+        companyName ? `Outbound at ${companyName}` : 'Saw something interesting'
+      ]
+    };
+  }
+
+  if (persona === 'revops' || persona === 'growth') {
+    return {
+      category: 'data_based',
+      reason: 'RevOps/Growth personas respond to insight-led subjects',
+      suggestions: ['Where outbound breaks at scale', 'A pattern we\'re seeing', 'Why reply rates drop']
+    };
+  }
+
+  // Default to curiosity for first touch, data-based otherwise
+  if (campaignStage === 'first_touch') {
+    return {
+      category: 'curiosity',
+      reason: 'Default first touch strategy',
+      suggestions: [
+        firstName ? `Quick question, ${firstName}` : 'Quick question',
+        'Worth exploring?'
+      ]
+    };
+  }
+
+  return {
+    category: 'data_based',
+    reason: 'Default fallback - data-based subjects work broadly',
+    suggestions: ['A pattern we\'re seeing', 'Most teams miss this']
+  };
+}
+
+// ============================================================================
 // PROVEN EMAIL TEMPLATES BY CATEGORY
 // ============================================================================
 
