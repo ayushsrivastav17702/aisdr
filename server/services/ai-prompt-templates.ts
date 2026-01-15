@@ -80,24 +80,256 @@ Each stage has ONE allowed intent:
 - Breakup → Trigger response
 - Re-engagement → Validate relevance
 
-📊 TEMPLATE CATEGORIES (30 PROVEN PATTERNS)
+📊 30 ADVANCED OUTREACH TEMPLATES
 Templates are NOT a flat list. They are:
 - Tagged by intent (first_touch, follow_up, objection, breakup, re_engagement)
 - Mapped to sequence stage (day range, trigger, user role)
 - Recommended by AI based on prospect context and user action
 
-CATEGORY MAPPING:
-A. First-Touch Advanced (3): Assumption-Based, Negative Persona, Funnel Analysis
-B. Trigger-Based (3): Hiring Signal, Market Expansion, Recently Funded
-C. Founder-Led (2): Founder-to-Founder, Why We Built This
-D. Enterprise-Safe (2): Exec Neutral, Stakeholder Mapping
-E. Follow-Ups (4): Soft Nudge, Priority Check, Value Reframe, Breakup
-F. Objection-Based (3): Already Have Tool, Send Me Info, Not Priority
-G. Re-Engagement (2): Old Thread Revival, Still Relevant
-H. Multi-Channel (3): LinkedIn Connection, After Email, Soft CTA
-I. Psychological (3): Pattern Interrupt, Curiosity Gap, Social Proof
-J. Manager/RevOps (2): Manager Pain, RevOps Angle
-K. Last-Chance (3): Final Check, Permission Close, Honest Exit
+═══════════════════════════════════════════════════════════════
+A. FIRST-TOUCH (ADVANCED CONTEXT-LED)
+═══════════════════════════════════════════════════════════════
+
+1. ASSUMPTION-BASED DIAGNOSTIC EMAIL (Gong-style)
+Subject: Quick check on outbound at {{Company}}
+Body:
+{{FirstName}},
+
+I might be wrong, but teams at {{CompanySize}} usually reach a point where
+outbound volume increases but reply quality drops.
+
+Is improving outbound quality something you're actively focused on,
+or not a priority right now?
+
+– {{SenderName}}
+Why it works: Invites correction → conversation
+
+2. NEGATIVE PERSONA DISQUALIFICATION
+Subject: Probably not relevant
+Body:
+{{FirstName}},
+
+This is likely irrelevant if outbound isn't a serious growth lever at {{Company}}.
+
+But if reply rates or personalization quality matter,
+happy to share what we're seeing work.
+
+– {{SenderName}}
+Why: Reverse psychology (Gong-tested)
+
+3. "I LOOKED AT YOUR FUNNEL" EMAIL
+Subject: Question about your outbound funnel
+Body:
+{{FirstName}},
+
+Took a look at how {{Company}} approaches outbound.
+
+Most teams optimize volume first,
+then realize context is the real bottleneck.
+
+Curious where you are on that curve.
+
+– {{SenderName}}
+
+═══════════════════════════════════════════════════════════════
+B. TRIGGER-BASED (DEEL-INSPIRED)
+═══════════════════════════════════════════════════════════════
+
+4. HIRING SIGNAL (SDR / GTM roles)
+Subject: Hiring SDRs?
+Body:
+{{FirstName}},
+
+Saw {{Company}} is hiring SDRs.
+
+Teams usually hit a point where headcount scales faster than message quality.
+
+Is that something you're solving right now?
+
+– {{SenderName}}
+
+5. NEW MARKET / GEOGRAPHY EXPANSION
+Subject: Scaling outbound into new markets?
+Body:
+{{FirstName}},
+
+When teams expand into new regions,
+templates tend to break before tooling does.
+
+Worth a quick chat if outbound quality matters globally.
+
+– {{SenderName}}
+
+6. RECENTLY FUNDED
+Subject: After your recent round
+Body:
+{{FirstName}},
+
+Congrats on the raise.
+
+Post-funding, most teams increase outbound volume —
+and lose relevance in the process.
+
+Happy to share what avoids that trap.
+
+– {{SenderName}}
+
+═══════════════════════════════════════════════════════════════
+C. FOUNDER-LED (HIGH-TRUST)
+═══════════════════════════════════════════════════════════════
+
+7. FOUNDER → FOUNDER
+Subject: Founder to founder
+Body:
+{{FirstName}},
+
+Founder here.
+
+Built this after watching teams fake personalization at scale.
+
+If outbound quality is even mildly important for {{Company}},
+happy to compare notes.
+
+– {{SenderName}}
+
+8. "WHY WE BUILT THIS"
+Subject: Why we built this
+Body:
+{{FirstName}},
+
+We didn't build another outreach tool.
+
+We built a system that refuses to send emails without real context.
+
+Worth a short conversation if that resonates.
+
+– {{SenderName}}
+
+═══════════════════════════════════════════════════════════════
+D. ENTERPRISE-SAFE (NO HYPE)
+═══════════════════════════════════════════════════════════════
+
+9. EXEC NEUTRAL INTRO
+Subject: Quick introduction
+Body:
+{{FirstName}},
+
+Reaching out briefly.
+
+We work with teams improving outbound relevance at scale.
+
+If this sits in your remit, open to a short intro call.
+
+– {{SenderName}}
+
+10. STAKEHOLDER MAPPING EMAIL
+Subject: Who owns outbound quality?
+Body:
+{{FirstName}},
+
+Quick question — who typically owns outbound quality at {{Company}}?
+
+Want to be respectful of the right owner.
+
+– {{SenderName}}
+
+═══════════════════════════════════════════════════════════════
+E. FOLLOW-UPS (WHERE DEALS ARE WON)
+═══════════════════════════════════════════════════════════════
+
+11. SOFT NUDGE (Day 1-3)
+Body: Just checking if this is relevant, or if I should close the loop.
+
+12. PRIORITY CHECK (Day 4-6) - Gong top performer
+Body: Should I assume this isn't a priority right now?
+
+13. VALUE REFRAME FOLLOW-UP (Day 7-9)
+Body: Most teams come to us after realizing automation scaled volume — not relevance.
+Does that resonate at all?
+
+14. BREAKUP (Day 10+) - High Reply Rate
+Body: I'll pause outreach for now.
+If outbound quality becomes a priority, happy to reconnect.
+
+═══════════════════════════════════════════════════════════════
+F. OBJECTION-BASED OUTREACH
+═══════════════════════════════════════════════════════════════
+
+15. "WE ALREADY HAVE A TOOL"
+Body: Totally fair — most teams do.
+The issue usually isn't tooling, it's how context is created before sending.
+Worth exploring?
+
+16. "SEND ME INFO" PUSHBACK
+Body: Happy to — quick question first:
+What are you hoping to understand better?
+
+17. "NOT A PRIORITY"
+Body: Understood.
+When outbound becomes important, this usually becomes urgent fast.
+Should I check back later?
+
+═══════════════════════════════════════════════════════════════
+G. RE-ENGAGEMENT / REVIVAL
+═══════════════════════════════════════════════════════════════
+
+18. OLD THREAD REVIVAL
+Body: We spoke earlier about outbound quality.
+Has anything changed since then, or should I close the loop?
+
+19. "STILL RELEVANT?" EMAIL
+Body: Quick check — is this still relevant, or should I move on?
+
+═══════════════════════════════════════════════════════════════
+H. MULTI-CHANNEL SUPPORT TEMPLATES
+═══════════════════════════════════════════════════════════════
+
+20. LINKEDIN CONNECTION (No Pitch)
+Body: {{FirstName}}, following your work at {{Company}} — would be great to connect.
+
+21. LINKEDIN AFTER EMAIL
+Body: Sent a short note over email. Sharing context here in case it got buried.
+
+22. LINKEDIN SOFT CTA
+Body: Curious if outbound quality is something you're actively improving?
+
+═══════════════════════════════════════════════════════════════
+I. ADVANCED PSYCHOLOGICAL ANGLES
+═══════════════════════════════════════════════════════════════
+
+23. PATTERN INTERRUPT
+Body: This isn't a template. Most emails pretend to be.
+
+24. CURIOSITY GAP
+Body: Most teams fix outbound too late. Happy to explain why.
+
+25. SOCIAL PROOF (Soft)
+Body: Seeing this come up repeatedly with teams like yours. Worth comparing notes?
+
+═══════════════════════════════════════════════════════════════
+J. MANAGER / REVOPS OUTREACH
+═══════════════════════════════════════════════════════════════
+
+26. MANAGER PAIN EMAIL
+Body: Most managers tell us outbound looks fine — until they read the actual emails.
+Is that true for your team?
+
+27. REVOPS ANGLE
+Body: Outbound performance often breaks before dashboards show it.
+Is that something you're seeing?
+
+═══════════════════════════════════════════════════════════════
+K. LAST-CHANCE / DECISION EMAILS
+═══════════════════════════════════════════════════════════════
+
+28. FINAL CHECK
+Body: Before I close this out — should we talk, or not relevant?
+
+29. PERMISSION-BASED CLOSE
+Body: Would it be okay if I stopped reaching out?
+
+30. HONEST EXIT
+Body: Feels like timing isn't right. I'll step back unless you say otherwise.
 
 🚫 HARD GUARDRAILS (BLOCK IF VIOLATED)
 - Message sounds like a pitch in First Touch
