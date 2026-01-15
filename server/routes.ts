@@ -44,6 +44,10 @@ import waterfallSearchRoutes from "./routes/waterfall-search.routes";
 import managerRoutes from "./routes/manager.routes";
 import sdrWorkflowRoutes from "./routes/sdr-workflow.routes";
 import sdrDashboardRoutes from "./routes/sdr-dashboard.routes";
+import campaignsRoutes from "./routes/campaigns.routes";
+import aiGenerationRoutes from "./routes/ai-generation.routes";
+import emailExecutionRoutes from "./routes/email-execution.routes";
+import userOnboardingRoutes from "./routes/user-onboarding.routes";
 import { sdrWorkflowService, WorkflowBlockedError } from "./services/sdr-workflow.service";
 import { hardeningService } from "./services/hardening.service";
 import { aiTrackingService } from "./services/ai-tracking.service";
@@ -2027,6 +2031,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // SDR Dashboard routes (personal stats, quota visibility)
   app.use("/api/sdr", sdrDashboardRoutes);
+
+  // Campaigns routes (alias for sequences)
+  app.use("/api/campaigns", campaignsRoutes);
+
+  // AI Generation routes (email generation with validation)
+  app.use("/api/ai", aiGenerationRoutes);
+
+  // Email Execution routes (send with validation)
+  app.use("/api/emails", emailExecutionRoutes);
+
+  // User Onboarding routes
+  app.use("/api/user", userOnboardingRoutes);
 
   // Inbox routes (unified reply management)
   app.use("/api/inbox", inboxRouter);
