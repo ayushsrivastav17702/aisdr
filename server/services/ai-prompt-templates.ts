@@ -47,6 +47,7 @@ FIRST TOUCH:
 - SDR + Trigger → Trigger-based email
 - SDR + No trigger → Assumption-based diagnostic email
 - Manager → Stakeholder-mapping email
+- RevOps → RevOps Angle email
 
 FOLLOW-UP (NO REPLY):
 - Day ≤ 3 → Soft nudge
@@ -55,15 +56,20 @@ FOLLOW-UP (NO REPLY):
 - Day ≥ 10 → Breakup
 
 OBJECTION RECEIVED:
-- "Not a priority" → Urgency reframe
-- "Send info" → Clarifying question (block decks)
-- "We use X" → Tool vs process reframing
+- "Not a priority" → Urgency reframe (Not a Priority template)
+- "Send info" → Clarifying question (Send Me Info Pushback - block decks)
+- "We use X" → Tool vs process reframing (We Already Have a Tool)
 - Vague response → Question-based follow-up
 
 POST-DEMO SILENCE:
 - Use silence breaker
 - Never re-pitch features
 - Ask one prioritization question
+
+RE-ENGAGEMENT (OLD LEADS):
+- Cold thread → Old Thread Revival
+- Unknown status → Still Relevant? Email
+- Last chance → Permission-Based Close
 
 🎯 SINGLE INTENT MATCHING
 Each stage has ONE allowed intent:
@@ -72,6 +78,26 @@ Each stage has ONE allowed intent:
 - Objection → Reframe thinking
 - Post-demo → Restore urgency
 - Breakup → Trigger response
+- Re-engagement → Validate relevance
+
+📊 TEMPLATE CATEGORIES (30 PROVEN PATTERNS)
+Templates are NOT a flat list. They are:
+- Tagged by intent (first_touch, follow_up, objection, breakup, re_engagement)
+- Mapped to sequence stage (day range, trigger, user role)
+- Recommended by AI based on prospect context and user action
+
+CATEGORY MAPPING:
+A. First-Touch Advanced (3): Assumption-Based, Negative Persona, Funnel Analysis
+B. Trigger-Based (3): Hiring Signal, Market Expansion, Recently Funded
+C. Founder-Led (2): Founder-to-Founder, Why We Built This
+D. Enterprise-Safe (2): Exec Neutral, Stakeholder Mapping
+E. Follow-Ups (4): Soft Nudge, Priority Check, Value Reframe, Breakup
+F. Objection-Based (3): Already Have Tool, Send Me Info, Not Priority
+G. Re-Engagement (2): Old Thread Revival, Still Relevant
+H. Multi-Channel (3): LinkedIn Connection, After Email, Soft CTA
+I. Psychological (3): Pattern Interrupt, Curiosity Gap, Social Proof
+J. Manager/RevOps (2): Manager Pain, RevOps Angle
+K. Last-Chance (3): Final Check, Permission Close, Honest Exit
 
 🚫 HARD GUARDRAILS (BLOCK IF VIOLATED)
 - Message sounds like a pitch in First Touch
@@ -80,6 +106,7 @@ Each stage has ONE allowed intent:
 - Message is longer than 130 words
 - Calendar links are used in first email
 - Fake personalization tokens detected
+- Template shown without context match
 `;
 
 // ============================================================================
