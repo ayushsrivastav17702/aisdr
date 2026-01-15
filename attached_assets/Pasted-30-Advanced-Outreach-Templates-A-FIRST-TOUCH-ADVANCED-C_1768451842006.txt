@@ -1,0 +1,260 @@
+30 Advanced Outreach Templates
+A. FIRST-TOUCH (ADVANCED CONTEXT-LED)
+1. Assumption-Based Diagnostic Email (Gong-style)
+Subject: Quick check on outbound at {{Company}}
+
+{{FirstName}},
+
+I might be wrong, but teams at {{CompanySize}} usually reach a point where
+outbound volume increases but reply quality drops.
+
+Is improving outbound quality something you’re actively focused on,
+or not a priority right now?
+
+– {{Name}}
+
+
+Why it works: Invites correction → conversation
+
+2. Negative Persona Disqualification
+Subject: Probably not relevant
+
+{{FirstName}},
+
+This is likely irrelevant if outbound isn’t a serious growth lever at {{Company}}.
+
+But if reply rates or personalization quality matter,
+happy to share what we’re seeing work.
+
+– {{Name}}
+
+
+Why: Reverse psychology (Gong-tested)
+
+3. “I Looked at Your Funnel” Email
+Subject: Question about your outbound funnel
+
+{{FirstName}},
+
+Took a look at how {{Company}} approaches outbound.
+
+Most teams optimize volume first,
+then realize context is the real bottleneck.
+
+Curious where you are on that curve.
+
+– {{Name}}
+
+B. TRIGGER-BASED (DEEL-INSPIRED)
+4. Hiring Signal (SDR / GTM roles)
+Subject: Hiring SDRs?
+
+{{FirstName}},
+
+Saw {{Company}} is hiring SDRs.
+
+Teams usually hit a point where headcount scales faster than message quality.
+
+Is that something you’re solving right now?
+
+– {{Name}}
+
+5. New Market / Geography Expansion
+Subject: Scaling outbound into new markets?
+
+{{FirstName}},
+
+When teams expand into new regions,
+templates tend to break before tooling does.
+
+Worth a quick chat if outbound quality matters globally.
+
+– {{Name}}
+
+6. Recently Funded
+Subject: After your recent round
+
+{{FirstName}},
+
+Congrats on the raise.
+
+Post-funding, most teams increase outbound volume —
+and lose relevance in the process.
+
+Happy to share what avoids that trap.
+
+– {{Name}}
+
+C. FOUNDER-LED (HIGH-TRUST)
+7. Founder → Founder
+Subject: Founder to founder
+
+{{FirstName}},
+
+Founder here.
+
+Built AiSDR after watching teams fake personalization at scale.
+
+If outbound quality is even mildly important for {{Company}},
+happy to compare notes.
+
+– {{Name}}
+
+8. “Why We Built This”
+Subject: Why we built AiSDR
+
+{{FirstName}},
+
+We didn’t build another outreach tool.
+
+We built a system that refuses to send emails without real context.
+
+Worth a short conversation if that resonates.
+
+– {{Name}}
+
+D. ENTERPRISE-SAFE (NO HYPE)
+9. Exec Neutral Intro
+Subject: Quick introduction
+
+{{FirstName}},
+
+Reaching out briefly.
+
+We work with teams improving outbound relevance at scale.
+
+If this sits in your remit, open to a short intro call.
+
+– {{Name}}
+
+10. Stakeholder Mapping Email
+Subject: Who owns outbound quality?
+
+{{FirstName}},
+
+Quick question — who typically owns outbound quality at {{Company}}?
+
+Want to be respectful of the right owner.
+
+– {{Name}}
+
+E. FOLLOW-UPS (WHERE DEALS ARE WON)
+11. Soft Nudge
+Just checking if this is relevant,
+or if I should close the loop.
+
+12. Priority Check (Gong top performer)
+Should I assume this isn’t a priority right now?
+
+13. Value Reframe Follow-up
+Most teams come to us after realizing
+automation scaled volume — not relevance.
+
+Does that resonate at all?
+
+14. Breakup (High Reply Rate)
+I’ll pause outreach for now.
+
+If outbound quality becomes a priority,
+happy to reconnect.
+
+F. OBJECTION-BASED OUTREACH
+15. “We Already Have a Tool”
+Totally fair — most teams do.
+
+The issue usually isn’t tooling,
+it’s how context is created before sending.
+
+Worth exploring?
+
+16. “Send Me Info” Pushback
+Happy to — quick question first:
+
+What are you hoping to understand better?
+
+17. “Not a Priority”
+Understood.
+
+When outbound becomes important,
+this usually becomes urgent fast.
+
+Should I check back later?
+
+G. RE-ENGAGEMENT / REVIVAL
+18. Old Thread Revival
+We spoke earlier about outbound quality.
+
+Has anything changed since then,
+or should I close the loop?
+
+19. “Still Relevant?” Email
+Quick check — is this still relevant,
+or should I move on?
+
+H. MULTI-CHANNEL SUPPORT TEMPLATES
+20. LinkedIn Connection (No Pitch)
+{{FirstName}}, following your work at {{Company}} — would be great to connect.
+
+21. LinkedIn After Email
+Sent a short note over email.
+
+Sharing context here in case it got buried.
+
+22. LinkedIn Soft CTA
+Curious if outbound quality is something you’re actively improving?
+
+I. ADVANCED PSYCHOLOGICAL ANGLES
+23. Pattern Interrupt
+This isn’t a template.
+
+Most emails pretend to be.
+
+24. Curiosity Gap
+Most teams fix outbound too late.
+
+Happy to explain why.
+
+25. Social Proof (Soft)
+Seeing this come up repeatedly with teams like yours.
+
+Worth comparing notes?
+
+J. MANAGER / REVOPS OUTREACH
+26. Manager Pain Email
+Most managers tell us outbound looks fine —
+until they read the actual emails.
+
+Is that true for your team?
+
+27. RevOps Angle
+Outbound performance often breaks
+before dashboards show it.
+
+Is that something you’re seeing?
+
+K. LAST-CHANCE / DECISION EMAILS
+28. Final Check
+Before I close this out —
+should we talk, or not relevant?
+
+29. Permission-Based Close
+Would it be okay if I stopped reaching out?
+
+30. Honest Exit
+Feels like timing isn’t right.
+
+I’ll step back unless you say otherwise.
+
+⚠️ IMPORTANT IMPLEMENTATION RULE
+
+These templates should NOT be shown as a flat list.
+
+They should be:
+
+Tagged by intent
+
+Mapped to sequence stage
+
+Recommended by AI based on user action
+
+That’s how HubSpot & Gong turn content into retention engines.
