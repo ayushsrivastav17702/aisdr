@@ -52,6 +52,16 @@ The platform is built on a modern web stack, featuring a multi-tenant architectu
 - **AI Decision Engine**: Comprehensive email template selection system with 30+ proven templates across categories (first touch, trigger-based, founder-led, enterprise, follow-up, objection, re-engagement). Features hard elimination rules, single-intent matching per stage, pattern break selection, and guardrail validation (word count, multiple CTAs, calendar links in first touch, pitch detection). Templates include assumption-based diagnostic, negative persona disqualification, trigger-based (hiring/funding/expansion), and Gong-tested follow-up patterns. Frontend components include AIRecommendationPanel (template selection with reasoning), PreSendValidation (guardrail warnings integrated in PersonalizationWizard review step), and AIReplySuggestionPanel (inbox objection handling with auto-fetch for objection/question/not_now intents).
 - **Content Library Organization Scoping**: Content library items are now accessible to all users in the same organization, enabling admin-created case studies, product descriptions, and approved statistics to be shared across the team for brand-compliant emails.
 
+## Testing Infrastructure
+- **Automated Test Suite**: Comprehensive Vitest test suite with 194 tests covering authentication, data isolation, security, AI generation, email execution, and failure scenarios. Currently at 91% pass rate (177/194 passing).
+- **Test Categories**: resilience, security, ai, auth, email, chaos, ux, user, manager, performance
+- **Security-Gated Test Bypass**: X-Test-Bypass header for CSRF bypass is gated to test/demo environments only (NODE_ENV=test OR DEMO_MODE=true) to prevent production exploitation.
+- **AI Test Simulation**: Endpoints support X-Test-Simulate-Timeout and X-Test-Timeout-Duration headers for timeout testing.
+- **Validation-First Architecture**: API routes return 400/422 validation errors before 403 authorization errors to prevent information leakage.
+- **Development Configuration**: DEMO_MODE=true set in development environment to enable test bypass functionality.
+- **Test Files Location**: tests/ directory with subdirectories for each test category.
+- **Test Utils**: tests/fixtures/test-utils.ts provides authHeader(), testUserId, and other test utilities.
+
 ## External Dependencies
 - **Apollo.io**: Prospect search, data enrichment, and bulk matching API.
 - **OpenAI**: Primary AI provider.
