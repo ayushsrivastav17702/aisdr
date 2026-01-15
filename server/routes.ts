@@ -2404,23 +2404,74 @@ Subject: [Your subject line here]
       
       console.log('📧 AI Response:', aiResponse.substring(0, 200) + '...');
       
-      // Parse AI response (simple split approach)
+      // Parse AI response with improved formatting
       const lines = aiResponse.split('\n');
       let subject = '';
-      let body = '';
+      let bodyLines: string[] = [];
       let isBody = false;
       
+      // Lines to filter out (AI commentary, not email content)
+      const filterPatterns = [
+        /personalization\s*score/i,
+        /not in proper structure/i,
+        /reasoning:/i,
+        /note:/i,
+        /explanation:/i,
+        /^---+$/,
+        /^\*\*\*/
+      ];
+      
       for (const line of lines) {
+        // Skip AI commentary lines
+        if (filterPatterns.some(pattern => pattern.test(line))) {
+          continue;
+        }
+        
         if (line.toLowerCase().includes('subject:')) {
           subject = line.replace(/subject:/i, '').trim();
         } else if (line.toLowerCase().includes('body:') || line.toLowerCase().includes('email:')) {
           isBody = true;
-        } else if (isBody && line.trim()) {
-          body += line + '\n';
-        } else if (subject && !isBody && line.trim()) {
+        } else if (subject && !isBody) {
           // Start body after subject if we haven't found explicit "Body:" marker
           isBody = true;
+          // Include the line (even blank) to preserve spacing
+          bodyLines.push(line);
+        } else if (isBody) {
+          // Include all lines including blank ones to preserve paragraph structure
+          bodyLines.push(line);
+        }
+      }
+      
+      // Clean up body: remove leading/trailing blank lines but preserve internal structure
+      while (bodyLines.length > 0 && !bodyLines[0].trim()) {
+        bodyLines.shift();
+      }
+      while (bodyLines.length > 0 && !bodyLines[bodyLines.length - 1].trim()) {
+        bodyLines.pop();
+      }
+      
+      // Convert consecutive blank lines to double newlines for paragraph spacing
+      let body = '';
+      let prevWasBlank = false;
+      for (const line of bodyLines) {
+        if (!line.trim()) {
+          if (!prevWasBlank) {
+            body += '\n\n';
+            prevWasBlank = true;
+          }
+        } else {
           body += line + '\n';
+          prevWasBlank = false;
+        }
+      }
+      body = body.trim();
+      
+      // If body is still missing proper paragraph breaks, add them
+      if (body && !body.includes('\n\n')) {
+        // Split by sentences and group into paragraphs
+        const sentences = body.split(/(?<=[.!?])\s+(?=[A-Z])/);
+        if (sentences.length > 1) {
+          body = sentences.join('\n\n');
         }
       }
 
