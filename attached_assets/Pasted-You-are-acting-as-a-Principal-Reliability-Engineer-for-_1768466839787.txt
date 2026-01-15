@@ -1,0 +1,319 @@
+You are acting as a Principal Reliability Engineer for AiSDR.
+
+Your task is to eliminate all failed Chaos/Failure and UX tests by adding resilience, fallbacks, circuit breakers, and explicit user feedback, WITHOUT breaking any existing passing tests.
+
+All fixes must be:
+
+Backward compatible
+
+Production-safe
+
+Fully observable (logs + metrics)
+
+Covered by automated tests
+
+❗ FAILED TESTS YOU MUST FIX
+CHAOS / FAILURE TESTS (8)
+
+DB read replica failure — writes must not be lost
+
+DB unavailable — writes must queue
+
+AI provider completely down
+
+Email provider completely down
+
+Redis / Queue completely down
+
+Simultaneous DB + AI failure
+
+UX FAILURE TESTS (2)
+
+Backend failure must surface explicit UI error
+
+Validation errors must never be swallowed
+
+1️⃣ DATABASE FAILURE RESILIENCE
+Problem
+
+Writes fail or are lost when DB or read replica is unavailable.
+
+REQUIRED IMPLEMENTATION
+Write-Ahead Buffer
+
+Before any DB write:
+
+Persist operation to write_ahead_log (WAL) table OR Redis-backed durable queue
+
+Mark as pending
+
+On success → mark committed
+
+On failure → retry via background worker
+
+Read Replica Failure
+
+Auto-detect replica errors
+
+Failover reads to primary
+
+Never block writes due to read failure
+
+UI Behavior
+
+User sees:
+“Temporary database issue. Action queued and will auto-retry.”
+
+Tests to Add
+
+Kill read replica → writes still succeed
+
+Kill primary DB → writes queued
+
+Restart DB → queued writes flush correctly
+
+2️⃣ REDIS / QUEUE FAILURE HARDENING
+Problem
+
+Automation silently fails when Redis is unavailable.
+
+REQUIRED IMPLEMENTATION
+Queue Abstraction Layer
+
+Implement QueueProvider interface:
+
+RedisQueue
+
+FallbackInMemoryQueue (temporary)
+
+Auto-switch when Redis fails
+
+Persist fallback jobs to disk / DB
+
+UI Behavior
+
+Global banner:
+“Automation paused due to infrastructure issue. Retrying…”
+
+Tests to Add
+
+Redis down → job queued
+
+Redis back → job resumes
+
+No silent job drops
+
+3️⃣ AI PROVIDER COMPLETE OUTAGE
+Problem
+
+AI calls block or fail without user understanding.
+
+REQUIRED IMPLEMENTATION
+Hard Timeouts
+
+Enforce max response time (e.g., 12s)
+
+Abort requests exceeding SLA
+
+Circuit Breaker
+
+After N failures:
+
+Open circuit
+
+Stop calling provider
+
+Use fallback immediately
+
+Fallback Strategy
+
+Pre-approved static copy
+
+Last successful campaign template
+
+Manager-approved defaults
+
+UI Behavior
+
+User must see:
+
+“AI temporarily unavailable. Using safe fallback copy.”
+
+Tests to Add
+
+All AI providers down → fallback used
+
+No request blocks indefinitely
+
+Circuit breaker opens correctly
+
+4️⃣ EMAIL PROVIDER COMPLETE OUTAGE
+Problem
+
+Email sends fail without graceful recovery.
+
+REQUIRED IMPLEMENTATION
+Send Queue Guarantees
+
+All sends must be idempotent
+
+Failed sends go to retry queue
+
+Retry with exponential backoff
+
+DLQ after max retries
+
+UI Behavior
+
+Status: Delayed
+
+Tooltip:
+“Email provider outage. Will auto-retry.”
+
+Tests to Add
+
+Provider down → no duplicate sends
+
+Provider restored → queued sends resume
+
+5️⃣ SIMULTANEOUS FAILURE HANDLING (DB + AI)
+Problem
+
+Cascading failures cause unpredictable behavior.
+
+REQUIRED IMPLEMENTATION
+Global Failure Controller
+
+Central service that tracks:
+
+DB state
+
+AI state
+
+Queue state
+
+Prevents:
+
+AI generation if DB unavailable
+
+Sends if queue unstable
+
+Execution Rules
+
+Fail fast
+
+Never partial-execute
+
+Always recoverable
+
+Tests to Add
+
+DB + AI down → no partial state
+
+System resumes cleanly after recovery
+
+6️⃣ UX FAILURE FIXES (CRITICAL)
+Problem
+
+Errors are swallowed or unclear.
+
+REQUIRED IMPLEMENTATION
+Error Contract
+
+Every backend error must return:
+
+{
+  "code": "HUMAN_READABLE_CODE",
+  "message": "User-safe explanation",
+  "action": "What user should do next"
+}
+
+Frontend Enforcement
+
+Any non-2xx response:
+
+MUST show toast / modal
+
+MUST NOT silently fail
+
+Tests to Add
+
+Backend throws error → UI shows message
+
+Validation errors displayed inline
+
+7️⃣ OBSERVABILITY REQUIREMENTS
+Logging
+
+Structured logs
+
+Correlation IDs across requests
+
+No PII in logs
+
+Metrics
+
+Queue depth
+
+AI fallback rate
+
+Retry counts
+
+Circuit breaker open state
+
+Alerts
+
+AI fallback > X%
+
+Queue backlog > threshold
+
+Error rate spike
+
+8️⃣ TESTING & VERIFICATION
+Required Test Types
+
+Automated chaos tests
+
+Retry correctness
+
+Idempotency tests
+
+UI failure visibility tests
+
+Success Criteria
+
+✅ All previously failed chaos tests PASS
+✅ UX tests PASS
+✅ No regression in auth/security tests
+✅ No silent failures anywhere
+
+9️⃣ FINAL OUTPUT REQUIRED
+
+You must deliver:
+
+Code changes with comments
+
+New automated tests
+
+Updated system diagrams (optional)
+
+A FAILURE-MODE MATRIX mapping:
+
+Failure → Behavior → User Message → Recovery Path
+
+🔒 NON-NEGOTIABLE RULES
+
+Never silently drop data
+
+Never block user without explanation
+
+Never allow partial execution
+
+Never hide system degradation
+
+🚀 FINAL INSTRUCTION
+
+Proceed step-by-step.
+Validate each fix before moving to the next.
+Do NOT optimize prematurely.
+Correctness > performance.
