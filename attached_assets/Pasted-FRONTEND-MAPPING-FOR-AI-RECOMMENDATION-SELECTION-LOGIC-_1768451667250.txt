@@ -1,0 +1,285 @@
+FRONTEND MAPPING FOR AI RECOMMENDATION & SELECTION LOGIC
+
+I’ll break this into screens, components, states, and data flow.
+
+1️⃣ COMPOSE MESSAGE SCREEN (MOST IMPORTANT)
+📍 Screen
+
+Path:
+/compose
+/campaign/:id/compose
+/thread/:id/reply
+
+🧱 Components to Add
+A. AIRecommendationPanel (NEW — TOP PRIORITY)
+
+Position:
+👉 Above the message editor
+👉 Always visible before typing
+
+Component Structure
+<AIRecommendationPanel>
+  <Badge>AI Recommendation</Badge>
+  <Title>{template_name}</Title>
+  <Reason>{why_this_works}</Reason>
+  <Warning>{avoid_this_mistake}</Warning>
+
+  <PrimaryCTA>Use This Message</PrimaryCTA>
+  <SecondaryCTA>See Alternative</SecondaryCTA>
+</AIRecommendationPanel>
+
+When This Component Loads (Trigger)
+
+On page load
+
+On thread open
+
+On clicking “Follow-up”
+
+On changing campaign stage
+
+Data Passed to AI
+{
+  user_role,
+  campaign_stage,
+  channel,
+  days_since_last_touch,
+  last_message_text,
+  prospect_reply,
+  reply_type,
+  trigger_detected,
+  ICP_type,
+  template_history
+}
+
+User Actions
+
+Use This Message
+
+Inserts AI-selected message into editor
+
+See Alternative
+
+Replaces content with backup option
+
+Manual Edit
+
+Allowed, but validated before send
+
+Guardrail Hook (Before Send)
+
+Attach to:
+
+onSendClick()
+
+
+If AI flags risk → block send + show warning modal.
+
+2️⃣ MESSAGE EDITOR (ENHANCED WITH AI VALIDATION)
+🧱 Component
+
+MessageEditor
+
+New AI Hooks
+A. PreSendValidation()
+
+Runs checks:
+
+Length > 130 words
+
+Multiple CTAs
+
+Repeated CTA
+
+Pitch in first touch
+
+Calendar link in first email
+
+UX Example
+⚠️ AI Warning
+This message sounds like a pitch and may reduce reply rates.
+
+[Fix with AI]  [Send Anyway]
+
+
+(Managers can disable “Send Anyway” for SDRs)
+
+3️⃣ INBOX / REPLY VIEW (OBJECTION HANDLING)
+📍 Screen
+
+/inbox
+/thread/:id
+
+🧱 Components
+A. AIReplySuggestionPanel
+
+Position:
+👉 Right sidebar (sticky)
+
+Component Structure
+<AIReplySuggestionPanel>
+  <DetectedLabel>Detected Objection: Not a priority</DetectedLabel>
+
+  <Title>Best Response</Title>
+  <SuggestedReply />
+
+  <PrimaryCTA>Insert Reply</PrimaryCTA>
+  <SecondaryCTA>Edit</SecondaryCTA>
+</AIReplySuggestionPanel>
+
+Trigger
+
+Prospect reply detected
+
+Thread opened
+
+Special Behavior
+
+If reply = “Send me info”
+
+Disable attachments
+
+Block deck uploads
+
+If reply = objection
+
+Force single-question reply
+
+4️⃣ SEQUENCE BUILDER (PREVENT SCALE DAMAGE)
+📍 Screen
+
+/sequences/create
+/sequences/:id/edit
+
+🧱 Components
+A. AISequenceValidator
+
+Position:
+👉 Inline banner above “Activate Sequence”
+
+Component Structure
+<AISequenceValidator>
+  <Status>AI Feedback on This Sequence</Status>
+
+  <IssueList>
+    • Repeated CTA in steps 2 & 3
+    • No breakup email
+    • First message too long
+  </IssueList>
+
+  <PrimaryCTA>Fix with AI</PrimaryCTA>
+</AISequenceValidator>
+
+Trigger
+
+On “Activate”
+
+On sequence edit
+
+On step reorder
+
+Fix with AI
+
+Auto-rewrites weak steps
+
+Inserts missing breakup
+
+Shortens first touch
+
+5️⃣ TEMPLATE LIBRARY (DECISION SUPPORT, NOT STORAGE)
+📍 Screen
+
+/library/templates
+
+🧱 Components
+A. TemplateUsageBanner
+
+Position:
+👉 Inside each template detail page
+
+Structure
+<TemplateUsageBanner>
+  <WhenToUse>
+    Best used when:
+    • No reply after 2+ touches
+    • Mid-market ICP
+  </WhenToAvoid>
+</TemplateUsageBanner>
+
+AI Behavior
+
+Highlight “Recommended” templates
+
+Grey out risky templates for current context
+
+6️⃣ MANAGER / ADMIN DASHBOARD
+📍 Screen
+
+/dashboard/manager
+
+🧱 Components
+A. AICoachingInsights
+Structure
+<AICoachingInsights>
+  <TopMistake>
+    SDRs pitching in first emails
+  </TopMistake>
+
+  <BestPerformingTemplate>
+    Priority Check Follow-up (38% reply)
+  </BestPerformingTemplate>
+
+  <IgnoredAIWarnings>
+    12 sends ignored AI advice
+  </IgnoredAIWarnings>
+</AICoachingInsights>
+
+Manager Actions
+
+Lock stages (no pitch allowed)
+
+Enforce AI-only sends
+
+Review ignored warnings
+
+7️⃣ MINIMUM V1 BUILD (DO THIS FIRST)
+
+If you want maximum impact with minimal work, build only these first:
+
+✅ AIRecommendationPanel on Compose
+✅ AIReplySuggestionPanel in Inbox
+✅ PreSendValidation() hook
+
+This alone makes AiSDR feel 10x smarter.
+
+8️⃣ FRONTEND EVENT → AI FLOW (SIMPLE)
+User Action
+  ↓
+Frontend emits context
+  ↓
+AI Recommendation Engine
+  ↓
+Structured response
+  ↓
+UI renders recommendation
+  ↓
+User accepts / edits
+  ↓
+AI validates
+  ↓
+Send
+
+FINAL PRODUCT TRUTH (VERY IMPORTANT)
+
+If this logic:
+
+Isn’t visible
+
+Isn’t interruptive at the right moment
+
+Isn’t decisive
+
+Users will ignore it.
+
+You’re not building “AI features”.
+You’re building decision support at the moment of action.
