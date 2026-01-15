@@ -23,7 +23,7 @@ import {
   MoreVertical,
 } from "lucide-react";
 import { AIReplySuggestionPanel, type ReplySuggestion } from "@/components/AIReplySuggestionPanel";
-import { useAuth } from "@/contexts/auth-context";
+import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -73,14 +73,13 @@ const intentLabels: Record<string, { label: string; color: string }> = {
 
 export default function InboxPage() {
   const [, navigate] = useLocation();
+  const { toast } = useToast();
   const [selectedReply, setSelectedReply] = useState<ReplyWithDetails | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [sentimentFilter, setSentimentFilter] = useState<string>("all");
   const [intentFilter, setIntentFilter] = useState<string>("all");
   const [aiSuggestion, setAiSuggestion] = useState<ReplySuggestion | null>(null);
   const [isLoadingAiSuggestion, setIsLoadingAiSuggestion] = useState(false);
-  const [composedReply, setComposedReply] = useState("");
-  const { token } = useAuth();
 
   const { data: replies, isLoading } = useQuery<ReplyWithDetails[]>({
     queryKey: ["/api/inbox/replies"],
@@ -130,35 +129,29 @@ export default function InboxPage() {
   const handleSelectReply = (reply: ReplyWithDetails) => {
     setSelectedReply(reply);
     setAiSuggestion(null);
-    setComposedReply("");
     if (!reply.processed) {
       markAsReadMutation.mutate(reply.id);
     }
   };
 
   const fetchAiSuggestion = async (reply: ReplyWithDetails) => {
-    if (!token || !reply.replyContent) return;
+    if (!reply.replyContent) return;
     
     setIsLoadingAiSuggestion(true);
     try {
-      const response = await fetch('/api/ai/suggest-reply', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          prospectId: reply.prospectId,
-          replyContent: reply.replyContent,
-          replyType: reply.replyType,
-          sentiment: reply.sentiment,
-          intent: reply.intent
-        })
+      const response = await apiRequest('POST', '/api/ai/suggest-reply', {
+        prospectId: reply.prospectId,
+        replyContent: reply.replyContent,
+        replyType: reply.replyType,
+        sentiment: reply.sentiment,
+        intent: reply.intent
       });
       
       if (response.ok) {
         const data = await response.json();
         setAiSuggestion(data);
+      } else {
+        console.error('Failed to fetch AI suggestion:', response.status);
       }
     } catch (error) {
       console.error('Failed to fetch AI suggestion:', error);
@@ -171,7 +164,7 @@ export default function InboxPage() {
     if (selectedReply && (selectedReply.intent === 'objection' || selectedReply.intent === 'question' || selectedReply.intent === 'not_now')) {
       fetchAiSuggestion(selectedReply);
     }
-  }, [selectedReply?.id]);
+  }, [selectedReply?.id, selectedReply?.intent]);
 
   return (
     <div className="container mx-auto p-6 max-w-7xl">
@@ -539,12 +532,16 @@ export default function InboxPage() {
 
                     {/* AI Reply Suggestion Panel */}
                     {(aiSuggestion || isLoadingAiSuggestion) && (
-                      <div className="mt-6 pt-6 border-t">
+                      <div className="mt-6 pt-6 border-t" data-testid="container-ai-suggestion">
                         <AIReplySuggestionPanel
                           suggestion={aiSuggestion}
                           isLoading={isLoadingAiSuggestion}
                           onInsertReply={(reply) => {
-                            setComposedReply(reply);
+                            navigator.clipboard.writeText(reply);
+                            toast({
+                              title: "Reply copied",
+                              description: "The suggested reply has been copied to your clipboard"
+                            });
                           }}
                           onRefresh={() => selectedReply && fetchAiSuggestion(selectedReply)}
                           onDismiss={() => setAiSuggestion(null)}
