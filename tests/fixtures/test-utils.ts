@@ -1,5 +1,5 @@
 import { db } from "../../server/db";
-import { users, userSessions, organizations, prospects, campaigns, sequences, emails, auditLogs } from "@shared/schema";
+import { users, userSessions, organizations, prospects, sequences, emails, auditLogs } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
@@ -27,11 +27,12 @@ export interface TestOrg {
 export async function createTestOrganization(name?: string): Promise<TestOrg> {
   const orgId = nanoid();
   const orgName = name || `${TEST_ORG_PREFIX}${nanoid(6)}`;
+  const orgSlug = orgName.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-');
   
   const [org] = await db.insert(organizations).values({
     id: orgId,
     name: orgName,
-    plan: "pro",
+    slug: orgSlug,
     status: "active",
   }).returning();
   
@@ -162,22 +163,21 @@ export async function createTestProspect(params: {
   return prospectId;
 }
 
-export async function createTestCampaign(params: {
+export async function createTestSequence(params: {
   userId: string;
   name?: string;
   status?: string;
 }): Promise<string> {
-  const campaignId = nanoid();
+  const sequenceId = nanoid();
   
-  await db.insert(campaigns).values({
-    id: campaignId,
-    name: params.name || `Test Campaign ${nanoid(6)}`,
+  await db.insert(sequences).values({
+    id: sequenceId,
+    name: params.name || `Test Sequence ${nanoid(6)}`,
     userId: params.userId,
     status: params.status || "draft",
-    settings: {},
   });
   
-  return campaignId;
+  return sequenceId;
 }
 
 export async function getAuditLogs(params: {
