@@ -34,6 +34,7 @@ import {
   RefreshCw,
   Search
 } from 'lucide-react';
+import { PreSendValidation } from '@/components/PreSendValidation';
 
 interface PersonalizationData {
   prospect: any;
@@ -1325,6 +1326,21 @@ export function PersonalizationWizard({
                           {generatedEmail?.body || 'No email body generated'}
                         </div>
                       </div>
+
+                      {generatedEmail?.subject && generatedEmail?.body && (
+                        <PreSendValidation
+                          subject={generatedEmail.subject}
+                          body={generatedEmail.body}
+                          campaignStage="first_touch"
+                          onFixWithAI={() => {
+                            setCurrentStep(3);
+                            toast({
+                              title: "Regenerating email",
+                              description: "Going back to email settings to generate a new version"
+                            });
+                          }}
+                        />
+                      )}
 
                       {generatedEmail?.validationWarnings && generatedEmail.validationWarnings.length > 0 && (
                         <div className="p-4 bg-amber-50 dark:bg-amber-950/30 rounded-lg border border-amber-300 dark:border-amber-700">
