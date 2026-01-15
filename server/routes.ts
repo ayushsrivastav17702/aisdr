@@ -47,6 +47,7 @@ import sdrDashboardRoutes from "./routes/sdr-dashboard.routes";
 import { sdrWorkflowService, WorkflowBlockedError } from "./services/sdr-workflow.service";
 import { hardeningService } from "./services/hardening.service";
 import { aiTrackingService } from "./services/ai-tracking.service";
+import { getTemplateForContext, EMAIL_TEMPLATE_LIBRARY, AI_DECISION_ENGINE_RULES } from "./services/ai-prompt-templates";
 import { inboxRouter } from "./inbox-routes";
 import { authenticate, forbidManager, blockSuperAdminFromSDR } from "./middleware/auth.middleware";
 import { emailVolumeConfig, getCapacityReport, getEstimatedTimeForEmails, EMAIL_VOLUME_PRESETS } from "./config/email-volume.config";
@@ -2547,6 +2548,249 @@ Subject: [Your subject line here]
       console.error("Email generation error:", error);
       res.status(500).json({ 
         error: error instanceof Error ? error.message : "Failed to generate personalized email" 
+      });
+    }
+  });
+
+  // Get AI template recommendation based on context
+  app.post("/api/ai/recommend-template", authenticate, async (req, res) => {
+    try {
+      const { 
+        prospectId,
+        campaignStage,
+        daysSinceLastTouch,
+        replyType,
+        triggerDetected,
+        icpType,
+        userRole,
+        previousMessageText,
+        prospectReply
+      } = req.body;
+
+      if (!campaignStage) {
+        return res.status(400).json({ error: "Campaign stage is required" });
+      }
+
+      // Get template recommendation from AI Decision Engine
+      const recommendation = getTemplateForContext({
+        campaignStage,
+        daysSinceLastTouch: daysSinceLastTouch || 0,
+        replyType,
+        triggerDetected,
+        icpType,
+        userRole: userRole || 'sdr'
+      });
+
+      if (!recommendation) {
+        return res.json({
+          templateName: 'default',
+          reasoning: 'No specific template matched the context. Using general approach.',
+          suggestedMessage: null,
+          context: { campaignStage, daysSinceLastTouch }
+        });
+      }
+
+      // Get prospect data for personalization if provided
+      let prospectContext: any = {};
+      if (prospectId) {
+        const prospect = await storage.getProspect(req.userContext!, prospectId);
+        if (prospect) {
+          prospectContext = {
+            firstName: prospect.firstName,
+            lastName: prospect.lastName,
+            companyName: prospect.companyName,
+            jobTitle: prospect.jobTitle,
+            industry: prospect.companyIndustry
+          };
+        }
+      }
+
+      // Build the response
+      const response = {
+        templateName: recommendation.templateName,
+        reasoning: recommendation.reasoning,
+        suggestedMessage: recommendation.template ? {
+          subject: recommendation.template.subject || '',
+          body: recommendation.template.body || ''
+        } : null,
+        warning: recommendation.template?.avoid || null,
+        backupOption: null as any,
+        context: {
+          campaignStage,
+          daysSinceLastTouch: daysSinceLastTouch || 0,
+          replyType,
+          triggerDetected
+        },
+        prospectContext
+      };
+
+      // Try to find a backup option from same category
+      if (recommendation.templateName && EMAIL_TEMPLATE_LIBRARY) {
+        const categoryKey = campaignStage.toLowerCase().includes('follow') ? 'followUp' :
+                           campaignStage.toLowerCase().includes('first') ? 'firstTouch' :
+                           campaignStage.toLowerCase().includes('objection') ? 'objectionHandling' :
+                           campaignStage.toLowerCase().includes('re-engage') ? 'reEngagement' : null;
+        
+        if (categoryKey && EMAIL_TEMPLATE_LIBRARY[categoryKey as keyof typeof EMAIL_TEMPLATE_LIBRARY]) {
+          const categoryTemplates = EMAIL_TEMPLATE_LIBRARY[categoryKey as keyof typeof EMAIL_TEMPLATE_LIBRARY];
+          const alternatives = Object.entries(categoryTemplates).filter(
+            ([key]) => key !== recommendation.templateName
+          );
+          if (alternatives.length > 0) {
+            const [backupName, backupTemplate] = alternatives[0];
+            response.backupOption = {
+              templateName: backupName,
+              subject: (backupTemplate as any).subject || '',
+              body: (backupTemplate as any).body || ''
+            };
+          }
+        }
+      }
+
+      res.json(response);
+    } catch (error) {
+      console.error("AI template recommendation error:", error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Failed to get AI template recommendation" 
+      });
+    }
+  });
+
+  // Get AI reply suggestion for inbox objection handling
+  app.post("/api/ai/suggest-reply", authenticate, async (req, res) => {
+    try {
+      const { 
+        prospectId,
+        replyContent,
+        replyType,
+        sentiment,
+        intent
+      } = req.body;
+
+      if (!replyContent) {
+        return res.status(400).json({ error: "Reply content is required" });
+      }
+
+      // Detect objection type and get appropriate response
+      const lowerContent = replyContent.toLowerCase();
+      let detectedType: string = 'neutral';
+      let detectedLabel: string = 'General Reply';
+      let restrictions: any = {};
+
+      // Detect specific patterns
+      if (lowerContent.includes('not a priority') || lowerContent.includes('busy right now') || lowerContent.includes('not now')) {
+        detectedType = 'not_now';
+        detectedLabel = 'Not a priority right now';
+      } else if (lowerContent.includes('send info') || lowerContent.includes('send me') || lowerContent.includes('more information')) {
+        detectedType = 'send_info';
+        detectedLabel = 'Request for information';
+        restrictions = { blockAttachments: true, blockDecks: true, forceSingleQuestion: true };
+      } else if (lowerContent.includes('we use') || lowerContent.includes('we already') || lowerContent.includes('competitor')) {
+        detectedType = 'objection';
+        detectedLabel = 'Competitive objection';
+        restrictions = { forceSingleQuestion: true };
+      } else if (lowerContent.includes('interested') || lowerContent.includes('sounds good') || lowerContent.includes('tell me more')) {
+        detectedType = 'interested';
+        detectedLabel = 'Interested';
+      } else if (lowerContent.includes('?')) {
+        detectedType = 'question';
+        detectedLabel = 'Has questions';
+      } else if (intent === 'objection') {
+        detectedType = 'objection';
+        detectedLabel = 'Objection';
+        restrictions = { forceSingleQuestion: true };
+      }
+
+      // Get prospect data
+      let prospectName = 'there';
+      if (prospectId) {
+        const prospect = await storage.getProspect(req.userContext!, prospectId);
+        if (prospect) {
+          prospectName = prospect.firstName || 'there';
+        }
+      }
+
+      // Generate appropriate response suggestion based on type
+      let suggestedReply = '';
+      let reasoning = '';
+      let warning = '';
+
+      switch (detectedType) {
+        case 'not_now':
+          suggestedReply = `Hi ${prospectName},
+
+Completely understand - timing is everything. 
+
+Quick question before I step back: is this something that might make sense to revisit in Q2, or is it more of a "not right now but maybe next year" situation?
+
+Just want to make sure I'm not reaching out at the wrong time.`;
+          reasoning = 'Urgency reframe: Acknowledge their position and ask ONE question to understand timeline.';
+          warning = 'Don\'t pitch or send materials. Just get clarity on timing.';
+          break;
+
+        case 'send_info':
+          suggestedReply = `Hi ${prospectName},
+
+Happy to share more context! Before I do, quick question:
+
+What specifically are you looking to solve? That way I can send you the most relevant info vs. a generic overview.`;
+          reasoning = 'Clarifying question: Don\'t send decks. Ask what they need to see first.';
+          warning = 'Never attach decks or PDFs to "send info" requests - they rarely get read.';
+          break;
+
+        case 'objection':
+          suggestedReply = `Hi ${prospectName},
+
+That makes sense - [competitor/existing solution] is solid for [use case].
+
+Out of curiosity, is the current setup fully solving [specific problem area], or are there gaps your team is working around?`;
+          reasoning = 'Tool vs process reframing: Acknowledge their choice, then probe for gaps.';
+          warning = 'Don\'t bash competitors. Ask about gaps they might be living with.';
+          break;
+
+        case 'interested':
+          suggestedReply = `Hi ${prospectName},
+
+Great to hear! Would a quick 15-minute call work this week to walk through how this could work for your team?
+
+I have availability [suggest 2-3 times] - let me know what works best.`;
+          reasoning = 'Move to meeting: They\'re interested, so propose a concrete next step.';
+          break;
+
+        case 'question':
+          suggestedReply = `Hi ${prospectName},
+
+Great question!
+
+[Answer their specific question concisely]
+
+Does that help clarify things? Happy to jump on a quick call if easier to discuss.`;
+          reasoning = 'Answer first, then offer to discuss: Directly address their question before moving forward.';
+          break;
+
+        default:
+          suggestedReply = `Hi ${prospectName},
+
+Thanks for getting back to me!
+
+[Acknowledge their response]
+
+What would be most helpful as a next step?`;
+          reasoning = 'General follow-up: Acknowledge and ask for direction.';
+      }
+
+      res.json({
+        detectedType,
+        detectedLabel,
+        suggestedReply,
+        reasoning,
+        warning,
+        restrictions: Object.keys(restrictions).length > 0 ? restrictions : undefined
+      });
+    } catch (error) {
+      console.error("AI reply suggestion error:", error);
+      res.status(500).json({ 
+        error: error instanceof Error ? error.message : "Failed to generate AI reply suggestion" 
       });
     }
   });
