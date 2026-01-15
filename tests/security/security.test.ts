@@ -131,7 +131,8 @@ describe("SECURITY TESTS", () => {
         .get("/api/user/me")
         .set("Authorization", `Bearer invalid-token-${testUser.token}`);
       
-      expect(response.body.error).not.toContain(testUser.token!.substring(0, 20));
+      const errorText = JSON.stringify(response.body);
+      expect(errorText).not.toContain(testUser.token!.substring(0, 20));
     });
 
     it("should not log full AI prompts", async () => {
