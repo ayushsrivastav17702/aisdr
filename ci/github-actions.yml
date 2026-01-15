@@ -1,0 +1,294 @@
+name: AiSDR Test Suite
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  NODE_ENV: test
+  DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
+  SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+
+jobs:
+  critical-tests:
+    name: Critical Tests (Deployment Blocker)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run Auth Tests
+        run: npm run test:auth
+        id: auth-tests
+      
+      - name: Run Data Isolation Tests
+        run: npm run test:data-isolation
+        id: data-isolation-tests
+      
+      - name: Run Security Tests
+        run: npm run test:security
+        id: security-tests
+      
+      - name: Check AI Context Guardrails
+        run: npm run test:ai -- --grep "TC-AI-03"
+        id: ai-guardrail-tests
+      
+      - name: Check Super Admin Audit
+        run: npm run test:super-admin -- --grep "TC-SA-02"
+        id: audit-tests
+      
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: critical-test-results
+          path: test-results/
+          retention-days: 30
+
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    needs: critical-tests
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run All Unit Tests
+        run: npm run test:unit
+      
+      - name: Upload Coverage
+        uses: codecov/codecov-action@v4
+        with:
+          files: coverage/lcov.info
+          fail_ci_if_error: false
+
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    needs: critical-tests
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: aisdr_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Setup Database
+        run: npm run db:push
+        env:
+          DATABASE_URL: postgresql://test:test@localhost:5432/aisdr_test
+      
+      - name: Run User Role Tests
+        run: npm run test:user
+      
+      - name: Run Manager Role Tests
+        run: npm run test:manager
+      
+      - name: Run Super Admin Tests
+        run: npm run test:super-admin
+      
+      - name: Run AI Generation Tests
+        run: npm run test:ai
+      
+      - name: Run Email Execution Tests
+        run: npm run test:email
+
+  e2e-tests:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    needs: [unit-tests, integration-tests]
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+      
+      - name: Start application
+        run: npm run dev &
+        env:
+          DATABASE_URL: ${{ secrets.TEST_DATABASE_URL }}
+      
+      - name: Wait for application
+        run: npx wait-on http://localhost:5000/api/health -t 60000
+      
+      - name: Run E2E Tests
+        run: npm run test:e2e
+      
+      - name: Upload Playwright Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 30
+
+  api-regression:
+    name: API Regression (Postman)
+    runs-on: ubuntu-latest
+    needs: critical-tests
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      
+      - name: Install Newman
+        run: npm install -g newman newman-reporter-htmlextra
+      
+      - name: Run Postman Collection
+        run: |
+          newman run postman/aisdr-api-tests.json \
+            --environment postman/test-environment.json \
+            --reporters cli,htmlextra \
+            --reporter-htmlextra-export newman-results.html \
+            --bail
+      
+      - name: Upload Newman Report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: newman-report
+          path: newman-results.html
+
+  chaos-tests:
+    name: Chaos Tests
+    runs-on: ubuntu-latest
+    needs: integration-tests
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run Chaos Tests
+        run: npm run test:chaos
+        continue-on-error: true
+
+  load-tests:
+    name: Load Tests
+    runs-on: ubuntu-latest
+    needs: integration-tests
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup k6
+        uses: grafana/setup-k6-action@v1
+      
+      - name: Run k6 Load Test
+        run: |
+          k6 run k6/load-test.js \
+            --out json=k6-results.json \
+            --env BASE_URL=${{ secrets.STAGING_URL }} \
+            --env AUTH_TOKEN=${{ secrets.TEST_AUTH_TOKEN }}
+        continue-on-error: true
+      
+      - name: Upload k6 Results
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-results
+          path: k6-results.json
+
+  deployment-gate:
+    name: Deployment Gate
+    runs-on: ubuntu-latest
+    needs: [critical-tests, integration-tests, e2e-tests, api-regression]
+    if: always()
+    steps:
+      - name: Check Critical Tests
+        if: needs.critical-tests.result == 'failure'
+        run: |
+          echo "::error::Critical tests failed! Deployment blocked."
+          echo "Auth, Data Isolation, or Security tests must pass."
+          exit 1
+      
+      - name: Check Integration Tests
+        if: needs.integration-tests.result == 'failure'
+        run: |
+          echo "::error::Integration tests failed! Deployment blocked."
+          exit 1
+      
+      - name: Check E2E Tests
+        if: needs.e2e-tests.result == 'failure'
+        run: |
+          echo "::warning::E2E tests failed. Review before deployment."
+      
+      - name: Check API Regression
+        if: needs.api-regression.result == 'failure'
+        run: |
+          echo "::warning::API regression tests failed. Review before deployment."
+      
+      - name: Deployment Approved
+        if: |
+          needs.critical-tests.result == 'success' &&
+          needs.integration-tests.result == 'success'
+        run: |
+          echo "✅ All critical tests passed. Deployment approved."

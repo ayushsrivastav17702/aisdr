@@ -1,0 +1,55 @@
+{
+  "id": "aisdr-test-env",
+  "name": "AiSDR Test Environment",
+  "values": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5000",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "testEmail",
+      "value": "test@example.com",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "testPassword",
+      "value": "TestPassword123!",
+      "type": "secret",
+      "enabled": true
+    },
+    {
+      "key": "authToken",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "testOrgId",
+      "value": "test-org-id",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "otherOrgId",
+      "value": "other-org-id",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "campaignId",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    },
+    {
+      "key": "prospectId",
+      "value": "",
+      "type": "default",
+      "enabled": true
+    }
+  ],
+  "_postman_variable_scope": "environment"
+}
