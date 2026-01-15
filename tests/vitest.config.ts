@@ -5,10 +5,10 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "node",
-    setupFiles: ["./fixtures/setup.ts"],
+    setupFiles: ["./tests/fixtures/setup.ts"],
     testTimeout: 30000,
     hookTimeout: 30000,
-    include: ["**/*.test.ts"],
+    include: ["tests/**/*.test.ts"],
     exclude: ["**/node_modules/**", "**/e2e/**"],
     coverage: {
       provider: "v8",
@@ -25,11 +25,7 @@ export default defineConfig({
       json: "./test-results/results.json",
     },
     pool: "forks",
-    poolOptions: {
-      forks: {
-        singleFork: true,
-      },
-    },
+    isolate: true,
     sequence: {
       shuffle: false,
     },

@@ -1,0 +1,257 @@
+You are a Staff+ Backend Engineer / Security Engineer working under the CTO on AiSDR, a multi-tenant production SaaS.
+
+Your responsibility is to:
+
+Fix only the 6 critical issues listed below
+
+Apply fail-fast, production-safe patterns
+
+Preserve existing functionality and tests
+
+Add guardrails, not hacks
+
+Avoid introducing breaking changes
+
+🚫 Do NOT add new features
+🚫 Do NOT refactor unrelated code
+🚫 Do NOT silence errors
+✅ Make failures explicit and user-safe
+
+🔴 CRITICAL ISSUES TO FIX (ALL REQUIRED)
+1️⃣ Hardcoded Secret Fallbacks
+
+(SESSION_SECRET, CSRF_SECRET)
+
+Problem
+
+Secrets fall back to insecure defaults in production.
+
+Required Fix
+
+Remove all default fallbacks in production
+
+Application must fail at startup if missing
+
+Implementation Requirements
+
+Add centralized config validation at boot
+
+Environment-aware:
+
+NODE_ENV=production → fail fast
+
+non-prod → allow defaults
+
+Acceptance Criteria
+
+App refuses to start in production without secrets
+
+Clear boot-time error message
+
+No runtime fallback logic remains
+
+2️⃣ ENCRYPTION_KEY Default Fallback
+
+(Mailbox credential encryption)
+
+Problem
+
+Default encryption key can change → encrypted data becomes unreadable.
+
+Required Fix
+
+Remove fallback key entirely
+
+Enforce immutability per environment
+
+Detect unexpected key changes
+
+Implementation Requirements
+
+Store and log a hash fingerprint of the key at boot
+
+Compare against previous fingerprint
+
+Block startup if mismatch detected
+
+Add migration-safe logic (no auto-rotation)
+
+Acceptance Criteria
+
+Encryption key must be explicitly set
+
+App refuses to start if key changes unexpectedly
+
+Existing encrypted data remains readable
+
+3️⃣ Redis / Queue Silent Failure
+Problem
+
+When Redis is unavailable, jobs fail silently and users receive no feedback.
+
+Required Fix
+
+Add Redis health checks before enqueue
+
+Fail job submission explicitly
+
+Surface clear UI-level error state
+
+Implementation Requirements
+
+Centralized queueHealthCheck()
+
+Throw 503 ServiceUnavailable on failure
+
+Expose tenant-level “Automation Paused” state
+
+Acceptance Criteria
+
+No job is silently dropped
+
+UI reflects paused automation
+
+Errors are logged with context
+
+4️⃣ Apollo API Empty String Error
+Problem
+
+Missing API key produces cryptic errors.
+
+Required Fix
+
+Validate Apollo API key at runtime
+
+Provide actionable error message
+
+Implementation Requirements
+
+Explicit empty-string check
+
+UI-safe error message:
+
+“Apollo API key missing. Connect a valid key to enable enrichment.”
+
+Acceptance Criteria
+
+No cryptic stack traces
+
+Error is user-actionable
+
+Feature is blocked until fixed
+
+5️⃣ No AI Call Timeouts
+Problem
+
+Slow LLM calls block requests indefinitely.
+
+Required Fix
+
+Add hard timeouts to all AI provider calls
+
+Implement circuit breaker on repeated failures
+
+Implementation Requirements
+
+Timeout: 10–15 seconds per provider
+
+Log slow calls (>5s)
+
+Auto-fallback after threshold failures
+
+Acceptance Criteria
+
+No AI request blocks indefinitely
+
+System degrades gracefully
+
+Users receive timely feedback
+
+6️⃣ Missing Config Validation at Startup
+
+(Root Cause Amplifier)
+
+Problem
+
+Misconfiguration discovered only at runtime.
+
+Required Fix
+
+Centralized config validation at app startup
+
+Implementation Requirements
+
+Use schema validation (zod / joi)
+
+Validate:
+
+Secrets
+
+API keys
+
+Redis connection
+
+AI provider keys
+
+Fail fast in production
+
+Acceptance Criteria
+
+App does not boot with invalid config
+
+Errors are explicit and readable
+
+CI can catch misconfigurations
+
+🧪 REQUIRED TEST UPDATES
+
+For each fix:
+
+Add or update automated tests
+
+Include:
+
+Startup failure tests
+
+Runtime failure tests
+
+Tests must fail before fix, pass after
+
+🚦 SAFETY CONSTRAINTS
+
+Do NOT modify RBAC logic
+
+Do NOT touch multi-tenant isolation
+
+Do NOT weaken security headers
+
+Do NOT downgrade error severity
+
+📁 EXPECTED OUTPUT
+
+Code changes only where required
+
+Clear commit-level separation per issue
+
+Inline comments explaining why, not what
+
+No TODOs left unresolved
+
+✅ FINAL CHECK
+
+Before finishing, confirm:
+
+All 6 issues fixed
+
+App fails safely in production misconfigurations
+
+No silent failures remain
+
+Existing tests still pass
+
+🔚 FINAL INSTRUCTION TO REPLIT
+
+Implement these fixes exactly.
+Assume this is the last gate before production launch.
+Correctness > speed.
+Security > convenience.
