@@ -1,0 +1,331 @@
+ROLE
+
+You are acting as a Staff Backend + Platform Engineer responsible for making all automated tests pass without weakening security or RBAC.
+
+Your task is to fix broken behavior, not modify tests to “make them pass”.
+
+🎯 HIGH-LEVEL GOAL
+
+Make all 23 failing tests PASS by correcting:
+
+Validation vs authorization order
+
+Missing or misnamed API endpoints
+
+AI and email guardrails
+
+Role resolution during test setup
+
+Input normalization and limits
+
+Retry, queueing, and rate limiting logic
+
+🔴 ROOT CAUSE (CRITICAL — READ FIRST)
+
+Most failures exist because:
+
+Authorization (403) is happening BEFORE validation
+
+Tests expect 400 / 422 for bad input
+
+Current system returns 403 too early
+
+Tests reference canonical endpoints
+
+/api/sequences (not /api/campaigns)
+
+AI + Email endpoints must exist and return consistent contracts
+
+Manager & Super Admin test suites fail during setup
+
+Role resolution or test token generation is broken
+
+1️⃣ USER / ONBOARDING FAILURES (6 TESTS)
+A. CAMPAIGN VALIDATION ORDER (CRITICAL)
+REQUIRED FIX
+
+Validation MUST occur before RBAC enforcement for:
+
+Campaign creation
+
+Campaign update
+
+Onboarding steps
+
+Validation Rules
+
+Campaign name must:
+
+Exist
+
+Not be empty
+
+Not be whitespace-only
+
+Be ≤ max length (define explicitly, e.g., 120 chars)
+
+Each required field must:
+
+Be validated independently
+
+Return field-specific error
+
+Expected Response
+HTTP 422
+{
+  "code": "VALIDATION_ERROR",
+  "field": "campaignName",
+  "message": "Campaign name cannot be empty"
+}
+
+Onboarding State Persistence
+
+Save onboarding progress transactionally
+
+On login:
+
+Resume last incomplete step
+
+Do NOT reset progress
+
+2️⃣ MANAGER ROLE TEST FAILURE (SUITE SETUP)
+Root Cause
+
+Test suite setup fails due to:
+
+Incorrect role assignment
+
+Token missing role claims
+
+Manager blocked during setup hooks
+
+REQUIRED FIX
+
+Ensure test auth helper can create:
+
+user
+
+manager
+
+super_admin
+
+Manager tokens must:
+
+Pass auth
+
+Be blocked ONLY at execution-level APIs (not setup)
+
+Add explicit role bootstrap logic in test environment.
+
+3️⃣ AI GENERATION FAILURES (8 TESTS)
+A. INPUT NORMALIZATION (MANDATORY)
+
+Before any AI call:
+
+Normalize unicode
+
+Allow emojis
+
+Strip invalid control characters
+
+B. LENGTH GUARDRAILS
+
+Enforce max prompt length
+
+Truncate safely (token-aware)
+
+Log truncation event
+
+C. CONTEXT REQUIREMENTS (BLOCKING)
+
+AI generation MUST be blocked if:
+
+ICP missing
+
+Trigger missing
+
+Minimum prospect fields missing (define explicitly)
+
+Expected Response
+HTTP 400
+{
+  "code": "MISSING_CONTEXT",
+  "message": "ICP and trigger are required to generate AI copy"
+}
+
+D. RATE LIMIT HANDLING
+
+Detect 429 from provider
+
+Retry with backoff
+
+If exhausted → graceful failure with user-safe message
+
+4️⃣ EMAIL EXECUTION FAILURES (7 TESTS)
+A. VALIDATION (BEFORE SEND)
+
+Reject:
+
+Invalid email address
+
+Empty subject
+
+Empty body
+
+Use 422, NOT 403.
+
+B. PROVIDER OUTAGE HANDLING
+
+When provider is down:
+
+Queue email
+
+Retry with exponential backoff
+
+Ensure idempotency
+
+Never lose email
+
+C. DAILY LIMIT ENFORCEMENT
+
+Enforce per-user + per-org limits
+
+Block send when exceeded
+
+Return explicit error
+
+HTTP 429
+{
+  "code": "DAILY_LIMIT_EXCEEDED",
+  "message": "Daily email limit reached"
+}
+
+5️⃣ SUPER ADMIN TEST FAILURE (SUITE SETUP)
+Root Cause
+
+Super admin suite fails due to:
+
+Global scope not resolving
+
+Org-scoped middleware applied incorrectly
+
+REQUIRED FIX
+
+Super admin must:
+
+Bypass org scoping
+
+Still require auth
+
+Ensure test token includes:
+
+{
+  "role": "super_admin",
+  "global": true
+}
+
+6️⃣ ENDPOINT ALIGNMENT (CRITICAL)
+REQUIRED ACTIONS
+
+Ensure /api/sequences exists and is canonical
+
+If /api/campaigns exists:
+
+Either alias or redirect internally
+
+AI and email endpoints must:
+
+Exist
+
+Match test expectations
+
+Return consistent error contracts
+
+7️⃣ AUTH VS VALIDATION ORDER (NON-NEGOTIABLE)
+Golden Rule
+
+Validation → Business Rules → Authorization → Execution
+
+If input is invalid:
+
+Return 400/422
+
+NEVER 403
+
+8️⃣ ERROR CONTRACT (GLOBAL)
+
+Every error must return:
+
+{
+  "code": "ERROR_CODE",
+  "message": "Human readable",
+  "field": "optional",
+  "action": "optional"
+}
+
+
+Frontend must surface this verbatim.
+
+9️⃣ TEST-SPECIFIC FIX STRATEGY
+
+For EACH failing test:
+
+Identify expected HTTP code
+
+Match endpoint path
+
+Match response body shape
+
+Ensure role permits reaching validation layer
+
+Ensure failure is explicit (never silent)
+
+🔍 FINAL VERIFICATION CHECKLIST
+
+Before marking complete:
+
+All 23 tests pass
+
+No test expectations modified
+
+No RBAC weakened
+
+No validation skipped
+
+No silent failures added
+
+📦 REQUIRED OUTPUT
+
+Code changes (commented)
+
+Passing test run screenshot/log
+
+Brief summary mapping:
+
+Test → Fix applied
+
+🚨 HARD RULES
+
+Do NOT change tests to match behavior
+
+Do NOT return 403 for validation errors
+
+Do NOT bypass AI/email guardrails
+
+Do NOT allow partial execution
+
+▶️ EXECUTION INSTRUCTION
+
+Proceed module by module:
+
+User onboarding
+
+Manager role
+
+AI generation
+
+Email execution
+
+Super admin
+
+Validate after each module.

@@ -180,6 +180,14 @@ export async function createTestSequence(params: {
   return sequenceId;
 }
 
+export async function createTestCampaign(params: {
+  userId: string;
+  name?: string;
+  status?: string;
+}): Promise<string> {
+  return createTestSequence(params);
+}
+
 export async function getAuditLogs(params: {
   userId?: string;
   action?: string;
@@ -196,8 +204,43 @@ export async function getAuditLogs(params: {
 
 export const API_BASE = process.env.TEST_API_BASE || "http://localhost:5000";
 
+let cachedCsrfToken: string | null = null;
+let csrfCookie: string | null = null;
+
+export async function getCsrfToken(): Promise<{ token: string; cookie: string }> {
+  if (cachedCsrfToken && csrfCookie) {
+    return { token: cachedCsrfToken, cookie: csrfCookie };
+  }
+  
+  const fetch = (await import('node-fetch')).default;
+  const response = await fetch(`${API_BASE}/api/csrf-token`, {
+    method: 'GET',
+    credentials: 'include',
+  });
+  
+  const setCookieHeader = response.headers.get('set-cookie');
+  if (setCookieHeader) {
+    const match = setCookieHeader.match(/x-csrf-token=([^;]+)/);
+    if (match) {
+      csrfCookie = match[1];
+    }
+  }
+  
+  const data = await response.json() as { csrfToken: string };
+  cachedCsrfToken = data.csrfToken;
+  
+  return { token: cachedCsrfToken || '', cookie: csrfCookie || '' };
+}
+
 export function authHeader(token: string): { Authorization: string } {
   return { Authorization: `Bearer ${token}` };
+}
+
+export function authHeaderWithCsrf(token: string, csrfToken: string): Record<string, string> {
+  return {
+    Authorization: `Bearer ${token}`,
+    'x-csrf-token': csrfToken,
+  };
 }
 
 export function delay(ms: number): Promise<void> {

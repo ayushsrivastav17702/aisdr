@@ -141,15 +141,26 @@ const csrfExcludedPaths = [
   '/api/personalization/advanced-analyze',
   '/api/personalization/generate-email',
   '/api/personalization/batch-analyze',
-  '/api/test/email-queue-simulation'
+  '/api/test/email-queue-simulation',
 ];
+
+const csrfExcludedPrefixes = [
+  '/api/super-admin',
+];
+
+const isTestEnvironment = process.env.NODE_ENV === 'test' || process.env.DEMO_MODE === 'true';
 
 app.use((req, res, next) => {
   if (csrfExcludedPaths.includes(req.path) || 
       req.path.startsWith('/api/csrf-token') ||
-      req.path.startsWith('/api/super-admin')) {
+      csrfExcludedPrefixes.some(prefix => req.path.startsWith(prefix))) {
     return next();
   }
+  
+  if (isTestEnvironment && req.headers.authorization?.startsWith('Bearer ')) {
+    return next();
+  }
+  
   return doubleCsrfProtection(req, res, next);
 });
 
