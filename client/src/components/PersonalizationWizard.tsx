@@ -144,19 +144,20 @@ export function PersonalizationWizard({
   });
   const prospects = data?.prospects ?? [];
 
-  // Load content library
-  const { data: contentLibrary } = useQuery({
+  // Load content library with explicit error handling
+  const { data: contentLibrary, isLoading: isLoadingContent, error: contentError } = useQuery({
     queryKey: ["/api/content-library"],
-    enabled: open
+    enabled: open,
+    retry: 1
   });
-  const contentItems = (contentLibrary as any) || [];
+  
+  const contentItems = Array.isArray(contentLibrary) ? contentLibrary : [];
 
   // Auto-select all content library items when they load
   useEffect(() => {
     if (contentItems.length > 0 && selectedContentIds.length === 0) {
       const allContentIds = contentItems.map((item: any) => item.id);
       setSelectedContentIds(allContentIds);
-      console.log(`✅ Auto-selected ${allContentIds.length} content library items for compliance`);
     }
   }, [contentItems.length, selectedContentIds.length]);
 
@@ -1120,44 +1121,69 @@ export function PersonalizationWizard({
                     />
                   </div>
 
-                  {contentItems.length > 0 && (
-                    <div className="mt-4">
-                      <Label className="flex items-center gap-2">
-                        Content Library 
+                  {/* Content Library Section - Always visible */}
+                  <div className="mt-4" data-testid="content-library-section">
+                    <Label className="flex items-center gap-2" data-testid="content-library-label">
+                      Content Library 
+                      {contentItems.length > 0 && (
                         <Badge variant="outline" className="bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800">
                           Auto-selected for Compliance
                         </Badge>
-                      </Label>
-                      <p className="text-sm text-muted-foreground mb-2">All content items are selected by default to ensure compliance with brand guidelines</p>
-                      <ScrollArea className="h-32 border rounded-md p-2">
-                        {contentItems.map((item: any) => (
-                          <div key={item.id} className="flex items-center gap-2 py-1">
-                            <input
-                              type="checkbox"
-                              id={`content-${item.id}`}
-                              checked={selectedContentIds.includes(item.id)}
-                              onChange={(e) => {
-                                if (e.target.checked) {
-                                  setSelectedContentIds([...selectedContentIds, item.id]);
-                                } else {
-                                  setSelectedContentIds(selectedContentIds.filter(id => id !== item.id));
-                                }
-                              }}
-                              data-testid={`checkbox-content-${item.id}`}
-                            />
-                            <label htmlFor={`content-${item.id}`} className="text-sm cursor-pointer flex-1">
-                              {item.title} <span className="text-muted-foreground">({item.type})</span>
-                            </label>
-                          </div>
-                        ))}
-                      </ScrollArea>
-                      {selectedContentIds.length > 0 && (
-                        <p className="text-sm text-muted-foreground mt-2">
-                          {selectedContentIds.length} content item{selectedContentIds.length > 1 ? 's' : ''} selected
-                        </p>
                       )}
-                    </div>
-                  )}
+                    </Label>
+                    
+                    {isLoadingContent ? (
+                      <div className="mt-2 p-4 border rounded-md bg-gray-50 dark:bg-gray-900">
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <RefreshCw className="h-4 w-4 animate-spin" />
+                          Loading content library...
+                        </div>
+                      </div>
+                    ) : contentError ? (
+                      <div className="mt-2 p-4 border rounded-md bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800">
+                        <p className="text-sm text-red-600 dark:text-red-400">
+                          Failed to load content library. Emails will be generated without content guidelines.
+                        </p>
+                      </div>
+                    ) : contentItems.length === 0 ? (
+                      <div className="mt-2 p-4 border rounded-md bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-800">
+                        <p className="text-sm text-amber-700 dark:text-amber-300">
+                          No content library items found. Add case studies, product descriptions, and approved statistics in Content Library to ensure brand-compliant emails.
+                        </p>
+                      </div>
+                    ) : (
+                      <>
+                        <p className="text-sm text-muted-foreground mb-2">All content items are selected by default to ensure compliance with brand guidelines</p>
+                        <ScrollArea className="h-32 border rounded-md p-2">
+                          {contentItems.map((item: any) => (
+                            <div key={item.id} className="flex items-center gap-2 py-1">
+                              <input
+                                type="checkbox"
+                                id={`content-${item.id}`}
+                                checked={selectedContentIds.includes(item.id)}
+                                onChange={(e) => {
+                                  if (e.target.checked) {
+                                    setSelectedContentIds([...selectedContentIds, item.id]);
+                                  } else {
+                                    setSelectedContentIds(selectedContentIds.filter(id => id !== item.id));
+                                  }
+                                }}
+                                data-testid={`checkbox-content-${item.id}`}
+                              />
+                              <label htmlFor={`content-${item.id}`} className="text-sm cursor-pointer flex-1">
+                                {item.title} <span className="text-muted-foreground">({item.type})</span>
+                              </label>
+                            </div>
+                          ))}
+                        </ScrollArea>
+                        {selectedContentIds.length > 0 && (
+                          <p className="text-sm text-muted-foreground mt-2">
+                            {selectedContentIds.length} content item{selectedContentIds.length > 1 ? 's' : ''} selected
+                          </p>
+                        )}
+                      </>
+                    )}
+                  </div>
 
                   {/* Batch Progress Indicator */}
                   {batchMode && batchProgress.total > 0 && (

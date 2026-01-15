@@ -5,6 +5,9 @@ import {
   getPromptTemplate, 
   interpolatePrompt, 
   EMAIL_TYPES,
+  getTemplateForContext,
+  AI_DECISION_ENGINE_RULES,
+  EMAIL_TEMPLATE_LIBRARY,
   type PromptContext,
   type EmailType 
 } from "./ai-prompt-templates";
@@ -35,6 +38,13 @@ export interface EmailGenerationRequest {
   customContext?: Partial<PromptContext>;
   tone?: 'professional' | 'casual' | 'urgent' | 'friendly';
   contentItemIds?: string[]; // User-selected content library items
+  // AI Decision Engine context
+  campaignStage?: 'first_touch' | 'follow_up' | 'objection' | 'post_demo' | 'breakup' | 're_engagement';
+  daysSinceLastTouch?: number;
+  replyType?: 'positive' | 'neutral' | 'objection' | 'no_reply' | 'silence';
+  triggerDetected?: 'hiring' | 'funding' | 'expansion' | 'new_role' | 'none';
+  icpType?: 'smb' | 'mid_market' | 'enterprise';
+  userRole?: 'sdr' | 'manager' | 'founder' | 'revops';
 }
 
 export interface GeneratedEmail {
@@ -43,12 +53,77 @@ export interface GeneratedEmail {
   reasoning: string;
   personalizationFactors: string[];
   confidenceScore: number;
+  // AI Decision Engine outputs
+  templateRecommendation?: {
+    templateName: string;
+    reasoning: string;
+  };
+  warnings?: string[]; // Guardrail violations
 }
 
 export interface EmailVariant {
   id: string;
   email: GeneratedEmail;
   approach: string;
+}
+
+// AI Decision Engine: Validate email against guardrails
+function validateEmailGuardrails(body: string, subject: string, request: EmailGenerationRequest): string[] {
+  const warnings: string[] = [];
+  const wordCount = body.split(/\s+/).length;
+  
+  // Word count check
+  if (wordCount > 130) {
+    warnings.push(`Email exceeds 130 words (${wordCount} words). Consider shortening for better response rates.`);
+  }
+  
+  // Multiple CTAs check
+  const questionMarks = (body.match(/\?/g) || []).length;
+  if (questionMarks > 1) {
+    warnings.push('Multiple questions detected. Stick to ONE question per email for clarity.');
+  }
+  
+  // Calendar link in first touch
+  if (request.campaignStage === 'first_touch' || request.emailType === 'cold_outreach') {
+    if (body.toLowerCase().includes('calendly') || body.toLowerCase().includes('calendar link') || body.includes('/schedule')) {
+      warnings.push('Calendar links in first touch emails reduce reply rates. Remove and ask a question instead.');
+    }
+  }
+  
+  // Pitch detection in first touch
+  if (request.campaignStage === 'first_touch' || request.emailType === 'cold_outreach') {
+    const pitchPhrases = ['our solution', 'we offer', 'our platform', 'our product', 'we provide', 'our services'];
+    const hasPitch = pitchPhrases.some(phrase => body.toLowerCase().includes(phrase));
+    if (hasPitch) {
+      warnings.push('First touch emails should start conversations, not pitch products. Consider reframing around their problem.');
+    }
+  }
+  
+  // Fake personalization check
+  if (body.includes('{{') || body.includes('}}') || body.includes('[Company]') || body.includes('[Name]')) {
+    warnings.push('Unresolved personalization tokens detected. Ensure all placeholders are replaced.');
+  }
+  
+  return warnings;
+}
+
+// AI Decision Engine: Get recommended template based on context
+function getAIRecommendedTemplate(request: EmailGenerationRequest): { templateName: string; reasoning: string } | undefined {
+  if (!request.campaignStage) return undefined;
+  
+  const templateSelection = getTemplateForContext({
+    campaignStage: request.campaignStage,
+    daysSinceLastTouch: request.daysSinceLastTouch,
+    replyType: request.replyType,
+    triggerDetected: request.triggerDetected,
+    icpType: request.icpType,
+    userRole: request.userRole
+  });
+  
+  return {
+    templateName: templateSelection.templateName,
+    reasoning: templateSelection.reasoning
+  };
 }
 
 // Helper function to format email body with proper spacing
@@ -117,16 +192,39 @@ export async function generateEmail(request: EmailGenerationRequest, prospectDat
       contentLibraryItems = allContentLibraryItems.filter(item => 
         request.contentItemIds!.includes(item.id.toString())
       );
-      console.log(`📚 Content Library: Using ${contentLibraryItems.length} user-selected items: ${contentLibraryItems.map(i => i.title).join(', ')}`);
     } else {
       // Fall back to industry-based filtering
       contentLibraryItems = filterContentByIndustry(allContentLibraryItems, prospect);
-      console.log(`📚 Content Library: ${allContentLibraryItems.length} total items, ${contentLibraryItems.length} relevant to ${prospect.companyIndustry || 'all industries'}`);
     }
     
     const promptContext = buildPromptContext(prospect, request, contentLibraryItems);
     const template = getPromptTemplate(request.emailType);
-    const prompt = interpolatePrompt(template, promptContext);
+    let prompt = interpolatePrompt(template, promptContext);
+    
+    // AI Decision Engine: Get recommended template and enhance prompt
+    const templateSelection = request.campaignStage ? getTemplateForContext({
+      campaignStage: request.campaignStage,
+      daysSinceLastTouch: request.daysSinceLastTouch,
+      replyType: request.replyType,
+      triggerDetected: request.triggerDetected,
+      icpType: request.icpType,
+      userRole: request.userRole
+    }) : null;
+    
+    // Enhance prompt with template pattern if available
+    if (templateSelection?.template?.body) {
+      const templateGuidance = `
+📋 AI DECISION ENGINE RECOMMENDATION:
+Template Pattern: ${templateSelection.templateName}
+Reasoning: ${templateSelection.reasoning}
+
+REFERENCE PATTERN (use this style and structure):
+${templateSelection.template.body}
+
+Apply this pattern style to the specific prospect context below. Do NOT copy verbatim - adapt the approach and tone.`;
+      
+      prompt = templateGuidance + '\n\n' + prompt;
+    }
 
     const response = await openaiHelper.callWithFallback(
       // Primary OpenAI call
@@ -136,7 +234,7 @@ export async function generateEmail(request: EmailGenerationRequest, prospectDat
           messages: [
             {
               role: "system",
-              content: "You are an expert sales development representative for Increff with years of experience writing high-converting cold emails. Always respond with valid JSON and follow the exact structure and constraints provided."
+              content: "You are an expert sales development representative for Increff with years of experience writing high-converting cold emails. Always respond with valid JSON and follow the exact structure and constraints provided. When given an AI Decision Engine recommendation, prioritize its template pattern and style."
             },
             {
               role: "user",
@@ -153,6 +251,7 @@ export async function generateEmail(request: EmailGenerationRequest, prospectDat
           model: "claude-sonnet-4-20250514",
           max_tokens: 1000,
           temperature: 0.7,
+          system: "You are an expert sales development representative for Increff. Always respond with valid JSON. When given an AI Decision Engine recommendation, prioritize its template pattern and style.",
           messages: [
             {
               role: "user",
@@ -173,7 +272,7 @@ export async function generateEmail(request: EmailGenerationRequest, prospectDat
           messages: [
             {
               role: "system",
-              content: "You are an expert sales development representative for Increff with years of experience writing high-converting cold emails. Always respond with valid JSON and follow the exact structure and constraints provided."
+              content: "You are an expert sales development representative for Increff with years of experience writing high-converting cold emails. Always respond with valid JSON and follow the exact structure and constraints provided. When given an AI Decision Engine recommendation, prioritize its template pattern and style."
             },
             {
               role: "user",
@@ -198,22 +297,18 @@ export async function generateEmail(request: EmailGenerationRequest, prospectDat
     if ('choices' in response) {
       // OpenAI format
       const rawContent = (response as any).choices[0].message.content || '{}';
-      console.log('📧 AI Response (OpenAI):', rawContent.substring(0, 300));
       result = JSON.parse(rawContent);
     } else {
       // Anthropic format
       const content = (response as any).content[0];
       if (content.type === 'text') {
         const text = content.text;
-        console.log('📧 AI Response (Anthropic):', text.substring(0, 300));
         // Strip markdown code blocks if present
         const jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/) || text.match(/```\s*([\s\S]*?)\s*```/);
         const jsonText = jsonMatch ? jsonMatch[1] : text;
         result = JSON.parse(jsonText.trim());
       }
     }
-    
-    console.log('📧 Parsed result - subject:', result.subject?.substring(0, 50), 'body length:', result.body?.length || 0);
     
     const personalizationFactors = [
       'Prospect name and title',
@@ -227,13 +322,22 @@ export async function generateEmail(request: EmailGenerationRequest, prospectDat
     
     // Format email body with proper spacing
     const formattedBody = formatEmailBody(result.body || generateFallbackEmailBody(prospect));
+    const finalSubject = result.subject || `Quick question about ${prospect.companyName || 'your business'}`;
+    
+    // AI Decision Engine: Validate against guardrails
+    const warnings = validateEmailGuardrails(formattedBody, finalSubject, request);
+    
+    // AI Decision Engine: Get template recommendation
+    const templateRecommendation = getAIRecommendedTemplate(request);
     
     return {
-      subject: result.subject || `Quick question about ${prospect.companyName || 'your business'}`,
+      subject: finalSubject,
       body: formattedBody,
       reasoning: result.reasoning || 'AI-generated personalized email',
       personalizationFactors,
-      confidenceScore
+      confidenceScore,
+      templateRecommendation,
+      warnings: warnings.length > 0 ? warnings : undefined
     };
     
   } catch (error) {
