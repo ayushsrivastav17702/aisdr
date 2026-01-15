@@ -1,0 +1,25 @@
+{
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:auth": "vitest run tests/auth/",
+    "test:data-isolation": "vitest run tests/data-isolation/",
+    "test:user": "vitest run tests/user/",
+    "test:manager": "vitest run tests/manager/",
+    "test:super-admin": "vitest run tests/super-admin/",
+    "test:ai": "vitest run tests/ai/",
+    "test:email": "vitest run tests/email/",
+    "test:security": "vitest run tests/security/",
+    "test:chaos": "vitest run tests/chaos/",
+    "test:ux": "vitest run tests/ux/",
+    "test:performance": "vitest run tests/performance/",
+    "test:unit": "vitest run --exclude tests/e2e/",
+    "test:e2e": "playwright test",
+    "test:critical": "vitest run tests/auth/ tests/data-isolation/ tests/security/",
+    "test:load": "k6 run k6/load-test.js",
+    "test:api": "newman run postman/aisdr-api-tests.json --environment postman/test-environment.json",
+    "test:ci": "npm run test:critical && npm run test:unit"
+  },
+  "description": "Add these scripts to package.json for running tests"
+}
