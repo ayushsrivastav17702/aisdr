@@ -287,7 +287,22 @@ router.get('/api/auth/me', authenticate, async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    res.json(req.user);
+    // Always fetch fresh manager status from database to ensure accuracy
+    const [managerAccount] = await db
+      .select({ id: managerAccounts.id, managerRole: managerAccounts.managerRole })
+      .from(managerAccounts)
+      .where(eq(managerAccounts.userId, req.user.id))
+      .limit(1);
+    
+    const isManager = !!managerAccount;
+    
+    // Log for debugging manager status issues
+    console.log(`[AUTH_ME] User: ${req.user.email}, userId: ${req.user.id}, isManager: ${isManager}, managerAccountId: ${managerAccount?.id || 'none'}`);
+
+    res.json({
+      ...req.user,
+      isManager,
+    });
   } catch (error) {
     console.error('Get user error:', error);
     res.status(500).json({ error: 'Failed to get user info' });
