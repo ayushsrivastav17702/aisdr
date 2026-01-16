@@ -88,6 +88,48 @@ router.get("/:id", authenticate, async (req, res) => {
   }
 });
 
+const VALID_TRANSITIONS: Record<string, string[]> = {
+  draft: ["active", "paused"],
+  active: ["paused", "completed"],
+  paused: ["active", "draft"],
+  completed: [],
+};
+
+router.patch("/:id", validationMiddleware(campaignSchema.partial()), authenticate, forbidManager, async (req, res) => {
+  try {
+    if (!req.userContext) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    const sequence = await storage.getSequence(req.userContext, req.params.id);
+    if (!sequence) {
+      return res.status(404).json({ error: "Campaign not found" });
+    }
+
+    const { status, ...otherUpdates } = req.body;
+
+    if (status && status !== sequence.status) {
+      const validTransitions = VALID_TRANSITIONS[sequence.status] || [];
+      if (!validTransitions.includes(status)) {
+        return res.status(422).json({
+          code: "INVALID_TRANSITION",
+          error: `Cannot transition from ${sequence.status} to ${status}`,
+          message: `Invalid status transition. Valid transitions from ${sequence.status}: ${validTransitions.join(", ") || "none"}`,
+          currentStatus: sequence.status,
+          requestedStatus: status,
+          validTransitions,
+        });
+      }
+    }
+
+    const updated = await storage.updateSequence(req.userContext, req.params.id, { status, ...otherUpdates });
+    res.json(updated);
+  } catch (error) {
+    console.error("Campaign update error:", error);
+    res.status(500).json({ error: "Failed to update campaign" });
+  }
+});
+
 router.post("/:id/launch", authenticate, forbidManager, async (req, res) => {
   try {
     if (!req.userContext) {
@@ -101,13 +143,19 @@ router.post("/:id/launch", authenticate, forbidManager, async (req, res) => {
 
     const missingSteps: string[] = [];
     
-    if (!sequence.icpId) {
+    const sequenceIcpId = (sequence as any).icpId;
+    if (!sequenceIcpId) {
       missingSteps.push("ICP selection required");
     }
 
     const steps = await storage.getSequenceSteps(req.userContext, req.params.id);
     if (steps.length === 0) {
       missingSteps.push("At least one sequence step required");
+    }
+
+    const mailboxes = (await (storage as any).getMailboxes?.(req.userContext)) || [];
+    if (mailboxes.length === 0) {
+      missingSteps.push("No mailbox configured");
     }
 
     if (missingSteps.length > 0) {

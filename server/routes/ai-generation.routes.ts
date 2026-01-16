@@ -26,7 +26,30 @@ const generateEmailSchema = z.object({
   trigger: z.string().min(1, "Trigger event context is required").optional(),
   context: z.any().optional(),
   previousEmails: z.array(z.any()).optional(),
+  persona: z.string().optional(),
+  subjectStrategy: z.string().optional(),
 });
+
+const CURIOSITY_OVERRIDE_PERSONAS = ["Enterprise", "Executive", "C-Level"];
+const CURIOSITY_PATTERNS = /you won't believe|shocking|secret|amazing|incredible/i;
+
+function detectOverride(persona?: string, subjectStrategy?: string, title?: string): { overrideApplied: boolean; reason?: string } {
+  if (persona && CURIOSITY_OVERRIDE_PERSONAS.includes(persona) && subjectStrategy?.toLowerCase() === "curiosity") {
+    return {
+      overrideApplied: true,
+      reason: `Curiosity subject strategy overridden for ${persona} persona - using professional tone instead`,
+    };
+  }
+  
+  if (title && /CEO|CTO|CFO|COO|VP|Director|C-Level|Chief/i.test(title) && subjectStrategy?.toLowerCase() === "aggressive") {
+    return {
+      overrideApplied: true,
+      reason: "Aggressive subject strategy overridden for executive-level prospect - using professional defaults",
+    };
+  }
+  
+  return { overrideApplied: false };
+}
 
 const INJECTION_PATTERNS = [
   /api_key/gi,
@@ -166,8 +189,10 @@ router.post("/generate-email", validationMiddleware(generateEmailSchema), authen
       return res.status(401).json({ error: "Authentication required" });
     }
 
-    const { prospectData, templateType, icp, trigger, context, previousEmails } = req.body;
+    const { prospectData, templateType, icp, trigger, context, previousEmails, persona, subjectStrategy } = req.body;
     const { processed, truncated } = processProspectData(prospectData);
+    
+    const overrideInfo = detectOverride(persona, subjectStrategy, processed.title);
 
     const testSimulate = req.headers['x-test-simulate'] as string | undefined;
     const simulateTimeout = testSimulate === 'ai-timeout';
@@ -230,6 +255,8 @@ router.post("/generate-email", validationMiddleware(generateEmailSchema), authen
         usedFallback: result.usedFallback || false,
         metadata: {
           inputTruncated: truncated,
+          overrideApplied: overrideInfo.overrideApplied,
+          reason: overrideInfo.reason,
         },
         userNotification: result.usedFallback
           ? "AI service temporarily unavailable. Using safe fallback template."
