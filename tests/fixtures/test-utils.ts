@@ -155,7 +155,7 @@ export async function createTestProspect(params: {
     id: prospectId,
     firstName: "Test",
     lastName: "Prospect",
-    email: params.email || `prospect-${nanoid(6)}@example.com`,
+    primaryEmail: params.email || `prospect-${nanoid(6)}@example.com`,
     userId: params.userId,
     organizationId: params.organizationId || null,
   });

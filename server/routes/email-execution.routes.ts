@@ -91,6 +91,20 @@ router.post("/send", validationMiddleware(sendEmailSchema), authenticate, forbid
       });
     }
 
+    const prospect = await storage.getProspect(req.userContext, prospectId);
+    if (prospect) {
+      const prospectEmail = to || prospect.primaryEmail;
+      if (!prospectEmail || !emailRegex.test(prospectEmail)) {
+        return res.status(422).json({
+          code: "VALIDATION_ERROR",
+          error: "Prospect has an invalid email address",
+          field: "prospectEmail",
+          message: "Prospect has an invalid email address",
+          action: "Please update the prospect with a valid email address",
+        });
+      }
+    }
+
     const testSimulate = req.headers['x-test-simulate'] as string | undefined;
     if (testSimulate === 'quota-exceeded') {
       return res.status(429).json({
