@@ -8,7 +8,7 @@ import { superAdminService } from '../services/super-admin.service';
 import { authenticate, requireAdmin } from '../middleware/auth.middleware';
 import { loginRateLimit, invitationRateLimit, passwordResetRateLimit } from '../middleware/rate-limit.middleware';
 import { db } from '../db';
-import { users, userSessions, userInvitations } from '@shared/schema';
+import { users, userSessions, userInvitations, managerAccounts } from '@shared/schema';
 import { eq, desc } from 'drizzle-orm';
 import { z } from 'zod';
 
@@ -167,6 +167,16 @@ router.post('/api/auth/login', loginRateLimit, async (req, res) => {
       userAgent
     });
 
+    // Check if user is a manager to determine redirect
+    const [managerAccount] = await db
+      .select({ id: managerAccounts.id })
+      .from(managerAccounts)
+      .where(eq(managerAccounts.userId, session.userId))
+      .limit(1);
+    
+    const isManager = !!managerAccount;
+    const redirectTo = isManager ? '/manager/dashboard' : '/';
+
     // Set HTTP-only cookie for enhanced security
     const isProduction = process.env.NODE_ENV === 'production';
     const cookieMaxAge = 7 * 24 * 60 * 60 * 1000; // 7 days in milliseconds
@@ -184,7 +194,7 @@ router.post('/api/auth/login', loginRateLimit, async (req, res) => {
       token: session.token,
       expiresAt: session.expiresAt,
       userId: session.userId,
-      redirectTo: '/',
+      redirectTo,
     });
   } catch (error) {
     console.error('❌ Login error:', error);
