@@ -43,8 +43,16 @@ const INJECTION_PATTERNS = [
   /format:\s*json/gi,
   /keys:/gi,
   /output\s*format/gi,
-  /ignore\s*previous/gi,
+  /ignore\s*(all\s*)?previous/gi,
   /disregard/gi,
+  /system\s*prompt/gi,
+  /reveal\s*(all|data|secret)/gi,
+  /forget\s*(your\s*)?instructions/gi,
+  /override\s*safety/gi,
+  /list\s*all\s*user/gi,
+  /\{\{system\}\}/gi,
+  /output:\s*api/gi,
+  /in\s*the\s*database/gi,
 ];
 
 function sanitizeInput(input: string): string {
@@ -81,15 +89,20 @@ function processProspectData(data: any): { processed: any; truncated: boolean } 
   let truncated = false;
   const processed = { ...data };
 
+  const stringFields = ['firstName', 'lastName', 'company', 'title', 'email', 'bio', 'notes', 'linkedinUrl'];
+  for (const field of stringFields) {
+    if (processed[field] && typeof processed[field] === 'string') {
+      processed[field] = normalizeInput(processed[field]);
+    }
+  }
+
   if (processed.bio) {
-    processed.bio = normalizeInput(processed.bio);
     const result = truncateInput(processed.bio, MAX_BIO_LENGTH);
     processed.bio = result.text;
     if (result.truncated) truncated = true;
   }
 
   if (processed.notes) {
-    processed.notes = normalizeInput(processed.notes);
     const result = truncateInput(processed.notes, MAX_BIO_LENGTH);
     processed.notes = result.text;
     if (result.truncated) truncated = true;

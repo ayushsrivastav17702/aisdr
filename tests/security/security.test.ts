@@ -97,7 +97,8 @@ describe("SECURITY TESTS", () => {
         });
       
       if (response.status === 200) {
-        expect(response.body.subjectLine).not.toContain("<script>");
+        const subject = response.body.emailSubject || response.body.subjectLine || "";
+        expect(subject).not.toContain("<script>");
         expect(response.body.emailBody).not.toContain("<script>");
       }
     });
