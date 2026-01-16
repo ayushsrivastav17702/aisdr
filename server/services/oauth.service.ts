@@ -84,7 +84,7 @@ class OAuthService {
     code: string,
     ipAddress?: string,
     userAgent?: string
-  ): Promise<{ success: boolean; token?: string; error?: string }> {
+  ): Promise<{ success: boolean; token?: string; userId?: string; error?: string }> {
     try {
       const config = this.getGoogleConfig();
 
@@ -146,7 +146,7 @@ class OAuthService {
     code: string,
     ipAddress?: string,
     userAgent?: string
-  ): Promise<{ success: boolean; token?: string; error?: string }> {
+  ): Promise<{ success: boolean; token?: string; userId?: string; error?: string }> {
     try {
       const config = this.getMicrosoftConfig();
 
@@ -214,7 +214,7 @@ class OAuthService {
     provider: 'google' | 'microsoft',
     ipAddress?: string,
     userAgent?: string
-  ): Promise<{ success: boolean; token?: string; error?: string }> {
+  ): Promise<{ success: boolean; token?: string; userId?: string; error?: string }> {
     const [existingUser] = await db
       .select()
       .from(users)
@@ -260,6 +260,7 @@ class OAuthService {
     return {
       success: true,
       token: sessionData.token,
+      userId: existingUser.id,
     };
   }
 
