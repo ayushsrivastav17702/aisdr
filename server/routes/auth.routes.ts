@@ -420,7 +420,18 @@ router.get('/api/auth/google/callback', async (req, res) => {
       path: '/',
     });
 
-    res.redirect('/');
+    // Check if user is a manager to determine redirect
+    let isManager = false;
+    if (result.userId) {
+      const [managerAccount] = await db
+        .select({ id: managerAccounts.id })
+        .from(managerAccounts)
+        .where(eq(managerAccounts.userId, result.userId))
+        .limit(1);
+      isManager = !!managerAccount;
+    }
+    
+    res.redirect(isManager ? '/manager/dashboard' : '/');
   } catch (error) {
     console.error('Google callback error:', error);
     res.redirect('/login?error=google_failed');
@@ -474,7 +485,18 @@ router.get('/api/auth/microsoft/callback', async (req, res) => {
       path: '/',
     });
 
-    res.redirect('/');
+    // Check if user is a manager to determine redirect
+    let isManager = false;
+    if (result.userId) {
+      const [managerAccount] = await db
+        .select({ id: managerAccounts.id })
+        .from(managerAccounts)
+        .where(eq(managerAccounts.userId, result.userId))
+        .limit(1);
+      isManager = !!managerAccount;
+    }
+    
+    res.redirect(isManager ? '/manager/dashboard' : '/');
   } catch (error) {
     console.error('Microsoft callback error:', error);
     res.redirect('/login?error=microsoft_failed');
