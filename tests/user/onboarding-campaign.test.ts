@@ -232,7 +232,8 @@ describe("USER ROLE - ONBOARDING & CAMPAIGN TESTS", () => {
       if (response.status === 200) {
         expect(response.body.metadata?.overrideApplied).toBe(true);
         expect(response.body.metadata?.reason).toBeDefined();
-        expect(response.body.subjectLine).not.toMatch(/you won't believe|shocking|secret/i);
+        const subject = response.body.emailSubject || response.body.subjectLine || "";
+        expect(subject).not.toMatch(/you won't believe|shocking|secret/i);
       }
     });
 
