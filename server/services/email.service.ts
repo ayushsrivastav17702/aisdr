@@ -2,6 +2,12 @@ import { Resend } from 'resend';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
+// Log Resend configuration status at startup
+console.log("📧 EMAIL_CONFIG", {
+  RESEND_KEY_PRESENT: !!process.env.RESEND_API_KEY,
+  RESEND_FROM_EMAIL: process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev (default)',
+});
+
 export interface InvitationEmailData {
   to: string;
   inviterName: string;
@@ -48,15 +54,29 @@ export class EmailService {
   async sendInvitationEmail(data: InvitationEmailData): Promise<void> {
     const { to, inviterName, inviteUrl, role } = data;
 
+    console.log("📧 EMAIL_TRIGGERED", {
+      to,
+      type: "invitation",
+      inviterName,
+      role,
+      from: this.fromEmail,
+    });
+
+    if (!process.env.RESEND_API_KEY) {
+      console.error("❌ RESEND_API_KEY is missing - cannot send invitation email");
+      throw new Error('RESEND_API_KEY not configured');
+    }
+
     try {
-      await resend.emails.send({
+      const response = await resend.emails.send({
         from: this.fromEmail,
         to,
         subject: `You've been invited to join ${this.productName}`,
         html: this.generateInvitationEmailHTML(inviterName, inviteUrl, role),
       });
+      console.log("✅ EMAIL_SENT", { to, type: "invitation", response });
     } catch (error) {
-      console.error('Failed to send invitation email:', error);
+      console.error('❌ EMAIL_FAILED', { to, type: "invitation", error });
       throw new Error('Failed to send invitation email');
     }
   }
@@ -120,16 +140,29 @@ export class EmailService {
   async sendWelcomeCredentialsEmail(data: WelcomeCredentialsEmailData): Promise<void> {
     const { to, userName, email, tempPassword, loginUrl, organizationName, role } = data;
 
+    console.log("📧 EMAIL_TRIGGERED", {
+      to,
+      type: "welcome_credentials",
+      role,
+      organizationName,
+      from: this.fromEmail,
+    });
+
+    if (!process.env.RESEND_API_KEY) {
+      console.error("❌ RESEND_API_KEY is missing - cannot send welcome credentials email");
+      throw new Error('RESEND_API_KEY not configured');
+    }
+
     try {
-      await resend.emails.send({
+      const response = await resend.emails.send({
         from: this.fromEmail,
         to,
         subject: `Welcome to ${this.productName} - Your Login Credentials`,
         html: this.generateWelcomeCredentialsEmailHTML(userName, email, tempPassword, loginUrl, organizationName, role),
       });
-      console.log(`📧 Welcome credentials email sent to ${to}`);
+      console.log("✅ EMAIL_SENT", { to, type: "welcome_credentials", response });
     } catch (error) {
-      console.error('Failed to send welcome credentials email:', error);
+      console.error('❌ EMAIL_FAILED', { to, type: "welcome_credentials", error });
       throw new Error('Failed to send welcome credentials email');
     }
   }
