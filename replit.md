@@ -24,7 +24,8 @@ The platform is built on a modern web stack, featuring a multi-tenant architectu
 - **Database**: PostgreSQL with Drizzle ORM.
 - **AI Integration**: Multi-provider AI system with automatic fallback (OpenAI, OpenRouter, Anthropic) for NLP, email generation, and sentiment analysis.
 - **Job Queue**: BullMQ (requires Redis/Upstash) for background tasks like automation scheduling.
-- **Authentication & Security**: Enterprise-grade passwordless authentication (Google/Microsoft OAuth, Magic Link), JWT sessions, bcrypt, CSRF protection, role-based access (User, Manager, Super Admin), and comprehensive audit logging.
+- **Authentication & Security**: Enterprise-grade passwordless authentication (Google/Microsoft OAuth, Magic Link), JWT sessions with role/tenantId payload, bcrypt, CSRF protection, strict role-based access control (User, Manager, Super Admin), and comprehensive audit logging.
+- **Role-Based Routing**: User role is the single source of truth for all routing decisions. Frontend ProtectedRoute enforces `requireRole` and `allowedRoles` props. Backend normalizes legacy 'admin' role to 'manager'. Roles: 'user' (SDR) → /, 'manager' → /manager/dashboard, 'super_admin' → /super-admin.
 - **Multi-Tenancy**: RequestContext-based data isolation, user invitation system, organization/workspace management, and admin impersonation.
 - **Natural Language Processing**: Converts user queries into structured Apollo.io filters with AI.
 - **Email Sequence Management**: Multi-step sequences, prospect enrollment, tracking, AI personalization, multi-mailbox sending with round-robin rotation.

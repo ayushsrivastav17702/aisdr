@@ -1201,7 +1201,7 @@ class SuperAdminService {
     const tempPassword = crypto.randomBytes(12).toString('base64');
     const passwordHash = await bcrypt.hash(tempPassword, SALT_ROUNDS);
 
-    // Create user
+    // Create user with 'manager' role (not 'admin' - role is source of truth for routing)
     const [user] = await db
       .insert(users)
       .values({
@@ -1209,7 +1209,7 @@ class SuperAdminService {
         passwordHash,
         firstName: managerData.firstName,
         lastName: managerData.lastName,
-        role: 'admin',
+        role: 'manager',
         status: 'active',
         organizationId,
         passwordLoginEnabled: true,

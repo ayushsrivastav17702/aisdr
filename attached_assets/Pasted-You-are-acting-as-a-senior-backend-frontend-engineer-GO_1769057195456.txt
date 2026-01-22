@@ -1,0 +1,106 @@
+You are acting as a senior backend + frontend engineer.
+
+GOAL:
+Implement strict role-based authentication and routing so that:
+1. Super Admin can create Managers under a Tenant
+2. Managers can ONLY access Manager screens
+3. Users (SDR) can ONLY access User screens
+4. No role can ever see another role’s dashboard, even if they belong to the same tenant
+
+SYSTEM RULES (NON-NEGOTIABLE):
+- Role must be resolved ONLY from the logged-in USER record
+- Tenant or organization must NEVER imply role
+- Frontend routing must depend ONLY on `user.role`
+- Backend authorization is the source of truth
+- Session/JWT must be overwritten on every login
+- Stale tokens must be invalidated
+
+ROLES:
+- super_admin
+- manager
+- user (SDR)
+
+DATABASE REQUIREMENTS:
+- `users` table must include:
+  - id
+  - email
+  - password_hash
+  - role ENUM('super_admin','manager','user')
+  - tenant_id
+- Managers and Users both belong to a tenant, but role is per-user
+- No role inference from tenant data
+
+AUTH / JWT REQUIREMENTS:
+- JWT payload MUST contain:
+  {
+    userId,
+    role,
+    tenantId
+  }
+- JWT role must always match DB role
+- If mismatch → reject login
+
+LOGIN BEHAVIOR:
+- One unified login endpoint
+- On login:
+  1. Clear existing session / token
+  2. Fetch user by email
+  3. Validate password
+  4. Read role ONLY from user record
+  5. Issue fresh JWT with correct role
+  6. Return role explicitly in response
+
+REDIRECT RULES (FRONTEND):
+- If role === 'super_admin' → /super-admin/dashboard
+- If role === 'manager' → /manager/dashboard
+- If role === 'user' → /user/dashboard
+- NEVER infer role using tenant, managerId, or permissions
+- Block access if role mismatch
+
+SCREEN ISOLATION:
+- Manager login must NEVER show user dashboard
+- User login must NEVER show manager dashboard
+- Even if same tenant, routing must be isolated
+
+MIDDLEWARE (BACKEND):
+- Create role-based guards:
+  - requireSuperAdmin
+  - requireManager
+  - requireUser
+- Any unauthorized access → 403 Forbidden (not redirect)
+
+CREATION FLOWS:
+1. Super Admin:
+   - Can create Manager under a Tenant
+   - Created Manager must have role = 'manager'
+2. Manager:
+   - Can create Users (SDRs) under same Tenant
+   - Created User must have role = 'user'
+3. Manager CANNOT create Manager
+4. User cannot create anyone
+
+SECURITY CHECKS:
+- On every protected API:
+  - Verify JWT
+  - Verify role
+  - Verify tenant match (where applicable)
+- Never trust frontend role
+
+LOGGING (FOR DEBUGGING):
+- Log resolved role on login
+- Log role mismatch attempts
+- Log dashboard access attempts
+
+DELIVERABLES:
+- Backend auth logic fixes
+- Role-safe JWT handling
+- Frontend redirect logic
+- Middleware for role protection
+- Clear separation of Manager and User dashboards
+
+IMPORTANT:
+If any existing code infers role from tenant, managerId, or permissions — REMOVE IT.
+
+Do not explain concepts.
+Do not leave TODOs.
+Implement the fixes directly and safely.

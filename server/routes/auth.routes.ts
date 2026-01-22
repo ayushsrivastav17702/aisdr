@@ -167,15 +167,24 @@ router.post('/api/auth/login', loginRateLimit, async (req, res) => {
       userAgent
     });
 
-    // Check if user is a manager to determine redirect
-    const [managerAccount] = await db
-      .select({ id: managerAccounts.id })
-      .from(managerAccounts)
-      .where(eq(managerAccounts.userId, session.userId))
+    // ROLE IS SOURCE OF TRUTH - Get role from user record (not from managerAccounts)
+    const [user] = await db
+      .select({ role: users.role })
+      .from(users)
+      .where(eq(users.id, session.userId))
       .limit(1);
     
-    const isManager = !!managerAccount;
-    const redirectTo = isManager ? '/manager/dashboard' : '/';
+    // Normalize role: 'admin' -> 'manager' for consistency
+    const normalizedRole = user?.role === 'admin' ? 'manager' : user?.role;
+    
+    // Determine redirect based on role only
+    // Note: super_admin uses separate auth flow via superAdmins table
+    let redirectTo = '/';
+    if (normalizedRole === 'manager') {
+      redirectTo = '/manager/dashboard';
+    }
+    
+    console.log(`[LOGIN_REDIRECT] User: ${email}, dbRole: ${user?.role}, normalizedRole: ${normalizedRole}, redirectTo: ${redirectTo}`);
 
     // Set HTTP-only cookie for enhanced security
     const isProduction = process.env.NODE_ENV === 'production';
@@ -287,22 +296,11 @@ router.get('/api/auth/me', authenticate, async (req, res) => {
       return res.status(401).json({ error: 'Not authenticated' });
     }
 
-    // Always fetch fresh manager status from database to ensure accuracy
-    const [managerAccount] = await db
-      .select({ id: managerAccounts.id, managerRole: managerAccounts.managerRole })
-      .from(managerAccounts)
-      .where(eq(managerAccounts.userId, req.user.id))
-      .limit(1);
-    
-    const isManager = !!managerAccount;
-    
-    // Log for debugging manager status issues
-    console.log(`[AUTH_ME] User: ${req.user.email}, userId: ${req.user.id}, isManager: ${isManager}, managerAccountId: ${managerAccount?.id || 'none'}`);
+    // ROLE IS SOURCE OF TRUTH - isManager is derived from role, not from managerAccounts table
+    // req.user already has normalized role and isManager from validateSession
+    console.log(`[AUTH_ME] User: ${req.user.email}, userId: ${req.user.id}, role: ${req.user.role}, isManager: ${req.user.isManager}`);
 
-    res.json({
-      ...req.user,
-      isManager,
-    });
+    res.json(req.user);
   } catch (error) {
     console.error('Get user error:', error);
     res.status(500).json({ error: 'Failed to get user info' });
@@ -435,18 +433,25 @@ router.get('/api/auth/google/callback', async (req, res) => {
       path: '/',
     });
 
-    // Check if user is a manager to determine redirect
-    let isManager = false;
+    // ROLE IS SOURCE OF TRUTH - Get role from user record for redirect
+    let redirectTo = '/';
     if (result.userId) {
-      const [managerAccount] = await db
-        .select({ id: managerAccounts.id })
-        .from(managerAccounts)
-        .where(eq(managerAccounts.userId, result.userId))
+      const [user] = await db
+        .select({ role: users.role })
+        .from(users)
+        .where(eq(users.id, result.userId))
         .limit(1);
-      isManager = !!managerAccount;
+      
+      // Normalize role and determine redirect
+      // Note: super_admin uses separate auth flow via superAdmins table
+      const normalizedRole = user?.role === 'admin' ? 'manager' : user?.role;
+      if (normalizedRole === 'manager') {
+        redirectTo = '/manager/dashboard';
+      }
+      console.log(`[GOOGLE_AUTH] User: ${result.userId}, role: ${user?.role}, redirectTo: ${redirectTo}`);
     }
     
-    res.redirect(isManager ? '/manager/dashboard' : '/');
+    res.redirect(redirectTo);
   } catch (error) {
     console.error('Google callback error:', error);
     res.redirect('/login?error=google_failed');
@@ -500,18 +505,25 @@ router.get('/api/auth/microsoft/callback', async (req, res) => {
       path: '/',
     });
 
-    // Check if user is a manager to determine redirect
-    let isManager = false;
+    // ROLE IS SOURCE OF TRUTH - Get role from user record for redirect
+    let redirectTo = '/';
     if (result.userId) {
-      const [managerAccount] = await db
-        .select({ id: managerAccounts.id })
-        .from(managerAccounts)
-        .where(eq(managerAccounts.userId, result.userId))
+      const [user] = await db
+        .select({ role: users.role })
+        .from(users)
+        .where(eq(users.id, result.userId))
         .limit(1);
-      isManager = !!managerAccount;
+      
+      // Normalize role and determine redirect
+      // Note: super_admin uses separate auth flow via superAdmins table
+      const normalizedRole = user?.role === 'admin' ? 'manager' : user?.role;
+      if (normalizedRole === 'manager') {
+        redirectTo = '/manager/dashboard';
+      }
+      console.log(`[MICROSOFT_AUTH] User: ${result.userId}, role: ${user?.role}, redirectTo: ${redirectTo}`);
     }
     
-    res.redirect(isManager ? '/manager/dashboard' : '/');
+    res.redirect(redirectTo);
   } catch (error) {
     console.error('Microsoft callback error:', error);
     res.redirect('/login?error=microsoft_failed');
