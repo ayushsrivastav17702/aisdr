@@ -985,4 +985,47 @@ router.post('/api/user/onboarding/skip', authenticate, async (req, res) => {
   }
 });
 
+// Test endpoint to verify Resend email configuration (development only)
+router.get('/test-email', async (req, res) => {
+  // Only allow in development/test environments
+  if (process.env.NODE_ENV === 'production' && !process.env.DEMO_MODE) {
+    return res.status(403).json({ error: 'Test endpoint not available in production' });
+  }
+
+  const testEmail = req.query.email as string;
+  if (!testEmail) {
+    return res.status(400).json({ 
+      error: 'Email required',
+      usage: '/api/auth/test-email?email=your-email@example.com'
+    });
+  }
+
+  console.log("🧪 TEST_EMAIL_TRIGGERED", { to: testEmail });
+
+  try {
+    const { Resend } = await import('resend');
+    const resend = new Resend(process.env.RESEND_API_KEY);
+    
+    const response = await resend.emails.send({
+      from: process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev',
+      to: testEmail,
+      subject: 'AI SDR Platform - Test Email',
+      html: '<p>This is a test email to verify your Resend configuration is working correctly.</p>',
+    });
+
+    console.log("✅ TEST_EMAIL_SENT", { to: testEmail, response });
+    res.json({ 
+      success: true, 
+      message: 'Test email sent successfully',
+      response 
+    });
+  } catch (error: any) {
+    console.error("❌ TEST_EMAIL_FAILED", { to: testEmail, error: error.message });
+    res.status(500).json({ 
+      error: 'Failed to send test email',
+      details: error.message 
+    });
+  }
+});
+
 export default router;

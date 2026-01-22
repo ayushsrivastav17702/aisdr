@@ -1,0 +1,188 @@
+Step 1: Identify the email provider (very important)
+
+From your secrets, I can see:
+
+RESEND_API_KEY
+
+RESEND_FROM_EMAIL
+
+So you’re using Resend. That narrows it down.
+
+Step 2: The 5 most common real causes (in order)
+1️⃣ Email code is NOT executing at all
+
+This is very common after role / flow changes.
+
+Check immediately
+Add a hard log before sending email:
+
+console.log("📧 EMAIL_TRIGGERED", {
+  to,
+  type: "invite | prospect",
+});
+
+
+If you don’t see this log:
+
+The email function is never being called
+
+Bug is in flow logic, not Resend
+
+2️⃣ Resend API key is missing in production
+
+Replit secrets must exist in Production, not just Dev.
+
+Verify
+In Production App Secrets:
+
+RESEND_API_KEY ✅
+
+RESEND_FROM_EMAIL ✅
+
+Then log at runtime:
+
+console.log("RESEND KEY PRESENT", !!process.env.RESEND_API_KEY);
+
+
+If false → that’s the bug.
+
+3️⃣ From email domain is NOT verified in Resend
+
+Resend will silently drop emails if domain isn’t verified.
+
+Example problem:
+
+RESEND_FROM_EMAIL = noreply@yourdomain.com
+
+
+But domain not verified in Resend dashboard.
+
+Fix
+
+Go to Resend dashboard
+
+Verify the domain
+
+Or temporarily use:
+
+onboarding@resend.dev
+
+
+(for testing)
+
+4️⃣ Email promise is failing but error is swallowed
+
+This is extremely common.
+
+Bad code:
+
+resend.emails.send({...});
+
+
+Correct code:
+
+try {
+  const response = await resend.emails.send({...});
+  console.log("EMAIL SENT", response);
+} catch (err) {
+  console.error("EMAIL FAILED", err);
+}
+
+
+If you don’t await, failures disappear.
+
+5️⃣ App crashes before email send completes
+
+If you:
+
+Send email
+
+Immediately return response
+
+Or exit process
+
+Email may never send.
+
+Make sure:
+
+Email send is awaited
+
+No early return
+
+Step 3: Minimal test (DO THIS NOW)
+
+Create a temporary test endpoint:
+
+GET /test-email
+
+await resend.emails.send({
+  from: process.env.RESEND_FROM_EMAIL,
+  to: "your-email@gmail.com",
+  subject: "Test Email",
+  html: "<p>Test works</p>",
+});
+
+
+Then hit:
+
+https://your-prod-url/test-email
+
+Outcomes:
+
+❌ No email + error in logs → Resend config issue
+
+❌ No logs → endpoint not hit / code not deployed
+
+✅ Email arrives → business logic bug
+
+Step 4: Joining link email specific bug
+
+Invite emails usually fail because:
+
+Invite token not generated
+
+Token expires immediately
+
+Email send wrapped in transaction that rolls back
+
+Check:
+
+console.log("INVITE TOKEN", token);
+
+
+If token is null → email won’t send.
+
+Step 5: Prospect email (outreach) not sending
+
+Very common causes:
+
+Rate limiter blocking sends
+
+Feature flag disabled
+
+Environment check like:
+
+if (NODE_ENV !== 'production') return;
+
+
+Search for:
+
+if (!process.env.RESEND_API_KEY)
+
+if (!emailEnabled)
+
+if (isTestMode)
+
+🚨 Most likely root cause (based on your recent changes)
+
+Because you recently:
+
+Changed auth
+
+Changed role logic
+
+Deployed fresh
+
+👉 Email function is not being called OR env vars missing in prod
+
+Infra is now stable — this is app wiring.
