@@ -1,0 +1,313 @@
+ROLE ISOLATION – QA TEST CASES
+Scope
+
+Ensure strict separation between:
+
+Super Admin
+
+Manager
+
+User (SDR)
+
+Across:
+
+Authentication
+
+Authorization
+
+Routing
+
+API access
+
+Session handling
+
+1️⃣ Authentication & Login
+TC-AUTH-01: Super Admin login redirects correctly
+
+Steps
+
+Login as Super Admin
+Expected
+
+Redirects to /super-admin/dashboard
+
+JWT role = super_admin
+
+TC-AUTH-02: Manager login redirects to Manager dashboard
+
+Steps
+
+Login as Manager
+Expected
+
+Redirects to /manager/dashboard
+
+Manager UI only
+
+JWT role = manager
+
+TC-AUTH-03: User login redirects to User dashboard
+
+Steps
+
+Login as User (SDR)
+Expected
+
+Redirects to /user/dashboard
+
+User UI only
+
+JWT role = user
+
+TC-AUTH-04: No role fallback allowed
+
+Steps
+
+Login as User
+
+Modify frontend role to manager
+Expected
+
+Backend denies access
+
+403 Forbidden
+
+2️⃣ Role-Based UI Isolation
+TC-UI-01: Manager cannot see User dashboard
+
+Steps
+
+Login as Manager
+
+Navigate to /user/dashboard
+Expected
+
+Access denied (403 or redirect)
+
+TC-UI-02: User cannot see Manager dashboard
+
+Steps
+
+Login as User
+
+Navigate to /manager/dashboard
+Expected
+
+Access denied (403 or redirect)
+
+TC-UI-03: User cannot see Manager UI components
+
+Steps
+
+Login as User
+Expected
+
+No Manager menus
+
+No User creation controls
+
+TC-UI-04: Manager cannot see Super Admin UI
+
+Steps
+
+Login as Manager
+Expected
+
+No tenant creation
+
+No system-level settings
+
+3️⃣ Backend API Authorization
+TC-API-01: Manager cannot call Super Admin APIs
+
+Steps
+
+Login as Manager
+
+Call /api/super-admin/*
+Expected
+
+403 Forbidden
+
+TC-API-02: User cannot call Manager APIs
+
+Steps
+
+Login as User
+
+Call /api/manager/*
+Expected
+
+403 Forbidden
+
+TC-API-03: User cannot create users
+
+Steps
+
+Login as User
+
+Call POST /api/users/create
+Expected
+
+403 Forbidden
+
+TC-API-04: Manager can create User only
+
+Steps
+
+Login as Manager
+
+Create user
+Expected
+
+User created with role = user
+
+Cannot assign manager
+
+TC-API-05: Manager cannot create Manager
+
+Steps
+
+Login as Manager
+
+Attempt to create Manager
+Expected
+
+403 Forbidden
+
+4️⃣ Tenant Isolation
+TC-TENANT-01: Manager cannot access another tenant’s users
+
+Steps
+
+Login as Manager (Tenant A)
+
+Fetch users of Tenant B
+Expected
+
+403 Forbidden
+
+TC-TENANT-02: User cannot access other users in tenant
+
+Steps
+
+Login as User
+
+Fetch all tenant users
+Expected
+
+Access denied
+
+5️⃣ Session & Token Safety
+TC-SESSION-01: Role switch clears session
+
+Steps
+
+Login as Manager
+
+Logout
+
+Login as User
+Expected
+
+JWT role updates to user
+
+No Manager access remains
+
+TC-SESSION-02: Stale token invalidation
+
+Steps
+
+Login as Manager
+
+Save JWT
+
+Login as User
+
+Reuse old Manager JWT
+Expected
+
+Token rejected
+
+401 Unauthorized
+
+TC-SESSION-03: Token role mismatch
+
+Steps
+
+Modify JWT role manually
+Expected
+
+Backend rejects request
+
+6️⃣ Security & Negative Tests
+TC-SEC-01: Role inference from tenant blocked
+
+Steps
+
+User belongs to tenant with Manager
+
+Login as User
+Expected
+
+User still sees User dashboard only
+
+TC-SEC-02: Direct API call bypass attempt
+
+Steps
+
+Login as User
+
+Call Manager API directly via Postman
+Expected
+
+403 Forbidden
+
+TC-SEC-03: Frontend route manipulation
+
+Steps
+
+Login as User
+
+Manually route to /manager/dashboard
+Expected
+
+Access blocked
+
+7️⃣ Logging & Observability
+TC-LOG-01: Role resolved on login
+
+Expected Logs
+
+LOGIN_SUCCESS userId=XXX role=user tenantId=YYY
+
+TC-LOG-02: Unauthorized access logged
+
+Expected Logs
+
+ACCESS_DENIED userId=XXX role=user route=/manager/*
+
+8️⃣ Production Sanity Tests
+TC-PROD-01: Restart does not change role behavior
+
+Steps
+
+Restart app
+
+Login as each role
+Expected
+
+Correct dashboards
+
+TC-PROD-02: Idle time does not leak role
+
+Steps
+
+Login as Manager
+
+Wait 1 hour
+
+Login as User
+Expected
+
+User dashboard only
