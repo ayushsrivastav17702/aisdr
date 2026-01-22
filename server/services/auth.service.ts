@@ -49,13 +49,13 @@ export class AuthService {
     return bcrypt.compare(password, hashedPassword);
   }
 
-  generateToken(userId: string, sessionId: string): string {
-    return jwt.sign({ userId, sessionId }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
+  generateToken(userId: string, sessionId: string, role: string, tenantId: string | null): string {
+    return jwt.sign({ userId, sessionId, role, tenantId }, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
   }
 
-  verifyToken(token: string): { userId: string; sessionId: string } | null {
+  verifyToken(token: string): { userId: string; sessionId: string; role?: string; tenantId?: string | null } | null {
     try {
-      const decoded = jwt.verify(token, JWT_SECRET) as { userId: string; sessionId: string };
+      const decoded = jwt.verify(token, JWT_SECRET) as { userId: string; sessionId: string; role?: string; tenantId?: string | null };
       return decoded;
     } catch (error) {
       return null;
@@ -155,7 +155,11 @@ export class AuthService {
       lastActivity: new Date(),
     }).returning();
 
-    const token = this.generateToken(user.id, session.id);
+    // Normalize role: 'admin' -> 'manager' for consistency
+    const normalizedRole = user.role === 'admin' ? 'manager' : user.role;
+    console.log(`[AUTH_LOGIN] User ${email} logged in with role: ${user.role} (normalized: ${normalizedRole}), tenantId: ${user.organizationId || 'none'}`);
+    
+    const token = this.generateToken(user.id, session.id, normalizedRole, user.organizationId);
 
     await db.update(users).set({ lastLogin: new Date() }).where(eq(users.id, user.id));
 
@@ -186,6 +190,12 @@ export class AuthService {
     ipAddress?: string,
     userAgent?: string
   ): Promise<SessionData | null> {
+    // Fetch user to get role and tenantId for JWT
+    const [user] = await db.select().from(users).where(eq(users.id, userId)).limit(1);
+    if (!user) {
+      return null;
+    }
+
     const expiresAt = new Date(Date.now() + SESSION_MAX_AGE);
 
     const [session] = await db.insert(userSessions).values({
@@ -197,7 +207,11 @@ export class AuthService {
       lastActivity: new Date(),
     }).returning();
 
-    const token = this.generateToken(userId, session.id);
+    // Normalize role: 'admin' -> 'manager' for consistency
+    const normalizedRole = user.role === 'admin' ? 'manager' : user.role;
+    console.log(`[AUTH_CREATE_SESSION] Creating session for user ${user.email} with role: ${user.role} (normalized: ${normalizedRole}), tenantId: ${user.organizationId || 'none'}`);
+    
+    const token = this.generateToken(userId, session.id, normalizedRole, user.organizationId);
 
     return {
       userId,
@@ -250,16 +264,15 @@ export class AuthService {
         .where(eq(userSessions.id, session.id));
     }
 
-    // Check if user is a manager (has a manager account)
-    const [managerAccount] = await db
-      .select({ id: managerAccounts.id })
-      .from(managerAccounts)
-      .where(eq(managerAccounts.userId, user.id))
-      .limit(1);
-
-    // Normalize role: DB stores 'admin' for managers, but we return 'manager'
-    // This ensures JWT and API responses use the correct role name
+    // ROLE IS SOURCE OF TRUTH - No inference from managerAccounts table
+    // Normalize role: DB stores 'admin' for legacy managers, but we return 'manager'
     const normalizedRole = user.role === 'admin' ? 'manager' : user.role;
+    
+    // isManager is now derived from role, not from separate table lookup
+    // This ensures role is the single source of truth for routing decisions
+    const isManager = normalizedRole === 'manager';
+    
+    console.log(`[AUTH_VALIDATE] User: ${user.email}, dbRole: ${user.role}, normalizedRole: ${normalizedRole}, isManager: ${isManager}`);
 
     return {
       id: user.id,
@@ -267,11 +280,11 @@ export class AuthService {
       emailVerified: user.emailVerified || false,
       firstName: user.firstName,
       lastName: user.lastName,
-      role: normalizedRole as 'manager' | 'user',
+      role: normalizedRole as 'manager' | 'user' | 'super_admin',
       status: user.status as 'active' | 'inactive' | 'suspended',
       organizationId: user.organizationId,
       createdBy: user.createdBy,
-      isManager: !!managerAccount,
+      isManager: isManager,
     };
   }
 
@@ -317,7 +330,9 @@ export class AuthService {
       })
       .where(eq(userSessions.id, session.id));
 
-    const newToken = this.generateToken(decoded.userId, session.id);
+    // Normalize role: 'admin' -> 'manager' for consistency
+    const normalizedRole = user.role === 'admin' ? 'manager' : user.role;
+    const newToken = this.generateToken(decoded.userId, session.id, normalizedRole, user.organizationId);
 
     return {
       userId: decoded.userId,

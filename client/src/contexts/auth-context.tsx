@@ -7,9 +7,10 @@ interface AuthUser {
   emailVerified: boolean;
   firstName: string | null;
   lastName: string | null;
-  role: 'admin' | 'manager' | 'user';
+  role: 'super_admin' | 'manager' | 'user';
   status: 'active' | 'inactive' | 'suspended';
   isManager: boolean;
+  organizationId: string | null;
 }
 
 interface AuthContextType {

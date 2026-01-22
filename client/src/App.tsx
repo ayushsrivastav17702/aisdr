@@ -65,12 +65,12 @@ function Router() {
       <Route path="/cookie-policy" component={CookiePolicyPage} />
       <Route path="/data-processing-agreement" component={DataProcessingAgreementPage} />
       <Route path="/admin/users">
-        <ProtectedRoute requireAdmin>
+        <ProtectedRoute requireRole="manager">
           <AdminPanel />
         </ProtectedRoute>
       </Route>
       <Route path="/users">
-        <ProtectedRoute requireAdmin>
+        <ProtectedRoute requireRole="manager">
           <AdminPanel />
         </ProtectedRoute>
       </Route>
@@ -85,125 +85,125 @@ function Router() {
         </ProtectedRoute>
       </Route>
       <Route path="/organization-settings">
-        <ProtectedRoute requireAdmin>
+        <ProtectedRoute requireRole="manager">
           <OrganizationSettings />
         </ProtectedRoute>
       </Route>
       <Route path="/workspace-management">
-        <ProtectedRoute requireAdmin>
+        <ProtectedRoute requireRole="manager">
           <WorkspaceManagement />
         </ProtectedRoute>
       </Route>
       <Route path="/admin-infrastructure">
-        <ProtectedRoute requireAdmin>
+        <ProtectedRoute requireRole="manager">
           <AdminInfrastructure />
         </ProtectedRoute>
       </Route>
-      {/* SDR Routes - blocked for managers */}
+      {/* SDR Routes - User (SDR) role only */}
       <Route path="/">
-        <ProtectedRoute blockManager>
+        <ProtectedRoute requireRole="user">
           <SDRDashboard />
         </ProtectedRoute>
       </Route>
       <Route path="/ai-search">
-        <ProtectedRoute blockManager>
+        <ProtectedRoute requireRole="user">
           <Dashboard />
         </ProtectedRoute>
       </Route>
       <Route path="/prospects">
-        <ProtectedRoute blockManager>
+        <ProtectedRoute requireRole="user">
           <Dashboard />
         </ProtectedRoute>
       </Route>
       <Route path="/sequences">
-        <ProtectedRoute blockManager>
+        <ProtectedRoute requireRole="user">
           <Sequences />
         </ProtectedRoute>
       </Route>
       <Route path="/sequences/:id">
-        <ProtectedRoute blockManager>
+        <ProtectedRoute requireRole="user">
           <Sequences />
         </ProtectedRoute>
       </Route>
       <Route path="/mailboxes">
-        <ProtectedRoute blockManager>
+        <ProtectedRoute requireRole="user">
           <Mailboxes />
         </ProtectedRoute>
       </Route>
       <Route path="/inbox">
-        <ProtectedRoute blockManager>
+        <ProtectedRoute requireRole="user">
           <InboxPage />
         </ProtectedRoute>
       </Route>
       <Route path="/content-management">
-        <ProtectedRoute blockManager>
+        <ProtectedRoute requireRole="user">
           <ContentManagement />
         </ProtectedRoute>
       </Route>
       <Route path="/automation-dashboard">
-        <ProtectedRoute blockManager>
+        <ProtectedRoute requireRole="user">
           <AutomationDashboard />
         </ProtectedRoute>
       </Route>
       <Route path="/automation">
-        <ProtectedRoute blockManager>
+        <ProtectedRoute requireRole="user">
           <AutomationDashboard />
         </ProtectedRoute>
       </Route>
       <Route path="/analytics">
-        <ProtectedRoute blockManager>
+        <ProtectedRoute requireRole="user">
           <AnalyticsPage />
         </ProtectedRoute>
       </Route>
       <Route path="/api-docs">
-        <ProtectedRoute requireAdmin>
+        <ProtectedRoute requireRole="manager">
           <APIDocumentationPage />
         </ProtectedRoute>
       </Route>
       <Route path="/leaderboard">
-        <ProtectedRoute blockManager>
+        <ProtectedRoute requireRole="user">
           <LeaderboardPage />
         </ProtectedRoute>
       </Route>
       <Route path="/my-dashboard">
-        <ProtectedRoute blockManager>
+        <ProtectedRoute requireRole="user">
           <SDRDashboard />
         </ProtectedRoute>
       </Route>
       <Route path="/sdr-dashboard">
-        <ProtectedRoute blockManager>
+        <ProtectedRoute requireRole="user">
           <SDRDashboard />
         </ProtectedRoute>
       </Route>
       <Route path="/best-practices">
-        <ProtectedRoute blockManager>
+        <ProtectedRoute requireRole="user">
           <BestPracticesPage />
         </ProtectedRoute>
       </Route>
       <Route path="/ae-handoff">
-        <ProtectedRoute blockManager>
+        <ProtectedRoute requireRole="user">
           <AEHandoffPage />
         </ProtectedRoute>
       </Route>
       <Route path="/ai-prospecting">
-        <ProtectedRoute blockManager>
+        <ProtectedRoute requireRole="user">
           <AIProspectingPage />
         </ProtectedRoute>
       </Route>
-      {/* Campaign Routes - blocked for managers */}
+      {/* Campaign Routes - User (SDR) role only */}
       <Route path="/campaigns">
-        <ProtectedRoute blockManager>
+        <ProtectedRoute requireRole="user">
           <CampaignDashboard />
         </ProtectedRoute>
       </Route>
       <Route path="/campaigns/new">
-        <ProtectedRoute blockManager>
+        <ProtectedRoute requireRole="user">
           <CreateCampaign />
         </ProtectedRoute>
       </Route>
-      {/* Manager Routes - accessible by managers and admins, blocked for regular users */}
+      {/* Manager Routes - Manager role only */}
       <Route path="/manager/dashboard">
-        <ProtectedRoute requireManagerOrAdmin>
+        <ProtectedRoute requireRole="manager">
           <ManagerDashboard />
         </ProtectedRoute>
       </Route>

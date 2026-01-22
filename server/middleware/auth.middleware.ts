@@ -173,12 +173,13 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
     
     const actingAs = req.query.actingAs as string | undefined;
     
-    if (actingAs && user.role !== 'admin') {
-      return res.status(403).json({ error: 'Only administrators can use actingAs' });
+    // Only managers (role='manager') can use actingAs for impersonation
+    if (actingAs && user.role !== 'manager') {
+      return res.status(403).json({ error: 'Only managers can use actingAs' });
     }
     
     if (actingAs) {
-      console.log(`🔐 Admin impersonation: ${user.email} (${user.id}) acting as user ${actingAs}`);
+      console.log(`🔐 Manager impersonation: ${user.email} (${user.id}) acting as user ${actingAs}`);
       auditService.logImpersonation(req, actingAs);
     }
     
@@ -220,8 +221,9 @@ export function optionalAuth(req: Request, res: Response, next: NextFunction) {
         
         const actingAs = req.query.actingAs as string | undefined;
         
-        if (actingAs && user.role !== 'admin') {
-          console.warn(`⚠️ Non-admin user ${user.email} attempted to use actingAs`);
+        // Only managers (role='manager') can use actingAs for impersonation
+        if (actingAs && user.role !== 'manager') {
+          console.warn(`⚠️ Non-manager user ${user.email} attempted to use actingAs`);
           req.userContext = {
             userId: user.id,
             roles: [user.role],
@@ -253,14 +255,15 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction) {
     return res.status(401).json({ error: 'Authentication required' });
   }
 
-  if (req.user.role !== 'admin') {
+  // Accept 'manager' role (normalized from 'admin') for admin access
+  if (req.user.role !== 'manager') {
     return res.status(403).json({ error: 'Admin access required' });
   }
 
   next();
 }
 
-export function requireRole(...allowedRoles: Array<'admin' | 'user'>) {
+export function requireRole(...allowedRoles: Array<'super_admin' | 'manager' | 'user'>) {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!req.user) {
       return res.status(401).json({ error: 'Authentication required' });
@@ -291,10 +294,27 @@ export function requireManager(req: Request, res: Response, next: NextFunction) 
     return res.status(401).json({ error: 'Authentication required' });
   }
 
-  // Managers have role='manager' (normalized from 'admin' in DB)
-  // Also accept 'admin' for backward compatibility during transition
-  if (req.user.role !== 'manager' && req.user.role !== 'admin') {
+  // Managers have role='manager' (role is source of truth)
+  if (req.user.role !== 'manager') {
+    console.log(`[RBAC] User ${req.user.email} with role '${req.user.role}' denied manager access`);
     return res.status(403).json({ error: 'Manager access required' });
+  }
+
+  next();
+}
+
+/**
+ * Require User (SDR) role for SDR execution routes.
+ * User role is required for: Campaigns, Prospects, Emails, Sequences
+ */
+export function requireUser(req: Request, res: Response, next: NextFunction) {
+  if (!req.user) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  if (req.user.role !== 'user') {
+    console.log(`[RBAC] User ${req.user.email} with role '${req.user.role}' denied SDR access`);
+    return res.status(403).json({ error: 'User (SDR) access required' });
   }
 
   next();
