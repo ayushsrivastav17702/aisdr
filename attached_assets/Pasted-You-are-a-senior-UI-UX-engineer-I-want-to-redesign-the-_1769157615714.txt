@@ -1,0 +1,201 @@
+You are a senior UI/UX engineer.
+
+I want to redesign the AiSDR login screen UI so it visually resembles the Salesforce login page, while keeping all existing authentication, API calls, form submission logic, and routes exactly the same.
+
+This is a UI / CSS / layout change only.
+
+1️⃣ Scope (STRICT)
+✅ Allowed
+
+Layout
+
+Colors
+
+Typography
+
+Spacing
+
+Responsiveness
+
+Component structure
+
+Icons / branding placeholders
+
+❌ Not Allowed
+
+Authentication logic
+
+API endpoints
+
+Form submission logic
+
+State management
+
+Validation rules
+
+Redirect logic
+
+Backend changes
+
+2️⃣ Overall Layout Structure
+
+Implement a two-column layout, similar to Salesforce:
+
+Left Column (Login Panel)
+
+White background
+
+Fixed width (~420–460px)
+
+Vertically centered login card
+
+Contains:
+
+Logo at top (AiSDR logo placeholder)
+
+Username input
+
+Password input
+
+“Log In” button
+
+“Remember me” checkbox
+
+“Forgot password?” link
+
+Subtle shadow around card
+
+Right Column (Marketing Panel)
+
+Full-height
+
+Brand color background (Salesforce-like blue gradient)
+
+Large headline text
+
+Supporting description text
+
+Optional illustration or image
+
+CTA-style secondary button (non-functional UI element)
+
+3️⃣ Visual Style Guidelines (Salesforce-Inspired)
+Colors
+
+Primary brand blue for buttons
+
+White login surface
+
+Soft neutral grays for borders and text
+
+No dark mode
+
+Typography
+
+Clean sans-serif font (system font is fine)
+
+Large heading (login title)
+
+Medium-weight input labels
+
+Light helper text
+
+4️⃣ Input Fields (VERY IMPORTANT)
+
+Style inputs like Salesforce:
+
+Full width
+
+Rounded corners (6–8px)
+
+Clear focus state (blue outline)
+
+Placeholder text inside input
+
+Labels above input
+
+Generous vertical spacing
+
+Do not change:
+
+name
+
+id
+
+onChange
+
+onSubmit
+
+Validation
+
+5️⃣ Primary Button
+
+Large, full-width button
+
+Salesforce-style blue
+
+Rounded corners
+
+Subtle hover + active state
+
+Text: Log In
+
+Button behavior must remain unchanged
+
+6️⃣ Secondary Elements
+
+“Remember me” checkbox aligned left
+
+“Forgot your password?” as a text link
+
+Small, subtle text color
+
+Footer with:
+
+© 2026 AiSDR
+
+Privacy | Terms (UI only)
+
+7️⃣ Responsiveness
+
+Desktop: Two-column layout
+
+Tablet: Reduce right panel width
+
+Mobile:
+
+Hide right panel completely
+
+Show login panel full width
+
+Center vertically
+
+8️⃣ Accessibility (UI Level)
+
+Inputs must be keyboard accessible
+
+Visible focus states
+
+Label-input association preserved
+
+Color contrast readable
+
+9️⃣ Branding Notes
+
+Replace Salesforce logo with AiSDR
+
+Do NOT copy Salesforce text
+
+Layout inspiration only, no trademarked copy
+
+🔚 Expected Result
+
+Login screen looks and feels like Salesforce
+
+Same form logic underneath
+
+No behavior changes
+
+No backend impact
+
+Professional enterprise SaaS appearance
