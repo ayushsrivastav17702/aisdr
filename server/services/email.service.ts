@@ -2,10 +2,28 @@ import { Resend } from 'resend';
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 
+// Validate and get the from email address
+// RESEND_FROM_EMAIL must be a valid email, not an API key
+function getValidFromEmail(): string {
+  const fromEmail = process.env.RESEND_FROM_EMAIL;
+  
+  // Check if it looks like an email (contains @)
+  if (fromEmail && fromEmail.includes('@') && !fromEmail.startsWith('re_')) {
+    return fromEmail;
+  }
+  
+  // Fallback to Resend's test sender if invalid
+  console.warn("⚠️ RESEND_FROM_EMAIL is missing or invalid (must be an email address, not an API key). Using fallback: onboarding@resend.dev");
+  return 'onboarding@resend.dev';
+}
+
+const VALIDATED_FROM_EMAIL = getValidFromEmail();
+
 // Log Resend configuration status at startup
 console.log("📧 EMAIL_CONFIG", {
   RESEND_KEY_PRESENT: !!process.env.RESEND_API_KEY,
-  RESEND_FROM_EMAIL: process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev (default)',
+  RESEND_FROM_EMAIL_RAW: process.env.RESEND_FROM_EMAIL ? `${process.env.RESEND_FROM_EMAIL.substring(0, 10)}...` : 'NOT SET',
+  RESEND_FROM_EMAIL_VALIDATED: VALIDATED_FROM_EMAIL,
 });
 
 export interface InvitationEmailData {
@@ -48,7 +66,7 @@ export interface WelcomeCredentialsEmailData {
 }
 
 export class EmailService {
-  private fromEmail = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev'; // Configurable sender email
+  private fromEmail = VALIDATED_FROM_EMAIL; // Uses validated email or fallback
   private productName = 'AI SDR Platform';
 
   async sendInvitationEmail(data: InvitationEmailData): Promise<void> {
