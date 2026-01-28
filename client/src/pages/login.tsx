@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useLocation, useSearch } from 'wouter';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { Loader2, ChevronDown, ChevronUp, Users, Mail, Lock } from 'lucide-react';
+import { Loader2, Users, Eye, EyeOff, UserPlus, MessageSquare, Shield, Zap } from 'lucide-react';
 import { SiGoogle } from 'react-icons/si';
 import { BsMicrosoft } from 'react-icons/bs';
 import { useQuery } from '@tanstack/react-query';
+import './login.css';
 
 interface AuthConfig {
   googleEnabled: boolean;
@@ -28,9 +29,9 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showPasswordLogin, setShowPasswordLogin] = useState(false);
   const [multipleAccounts, setMultipleAccounts] = useState<AccountOption[] | null>(null);
   const [rememberMe, setRememberMe] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const { data: authConfig, isLoading: configLoading } = useQuery<AuthConfig>({
     queryKey: ['/api/auth/config'],
@@ -113,8 +114,8 @@ export default function LoginPage() {
 
   if (configLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <Loader2 className="w-6 h-6 animate-spin text-[#0176D3]" />
+      <div className="login-loading">
+        <Loader2 className="login-loading-spinner" />
       </div>
     );
   }
@@ -122,69 +123,53 @@ export default function LoginPage() {
   const hasOAuthOptions = authConfig?.googleEnabled || authConfig?.microsoftEnabled;
 
   return (
-    <div className="min-h-screen flex">
-      {/* Left Column - Login Panel */}
-      <div className="w-full lg:w-[480px] xl:w-[520px] flex flex-col justify-center bg-white px-8 sm:px-12 lg:px-16 py-12 relative">
-        {/* Login Card */}
-        <div className="w-full max-w-[400px] mx-auto">
-          {/* Logo */}
-          <div className="mb-10">
-            <div className="flex items-center gap-3">
-              <div 
-                className="w-11 h-11 flex items-center justify-center rounded-lg"
-                style={{ backgroundColor: '#0176D3' }}
-              >
-                <span className="text-lg font-bold text-white tracking-tight">AI</span>
-              </div>
-              <span className="text-2xl font-semibold text-gray-900 tracking-tight">AiSDR</span>
-            </div>
+    <div className="login-page">
+      <div className="login-container">
+        {/* Left Side - Login Form */}
+        <div className="login-form-section">
+          <div className="logo">
+            <div className="logo-icon">AI</div>
+            <span className="logo-text">AiSDR</span>
           </div>
 
-          {/* Welcome Text */}
-          <div className="mb-8">
-            <h1 className="text-2xl font-semibold text-gray-900 mb-2">
-              Log in to your account
-            </h1>
-            <p className="text-gray-500 text-sm">
-              Welcome back! Please enter your credentials.
-            </p>
+          <div className="welcome-text">
+            <h1>Welcome back</h1>
+            <p>Enter your credentials to access your account</p>
           </div>
 
           {/* Error/Success Alerts */}
           {error && (
-            <Alert variant="destructive" className="mb-6 border-red-200 bg-red-50" data-testid="alert-login-error">
-              <AlertDescription className="text-sm text-red-700">{error}</AlertDescription>
+            <Alert variant="destructive" className="login-alert login-alert-error" data-testid="alert-login-error">
+              <AlertDescription>{error}</AlertDescription>
             </Alert>
           )}
 
           {successMessage && (
-            <Alert className="mb-6 border-green-200 bg-green-50" data-testid="alert-success">
-              <AlertDescription className="text-sm text-green-700">
-                {successMessage}
-              </AlertDescription>
+            <Alert className="login-alert login-alert-success" data-testid="alert-success">
+              <AlertDescription>{successMessage}</AlertDescription>
             </Alert>
           )}
 
           {/* Account Selection */}
-          {multipleAccounts && (
-            <div className="space-y-4" data-testid="account-selection">
-              <p className="text-sm text-gray-600 mb-4">
+          {multipleAccounts ? (
+            <div className="login-form" data-testid="account-selection">
+              <p className="account-selection-text">
                 Multiple accounts found. Select one to continue.
               </p>
-              <div className="space-y-3">
+              <div className="account-list">
                 {multipleAccounts.map((account, index) => (
                   <button
                     key={account.id}
                     type="button"
-                    className="w-full h-14 px-4 flex items-center border-2 border-gray-200 rounded-lg hover:border-[#0176D3] hover:bg-blue-50 transition-all"
+                    className="account-btn"
                     onClick={() => handleAccountSelect(account.id)}
                     disabled={isSubmitting}
                     data-testid={`button-select-account-${index}`}
                   >
-                    <Users className="mr-3 h-5 w-5 text-gray-400" />
-                    <span className="flex flex-col items-start text-sm">
-                      <span className="font-medium text-gray-900">Account {index + 1}</span>
-                      <span className="text-xs text-gray-500">
+                    <Users className="account-icon" />
+                    <span className="account-info">
+                      <span className="account-name">Account {index + 1}</span>
+                      <span className="account-org">
                         {account.organizationId ? `Org: ${account.organizationId.slice(0, 8)}...` : 'Personal'}
                       </span>
                     </span>
@@ -193,121 +178,75 @@ export default function LoginPage() {
               </div>
               <button
                 type="button"
-                className="w-full text-sm text-[#0176D3] hover:text-[#015ba8] font-medium mt-4"
+                className="back-to-login-btn"
                 onClick={handleBackToLogin}
                 data-testid="button-back-to-login"
               >
                 Back to login
               </button>
             </div>
-          )}
-
-          {/* OAuth Options */}
-          {!multipleAccounts && hasOAuthOptions && (
-            <div className="space-y-3 mb-6">
-              {authConfig?.googleEnabled && (
-                <button
-                  type="button"
-                  className="w-full h-12 px-4 flex items-center justify-center gap-3 border-2 border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-all"
-                  onClick={handleGoogleLogin}
-                  disabled={isSubmitting}
-                  data-testid="button-google-login"
-                >
-                  <SiGoogle className="h-4 w-4" />
-                  Continue with Google
-                </button>
-              )}
-
-              {authConfig?.microsoftEnabled && (
-                <button
-                  type="button"
-                  className="w-full h-12 px-4 flex items-center justify-center gap-3 border-2 border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-all"
-                  onClick={handleMicrosoftLogin}
-                  disabled={isSubmitting}
-                  data-testid="button-microsoft-login"
-                >
-                  <BsMicrosoft className="h-4 w-4" />
-                  Continue with Microsoft
-                </button>
-              )}
-            </div>
-          )}
-
-          {/* Divider */}
-          {!multipleAccounts && authConfig?.passwordLoginEnabled && hasOAuthOptions && (
-            <div className="relative my-6">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-200"></div>
-              </div>
-              <div className="relative flex justify-center text-xs">
-                <span className="bg-white px-4 text-gray-400 uppercase tracking-wider font-medium">or</span>
-              </div>
-            </div>
-          )}
-
-          {/* Email/Password Login */}
-          {!multipleAccounts && authConfig?.passwordLoginEnabled && (
-            <>
-              {!showPasswordLogin ? (
-                <button
-                  type="button"
-                  className="w-full h-12 px-4 flex items-center justify-center gap-2 border-2 border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 hover:border-gray-300 transition-all"
-                  onClick={() => setShowPasswordLogin(true)}
-                  data-testid="button-show-password-login"
-                >
-                  <Mail className="h-4 w-4" />
-                  Log In with Email
-                  <ChevronDown className="h-4 w-4 ml-1" />
-                </button>
-              ) : (
-                <form onSubmit={handlePasswordLogin} className="space-y-5">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium text-gray-700">Email login</span>
+          ) : (
+            <form className="login-form" onSubmit={handlePasswordLogin}>
+              {/* Social Login */}
+              {hasOAuthOptions && (
+                <div className="social-login">
+                  {authConfig?.googleEnabled && (
                     <button
                       type="button"
-                      className="text-xs text-gray-400 hover:text-gray-600 p-1"
-                      onClick={() => setShowPasswordLogin(false)}
+                      className="social-btn"
+                      onClick={handleGoogleLogin}
+                      disabled={isSubmitting}
+                      data-testid="button-google-login"
                     >
-                      <ChevronUp className="h-4 w-4" />
+                      <SiGoogle className="social-icon" />
+                      Google
                     </button>
+                  )}
+                  {authConfig?.microsoftEnabled && (
+                    <button
+                      type="button"
+                      className="social-btn"
+                      onClick={handleMicrosoftLogin}
+                      disabled={isSubmitting}
+                      data-testid="button-microsoft-login"
+                    >
+                      <BsMicrosoft className="social-icon" />
+                      Microsoft
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Divider */}
+              {hasOAuthOptions && authConfig?.passwordLoginEnabled && (
+                <div className="divider">or continue with email</div>
+              )}
+
+              {/* Email/Password Form */}
+              {authConfig?.passwordLoginEnabled && (
+                <>
+                  <div className="form-group">
+                    <label htmlFor="email" className="form-label">Email address</label>
+                    <input
+                      type="email"
+                      id="email"
+                      className="form-input"
+                      placeholder="name@company.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
+                      disabled={isSubmitting}
+                      data-testid="input-email"
+                    />
                   </div>
 
-                  {/* Email Input */}
-                  <div>
-                    <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-2">
-                      Email Address
-                    </label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <Mail className="h-4 w-4 text-gray-400" />
-                      </div>
+                  <div className="form-group">
+                    <label htmlFor="password" className="form-label">Password</label>
+                    <div className="input-wrapper">
                       <input
-                        id="email"
-                        type="email"
-                        className="w-full h-12 pl-10 pr-4 border-2 border-gray-200 rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#0176D3] focus:border-transparent transition-all"
-                        placeholder="you@company.com"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        required
-                        disabled={isSubmitting}
-                        data-testid="input-email"
-                      />
-                    </div>
-                  </div>
-
-                  {/* Password Input */}
-                  <div>
-                    <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-2">
-                      Password
-                    </label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        <Lock className="h-4 w-4 text-gray-400" />
-                      </div>
-                      <input
+                        type={showPassword ? 'text' : 'password'}
                         id="password"
-                        type="password"
-                        className="w-full h-12 pl-10 pr-4 border-2 border-gray-200 rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#0176D3] focus:border-transparent transition-all"
+                        className="form-input"
                         placeholder="Enter your password"
                         value={password}
                         onChange={(e) => setPassword(e.target.value)}
@@ -315,24 +254,31 @@ export default function LoginPage() {
                         disabled={isSubmitting}
                         data-testid="input-password"
                       />
+                      <button
+                        type="button"
+                        className="password-toggle"
+                        onClick={() => setShowPassword(!showPassword)}
+                        data-testid="button-toggle-password"
+                      >
+                        {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                      </button>
                     </div>
                   </div>
 
-                  {/* Remember Me & Forgot Password */}
-                  <div className="flex items-center justify-between">
-                    <label className="flex items-center cursor-pointer">
+                  <div className="form-footer">
+                    <div className="checkbox-wrapper">
                       <input
                         type="checkbox"
-                        className="w-4 h-4 text-[#0176D3] border-2 border-gray-300 rounded focus:ring-[#0176D3] focus:ring-offset-0"
+                        id="remember"
                         checked={rememberMe}
                         onChange={(e) => setRememberMe(e.target.checked)}
                         data-testid="checkbox-remember-me"
                       />
-                      <span className="ml-2 text-sm text-gray-600">Remember me</span>
-                    </label>
+                      <label htmlFor="remember">Remember me</label>
+                    </div>
                     <a
                       href="#"
-                      className="text-sm text-[#0176D3] hover:text-[#015ba8] font-medium"
+                      className="forgot-link"
                       onClick={(e) => e.preventDefault()}
                       data-testid="link-forgot-password"
                     >
@@ -340,127 +286,95 @@ export default function LoginPage() {
                     </a>
                   </div>
 
-                  {/* Submit Button */}
                   <button
                     type="submit"
-                    className="w-full h-12 text-white text-sm font-semibold rounded-lg transition-all disabled:opacity-50 disabled:cursor-not-allowed hover:shadow-lg"
-                    style={{ 
-                      backgroundColor: '#0176D3',
-                    }}
-                    onMouseOver={(e) => !isSubmitting && (e.currentTarget.style.backgroundColor = '#015ba8')}
-                    onMouseOut={(e) => !isSubmitting && (e.currentTarget.style.backgroundColor = '#0176D3')}
+                    className="submit-btn"
                     disabled={isSubmitting}
                     data-testid="button-login"
                   >
                     {isSubmitting ? (
-                      <span className="flex items-center justify-center gap-2">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Logging in...
+                      <span className="submit-btn-loading">
+                        <Loader2 className="submit-spinner" />
+                        Signing in...
                       </span>
                     ) : (
-                      'Log In'
+                      'Sign in to your account'
                     )}
                   </button>
-                </form>
+                </>
               )}
-            </>
+
+              <div className="signup-link">
+                Access is managed by your organization administrator
+              </div>
+            </form>
           )}
+        </div>
 
-          {/* Footer */}
-          <div className="mt-10 pt-6 border-t border-gray-100">
-            <p className="text-xs text-gray-400 text-center">
-              © 2026 AiSDR. All rights reserved.
+        {/* Right Side - Hero Section */}
+        <div className="hero-section">
+          <div className="hero-content">
+            <div className="hero-badge">
+              <span className="hero-badge-dot"></span>
+              <span>ENTERPRISE SOLUTION</span>
+            </div>
+            
+            <h2 className="hero-title">Automate Your Sales Outreach with AI</h2>
+            
+            <p className="hero-description">
+              Discover prospects, enrich data, and send personalized emails at scale. 
+              Our AI-powered SDR platform helps you connect with the right people, faster.
             </p>
-            <div className="flex items-center justify-center gap-4 mt-2">
-              <a href="#" className="text-xs text-gray-400 hover:text-gray-600">Privacy Policy</a>
-              <span className="text-gray-300">|</span>
-              <a href="#" className="text-xs text-gray-400 hover:text-gray-600">Terms of Service</a>
+
+            <ul className="features-list">
+              <li className="feature-item">
+                <div className="feature-icon">
+                  <UserPlus size={20} />
+                </div>
+                <div className="feature-text">
+                  <h3>AI-Powered Prospect Discovery</h3>
+                  <p>Find ideal prospects with natural language search</p>
+                </div>
+              </li>
+              <li className="feature-item">
+                <div className="feature-icon">
+                  <MessageSquare size={20} />
+                </div>
+                <div className="feature-text">
+                  <h3>Smart Email Sequences</h3>
+                  <p>Personalized multi-step campaigns that convert</p>
+                </div>
+              </li>
+              <li className="feature-item">
+                <div className="feature-icon">
+                  <Zap size={20} />
+                </div>
+                <div className="feature-text">
+                  <h3>Intelligent Reply Detection</h3>
+                  <p>AI-powered sentiment analysis and intent detection</p>
+                </div>
+              </li>
+              <li className="feature-item">
+                <div className="feature-icon">
+                  <Shield size={20} />
+                </div>
+                <div className="feature-text">
+                  <h3>Enterprise Security</h3>
+                  <p>SOC2-ready with role-based access control</p>
+                </div>
+              </li>
+            </ul>
+
+            <div className="trust-badges">
+              <div className="trust-text">TRUSTED BY ENTERPRISE TEAMS</div>
+              <div className="badge-grid">
+                <div className="badge">SOC2 Ready</div>
+                <div className="badge">Encrypted</div>
+                <div className="badge">RBAC</div>
+              </div>
             </div>
           </div>
         </div>
-      </div>
-
-      {/* Right Column - Marketing Panel (Hidden on mobile) */}
-      <div 
-        className="hidden lg:flex flex-1 flex-col justify-center items-center p-12 xl:p-16 relative overflow-hidden"
-        style={{
-          background: 'linear-gradient(135deg, #0176D3 0%, #032D60 50%, #001639 100%)',
-        }}
-      >
-        {/* Background Pattern */}
-        <div 
-          className="absolute inset-0 opacity-10"
-          style={{
-            backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.4'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
-          }}
-        />
-
-        {/* Content */}
-        <div className="relative z-10 max-w-lg text-center lg:text-left">
-          {/* Headline */}
-          <h2 className="text-3xl xl:text-4xl font-bold text-white mb-6 leading-tight">
-            Automate Your Sales Outreach with AI
-          </h2>
-          
-          {/* Description */}
-          <p className="text-lg text-blue-100 mb-8 leading-relaxed">
-            Discover prospects, enrich data, and send personalized emails at scale. 
-            Our AI-powered SDR platform helps you connect with the right people, faster.
-          </p>
-
-          {/* Feature List */}
-          <div className="space-y-4 mb-10">
-            <div className="flex items-center gap-3 text-white">
-              <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center">
-                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                </svg>
-              </div>
-              <span className="text-sm font-medium">AI-Powered Prospect Discovery</span>
-            </div>
-            <div className="flex items-center gap-3 text-white">
-              <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center">
-                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                </svg>
-              </div>
-              <span className="text-sm font-medium">Automated Multi-Channel Sequences</span>
-            </div>
-            <div className="flex items-center gap-3 text-white">
-              <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center">
-                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                </svg>
-              </div>
-              <span className="text-sm font-medium">Intelligent Reply Detection</span>
-            </div>
-            <div className="flex items-center gap-3 text-white">
-              <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center">
-                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                </svg>
-              </div>
-              <span className="text-sm font-medium">Enterprise-Grade Security</span>
-            </div>
-          </div>
-
-          {/* CTA Button (non-functional, UI only) */}
-          <button
-            type="button"
-            className="inline-flex items-center px-6 py-3 border-2 border-white text-white text-sm font-semibold rounded-lg hover:bg-white hover:text-[#0176D3] transition-all"
-            onClick={(e) => e.preventDefault()}
-            data-testid="button-learn-more"
-          >
-            Learn More
-            <svg className="ml-2 w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 8l4 4m0 0l-4 4m4-4H3" />
-            </svg>
-          </button>
-        </div>
-
-        {/* Decorative Elements */}
-        <div className="absolute bottom-0 right-0 w-64 h-64 bg-white/5 rounded-full -mr-32 -mb-32" />
-        <div className="absolute top-0 left-0 w-48 h-48 bg-white/5 rounded-full -ml-24 -mt-24" />
       </div>
     </div>
   );
