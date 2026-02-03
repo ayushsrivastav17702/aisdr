@@ -2858,6 +2858,34 @@ Return ONLY the email body text, no subject line needed.`;
   });
 
   // ============================================
+  // SEQUENCE EXECUTOR HEALTH MONITORING
+  // ============================================
+
+  // Get sequence executor health status
+  app.get("/api/sequence-executor/health", authenticate, async (req, res) => {
+    try {
+      const { sequenceExecutorService } = await import("./services/sequence-executor.service");
+      const healthStatus = sequenceExecutorService.getHealthStatus();
+
+      res.json({
+        success: true,
+        health: healthStatus,
+        summary: {
+          status: healthStatus.isHealthy ? 'healthy' : 'unhealthy',
+          lastRun: healthStatus.lastHeartbeat?.toISOString() || 'Never',
+          totalRuns: healthStatus.totalRuns,
+          consecutiveFailures: healthStatus.consecutiveFailures,
+        }
+      });
+    } catch (error) {
+      console.error("Health check error:", error);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : "Failed to get health status"
+      });
+    }
+  });
+
+  // ============================================
   // SEQUENCE DRY RUN (PREVIEW MODE)
   // ============================================
   
