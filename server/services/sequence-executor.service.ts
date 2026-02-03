@@ -3,6 +3,7 @@ import { sequenceProspects, emailQueue, sequenceSteps, prospects, emails, sequen
 import { eq, and, isNotNull, desc, sql } from "drizzle-orm";
 import { emailQueueService } from "./email-queue.service";
 import { Sentry, isSentryEnabled } from "../sentry";
+import { schedulerMonitoringService } from "./scheduler-monitoring.service";
 
 // Health monitoring types
 export interface ExecutorHealthStatus {
@@ -199,7 +200,7 @@ export class SequenceExecutorService {
   /**
    * Record a heartbeat - called after each successful run.
    */
-  private recordHeartbeat(duration: number, emailsScheduled: number): void {
+  private async recordHeartbeat(duration: number, emailsScheduled: number): Promise<void> {
     this.lastHeartbeat = new Date();
     this.lastRunDuration = duration;
     this.totalRuns++;
@@ -207,6 +208,8 @@ export class SequenceExecutorService {
     this.consecutiveFailures = 0; // Reset on success
 
     console.log(`💓 HEARTBEAT [${this.lastHeartbeat.toISOString()}] Run #${this.totalRuns} - Duration: ${duration}ms, Emails scheduled: ${emailsScheduled}`);
+    
+    await schedulerMonitoringService.recordHeartbeat("sequence_executor", emailsScheduled, 0, duration);
   }
 
   /**
@@ -274,7 +277,7 @@ export class SequenceExecutorService {
         console.log("[SequenceExecutor] No active enrollments found");
         // Still record heartbeat for empty runs
         const duration = Date.now() - startTime;
-        this.recordHeartbeat(duration, 0);
+        await this.recordHeartbeat(duration, 0);
         return;
       }
 
@@ -402,7 +405,7 @@ export class SequenceExecutorService {
 
       // Record successful heartbeat
       const duration = Date.now() - startTime;
-      this.recordHeartbeat(duration, scheduledCount);
+      await this.recordHeartbeat(duration, scheduledCount);
       
     } catch (error) {
       console.error("[SequenceExecutor] ❌ Error in processNextSteps:", error);
