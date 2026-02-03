@@ -38,26 +38,50 @@ function filterContentByIndustry(contentItems: ContentLibraryItem[], prospect: P
 export interface VerifiedSignals {
   funding?: {
     amount?: string;
-    round?: string;
+    round?: string; // Series A, B, C, Seed, Angel, etc.
     date?: string;
-    source?: string;
+    source: string; // Required - must have attribution
   };
   hiring?: {
     roles?: string[];
     department?: string;
-    source?: string;
+    source: string; // Required
   };
   expansion?: {
     type?: 'geographic' | 'product' | 'team';
     details?: string;
-    source?: string;
+    source: string; // Required
   };
   news?: {
     headline?: string;
     date?: string;
-    source?: string;
+    source: string; // Required
   };
-  custom?: Record<string, string>;
+  launch?: {
+    product?: string;
+    date?: string;
+    source: string; // Required
+  };
+  partnership?: {
+    partner?: string;
+    details?: string;
+    source: string; // Required
+  };
+  acquisition?: {
+    target?: string;
+    details?: string;
+    source: string; // Required
+  };
+  award?: {
+    name?: string;
+    date?: string;
+    source: string; // Required
+  };
+  // Custom signals MUST have source attribution
+  custom?: Array<{
+    claim: string;
+    source: string; // Required
+  }>;
 }
 
 export interface EmailGenerationRequest {
@@ -77,6 +101,22 @@ export interface EmailGenerationRequest {
   userRole?: 'sdr' | 'manager' | 'founder' | 'revops';
   // Source-based validation: AI can only reference verified signals
   verifiedSignals?: VerifiedSignals;
+  // If true, throw error when unverified claims are detected (hard block)
+  enforceSourceValidation?: boolean;
+}
+
+/**
+ * Error thrown when email contains unverified claims and enforceSourceValidation is true.
+ */
+export class UnverifiedClaimError extends Error {
+  public violations: UnverifiedClaimValidation['violations'];
+  
+  constructor(violations: UnverifiedClaimValidation['violations']) {
+    const summary = violations.map(v => `${v.type}: "${v.matchedText}"`).join(', ');
+    super(`Email blocked: unverified claims detected (${summary})`);
+    this.name = 'UnverifiedClaimError';
+    this.violations = violations;
+  }
 }
 
 export interface GeneratedEmail {
@@ -104,40 +144,90 @@ export interface EmailVariant {
 
 /**
  * UNVERIFIED CLAIMS PATTERNS
- * These patterns detect AI-generated claims that require verified source data.
+ * Comprehensive patterns detect AI-generated claims that require verified source data.
+ * Expanded to cover common phrasings, synonyms, and bypass attempts.
  */
 const UNVERIFIED_CLAIM_PATTERNS = {
   funding: [
+    // Funding rounds
     /\b(series\s+[a-z])\b/i,
-    /\braised\s+\$?\d+/i,
+    /\b(seed|angel|pre-seed)\s+(round|funding|investment)/i,
+    /\b(raised|secured|closed)\s+\$?[\d.,]+\s*(k|m|mm|million|billion|b)?\b/i,
+    /\$[\d.,]+\s*(k|m|mm|million|billion|b)?\s*(round|funding|raise|investment)/i,
     /\bfunding\s+(round|announcement)/i,
-    /\brecent(ly)?\s+(raised|funding|investment)/i,
-    /\$\d+[mb]?\s+(round|funding|raise)/i,
+    /\brecent(ly)?\s+(raised|funding|investment|closed)/i,
+    /\bjust\s+closed\s+(a\s+)?round/i,
+    /\bbacked\s+by/i,
+    /\b(vc|venture)\s+(backed|funding)/i,
+    /\binvestment\s+from/i,
   ],
   hiring: [
     /\b(hiring|recruiting|growing\s+the\s+team)\b/i,
     /\bopen\s+(roles?|positions?)\b/i,
-    /\bgrowing\s+(rapidly|fast|the\s+team)/i,
+    /\bgrowing\s+(rapidly|fast|the\s+team|aggressively)/i,
     /\bheadcount\s+(expansion|growth)/i,
+    /\bhired\s+(a\s+)?(new\s+)?(vp|director|head|cto|cfo|coo|cmo|chief)/i,
+    /\bbuilding\s+(out\s+)?(the|your)\s+team/i,
+    /\bscaling\s+(the\s+)?team/i,
+    /\btalent\s+acquisition/i,
+    /\bbringing\s+on\s+(new\s+)?people/i,
+    /\b(you|they)\s+hired/i,
   ],
   expansion: [
     /\b(expansion|expanding)\s+(into|to|plans?)/i,
-    /\bnew\s+(office|location|market)/i,
+    /\bnew\s+(office|location|market|headquarters|hq)/i,
     /\bentering\s+(new\s+)?market/i,
     /\bgeographic\s+expansion/i,
+    /\bopened\s+(a\s+)?new\s+(office|location)/i,
+    /\bexpanding\s+(internationally|globally|overseas)/i,
+    /\b(opened|opening)\s+in\s+[A-Z][a-z]+/i, // opened in London
+    /\bglobal\s+expansion/i,
+    /\binternational\s+(expansion|growth)/i,
   ],
   news: [
-    /\b(announced|launched|unveiled)\s+(today|recently|this\s+week)/i,
+    /\b(announced|launched|unveiled)\s+(today|recently|this\s+week|yesterday)/i,
     /\bsaw\s+(the\s+news|your\s+announcement)/i,
     /\bcongratulations\s+on\s+(the|your)\s+(news|announcement|launch)/i,
     /\brecent\s+(news|announcement|press\s+release)/i,
+    /\bread\s+(about|the\s+news)/i,
+    /\bpress\s+release/i,
+    /\bin\s+the\s+news/i,
+    /\bmedia\s+coverage/i,
+  ],
+  launch: [
+    /\b(launched|launching|released|releasing)\s+(a\s+)?(new\s+)?(product|feature|service)/i,
+    /\bnew\s+product\s+(launch|release|announcement)/i,
+    /\bjust\s+(shipped|released|launched)/i,
+    /\bproduct\s+announcement/i,
+  ],
+  partnership: [
+    /\bpartner(ed|ship|ing)\s+with/i,
+    /\bstrategic\s+(partnership|alliance)/i,
+    /\bteamed\s+up\s+with/i,
+    /\bjoint\s+venture/i,
+    /\bcollaboration\s+with/i,
+  ],
+  acquisition: [
+    /\b(acquired|acquiring|bought|purchased)\s+/i,
+    /\bacquisition\s+of/i,
+    /\bmerger\s+with/i,
+    /\bm&a\s+(deal|announcement)/i,
+  ],
+  award: [
+    /\bwon\s+(an?\s+)?(award|prize)/i,
+    /\bnamed\s+(a\s+)?top/i,
+    /\b(award|prize)\s+(winner|winning)/i,
+    /\brecognized\s+(as|for)/i,
+    /\bhonoree/i,
   ],
 };
+
+export type ClaimType = 'funding' | 'hiring' | 'expansion' | 'news' | 'launch' | 'partnership' | 'acquisition' | 'award';
 
 export interface UnverifiedClaimValidation {
   isBlocked: boolean;
   violations: Array<{
-    type: 'funding' | 'hiring' | 'expansion' | 'news';
+    type: ClaimType;
     matchedText: string;
     reason: string;
   }>;
@@ -215,6 +305,66 @@ export function validateUnverifiedClaims(
     }
   }
 
+  // Check for launch claims without verified source
+  if (!verifiedSignals?.launch) {
+    for (const pattern of UNVERIFIED_CLAIM_PATTERNS.launch) {
+      const match = combinedText.match(pattern);
+      if (match) {
+        violations.push({
+          type: 'launch',
+          matchedText: match[0],
+          reason: 'Email references product launch but no verified launch signal exists. Add verifiedSignals.launch or remove claim.',
+        });
+        break;
+      }
+    }
+  }
+
+  // Check for partnership claims without verified source
+  if (!verifiedSignals?.partnership) {
+    for (const pattern of UNVERIFIED_CLAIM_PATTERNS.partnership) {
+      const match = combinedText.match(pattern);
+      if (match) {
+        violations.push({
+          type: 'partnership',
+          matchedText: match[0],
+          reason: 'Email references partnership but no verified partnership signal exists. Add verifiedSignals.partnership or remove claim.',
+        });
+        break;
+      }
+    }
+  }
+
+  // Check for acquisition claims without verified source
+  if (!verifiedSignals?.acquisition) {
+    for (const pattern of UNVERIFIED_CLAIM_PATTERNS.acquisition) {
+      const match = combinedText.match(pattern);
+      if (match) {
+        violations.push({
+          type: 'acquisition',
+          matchedText: match[0],
+          reason: 'Email references acquisition but no verified acquisition signal exists. Add verifiedSignals.acquisition or remove claim.',
+        });
+        break;
+      }
+    }
+  }
+
+  // Check for award claims without verified source
+  if (!verifiedSignals?.award) {
+    for (const pattern of UNVERIFIED_CLAIM_PATTERNS.award) {
+      const match = combinedText.match(pattern);
+      if (match) {
+        violations.push({
+          type: 'award',
+          matchedText: match[0],
+          reason: 'Email references award but no verified award signal exists. Add verifiedSignals.award or remove claim.',
+        });
+        break;
+      }
+    }
+  }
+
   return {
     isBlocked: violations.length > 0,
     violations,
@@ -275,7 +425,7 @@ function validateEmailGuardrails(body: string, subject: string, request: EmailGe
  */
 function buildVerifiedSignalsContext(signals?: VerifiedSignals): string {
   if (!signals) {
-    return 'VERIFIED SIGNALS: None provided. Do not fabricate any claims about funding, hiring, expansion, or news.';
+    return 'VERIFIED SIGNALS: None provided. Do not fabricate any claims about funding, hiring, expansion, news, launches, partnerships, acquisitions, or awards.';
   }
 
   const parts: string[] = ['VERIFIED SIGNALS (you may reference these facts):'];
@@ -285,7 +435,7 @@ function buildVerifiedSignalsContext(signals?: VerifiedSignals): string {
       signals.funding.round ? `Round: ${signals.funding.round}` : null,
       signals.funding.amount ? `Amount: ${signals.funding.amount}` : null,
       signals.funding.date ? `Date: ${signals.funding.date}` : null,
-      signals.funding.source ? `Source: ${signals.funding.source}` : null,
+      `Source: ${signals.funding.source}`,
     ].filter(Boolean).join(', ');
     parts.push(`- Funding: ${fundingDetails}`);
   }
@@ -294,7 +444,7 @@ function buildVerifiedSignalsContext(signals?: VerifiedSignals): string {
     const hiringDetails = [
       signals.hiring.roles?.length ? `Roles: ${signals.hiring.roles.join(', ')}` : null,
       signals.hiring.department ? `Department: ${signals.hiring.department}` : null,
-      signals.hiring.source ? `Source: ${signals.hiring.source}` : null,
+      `Source: ${signals.hiring.source}`,
     ].filter(Boolean).join(', ');
     parts.push(`- Hiring: ${hiringDetails}`);
   }
@@ -303,7 +453,7 @@ function buildVerifiedSignalsContext(signals?: VerifiedSignals): string {
     const expansionDetails = [
       signals.expansion.type ? `Type: ${signals.expansion.type}` : null,
       signals.expansion.details ? `Details: ${signals.expansion.details}` : null,
-      signals.expansion.source ? `Source: ${signals.expansion.source}` : null,
+      `Source: ${signals.expansion.source}`,
     ].filter(Boolean).join(', ');
     parts.push(`- Expansion: ${expansionDetails}`);
   }
@@ -312,19 +462,55 @@ function buildVerifiedSignalsContext(signals?: VerifiedSignals): string {
     const newsDetails = [
       signals.news.headline ? `Headline: ${signals.news.headline}` : null,
       signals.news.date ? `Date: ${signals.news.date}` : null,
-      signals.news.source ? `Source: ${signals.news.source}` : null,
+      `Source: ${signals.news.source}`,
     ].filter(Boolean).join(', ');
     parts.push(`- News: ${newsDetails}`);
   }
 
-  if (signals.custom) {
-    for (const [key, value] of Object.entries(signals.custom)) {
-      parts.push(`- ${key}: ${value}`);
+  if (signals.launch) {
+    const launchDetails = [
+      signals.launch.product ? `Product: ${signals.launch.product}` : null,
+      signals.launch.date ? `Date: ${signals.launch.date}` : null,
+      `Source: ${signals.launch.source}`,
+    ].filter(Boolean).join(', ');
+    parts.push(`- Launch: ${launchDetails}`);
+  }
+
+  if (signals.partnership) {
+    const partnershipDetails = [
+      signals.partnership.partner ? `Partner: ${signals.partnership.partner}` : null,
+      signals.partnership.details ? `Details: ${signals.partnership.details}` : null,
+      `Source: ${signals.partnership.source}`,
+    ].filter(Boolean).join(', ');
+    parts.push(`- Partnership: ${partnershipDetails}`);
+  }
+
+  if (signals.acquisition) {
+    const acquisitionDetails = [
+      signals.acquisition.target ? `Target: ${signals.acquisition.target}` : null,
+      signals.acquisition.details ? `Details: ${signals.acquisition.details}` : null,
+      `Source: ${signals.acquisition.source}`,
+    ].filter(Boolean).join(', ');
+    parts.push(`- Acquisition: ${acquisitionDetails}`);
+  }
+
+  if (signals.award) {
+    const awardDetails = [
+      signals.award.name ? `Award: ${signals.award.name}` : null,
+      signals.award.date ? `Date: ${signals.award.date}` : null,
+      `Source: ${signals.award.source}`,
+    ].filter(Boolean).join(', ');
+    parts.push(`- Award: ${awardDetails}`);
+  }
+
+  if (signals.custom?.length) {
+    for (const item of signals.custom) {
+      parts.push(`- Custom: ${item.claim} (Source: ${item.source})`);
     }
   }
 
   if (parts.length === 1) {
-    return 'VERIFIED SIGNALS: None provided. Do not fabricate any claims about funding, hiring, expansion, or news.';
+    return 'VERIFIED SIGNALS: None provided. Do not fabricate any claims about funding, hiring, expansion, news, launches, partnerships, acquisitions, or awards.';
   }
 
   return parts.join('\n');
@@ -577,6 +763,12 @@ When given an AI Decision Engine recommendation, prioritize its template pattern
     
     // Source-based validation: Check for unverified claims
     const claimValidation = validateUnverifiedClaims(formattedBody, finalSubject, request.verifiedSignals);
+    
+    // HARD BLOCK: If enforceSourceValidation is true and violations exist, throw error
+    if (request.enforceSourceValidation && claimValidation.isBlocked) {
+      console.error('🚫 EMAIL BLOCKED: Unverified claims detected', claimValidation.violations);
+      throw new UnverifiedClaimError(claimValidation.violations);
+    }
     
     return {
       subject: finalSubject,
