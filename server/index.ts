@@ -298,6 +298,12 @@ app.use((req, res, next) => {
     const { sequenceExecutorService } = await import("./services/sequence-executor.service");
     sequenceExecutorService.startExecutor(5); // Check every 5 minutes
     log(`✅ Sequence executor started`);
+
+    // Start scheduler monitoring
+    log(`🔍 Starting scheduler monitoring...`);
+    const { schedulerMonitoringService } = await import("./services/scheduler-monitoring.service");
+    schedulerMonitoringService.startMonitoring();
+    log(`✅ Scheduler monitoring started`);
     
     // Reset daily mailbox counters every 24 hours
     log(`🔄 Starting daily mailbox counter reset scheduler...`);

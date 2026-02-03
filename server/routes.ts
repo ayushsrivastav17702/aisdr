@@ -53,7 +53,7 @@ import { hardeningService } from "./services/hardening.service";
 import { aiTrackingService } from "./services/ai-tracking.service";
 import { getTemplateForContext, EMAIL_TEMPLATE_LIBRARY, AI_DECISION_ENGINE_RULES } from "./services/ai-prompt-templates";
 import { inboxRouter } from "./inbox-routes";
-import { authenticate, forbidManager, blockSuperAdminFromSDR } from "./middleware/auth.middleware";
+import { authenticate, forbidManager, blockSuperAdminFromSDR, requireManager } from "./middleware/auth.middleware";
 import { emailVolumeConfig, getCapacityReport, getEstimatedTimeForEmails, EMAIL_VOLUME_PRESETS } from "./config/email-volume.config";
 import { analyticsCache } from "./utils/cache";
 
@@ -2881,6 +2881,58 @@ Return ONLY the email body text, no subject line needed.`;
       console.error("Health check error:", error);
       res.status(500).json({
         error: error instanceof Error ? error.message : "Failed to get health status"
+      });
+    }
+  });
+
+  // ============================================
+  // EMAIL SCHEDULER HEALTH MONITORING
+  // ============================================
+
+  // Get email scheduler health status
+  app.get("/api/scheduler/health", authenticate, async (req, res) => {
+    try {
+      const { schedulerMonitoringService } = await import("./services/scheduler-monitoring.service");
+      const healthStatuses = await schedulerMonitoringService.getAllSchedulerHealth();
+
+      // Find email_queue scheduler specifically
+      const emailQueueHealth = healthStatuses.find(h => h.schedulerType === "email_queue");
+
+      res.json({
+        success: true,
+        schedulers: healthStatuses,
+        emailQueue: emailQueueHealth ? {
+          status: emailQueueHealth.status,
+          lastHeartbeat: emailQueueHealth.lastHeartbeat?.toISOString() || null,
+          processedCount: emailQueueHealth.processedCount,
+          failedCount: emailQueueHealth.failedCount,
+          failureRate15m: emailQueueHealth.failureRate15m,
+          alertActive: emailQueueHealth.alertActive,
+        } : null,
+      });
+    } catch (error) {
+      console.error("Scheduler health check error:", error);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : "Failed to get scheduler health"
+      });
+    }
+  });
+
+  // Get all scheduler statuses (admin endpoint)
+  app.get("/api/admin/scheduler/status", authenticate, requireManager, async (req, res) => {
+    try {
+      const { schedulerMonitoringService } = await import("./services/scheduler-monitoring.service");
+      const healthStatuses = await schedulerMonitoringService.getAllSchedulerHealth();
+
+      res.json({
+        success: true,
+        schedulers: healthStatuses,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error("Admin scheduler status error:", error);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : "Failed to get scheduler status"
       });
     }
   });
