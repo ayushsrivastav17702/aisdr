@@ -9,6 +9,7 @@ import { notificationService } from "./notification.service";
 import { emailVerificationService } from "./email-verification.service";
 import { hardeningService } from "./hardening.service";
 import { observability } from "./observability.service";
+import { schedulerMonitoringService } from "./scheduler-monitoring.service";
 
 /**
  * Renders merge fields in email content, replacing {{fieldName}} with actual prospect data.
@@ -271,6 +272,11 @@ export class EmailQueueService {
       // Select mailbox scoped to the user
       const mailbox = await mailboxService.getNextMailbox(queueData.userId);
 
+      // Generate idempotency key to prevent duplicate sends
+      const idempotencyKey = queueData.sequenceId && queueData.stepOrder !== undefined && queueData.prospectId
+        ? `${queueData.sequenceId}:${queueData.stepOrder}:${queueData.prospectId}`
+        : null;
+
       const [queueItem] = await db
         .insert(emailQueue)
         .values({
@@ -278,7 +284,8 @@ export class EmailQueueService {
           mailboxId: mailbox.id,
           status: "pending",
           priority: queueData.priority || 5,
-          stepOrder: queueData.stepOrder || null, // Default to null if not provided
+          stepOrder: queueData.stepOrder || null,
+          idempotencyKey,
         })
         .returning();
 
@@ -297,6 +304,10 @@ export class EmailQueueService {
   }
 
   async processPendingEmails(userId?: string): Promise<void> {
+    const startTime = Date.now();
+    let processedCount = 0;
+    let failedCount = 0;
+
     try {
       const now = new Date();
       
@@ -459,10 +470,34 @@ export class EmailQueueService {
         }
 
         // Process email - reservation already atomic, no need to track success for counter
-        await this.processEmail(email);
+        const success = await this.processEmail(email);
+        processedCount++;
+        if (!success) {
+          failedCount++;
+        }
       }
+
+      // Record heartbeat after processing batch
+      const processingMs = Date.now() - startTime;
+      await schedulerMonitoringService.recordHeartbeat("email_queue", {
+        processedCount,
+        failedCount,
+        processingMs,
+      });
+
+      console.log(`📨 Batch complete: processed ${processedCount}, failed ${failedCount}, took ${processingMs}ms`);
     } catch (error) {
       console.error("Failed to process pending emails:", error);
+
+      // Record heartbeat with error
+      const processingMs = Date.now() - startTime;
+      await schedulerMonitoringService.recordHeartbeat("email_queue", {
+        processedCount,
+        failedCount,
+        processingMs,
+        error: error instanceof Error ? error.message : "Unknown error",
+      });
+
       if (isSentryEnabled()) {
         Sentry.captureException(error, {
           tags: { service: 'email-queue', operation: 'processPendingEmails' }
@@ -800,12 +835,16 @@ export class EmailQueueService {
       const maxAttempts = email.maxAttempts || 3;
 
       if (attempts >= maxAttempts) {
+        // Classify failure reason for debugging
+        const failureReason = this.classifyFailureReason(error.message);
+
         await db
           .update(emailQueue)
           .set({
             status: "failed",
             failedAt: new Date(),
             lastError: error.message,
+            failureReason,
             attempts,
           })
           .where(eq(emailQueue.id, email.id));
@@ -886,6 +925,37 @@ export class EmailQueueService {
       .where(eq(emailQueue.status, "pending"));
 
     return Number(result.count);
+  }
+
+  private classifyFailureReason(errorMessage: string): string {
+    const message = errorMessage.toLowerCase();
+
+    if (message.includes("smtp") || message.includes("connection")) {
+      return "smtp_connection_error";
+    }
+    if (message.includes("authentication") || message.includes("auth")) {
+      return "authentication_error";
+    }
+    if (message.includes("rate limit") || message.includes("too many")) {
+      return "rate_limit_exceeded";
+    }
+    if (message.includes("bounce") || message.includes("invalid email")) {
+      return "invalid_recipient";
+    }
+    if (message.includes("mailbox") || message.includes("not found")) {
+      return "mailbox_error";
+    }
+    if (message.includes("timeout")) {
+      return "timeout_error";
+    }
+    if (message.includes("quota") || message.includes("limit exceeded")) {
+      return "quota_exceeded";
+    }
+    if (message.includes("blocked") || message.includes("spam")) {
+      return "blocked_by_provider";
+    }
+
+    return "unknown_error";
   }
 
   async cancelEmail(emailId: string): Promise<void> {

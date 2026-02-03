@@ -11,7 +11,7 @@ export const jobStatusEnum = pgEnum("job_status", ["queued", "running", "complet
 export const jobTypeEnum = pgEnum("job_type", ["enrichment", "import", "search"]);
 export const mailboxStatusEnum = pgEnum("mailbox_status", ["active", "paused", "error", "warming"]);
 export const mailboxProviderEnum = pgEnum("mailbox_provider", ["gmail", "outlook", "smtp", "sendgrid"]);
-export const emailQueueStatusEnum = pgEnum("email_queue_status", ["pending", "sending", "sent", "failed", "scheduled", "cancelled", "preview"]);
+export const emailQueueStatusEnum = pgEnum("email_queue_status", ["pending", "generating", "approved", "sending", "sent", "failed", "scheduled", "cancelled", "preview"]);
 export const emailSendStatusEnum = pgEnum("email_send_status", ["success", "failed", "bounced"]);
 
 // Prospects table
@@ -767,6 +767,12 @@ export const emailQueue = pgTable("email_queue", {
   // Sequence tracking
   stepOrder: integer("step_order"), // Which step in the sequence (1, 2, 3, etc.)
   
+  // Idempotency key to prevent duplicate sends (sequenceId + stepOrder + prospectId)
+  idempotencyKey: text("idempotency_key"),
+  
+  // Retry tracking
+  failureReason: text("failure_reason"), // Detailed failure reason for debugging
+  
   // Email Threading Headers (RFC 5322)
   messageId: text("message_id"), // RFC 5322 Message-ID of THIS email (populated after send)
   inReplyTo: text("in_reply_to"), // Message-ID of the email this is replying to
@@ -779,6 +785,24 @@ export const emailQueue = pgTable("email_queue", {
   statusScheduledIdx: index("email_queue_status_scheduled_idx").on(table.status, table.scheduledFor),
   mailboxIdIdx: index("email_queue_mailbox_id_idx").on(table.mailboxId),
   sequenceIdStatusSentAtIdx: index("email_queue_sequence_id_status_sent_at_idx").on(table.sequenceId, table.status, table.sentAt),
+  idempotencyKeyIdx: uniqueIndex("email_queue_idempotency_key_idx").on(table.idempotencyKey),
+}));
+
+// Scheduler Heartbeat table - tracks email scheduler health
+export const schedulerHeartbeat = pgTable("scheduler_heartbeat", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  schedulerType: text("scheduler_type").notNull().default("email_queue"), // email_queue, sequence_executor, automation
+  lastHeartbeat: timestamp("last_heartbeat").notNull().defaultNow(),
+  status: text("status").notNull().default("healthy"), // healthy, delayed, down
+  processedCount: integer("processed_count").default(0),
+  failedCount: integer("failed_count").default(0),
+  averageProcessingMs: integer("average_processing_ms"),
+  lastError: text("last_error"),
+  metadata: jsonb("metadata"), // Additional scheduler-specific data
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  schedulerTypeIdx: uniqueIndex("scheduler_heartbeat_type_idx").on(table.schedulerType),
 }));
 
 // Email Send Log table
@@ -808,6 +832,8 @@ export type EmailQueueItem = typeof emailQueue.$inferSelect;
 export type InsertEmailQueueItem = typeof emailQueue.$inferInsert;
 export type EmailSendLogEntry = typeof emailSendLog.$inferSelect;
 export type InsertEmailSendLogEntry = typeof emailSendLog.$inferInsert;
+export type SchedulerHeartbeat = typeof schedulerHeartbeat.$inferSelect;
+export type InsertSchedulerHeartbeat = typeof schedulerHeartbeat.$inferInsert;
 
 // Email mailbox schemas
 export const insertEmailMailboxSchema = createInsertSchema(emailMailboxes).omit({
