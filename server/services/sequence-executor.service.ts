@@ -1,5 +1,5 @@
 import { db } from "../db";
-import { sequenceProspects, emailQueue, sequenceSteps, prospects, emails } from "@shared/schema";
+import { sequenceProspects, emailQueue, sequenceSteps, prospects, emails, sequences } from "@shared/schema";
 import { eq, and, isNotNull, desc, sql } from "drizzle-orm";
 import { emailQueueService } from "./email-queue.service";
 import { Sentry, isSentryEnabled } from "../sentry";
@@ -391,6 +391,37 @@ Best regards`;
 
     try {
       console.log(`[SequenceExecutor] 🔍 DRY RUN for sequence ${params.sequenceId}`);
+
+      // SECURITY: Verify sequence ownership before proceeding
+      const sequence = await db.query.sequences.findFirst({
+        where: and(
+          eq(sequences.id, params.sequenceId),
+          eq(sequences.userId, params.userId)
+        )
+      });
+
+      if (!sequence) {
+        console.warn(`[SequenceExecutor] ⚠️ Sequence ${params.sequenceId} not found or access denied for user ${params.userId}`);
+        return {
+          success: false,
+          previews: [],
+          totalGenerated: 0,
+          errors: ["Sequence not found or access denied"]
+        };
+      }
+
+      // DEDUPLICATION: Clear existing previews before generating new ones
+      const existingPreviews = await db.delete(emailQueue)
+        .where(and(
+          eq(emailQueue.sequenceId, params.sequenceId),
+          eq(emailQueue.userId, params.userId),
+          eq(emailQueue.status, 'preview')
+        ))
+        .returning();
+      
+      if (existingPreviews.length > 0) {
+        console.log(`[SequenceExecutor] Cleared ${existingPreviews.length} existing previews`);
+      }
 
       // Get sequence steps
       const steps = await db.query.sequenceSteps.findMany({
