@@ -30,6 +30,36 @@ function filterContentByIndustry(contentItems: ContentLibraryItem[], prospect: P
   }).slice(0, 5); // Limit to 5 most relevant items
 }
 
+/**
+ * Verified signals from trusted external sources.
+ * AI can ONLY reference claims present in this object.
+ * Prevents hallucinated funding, hiring, or news claims.
+ */
+export interface VerifiedSignals {
+  funding?: {
+    amount?: string;
+    round?: string;
+    date?: string;
+    source?: string;
+  };
+  hiring?: {
+    roles?: string[];
+    department?: string;
+    source?: string;
+  };
+  expansion?: {
+    type?: 'geographic' | 'product' | 'team';
+    details?: string;
+    source?: string;
+  };
+  news?: {
+    headline?: string;
+    date?: string;
+    source?: string;
+  };
+  custom?: Record<string, string>;
+}
+
 export interface EmailGenerationRequest {
   prospectId: string;
   emailType: EmailType;
@@ -45,6 +75,8 @@ export interface EmailGenerationRequest {
   triggerDetected?: 'hiring' | 'funding' | 'expansion' | 'new_role' | 'none';
   icpType?: 'smb' | 'mid_market' | 'enterprise';
   userRole?: 'sdr' | 'manager' | 'founder' | 'revops';
+  // Source-based validation: AI can only reference verified signals
+  verifiedSignals?: VerifiedSignals;
 }
 
 export interface GeneratedEmail {
@@ -59,12 +91,134 @@ export interface GeneratedEmail {
     reasoning: string;
   };
   warnings?: string[]; // Guardrail violations
+  // Source-based validation
+  isBlocked?: boolean; // True if email contains unverified claims
+  claimViolations?: UnverifiedClaimValidation['violations'];
 }
 
 export interface EmailVariant {
   id: string;
   email: GeneratedEmail;
   approach: string;
+}
+
+/**
+ * UNVERIFIED CLAIMS PATTERNS
+ * These patterns detect AI-generated claims that require verified source data.
+ */
+const UNVERIFIED_CLAIM_PATTERNS = {
+  funding: [
+    /\b(series\s+[a-z])\b/i,
+    /\braised\s+\$?\d+/i,
+    /\bfunding\s+(round|announcement)/i,
+    /\brecent(ly)?\s+(raised|funding|investment)/i,
+    /\$\d+[mb]?\s+(round|funding|raise)/i,
+  ],
+  hiring: [
+    /\b(hiring|recruiting|growing\s+the\s+team)\b/i,
+    /\bopen\s+(roles?|positions?)\b/i,
+    /\bgrowing\s+(rapidly|fast|the\s+team)/i,
+    /\bheadcount\s+(expansion|growth)/i,
+  ],
+  expansion: [
+    /\b(expansion|expanding)\s+(into|to|plans?)/i,
+    /\bnew\s+(office|location|market)/i,
+    /\bentering\s+(new\s+)?market/i,
+    /\bgeographic\s+expansion/i,
+  ],
+  news: [
+    /\b(announced|launched|unveiled)\s+(today|recently|this\s+week)/i,
+    /\bsaw\s+(the\s+news|your\s+announcement)/i,
+    /\bcongratulations\s+on\s+(the|your)\s+(news|announcement|launch)/i,
+    /\brecent\s+(news|announcement|press\s+release)/i,
+  ],
+};
+
+export interface UnverifiedClaimValidation {
+  isBlocked: boolean;
+  violations: Array<{
+    type: 'funding' | 'hiring' | 'expansion' | 'news';
+    matchedText: string;
+    reason: string;
+  }>;
+}
+
+/**
+ * Validates that AI-generated content only references verified signals.
+ * BLOCKS sending if unverified claims are detected.
+ */
+export function validateUnverifiedClaims(
+  body: string,
+  subject: string,
+  verifiedSignals?: VerifiedSignals
+): UnverifiedClaimValidation {
+  const violations: UnverifiedClaimValidation['violations'] = [];
+  const combinedText = `${subject} ${body}`.toLowerCase();
+
+  // Check for funding claims without verified source
+  if (!verifiedSignals?.funding) {
+    for (const pattern of UNVERIFIED_CLAIM_PATTERNS.funding) {
+      const match = combinedText.match(pattern);
+      if (match) {
+        violations.push({
+          type: 'funding',
+          matchedText: match[0],
+          reason: 'Email references funding but no verified funding signal exists. Add verifiedSignals.funding or remove claim.',
+        });
+        break; // One violation per type is enough
+      }
+    }
+  }
+
+  // Check for hiring claims without verified source
+  if (!verifiedSignals?.hiring) {
+    for (const pattern of UNVERIFIED_CLAIM_PATTERNS.hiring) {
+      const match = combinedText.match(pattern);
+      if (match) {
+        violations.push({
+          type: 'hiring',
+          matchedText: match[0],
+          reason: 'Email references hiring but no verified hiring signal exists. Add verifiedSignals.hiring or remove claim.',
+        });
+        break;
+      }
+    }
+  }
+
+  // Check for expansion claims without verified source
+  if (!verifiedSignals?.expansion) {
+    for (const pattern of UNVERIFIED_CLAIM_PATTERNS.expansion) {
+      const match = combinedText.match(pattern);
+      if (match) {
+        violations.push({
+          type: 'expansion',
+          matchedText: match[0],
+          reason: 'Email references expansion but no verified expansion signal exists. Add verifiedSignals.expansion or remove claim.',
+        });
+        break;
+      }
+    }
+  }
+
+  // Check for news claims without verified source
+  if (!verifiedSignals?.news) {
+    for (const pattern of UNVERIFIED_CLAIM_PATTERNS.news) {
+      const match = combinedText.match(pattern);
+      if (match) {
+        violations.push({
+          type: 'news',
+          matchedText: match[0],
+          reason: 'Email references news/announcement but no verified news signal exists. Add verifiedSignals.news or remove claim.',
+        });
+        break;
+      }
+    }
+  }
+
+  return {
+    isBlocked: violations.length > 0,
+    violations,
+  };
 }
 
 // AI Decision Engine: Validate email against guardrails
@@ -103,8 +257,77 @@ function validateEmailGuardrails(body: string, subject: string, request: EmailGe
   if (body.includes('{{') || body.includes('}}') || body.includes('[Company]') || body.includes('[Name]')) {
     warnings.push('Unresolved personalization tokens detected. Ensure all placeholders are replaced.');
   }
+
+  // Source-based validation: Block unverified claims
+  const claimValidation = validateUnverifiedClaims(body, subject, request.verifiedSignals);
+  if (claimValidation.isBlocked) {
+    for (const violation of claimValidation.violations) {
+      warnings.push(`🚫 BLOCKED: ${violation.reason} (detected: "${violation.matchedText}")`);
+    }
+  }
   
   return warnings;
+}
+
+/**
+ * Builds a context string for verified signals to include in AI prompts.
+ * Only includes signals that have been verified from external sources.
+ */
+function buildVerifiedSignalsContext(signals?: VerifiedSignals): string {
+  if (!signals) {
+    return 'VERIFIED SIGNALS: None provided. Do not fabricate any claims about funding, hiring, expansion, or news.';
+  }
+
+  const parts: string[] = ['VERIFIED SIGNALS (you may reference these facts):'];
+
+  if (signals.funding) {
+    const fundingDetails = [
+      signals.funding.round ? `Round: ${signals.funding.round}` : null,
+      signals.funding.amount ? `Amount: ${signals.funding.amount}` : null,
+      signals.funding.date ? `Date: ${signals.funding.date}` : null,
+      signals.funding.source ? `Source: ${signals.funding.source}` : null,
+    ].filter(Boolean).join(', ');
+    parts.push(`- Funding: ${fundingDetails}`);
+  }
+
+  if (signals.hiring) {
+    const hiringDetails = [
+      signals.hiring.roles?.length ? `Roles: ${signals.hiring.roles.join(', ')}` : null,
+      signals.hiring.department ? `Department: ${signals.hiring.department}` : null,
+      signals.hiring.source ? `Source: ${signals.hiring.source}` : null,
+    ].filter(Boolean).join(', ');
+    parts.push(`- Hiring: ${hiringDetails}`);
+  }
+
+  if (signals.expansion) {
+    const expansionDetails = [
+      signals.expansion.type ? `Type: ${signals.expansion.type}` : null,
+      signals.expansion.details ? `Details: ${signals.expansion.details}` : null,
+      signals.expansion.source ? `Source: ${signals.expansion.source}` : null,
+    ].filter(Boolean).join(', ');
+    parts.push(`- Expansion: ${expansionDetails}`);
+  }
+
+  if (signals.news) {
+    const newsDetails = [
+      signals.news.headline ? `Headline: ${signals.news.headline}` : null,
+      signals.news.date ? `Date: ${signals.news.date}` : null,
+      signals.news.source ? `Source: ${signals.news.source}` : null,
+    ].filter(Boolean).join(', ');
+    parts.push(`- News: ${newsDetails}`);
+  }
+
+  if (signals.custom) {
+    for (const [key, value] of Object.entries(signals.custom)) {
+      parts.push(`- ${key}: ${value}`);
+    }
+  }
+
+  if (parts.length === 1) {
+    return 'VERIFIED SIGNALS: None provided. Do not fabricate any claims about funding, hiring, expansion, or news.';
+  }
+
+  return parts.join('\n');
 }
 
 // AI Decision Engine: Get recommended template based on context
@@ -226,6 +449,28 @@ Apply this pattern style to the specific prospect context below. Do NOT copy ver
       prompt = templateGuidance + '\n\n' + prompt;
     }
 
+    // Build verified signals context for AI prompt
+    const verifiedSignalsContext = buildVerifiedSignalsContext(request.verifiedSignals);
+    
+    // System prompt with source-based validation rules
+    const systemPrompt = `You are an expert sales development representative for Increff with years of experience writing high-converting cold emails. Always respond with valid JSON and follow the exact structure and constraints provided.
+
+CRITICAL SOURCE-BASED VALIDATION RULES:
+1. You can ONLY reference facts from these sources:
+   - Prospect data provided in the prompt (name, title, company, industry)
+   - Verified signals (if provided below)
+   - Content library data
+2. DO NOT fabricate or assume any claims about:
+   - Funding rounds (Series A, B, C, raised $X)
+   - Hiring activity or headcount growth
+   - Geographic or product expansion
+   - Recent news, announcements, or launches
+3. If no verified signals are provided, focus on role-based personalization and industry insights only.
+
+${verifiedSignalsContext}
+
+When given an AI Decision Engine recommendation, prioritize its template pattern and style.`;
+
     const response = await openaiHelper.callWithFallback(
       // Primary OpenAI call
       (client) =>
@@ -234,7 +479,7 @@ Apply this pattern style to the specific prospect context below. Do NOT copy ver
           messages: [
             {
               role: "system",
-              content: "You are an expert sales development representative for Increff with years of experience writing high-converting cold emails. Always respond with valid JSON and follow the exact structure and constraints provided. When given an AI Decision Engine recommendation, prioritize its template pattern and style."
+              content: systemPrompt
             },
             {
               role: "user",
@@ -251,7 +496,7 @@ Apply this pattern style to the specific prospect context below. Do NOT copy ver
           model: "claude-sonnet-4-20250514",
           max_tokens: 1000,
           temperature: 0.7,
-          system: "You are an expert sales development representative for Increff. Always respond with valid JSON. When given an AI Decision Engine recommendation, prioritize its template pattern and style.",
+          system: systemPrompt,
           messages: [
             {
               role: "user",
@@ -272,7 +517,7 @@ Apply this pattern style to the specific prospect context below. Do NOT copy ver
           messages: [
             {
               role: "system",
-              content: "You are an expert sales development representative for Increff with years of experience writing high-converting cold emails. Always respond with valid JSON and follow the exact structure and constraints provided. When given an AI Decision Engine recommendation, prioritize its template pattern and style."
+              content: systemPrompt
             },
             {
               role: "user",
@@ -330,6 +575,9 @@ Apply this pattern style to the specific prospect context below. Do NOT copy ver
     // AI Decision Engine: Get template recommendation
     const templateRecommendation = getAIRecommendedTemplate(request);
     
+    // Source-based validation: Check for unverified claims
+    const claimValidation = validateUnverifiedClaims(formattedBody, finalSubject, request.verifiedSignals);
+    
     return {
       subject: finalSubject,
       body: formattedBody,
@@ -337,7 +585,9 @@ Apply this pattern style to the specific prospect context below. Do NOT copy ver
       personalizationFactors,
       confidenceScore,
       templateRecommendation,
-      warnings: warnings.length > 0 ? warnings : undefined
+      warnings: warnings.length > 0 ? warnings : undefined,
+      isBlocked: claimValidation.isBlocked,
+      claimViolations: claimValidation.isBlocked ? claimValidation.violations : undefined
     };
     
   } catch (error) {
