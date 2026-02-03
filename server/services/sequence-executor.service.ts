@@ -4,9 +4,44 @@ import { eq, and, isNotNull, desc, sql } from "drizzle-orm";
 import { emailQueueService } from "./email-queue.service";
 import { Sentry, isSentryEnabled } from "../sentry";
 
+// Health monitoring types
+export interface ExecutorHealthStatus {
+  isRunning: boolean;
+  lastHeartbeat: Date | null;
+  lastRunDuration: number | null;
+  consecutiveFailures: number;
+  totalRuns: number;
+  totalEmailsScheduled: number;
+  alertThresholdMinutes: number;
+  isHealthy: boolean;
+  lastAlert: Date | null;
+}
+
+export interface ExecutorAlert {
+  type: 'missed_heartbeat' | 'consecutive_failures' | 'executor_stopped';
+  severity: 'warning' | 'critical';
+  message: string;
+  lastHeartbeat: Date | null;
+  minutesSinceLastRun: number;
+  timestamp: Date;
+}
+
 export class SequenceExecutorService {
   private executorInterval: NodeJS.Timeout | null = null;
   private isProcessing = false;
+  
+  // Health monitoring state
+  private healthMonitorInterval: NodeJS.Timeout | null = null;
+  private lastHeartbeat: Date | null = null;
+  private lastRunDuration: number | null = null;
+  private consecutiveFailures: number = 0;
+  private totalRuns: number = 0;
+  private totalEmailsScheduled: number = 0;
+  private lastAlert: Date | null = null;
+  private lastFailureAlert: Date | null = null;
+  private alertThresholdMinutes: number = 15;
+  private configuredIntervalMinutes: number = 5;
+  private alertCallbacks: Array<(alert: ExecutorAlert) => void> = [];
 
   /**
    * Initializes the background worker for executing sequence steps.
@@ -20,6 +55,9 @@ export class SequenceExecutorService {
 
     console.log(`⏳ Starting Sequence Executor (checks every ${intervalMinutes} minutes)`);
     
+    // Track configured interval for health monitoring
+    this.configuredIntervalMinutes = intervalMinutes;
+    
     // Initial check
     this.processNextSteps();
     
@@ -27,6 +65,9 @@ export class SequenceExecutorService {
     this.executorInterval = setInterval(async () => {
       await this.processNextSteps();
     }, intervalMinutes * 60 * 1000);
+
+    // Start health monitoring (check every minute)
+    this.startHealthMonitor();
   }
 
   stopExecutor(): void {
@@ -35,6 +76,172 @@ export class SequenceExecutorService {
       this.executorInterval = null;
       console.log("🛑 Sequence executor stopped");
     }
+    this.stopHealthMonitor();
+  }
+
+  /**
+   * Register a callback to receive alerts when health issues are detected.
+   */
+  onAlert(callback: (alert: ExecutorAlert) => void): void {
+    this.alertCallbacks.push(callback);
+  }
+
+  /**
+   * Start health monitoring - checks every minute if executor is healthy.
+   */
+  private startHealthMonitor(): void {
+    if (this.healthMonitorInterval) return;
+
+    console.log(`🏥 Starting health monitor (alert threshold: ${this.alertThresholdMinutes} minutes)`);
+    
+    this.healthMonitorInterval = setInterval(() => {
+      this.checkHealth();
+    }, 60 * 1000); // Check every minute
+  }
+
+  /**
+   * Stop health monitoring.
+   */
+  private stopHealthMonitor(): void {
+    if (this.healthMonitorInterval) {
+      clearInterval(this.healthMonitorInterval);
+      this.healthMonitorInterval = null;
+      console.log("🏥 Health monitor stopped");
+    }
+  }
+
+  /**
+   * Check executor health and trigger alerts if needed.
+   */
+  private checkHealth(): void {
+    const now = new Date();
+    
+    if (!this.lastHeartbeat) {
+      // Executor hasn't run yet since startup
+      return;
+    }
+
+    const minutesSinceLastRun = (now.getTime() - this.lastHeartbeat.getTime()) / (1000 * 60);
+    
+    // Check if we've exceeded the alert threshold
+    if (minutesSinceLastRun >= this.alertThresholdMinutes) {
+      // Don't spam alerts - only alert once per threshold period
+      if (!this.lastAlert || (now.getTime() - this.lastAlert.getTime()) >= this.alertThresholdMinutes * 60 * 1000) {
+        const alert: ExecutorAlert = {
+          type: 'missed_heartbeat',
+          severity: minutesSinceLastRun >= this.alertThresholdMinutes * 2 ? 'critical' : 'warning',
+          message: `Sequence executor has not run for ${Math.round(minutesSinceLastRun)} minutes. Expected interval: ${this.configuredIntervalMinutes} minutes, threshold: ${this.alertThresholdMinutes} minutes.`,
+          lastHeartbeat: this.lastHeartbeat,
+          minutesSinceLastRun: Math.round(minutesSinceLastRun),
+          timestamp: now,
+        };
+
+        this.triggerAlert(alert);
+        this.lastAlert = now;
+      }
+    }
+
+    // Check for consecutive failures (with throttling to prevent alert spam)
+    if (this.consecutiveFailures >= 3) {
+      // Only alert for consecutive failures every 5 minutes
+      if (!this.lastFailureAlert || (now.getTime() - this.lastFailureAlert.getTime()) >= 5 * 60 * 1000) {
+        const alert: ExecutorAlert = {
+          type: 'consecutive_failures',
+          severity: 'critical',
+          message: `Sequence executor has failed ${this.consecutiveFailures} consecutive times. Investigation required.`,
+          lastHeartbeat: this.lastHeartbeat,
+          minutesSinceLastRun: Math.round(minutesSinceLastRun),
+          timestamp: now,
+        };
+
+        this.triggerAlert(alert);
+        this.lastFailureAlert = now;
+      }
+    }
+  }
+
+  /**
+   * Trigger alert to all registered callbacks.
+   */
+  private triggerAlert(alert: ExecutorAlert): void {
+    console.error(`🚨 EXECUTOR ALERT [${alert.severity.toUpperCase()}]: ${alert.message}`);
+    console.error(`   Last heartbeat: ${alert.lastHeartbeat?.toISOString() || 'Never'}`);
+    console.error(`   Minutes since last run: ${alert.minutesSinceLastRun}`);
+
+    // Report to Sentry if available
+    if (isSentryEnabled()) {
+      Sentry.captureMessage(alert.message, {
+        level: alert.severity === 'critical' ? 'error' : 'warning',
+        tags: { 
+          service: 'sequence-executor', 
+          alert_type: alert.type,
+          severity: alert.severity 
+        },
+        extra: {
+          lastHeartbeat: alert.lastHeartbeat?.toISOString(),
+          minutesSinceLastRun: alert.minutesSinceLastRun,
+          consecutiveFailures: this.consecutiveFailures,
+          totalRuns: this.totalRuns,
+        }
+      });
+    }
+
+    // Call registered callbacks
+    for (const callback of this.alertCallbacks) {
+      try {
+        callback(alert);
+      } catch (err) {
+        console.error("Alert callback error:", err);
+      }
+    }
+  }
+
+  /**
+   * Record a heartbeat - called after each successful run.
+   */
+  private recordHeartbeat(duration: number, emailsScheduled: number): void {
+    this.lastHeartbeat = new Date();
+    this.lastRunDuration = duration;
+    this.totalRuns++;
+    this.totalEmailsScheduled += emailsScheduled;
+    this.consecutiveFailures = 0; // Reset on success
+
+    console.log(`💓 HEARTBEAT [${this.lastHeartbeat.toISOString()}] Run #${this.totalRuns} - Duration: ${duration}ms, Emails scheduled: ${emailsScheduled}`);
+  }
+
+  /**
+   * Record a failure - called after each failed run.
+   */
+  private recordFailure(error: Error): void {
+    this.consecutiveFailures++;
+    console.error(`❌ EXECUTOR FAILURE #${this.consecutiveFailures}: ${error.message}`);
+  }
+
+  /**
+   * Get current health status.
+   */
+  getHealthStatus(): ExecutorHealthStatus {
+    const now = new Date();
+    const minutesSinceLastRun = this.lastHeartbeat 
+      ? (now.getTime() - this.lastHeartbeat.getTime()) / (1000 * 60)
+      : null;
+
+    const isHealthy = 
+      this.executorInterval !== null && 
+      this.consecutiveFailures < 3 &&
+      (minutesSinceLastRun === null || minutesSinceLastRun < this.alertThresholdMinutes);
+
+    return {
+      isRunning: this.executorInterval !== null,
+      lastHeartbeat: this.lastHeartbeat,
+      lastRunDuration: this.lastRunDuration,
+      consecutiveFailures: this.consecutiveFailures,
+      totalRuns: this.totalRuns,
+      totalEmailsScheduled: this.totalEmailsScheduled,
+      alertThresholdMinutes: this.alertThresholdMinutes,
+      isHealthy,
+      lastAlert: this.lastAlert,
+    };
   }
 
   /**
@@ -46,6 +253,9 @@ export class SequenceExecutorService {
       console.log("[SequenceExecutor] Already processing, skipping this interval");
       return;
     }
+
+    const startTime = Date.now();
+    let scheduledCount = 0;
 
     try {
       this.isProcessing = true;
@@ -62,12 +272,14 @@ export class SequenceExecutorService {
 
       if (activeEnrollments.length === 0) {
         console.log("[SequenceExecutor] No active enrollments found");
+        // Still record heartbeat for empty runs
+        const duration = Date.now() - startTime;
+        this.recordHeartbeat(duration, 0);
         return;
       }
 
       console.log(`[SequenceExecutor] Found ${activeEnrollments.length} active enrollments to check`);
       let processedCount = 0;
-      let scheduledCount = 0;
       let completedCount = 0;
 
       for (const enrollment of activeEnrollments) {
@@ -187,6 +399,10 @@ export class SequenceExecutorService {
       console.log(`[SequenceExecutor] 📊 Processed ${processedCount}/${activeEnrollments.length} enrollments`);
       console.log(`[SequenceExecutor] 📧 Scheduled ${scheduledCount} new emails`);
       console.log(`[SequenceExecutor] ✅ Completed ${completedCount} sequences`);
+
+      // Record successful heartbeat
+      const duration = Date.now() - startTime;
+      this.recordHeartbeat(duration, scheduledCount);
       
     } catch (error) {
       console.error("[SequenceExecutor] ❌ Error in processNextSteps:", error);
@@ -195,6 +411,8 @@ export class SequenceExecutorService {
           tags: { service: 'sequence-executor', operation: 'processNextSteps' }
         });
       }
+      // Record failure
+      this.recordFailure(error instanceof Error ? error : new Error(String(error)));
     } finally {
       this.isProcessing = false;
     }
