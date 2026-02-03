@@ -3,8 +3,38 @@ import { emailMailboxes, InsertEmailMailbox, EmailMailbox } from "@shared/schema
 import { eq, and, lt, sql } from "drizzle-orm";
 import crypto from "crypto";
 
+/**
+ * Validates ENCRYPTION_KEY and returns it if valid.
+ * Throws an error if missing or weak (< 32 characters).
+ */
+function getValidatedEncryptionKey(): string {
+  const key = process.env.ENCRYPTION_KEY;
+  
+  if (!key) {
+    throw new Error(
+      '🔐 SECURITY ERROR: ENCRYPTION_KEY environment variable is required.\n' +
+      'Mailbox credentials cannot be encrypted without this key.\n' +
+      'Generate a secure key with: openssl rand -hex 32'
+    );
+  }
+  
+  if (key.length < 32) {
+    throw new Error(
+      `🔐 SECURITY ERROR: ENCRYPTION_KEY must be at least 32 characters (currently ${key.length}).\n` +
+      'A weak encryption key puts all mailbox credentials at risk.\n' +
+      'Generate a secure key with: openssl rand -hex 32'
+    );
+  }
+  
+  return key;
+}
+
 export class MailboxService {
-  private encryptionKey = process.env.ENCRYPTION_KEY || "default-key-change-in-prod";
+  private encryptionKey: string;
+
+  constructor() {
+    this.encryptionKey = getValidatedEncryptionKey();
+  }
 
   async addMailbox(mailboxData: {
     name: string;

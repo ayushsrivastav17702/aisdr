@@ -25,6 +25,34 @@ console.log('📍 PORT:', process.env.PORT);
 console.log('📍 SESSION_SECRET exists:', !!process.env.SESSION_SECRET);
 console.log('📍 LUSHA_API_KEY exists:', !!process.env.LUSHA_API_KEY);
 
+// ============================================
+// CRITICAL SECURITY CHECK: ENCRYPTION_KEY
+// ============================================
+const encryptionKey = process.env.ENCRYPTION_KEY;
+const isProduction = process.env.NODE_ENV === 'production';
+
+if (isProduction && !encryptionKey) {
+  console.error('❌ FATAL SECURITY ERROR: ENCRYPTION_KEY is required in production.');
+  console.error('   Mailbox credentials cannot be stored securely without this key.');
+  console.error('   Generate a key with: openssl rand -hex 32');
+  console.error('   Then set it in your environment variables.');
+  process.exit(1);
+}
+
+if (encryptionKey && encryptionKey.length < 32) {
+  console.error(`❌ FATAL SECURITY ERROR: ENCRYPTION_KEY must be at least 32 characters (currently ${encryptionKey.length}).`);
+  console.error('   A weak encryption key puts all mailbox credentials at risk.');
+  console.error('   Generate a secure key with: openssl rand -hex 32');
+  process.exit(1);
+}
+
+if (!encryptionKey) {
+  console.warn('⚠️  WARNING: ENCRYPTION_KEY not set. Mailbox features will be unavailable.');
+  console.warn('   Generate a key with: openssl rand -hex 32');
+} else {
+  console.log('✅ ENCRYPTION_KEY validated (length:', encryptionKey.length, ')');
+}
+
 try {
   initSentry();
   console.log('✅ Sentry initialized');
@@ -36,8 +64,6 @@ const app = express();
 
 // Configure trust proxy for proper IP extraction behind proxies (Heroku, Vercel, etc.)
 app.set('trust proxy', true);
-
-const isProduction = process.env.NODE_ENV === "production";
 
 const csrfProtection = doubleCsrf({
   getSecret: () => process.env.SESSION_SECRET || "default-csrf-secret-change-in-production",
