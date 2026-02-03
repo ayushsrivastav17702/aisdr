@@ -350,6 +350,273 @@ Best regards`;
       throw error;
     }
   }
+
+  /**
+   * DRY RUN: Simulate sequence execution without sending emails.
+   * Generates all emails for enrolled prospects and stores with status="preview".
+   * Returns preview list for UI display.
+   */
+  async dryRunSequence(params: {
+    sequenceId: string;
+    userId: string;
+    prospectIds?: string[]; // Optional: limit to specific prospects
+  }): Promise<{
+    success: boolean;
+    previews: Array<{
+      id: string;
+      prospectId: string;
+      prospectName: string;
+      prospectEmail: string;
+      stepOrder: number;
+      subject: string;
+      body: string;
+      status: 'preview';
+      scheduledFor: Date;
+    }>;
+    totalGenerated: number;
+    errors: string[];
+  }> {
+    const previews: Array<{
+      id: string;
+      prospectId: string;
+      prospectName: string;
+      prospectEmail: string;
+      stepOrder: number;
+      subject: string;
+      body: string;
+      status: 'preview';
+      scheduledFor: Date;
+    }> = [];
+    const errors: string[] = [];
+
+    try {
+      console.log(`[SequenceExecutor] 🔍 DRY RUN for sequence ${params.sequenceId}`);
+
+      // Get sequence steps
+      const steps = await db.query.sequenceSteps.findMany({
+        where: and(
+          eq(sequenceSteps.sequenceId, params.sequenceId),
+          eq(sequenceSteps.stepType, "email")
+        ),
+        orderBy: (steps, { asc }) => [asc(steps.stepOrder)]
+      });
+
+      if (steps.length === 0) {
+        return {
+          success: false,
+          previews: [],
+          totalGenerated: 0,
+          errors: ["No email steps found in sequence"]
+        };
+      }
+
+      // Get enrolled prospects
+      let enrolledQuery = db.query.sequenceProspects.findMany({
+        where: and(
+          eq(sequenceProspects.sequenceId, params.sequenceId),
+          sql`${sequenceProspects.status} IN ('active', 'paused')`
+        ),
+        limit: 100 // Limit for performance
+      });
+
+      const enrollments = await enrolledQuery;
+
+      if (enrollments.length === 0) {
+        return {
+          success: false,
+          previews: [],
+          totalGenerated: 0,
+          errors: ["No enrolled prospects found in sequence"]
+        };
+      }
+
+      console.log(`[SequenceExecutor] Found ${enrollments.length} enrollments and ${steps.length} steps`);
+
+      // Generate preview emails for each prospect's next pending step
+      for (const enrollment of enrollments) {
+        try {
+          // Skip if prospectIds filter is provided and this prospect is not in the list
+          if (params.prospectIds && !params.prospectIds.includes(enrollment.prospectId)) {
+            continue;
+          }
+
+          // Get prospect data
+          const prospect = await db.query.prospects.findFirst({
+            where: and(
+              eq(prospects.id, enrollment.prospectId),
+              eq(prospects.userId, params.userId) // Multi-tenant security
+            )
+          });
+
+          if (!prospect) {
+            errors.push(`Prospect ${enrollment.prospectId} not found or access denied`);
+            continue;
+          }
+
+          // Determine last sent step
+          const lastSentQueueItem = await db.query.emailQueue.findFirst({
+            where: and(
+              eq(emailQueue.prospectId, enrollment.prospectId),
+              eq(emailQueue.sequenceId, params.sequenceId),
+              sql`${emailQueue.status} IN ('sent', 'pending', 'sending', 'scheduled')`
+            ),
+            orderBy: desc(emailQueue.stepOrder)
+          });
+
+          const lastStepOrder = lastSentQueueItem?.stepOrder ?? 0;
+
+          // Generate previews for remaining steps
+          for (const step of steps) {
+            if ((step.stepOrder ?? 0) <= lastStepOrder) continue;
+
+            // Generate email content using template + merge fields
+            let emailSubject = step.subject || '';
+            let emailBody = step.body || '';
+
+            // Apply merge fields
+            const prospectName = prospect.firstName || 'there';
+            const companyName = prospect.companyName || 'your company';
+
+            // Generate fallback content if template is empty
+            if (!emailSubject.trim()) {
+              emailSubject = step.stepOrder === 1
+                ? `Quick question about ${companyName}`
+                : `Follow-up: Quick question about ${companyName}`;
+            }
+
+            if (!emailBody.trim()) {
+              emailBody = `Hi ${prospectName},\n\nI wanted to reach out about opportunities at ${companyName}.\n\nWould you have 15 minutes this week for a quick call?\n\nBest regards`;
+            }
+
+            // Apply merge field replacements
+            const mergeData: Record<string, string> = {
+              '{{firstName}}': prospect.firstName || 'there',
+              '{{first_name}}': prospect.firstName || 'there',
+              '{{lastName}}': prospect.lastName || '',
+              '{{companyName}}': companyName,
+              '{{company_name}}': companyName,
+              '{{company}}': companyName,
+              '{{title}}': prospect.jobTitle || '',
+              '{{jobTitle}}': prospect.jobTitle || '',
+              '{{email}}': prospect.primaryEmail || '',
+            };
+
+            Object.entries(mergeData).forEach(([key, value]) => {
+              emailSubject = emailSubject.replace(new RegExp(key.replace(/[{}]/g, '\\$&'), 'g'), value);
+              emailBody = emailBody.replace(new RegExp(key.replace(/[{}]/g, '\\$&'), 'g'), value);
+            });
+
+            // Calculate scheduled time based on delays
+            let scheduledFor = new Date();
+            if (step.stepOrder && step.stepOrder > 1) {
+              const delayDays = step.delayDays || 0;
+              scheduledFor = new Date(Date.now() + delayDays * 24 * 60 * 60 * 1000);
+            }
+
+            // Store preview in database
+            const [previewEntry] = await db.insert(emailQueue).values({
+              userId: params.userId,
+              prospectId: enrollment.prospectId,
+              sequenceId: params.sequenceId,
+              subject: emailSubject,
+              body: emailBody,
+              status: 'preview' as const,
+              stepOrder: step.stepOrder ?? 0,
+              scheduledFor,
+              priority: 5,
+            }).returning();
+
+            previews.push({
+              id: previewEntry.id,
+              prospectId: enrollment.prospectId,
+              prospectName: [prospect.firstName, prospect.lastName].filter(Boolean).join(' ') || 'Unknown',
+              prospectEmail: prospect.primaryEmail || '',
+              stepOrder: step.stepOrder ?? 0,
+              subject: emailSubject,
+              body: emailBody,
+              status: 'preview',
+              scheduledFor,
+            });
+          }
+        } catch (prospectError) {
+          const errorMsg = prospectError instanceof Error ? prospectError.message : String(prospectError);
+          errors.push(`Error processing prospect ${enrollment.prospectId}: ${errorMsg}`);
+        }
+      }
+
+      console.log(`[SequenceExecutor] ✅ DRY RUN complete: ${previews.length} previews generated`);
+
+      return {
+        success: true,
+        previews,
+        totalGenerated: previews.length,
+        errors,
+      };
+
+    } catch (error) {
+      console.error("[SequenceExecutor] ❌ DRY RUN failed:", error);
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      return {
+        success: false,
+        previews: [],
+        totalGenerated: 0,
+        errors: [errorMsg],
+      };
+    }
+  }
+
+  /**
+   * Get existing preview emails for a sequence.
+   */
+  async getSequencePreviews(params: {
+    sequenceId: string;
+    userId: string;
+  }): Promise<Array<{
+    id: string;
+    prospectId: string;
+    stepOrder: number;
+    subject: string;
+    body: string;
+    status: string;
+    createdAt: Date;
+  }>> {
+    const results = await db.query.emailQueue.findMany({
+      where: and(
+        eq(emailQueue.sequenceId, params.sequenceId),
+        eq(emailQueue.userId, params.userId),
+        eq(emailQueue.status, 'preview')
+      ),
+      orderBy: (queue, { asc }) => [asc(queue.stepOrder), asc(queue.createdAt)]
+    });
+
+    return results.map(r => ({
+      id: r.id,
+      prospectId: r.prospectId || '',
+      stepOrder: r.stepOrder ?? 0,
+      subject: r.subject || '',
+      body: r.body || '',
+      status: r.status || 'preview',
+      createdAt: r.createdAt,
+    }));
+  }
+
+  /**
+   * Clear all preview emails for a sequence.
+   */
+  async clearSequencePreviews(params: {
+    sequenceId: string;
+    userId: string;
+  }): Promise<{ deleted: number }> {
+    const result = await db.delete(emailQueue)
+      .where(and(
+        eq(emailQueue.sequenceId, params.sequenceId),
+        eq(emailQueue.userId, params.userId),
+        eq(emailQueue.status, 'preview')
+      ))
+      .returning();
+
+    return { deleted: result.length };
+  }
 }
 
 export const sequenceExecutorService = new SequenceExecutorService();

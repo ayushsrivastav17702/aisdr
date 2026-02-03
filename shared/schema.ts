@@ -11,7 +11,7 @@ export const jobStatusEnum = pgEnum("job_status", ["queued", "running", "complet
 export const jobTypeEnum = pgEnum("job_type", ["enrichment", "import", "search"]);
 export const mailboxStatusEnum = pgEnum("mailbox_status", ["active", "paused", "error", "warming"]);
 export const mailboxProviderEnum = pgEnum("mailbox_provider", ["gmail", "outlook", "smtp", "sendgrid"]);
-export const emailQueueStatusEnum = pgEnum("email_queue_status", ["pending", "sending", "sent", "failed", "scheduled", "cancelled"]);
+export const emailQueueStatusEnum = pgEnum("email_queue_status", ["pending", "sending", "sent", "failed", "scheduled", "cancelled", "preview"]);
 export const emailSendStatusEnum = pgEnum("email_send_status", ["success", "failed", "bounced"]);
 
 // Prospects table
