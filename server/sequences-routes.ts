@@ -4,7 +4,7 @@ import { generatePersonalizedEmail, type LinkedInData } from "./services/persona
 import { emailQueueService } from "./services/email-queue.service";
 import { db } from "./db";
 import { sequenceProspects, emailReplies, emailQueue, emails, prospects, personalizationResults, userActivityLogs } from "@shared/schema";
-import { eq, and, sql, desc } from "drizzle-orm";
+import { eq, and, sql, desc, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { authenticate, forbidManager, blockSuperAdminFromSDR } from "./middleware/auth.middleware";
 import { checkAutomationStatus, throttleOperation, incrementThrottle, trackUsage, checkUserPause, checkDailyEmailLimit, checkEnrollmentConcurrency } from "./middleware/throttle.middleware";
@@ -1276,6 +1276,7 @@ router.post("/sequences/enhanced-personalization", authenticate, forbidManager, 
     
     const result = await generateEnhancedPersonalizedEmail({
       prospectId,
+      organizationId: req.userContext?.organizationId || '',
       includeLinkedInData,
       customPrompt: previousStepsContext ? `${customPrompt || ''}\n${previousStepsContext}` : customPrompt,
       emailSettings
@@ -1536,6 +1537,7 @@ router.post("/sequences/enhanced-personalization", authenticate, forbidManager, 
     
     const result = await generateEnhancedPersonalizedEmail({
       prospectId,
+      organizationId: req.userContext?.organizationId || '',
       includeLinkedInData: true,
     });
     
@@ -1716,6 +1718,360 @@ router.post("/sequences/send-reply", authenticate, forbidManager, async (req, re
     console.error("Send reply error:", error);
     res.status(500).json({ 
       error: error instanceof Error ? error.message : "Failed to send reply" 
+    });
+  }
+});
+
+// ============================================
+// BULK APPROVAL PREVIEW SYSTEM
+// ============================================
+
+interface PreviewEmail {
+  prospectId: string;
+  prospectName: string;
+  companyName: string;
+  subject: string;
+  body: string;
+  confidenceScore: number;
+  confidenceLevel: 'high' | 'medium' | 'low';
+  riskLevel: 'low' | 'medium' | 'high';
+  hasHallucinationFlags: boolean;
+  claimViolations: Array<{ type: string; matchedText: string; reason: string }>;
+  dynamicFields: Array<{ field: string; value: string; start: number; end: number }>;
+  warnings: string[];
+}
+
+interface BulkPreviewResponse {
+  sequenceId: string;
+  sequenceName: string;
+  totalProspects: number;
+  previewCount: number;
+  previews: PreviewEmail[];
+  aggregateStats: {
+    highConfidenceCount: number;
+    mediumConfidenceCount: number;
+    lowConfidenceCount: number;
+    hallucinationFlagCount: number;
+    lowRiskCount: number;
+    approvalRecommendation: 'safe_to_bulk_approve' | 'review_recommended' | 'manual_review_required';
+  };
+  templateLogic: {
+    subject: string;
+    bodyTemplate: string;
+    dynamicTokens: string[];
+  };
+}
+
+function getConfidenceLevel(score: number): 'high' | 'medium' | 'low' {
+  if (score >= 80) return 'high';
+  if (score >= 50) return 'medium';
+  return 'low';
+}
+
+function getRiskLevel(confidenceScore: number, hasHallucinationFlags: boolean, warningsCount: number): 'low' | 'medium' | 'high' {
+  if (hasHallucinationFlags) return 'high';
+  if (confidenceScore >= 80 && warningsCount === 0) return 'low';
+  if (confidenceScore >= 50 && warningsCount <= 1) return 'medium';
+  return 'high';
+}
+
+function extractDynamicFields(template: string, resolvedContent: string): Array<{ field: string; value: string; start: number; end: number }> {
+  const dynamicFields: Array<{ field: string; value: string; start: number; end: number }> = [];
+  
+  // Common dynamic field patterns
+  const patterns = [
+    { pattern: /\{\{firstName\}\}/gi, field: 'firstName' },
+    { pattern: /\{\{lastName\}\}/gi, field: 'lastName' },
+    { pattern: /\{\{companyName\}\}/gi, field: 'companyName' },
+    { pattern: /\{\{jobTitle\}\}/gi, field: 'jobTitle' },
+    { pattern: /\{\{industry\}\}/gi, field: 'industry' },
+  ];
+  
+  // Find resolved values by comparing template placeholders with resolved content
+  const nameMatch = resolvedContent.match(/(?:Hi|Hello|Dear|Hey)\s+([A-Z][a-z]+)/);
+  if (nameMatch) {
+    const start = resolvedContent.indexOf(nameMatch[1]);
+    dynamicFields.push({ field: 'firstName', value: nameMatch[1], start, end: start + nameMatch[1].length });
+  }
+  
+  // Find company mentions (typically capitalized words that appear after context clues)
+  const companyPatterns = [/at\s+([A-Z][A-Za-z0-9\s]+?)(?:\s|,|\.|\?)/g, /(?:your team at|with|for)\s+([A-Z][A-Za-z0-9\s]+?)(?:\s|,|\.|\?)/g];
+  for (const pattern of companyPatterns) {
+    let match;
+    while ((match = pattern.exec(resolvedContent)) !== null) {
+      const value = match[1].trim();
+      if (value.length > 2 && value.length < 50) {
+        dynamicFields.push({ field: 'companyName', value, start: match.index + match[0].indexOf(value), end: match.index + match[0].indexOf(value) + value.length });
+      }
+    }
+  }
+  
+  return dynamicFields;
+}
+
+// GET /api/sequences/:id/preview - Generate bulk preview of emails for approval
+router.get("/:id/preview", authenticate, forbidManager, blockSuperAdminFromSDR, async (req, res) => {
+  try {
+    const sequenceId = req.params.id;
+    const sampleSize = Math.min(parseInt(req.query.sampleSize as string) || 10, 20);
+    
+    // Get sequence details
+    const sequence = await storage.getSequence(req.userContext!, sequenceId);
+    if (!sequence) {
+      return res.status(404).json({ error: "Sequence not found" });
+    }
+    
+    // Get enrolled prospects
+    const enrolledProspects = await storage.getSequenceProspects(req.userContext!, sequenceId);
+    if (enrolledProspects.length === 0) {
+      return res.status(400).json({ error: "No prospects enrolled in this sequence" });
+    }
+    
+    // Get sequence steps (for template logic)
+    const steps = await storage.getSequenceSteps(req.userContext!, sequenceId);
+    const firstStep = steps.sort((a, b) => a.stepOrder - b.stepOrder)[0];
+    
+    // Sample prospects for preview
+    const sampleProspects = enrolledProspects
+      .sort(() => Math.random() - 0.5)
+      .slice(0, sampleSize);
+    
+    // Generate preview emails for sample
+    const { generateEmail } = await import("./services/ai-email-generator.service");
+    
+    const previews: PreviewEmail[] = [];
+    
+    for (const enrollment of sampleProspects) {
+      try {
+        const prospect = await storage.getProspect(req.userContext!, enrollment.prospectId);
+        if (!prospect) continue;
+        
+        // Generate preview email using the AI email generator
+        // Uses the AI to generate personalized emails based on prospect data
+        const generated = await generateEmail({
+          prospectId: enrollment.prospectId,
+          emailType: 'cold_outreach',
+          sequenceStep: 1,
+          enforceSourceValidation: false, // Don't block for preview
+          campaignStage: 'first_touch',
+        }, prospect, req.userContext!);
+        
+        const confidenceLevel = getConfidenceLevel(generated.confidenceScore);
+        const hasHallucinationFlags = (generated.claimViolations?.length || 0) > 0;
+        const warnings = generated.warnings || [];
+        const riskLevel = getRiskLevel(generated.confidenceScore, hasHallucinationFlags, warnings.length);
+        
+        previews.push({
+          prospectId: enrollment.prospectId,
+          prospectName: `${prospect.firstName || ''} ${prospect.lastName || ''}`.trim() || 'Unknown',
+          companyName: prospect.companyName || 'Unknown Company',
+          subject: generated.subject,
+          body: generated.body,
+          confidenceScore: generated.confidenceScore,
+          confidenceLevel,
+          riskLevel,
+          hasHallucinationFlags,
+          claimViolations: generated.claimViolations || [],
+          dynamicFields: extractDynamicFields(firstStep?.body || '', generated.body),
+          warnings,
+        });
+      } catch (error) {
+        console.error(`Preview generation failed for prospect ${enrollment.prospectId}:`, error);
+      }
+    }
+    
+    // Calculate aggregate stats
+    const highConfidenceCount = previews.filter(p => p.confidenceLevel === 'high').length;
+    const mediumConfidenceCount = previews.filter(p => p.confidenceLevel === 'medium').length;
+    const lowConfidenceCount = previews.filter(p => p.confidenceLevel === 'low').length;
+    const hallucinationFlagCount = previews.filter(p => p.hasHallucinationFlags).length;
+    const lowRiskCount = previews.filter(p => p.riskLevel === 'low').length;
+    
+    // Determine approval recommendation
+    let approvalRecommendation: 'safe_to_bulk_approve' | 'review_recommended' | 'manual_review_required';
+    if (hallucinationFlagCount === 0 && lowRiskCount >= previews.length * 0.8) {
+      approvalRecommendation = 'safe_to_bulk_approve';
+    } else if (hallucinationFlagCount <= previews.length * 0.1 && lowRiskCount >= previews.length * 0.5) {
+      approvalRecommendation = 'review_recommended';
+    } else {
+      approvalRecommendation = 'manual_review_required';
+    }
+    
+    // Extract template logic (dynamic tokens from first step)
+    const tokenPattern = /\{\{([^}]+)\}\}/g;
+    const dynamicTokens: string[] = [];
+    let match;
+    const templateBody = firstStep?.body || '';
+    while ((match = tokenPattern.exec(templateBody)) !== null) {
+      if (!dynamicTokens.includes(match[1])) {
+        dynamicTokens.push(match[1]);
+      }
+    }
+    
+    const response: BulkPreviewResponse = {
+      sequenceId,
+      sequenceName: sequence.name,
+      totalProspects: enrolledProspects.length,
+      previewCount: previews.length,
+      previews,
+      aggregateStats: {
+        highConfidenceCount,
+        mediumConfidenceCount,
+        lowConfidenceCount,
+        hallucinationFlagCount,
+        lowRiskCount,
+        approvalRecommendation,
+      },
+      templateLogic: {
+        subject: firstStep?.subject || '',
+        bodyTemplate: templateBody,
+        dynamicTokens,
+      },
+    };
+    
+    res.json(response);
+  } catch (error) {
+    console.error("Bulk preview error:", error);
+    res.status(500).json({ 
+      error: error instanceof Error ? error.message : "Failed to generate preview" 
+    });
+  }
+});
+
+// POST /api/sequences/:id/bulk-approve - Approve all low-risk emails
+router.post("/:id/bulk-approve", authenticate, forbidManager, blockSuperAdminFromSDR, async (req, res) => {
+  try {
+    const sequenceId = req.params.id;
+    const { approveType } = req.body; // 'all', 'low_risk_only', 'selected'
+    const selectedProspectIds: string[] = req.body.selectedProspectIds || [];
+    const lowRiskProspectIds: string[] = req.body.lowRiskProspectIds || [];
+    
+    const sequence = await storage.getSequence(req.userContext!, sequenceId);
+    if (!sequence) {
+      return res.status(404).json({ error: "Sequence not found" });
+    }
+    
+    // Determine which prospect IDs to approve based on approveType
+    let targetProspectIds: string[] = [];
+    
+    if (approveType === 'all') {
+      // Approve all pending emails for this sequence
+      const approvedCount = await db
+        .update(emailQueue)
+        .set({ status: 'approved' })
+        .where(
+          and(
+            eq(emailQueue.sequenceId, sequenceId),
+            eq(emailQueue.status, 'pending')
+          )
+        )
+        .returning({ id: emailQueue.id });
+      
+      await logActivity(req.userContext!.userId, "sequence.bulk_approve", "sequence", sequenceId, 
+        { approveType, approvedCount: approvedCount.length });
+      
+      return res.json({ 
+        success: true,
+        approvedCount: approvedCount.length,
+        message: `Approved ${approvedCount.length} emails for sending`
+      });
+    } else if (approveType === 'selected') {
+      targetProspectIds = selectedProspectIds;
+    } else if (approveType === 'low_risk_only') {
+      targetProspectIds = lowRiskProspectIds;
+    }
+    
+    if (targetProspectIds.length === 0) {
+      return res.status(400).json({ error: "No prospect IDs provided for approval" });
+    }
+    
+    // Update email queue items for specific prospects only (using parameterized query)
+    const approvedCount = await db
+      .update(emailQueue)
+      .set({ status: 'approved' })
+      .where(
+        and(
+          eq(emailQueue.sequenceId, sequenceId),
+          eq(emailQueue.status, 'pending'),
+          inArray(emailQueue.prospectId, targetProspectIds)
+        )
+      )
+      .returning({ id: emailQueue.id });
+    
+    // Log activity
+    await logActivity(
+      req.userContext!.userId,
+      "sequence.bulk_approve",
+      "sequence",
+      sequenceId,
+      { approveType, approvedCount: approvedCount.length, prospectIds: targetProspectIds.length }
+    );
+    
+    res.json({ 
+      success: true,
+      approvedCount: approvedCount.length,
+      message: `Approved ${approvedCount.length} emails for sending`
+    });
+  } catch (error) {
+    console.error("Bulk approve error:", error);
+    res.status(500).json({ 
+      error: error instanceof Error ? error.message : "Failed to bulk approve" 
+    });
+  }
+});
+
+// POST /api/sequences/:id/revert-activation - Revert last sequence activation
+router.post("/:id/revert-activation", authenticate, forbidManager, blockSuperAdminFromSDR, async (req, res) => {
+  try {
+    const sequenceId = req.params.id;
+    
+    const sequence = await storage.getSequence(req.userContext!, sequenceId);
+    if (!sequence) {
+      return res.status(404).json({ error: "Sequence not found" });
+    }
+    
+    if (sequence.status !== 'active') {
+      return res.status(400).json({ error: "Sequence is not active" });
+    }
+    
+    // Cancel all pending/approved emails in queue
+    const cancelledEmails = await db
+      .update(emailQueue)
+      .set({ 
+        status: 'cancelled'
+      })
+      .where(
+        and(
+          eq(emailQueue.sequenceId, sequenceId),
+          sql`status IN ('pending', 'approved', 'generating', 'scheduled')`
+        )
+      )
+      .returning({ id: emailQueue.id });
+    
+    // Pause the sequence
+    await storage.updateSequence(req.userContext!, sequenceId, { status: 'paused' });
+    
+    // Record in hardening service
+    await hardeningService.recordSequenceStatusChange(sequenceId, 'paused');
+    
+    // Log activity
+    await logActivity(
+      req.userContext!.userId,
+      "sequence.revert_activation",
+      "sequence",
+      sequenceId,
+      { cancelledEmailCount: cancelledEmails.length }
+    );
+    
+    res.json({ 
+      success: true,
+      cancelledEmailCount: cancelledEmails.length,
+      message: `Reverted activation: ${cancelledEmails.length} emails cancelled, sequence paused`
+    });
+  } catch (error) {
+    console.error("Revert activation error:", error);
+    res.status(500).json({ 
+      error: error instanceof Error ? error.message : "Failed to revert activation" 
     });
   }
 });
