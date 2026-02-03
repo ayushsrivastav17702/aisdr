@@ -2857,6 +2857,88 @@ Return ONLY the email body text, no subject line needed.`;
     }
   });
 
+  // ============================================
+  // SEQUENCE DRY RUN (PREVIEW MODE)
+  // ============================================
+  
+  // Dry run sequence - generate preview emails without sending
+  app.post("/api/sequences/:sequenceId/dry-run", authenticate, forbidManager, async (req, res) => {
+    try {
+      const { sequenceId } = req.params;
+      const { prospectIds } = req.body;
+
+      if (!sequenceId) {
+        return res.status(400).json({ error: "Sequence ID is required" });
+      }
+
+      // Import service dynamically to avoid circular dependency
+      const { sequenceExecutorService } = await import("./services/sequence-executor.service");
+
+      const result = await sequenceExecutorService.dryRunSequence({
+        sequenceId,
+        userId: req.userContext!.userId,
+        prospectIds,
+      });
+
+      res.json(result);
+    } catch (error) {
+      console.error("Dry run sequence error:", error);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : "Failed to execute dry run"
+      });
+    }
+  });
+
+  // Get existing preview emails for a sequence
+  app.get("/api/sequences/:sequenceId/previews", authenticate, forbidManager, async (req, res) => {
+    try {
+      const { sequenceId } = req.params;
+
+      if (!sequenceId) {
+        return res.status(400).json({ error: "Sequence ID is required" });
+      }
+
+      const { sequenceExecutorService } = await import("./services/sequence-executor.service");
+
+      const previews = await sequenceExecutorService.getSequencePreviews({
+        sequenceId,
+        userId: req.userContext!.userId,
+      });
+
+      res.json({ previews, count: previews.length });
+    } catch (error) {
+      console.error("Get sequence previews error:", error);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : "Failed to get previews"
+      });
+    }
+  });
+
+  // Clear preview emails for a sequence
+  app.delete("/api/sequences/:sequenceId/previews", authenticate, forbidManager, async (req, res) => {
+    try {
+      const { sequenceId } = req.params;
+
+      if (!sequenceId) {
+        return res.status(400).json({ error: "Sequence ID is required" });
+      }
+
+      const { sequenceExecutorService } = await import("./services/sequence-executor.service");
+
+      const result = await sequenceExecutorService.clearSequencePreviews({
+        sequenceId,
+        userId: req.userContext!.userId,
+      });
+
+      res.json({ success: true, deleted: result.deleted });
+    } catch (error) {
+      console.error("Clear sequence previews error:", error);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : "Failed to clear previews"
+      });
+    }
+  });
+
   // Company enrichment via web scraping
   app.post("/api/personalization/company-enrichment", authenticate, forbidManager, async (req, res) => {
     try {
