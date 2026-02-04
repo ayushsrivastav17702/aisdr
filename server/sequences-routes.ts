@@ -638,7 +638,13 @@ router.put("/sequences/:id", authenticate, forbidManager, async (req, res) => {
       }
     }
     
-    const sequence = await storage.updateSequence(req.userContext!, req.params.id, req.body);
+    // Auto-approve sequence when activating (user explicitly chose to start sending)
+    const updateData = { ...req.body };
+    if (req.body.status === "active") {
+      updateData.isApproved = true;
+    }
+    
+    const sequence = await storage.updateSequence(req.userContext!, req.params.id, updateData);
     
     // If status changed to active, initialize and record status change
     if (req.body.status === "active") {
@@ -707,7 +713,13 @@ router.patch("/sequences/:id", authenticate, forbidManager, async (req, res) => 
       }
     }
     
-    const sequence = await storage.updateSequence(req.userContext!, req.params.id, req.body);
+    // Auto-approve sequence when activating (user explicitly chose to start sending)
+    const updateData = { ...req.body };
+    if (req.body.status === "active") {
+      updateData.isApproved = true;
+    }
+    
+    const sequence = await storage.updateSequence(req.userContext!, req.params.id, updateData);
     
     // If status changed to active, initialize and record status change
     if (req.body.status === "active") {
