@@ -1307,15 +1307,21 @@ function SequenceTab({
   const [editSubject, setEditSubject] = useState("");
   const [editBody, setEditBody] = useState("");
   const [editDelayDays, setEditDelayDays] = useState("0");
+  const [editMailboxId, setEditMailboxId] = useState<string>("");
   const [showAIPersonalization, setShowAIPersonalization] = useState(false);
   const [showAITemplate, setShowAITemplate] = useState(false);
   const [subject, setSubject] = useState("");
   const [manualSubject, setManualSubject] = useState("");
   const [body, setBody] = useState("");
   const [delayDays, setDelayDays] = useState("0");
+  const [mailboxId, setMailboxId] = useState<string>("");
   const [usePreviousSubject, setUsePreviousSubject] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  const { data: mailboxes = [] } = useQuery<any[]>({
+    queryKey: ["/api/mailboxes"],
+  });
 
   const addStepMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -1329,6 +1335,7 @@ function SequenceTab({
       setManualSubject("");
       setBody("");
       setDelayDays("0");
+      setMailboxId("");
       setUsePreviousSubject(false);
       toast({ title: "Success", description: "Email step added successfully" });
     },
@@ -1363,6 +1370,7 @@ function SequenceTab({
     setEditSubject(step.subject);
     setEditBody(step.body);
     setEditDelayDays(String(step.delayDays || 0));
+    setEditMailboxId(step.mailboxId || "");
     setShowEditModal(true);
   };
 
@@ -1578,15 +1586,36 @@ function SequenceTab({
                 data-testid="input-step-body"
               />
             </div>
-            <div>
-              <Label>Delay (days after previous step)</Label>
-              <Input
-                type="number"
-                value={delayDays}
-                onChange={(e) => setDelayDays(e.target.value)}
-                min="0"
-                data-testid="input-step-delay"
-              />
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Delay (days after previous step)</Label>
+                <Input
+                  type="number"
+                  value={delayDays}
+                  onChange={(e) => setDelayDays(e.target.value)}
+                  min="0"
+                  data-testid="input-step-delay"
+                />
+              </div>
+              <div>
+                <Label>Send from Mailbox</Label>
+                <Select value={mailboxId} onValueChange={setMailboxId}>
+                  <SelectTrigger data-testid="select-step-mailbox">
+                    <SelectValue placeholder="Select mailbox..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {mailboxes.filter((m: any) => m.status !== 'error').map((m: any) => (
+                      <SelectItem key={m.id} value={m.id} disabled={m.status === 'broken'}>
+                        <span className="flex items-center gap-2">
+                          <span className={`w-2 h-2 rounded-full ${m.status === 'active' ? 'bg-green-500' : m.status === 'warming' ? 'bg-blue-500' : 'bg-yellow-500'}`} />
+                          {m.name} &lt;{m.email}&gt;
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground mt-1">Optional - uses default if not set</p>
+              </div>
             </div>
             <div className="flex gap-2 justify-end">
               <Button variant="outline" onClick={() => setShowAddModal(false)}>
@@ -1598,7 +1627,8 @@ function SequenceTab({
                     addStepMutation.mutate({
                       subject: subject,
                       body,
-                      delayDays: parseInt(delayDays) || 0
+                      delayDays: parseInt(delayDays) || 0,
+                      mailboxId: mailboxId || undefined
                     });
                   }
                 }}
@@ -1638,15 +1668,36 @@ function SequenceTab({
                 data-testid="input-edit-step-body"
               />
             </div>
-            <div>
-              <Label>Delay (days after previous step)</Label>
-              <Input
-                type="number"
-                value={editDelayDays}
-                onChange={(e) => setEditDelayDays(e.target.value)}
-                min="0"
-                data-testid="input-edit-step-delay"
-              />
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Delay (days after previous step)</Label>
+                <Input
+                  type="number"
+                  value={editDelayDays}
+                  onChange={(e) => setEditDelayDays(e.target.value)}
+                  min="0"
+                  data-testid="input-edit-step-delay"
+                />
+              </div>
+              <div>
+                <Label>Send from Mailbox</Label>
+                <Select value={editMailboxId} onValueChange={setEditMailboxId}>
+                  <SelectTrigger data-testid="select-edit-step-mailbox">
+                    <SelectValue placeholder="Select mailbox..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {mailboxes.filter((m: any) => m.status !== 'error').map((m: any) => (
+                      <SelectItem key={m.id} value={m.id} disabled={m.status === 'broken'}>
+                        <span className="flex items-center gap-2">
+                          <span className={`w-2 h-2 rounded-full ${m.status === 'active' ? 'bg-green-500' : m.status === 'warming' ? 'bg-blue-500' : 'bg-yellow-500'}`} />
+                          {m.name} &lt;{m.email}&gt;
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground mt-1">Optional - uses default if not set</p>
+              </div>
             </div>
             <div className="flex gap-2 justify-end">
               <Button variant="outline" onClick={() => setShowEditModal(false)}>
@@ -1660,7 +1711,8 @@ function SequenceTab({
                       data: {
                         subject: editSubject,
                         body: editBody,
-                        delayDays: parseInt(editDelayDays) || 0
+                        delayDays: parseInt(editDelayDays) || 0,
+                        mailboxId: editMailboxId || null
                       }
                     });
                   }

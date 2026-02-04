@@ -1,0 +1,175 @@
+Goal:
+Allow users to select which mailbox is used for sending each email step inside a sequence.
+System must support multiple mailboxes per user and send each step from the selected mailbox safely.
+
+🔹 1. DATABASE CHANGES
+
+Create or update these tables:
+
+mailboxes
+
+id (uuid)
+user_id
+provider (google | microsoft | smtp)
+email
+display_name
+access_token
+refresh_token
+token_expiry
+status (healthy | throttled | broken)
+daily_limit
+hourly_limit
+sent_today
+sent_this_hour
+last_sent_at
+sender_fingerprint
+created_at
+
+
+sequence_steps
+
+id
+sequence_id
+type (email | wait)
+subject
+body
+mailbox_id  ← NEW FIELD
+mailbox_pool JSON (optional for rotation)
+
+🔹 2. UI CHANGES (Sequence Builder)
+
+In sequence step editor:
+
+Add dropdown:
+
+Label:
+Send from mailbox
+
+Dropdown values:
+• User’s connected mailboxes
+• Show: Display Name <email>
+• Disable mailboxes with status = broken
+
+Store selected mailbox_id inside step.
+
+If user enables “Rotate mailboxes”:
+• Store list in mailbox_pool
+
+🔹 3. BACKEND VALIDATION RULES
+
+Before saving sequence:
+
+✔ Ensure mailbox belongs to user
+✔ Prevent different people in same sequence
+(block if sender names differ)
+✔ Block if mailbox.status = broken
+✔ Ensure at least one mailbox selected
+
+🔹 4. EMAIL SENDING ENGINE CHANGE
+
+Replace current logic:
+
+sendEmail(user.defaultMailbox)
+
+
+With:
+
+sendEmail(step.mailbox_id)
+
+
+Execution flow:
+
+Load step
+Get mailbox_id
+Load mailbox
+Check:
+ - token valid
+ - status healthy
+ - rate limit not exceeded
+ - sender fingerprint match
+Send email
+Update sent counters
+
+🔹 5. RATE LIMIT ENFORCEMENT
+
+Before sending:
+
+if sent_today >= daily_limit → block
+if sent_this_hour >= hourly_limit → block
+
+
+If blocked:
+• mark step as delayed
+• log reason
+
+🔹 6. MAILBOX HEALTH MONITOR
+
+If:
+• SMTP error
+• OAuth error
+• IMAP failure
+
+Then:
+
+mailbox.status = broken
+notify user
+stop sending from this mailbox
+
+🔹 7. PROVIDER SUPPORT
+
+Sending must support:
+
+Google:
+• Gmail API
+
+Microsoft:
+• Graph API
+
+SMTP:
+• Nodemailer
+
+Routing logic:
+
+if provider = google → Gmail API
+if provider = microsoft → Graph API
+if provider = smtp → Nodemailer
+
+🔹 8. API ENDPOINTS
+
+Create:
+
+GET /api/mailboxes
+POST /api/sequences/{id}/steps
+PATCH /api/steps/{id}/mailbox
+
+🔹 9. QA SCENARIOS TO SUPPORT
+
+✔ User selects different mailbox per step
+✔ Mailbox goes broken → sending stops
+✔ Rate limit hit → skip
+✔ Token expired → refresh
+✔ Sequence resumes after fix
+✔ User deletes mailbox → steps invalidated
+
+🔹 10. SECURITY
+
+• Encrypt tokens
+• Never expose tokens to frontend
+• Validate mailbox ownership
+• Log all sends
+
+🔹 OUTPUT EXPECTED
+
+Replit should:
+✔ Modify schema
+✔ Add UI dropdown
+✔ Update executor logic
+✔ Add validation
+✔ Add provider routing
+✔ Add rate limiting
+✔ Add health checks
+
+🧠 IMPORTANT PRODUCT RULE
+
+Sequence step = Message + Sender
+NOT: Sequence = Sender
