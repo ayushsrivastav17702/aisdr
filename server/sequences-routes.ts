@@ -797,7 +797,7 @@ router.post("/sequences/:id/steps", authenticate, forbidManager, async (req, res
       return res.status(503).json({ error: "Unable to verify tenant automation status" });
     }
 
-    const { subject, body, stepOrder, delayDays } = req.body;
+    const { subject, body, stepOrder, delayDays, mailboxId } = req.body;
     
     if (!subject || !body) {
       return res.status(400).json({ error: "Subject and body are required" });
@@ -812,6 +812,7 @@ router.post("/sequences/:id/steps", authenticate, forbidManager, async (req, res
       stepType: "email",
       aiGenerated: false,
       variables: null,
+      mailboxId: mailboxId || null,
     });
     
     res.json(step);
@@ -853,7 +854,7 @@ router.put("/sequences/:id/steps/:stepId", authenticate, forbidManager, async (r
   try {
     const sequenceId = req.params.id;
     const stepId = req.params.stepId;
-    const { subject, body, delayDays, stepOrder } = req.body;
+    const { subject, body, delayDays, stepOrder, mailboxId } = req.body;
     
     // Fetch all steps for this sequence to verify ownership
     const steps = await storage.getSequenceSteps(req.userContext!, sequenceId);
@@ -873,6 +874,7 @@ router.put("/sequences/:id/steps/:stepId", authenticate, forbidManager, async (r
     if (body !== undefined) updates.body = body;
     if (delayDays !== undefined) updates.delayDays = delayDays;
     if (stepOrder !== undefined) updates.stepOrder = stepOrder;
+    if (mailboxId !== undefined) updates.mailboxId = mailboxId || null;
     
     const updated = await storage.updateSequenceStep(req.userContext!, stepId, updates);
     res.json(updated);
