@@ -559,6 +559,7 @@ Best regards`;
         inReplyTo, // Threading: reference the previous email
         references, // Threading: full thread history
         skipSafeToSendCheck: true, // Check happens during send, not scheduling
+        preferredMailboxId: stepConfig.mailboxId || undefined, // Use step-specific mailbox if configured
       });
 
       // Update enrollment progress to track the new step
