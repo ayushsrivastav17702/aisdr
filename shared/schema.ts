@@ -886,6 +886,7 @@ export const insertEmailMailboxSchema = createInsertSchema(emailMailboxes).omit(
   dailySent: true,
   lastResetAt: true,
   lastUsedAt: true,
+  userId: true, // Added server-side from authenticated user
 });
 
 export const insertEmailQueueSchema = createInsertSchema(emailQueue).omit({
