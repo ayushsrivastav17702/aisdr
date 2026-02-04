@@ -176,6 +176,7 @@ export class EmailQueueService {
     personalizationFactors?: string[];
     claimViolations?: { claim: string; source: string }[];
     skipSafeToSendCheck?: boolean;
+    preferredMailboxId?: string;
   }): Promise<EmailQueueItem & { safeToSendDecision?: SafeToSendDecision }> {
     try {
       // Validate userId is provided (critical for multi-tenant security)
@@ -197,8 +198,30 @@ export class EmailQueueService {
         throw new Error("Cannot queue email with empty body - AI personalization may have failed");
       }
 
-      // Select mailbox early so we can use it for SafeToSend domain reputation check
-      const mailbox = await mailboxService.getNextMailbox(queueData.userId);
+      // Select mailbox: use step-specific mailbox if configured, otherwise round-robin
+      let mailbox: any;
+      if (queueData.preferredMailboxId) {
+        // Use the specific mailbox configured for this step
+        const [preferredMailbox] = await db
+          .select()
+          .from(emailMailboxes)
+          .where(and(
+            eq(emailMailboxes.id, queueData.preferredMailboxId),
+            eq(emailMailboxes.userId, queueData.userId)
+          ))
+          .limit(1);
+        
+        if (preferredMailbox && preferredMailbox.status !== 'error') {
+          mailbox = preferredMailbox;
+          console.log(`📬 Using step-specific mailbox: ${mailbox.email}`);
+        } else {
+          console.warn(`⚠️ Preferred mailbox ${queueData.preferredMailboxId} not available, falling back to round-robin`);
+          mailbox = await mailboxService.getNextMailbox(queueData.userId);
+        }
+      } else {
+        // Default round-robin mailbox selection
+        mailbox = await mailboxService.getNextMailbox(queueData.userId);
+      }
 
       // =====================================
       // SAFE-TO-SEND DECISION ENGINE
