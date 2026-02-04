@@ -211,11 +211,13 @@ export class EmailQueueService {
           ))
           .limit(1);
         
-        if (preferredMailbox && preferredMailbox.status !== 'error') {
+        // Only use preferred mailbox if it's active (not paused, warming, or error)
+        if (preferredMailbox && preferredMailbox.status === 'active') {
           mailbox = preferredMailbox;
           console.log(`📬 Using step-specific mailbox: ${mailbox.email}`);
         } else {
-          console.warn(`⚠️ Preferred mailbox ${queueData.preferredMailboxId} not available, falling back to round-robin`);
+          const reason = preferredMailbox ? `status=${preferredMailbox.status}` : 'not found';
+          console.warn(`⚠️ Preferred mailbox ${queueData.preferredMailboxId} not usable (${reason}), falling back to round-robin`);
           mailbox = await mailboxService.getNextMailbox(queueData.userId);
         }
       } else {
