@@ -1,5 +1,5 @@
 import { db } from "../db";
-import { emailQueue, InsertEmailQueueItem, EmailQueueItem, prospects, emails, sequenceProspects, emailMailboxes, automationRuns } from "@shared/schema";
+import { emailQueue, InsertEmailQueueItem, EmailQueueItem, prospects, emails, sequenceProspects, emailMailboxes, automationRuns, emailSendAudit } from "@shared/schema";
 import { eq, and, lte, sql } from "drizzle-orm";
 import { emailSendingService } from "./email-sending.service";
 import { mailboxService } from "./mailbox.service";
@@ -10,6 +10,7 @@ import { emailVerificationService } from "./email-verification.service";
 import { hardeningService } from "./hardening.service";
 import { observability } from "./observability.service";
 import { schedulerMonitoringService } from "./scheduler-monitoring.service";
+import { safeToSendService, type SafeToSendDecision } from "./safe-to-send.service";
 
 /**
  * Renders merge fields in email content, replacing {{fieldName}} with actual prospect data.
@@ -168,9 +169,14 @@ export class EmailQueueService {
     priority?: number;
     inReplyTo?: string;
     references?: string;
-    stepOrder?: number; // NEW: Track which step in the sequence
-    userId: string; // REQUIRED: User ID for multi-tenant mailbox selection
-  }): Promise<EmailQueueItem> {
+    stepOrder?: number;
+    userId: string;
+    aiConfidence?: number;
+    hasHallucinationFlag?: boolean;
+    personalizationFactors?: string[];
+    claimViolations?: { claim: string; source: string }[];
+    skipSafeToSendCheck?: boolean;
+  }): Promise<EmailQueueItem & { safeToSendDecision?: SafeToSendDecision }> {
     try {
       // Validate userId is provided (critical for multi-tenant security)
       if (!queueData.userId) {
@@ -189,6 +195,40 @@ export class EmailQueueService {
       
       if (!trimmedBody) {
         throw new Error("Cannot queue email with empty body - AI personalization may have failed");
+      }
+
+      // Select mailbox early so we can use it for SafeToSend domain reputation check
+      const mailbox = await mailboxService.getNextMailbox(queueData.userId);
+
+      // =====================================
+      // SAFE-TO-SEND DECISION ENGINE
+      // Evaluates email before queuing based on rules and scoring
+      // =====================================
+      let safeToSendDecision: SafeToSendDecision | undefined;
+      
+      if (!queueData.skipSafeToSendCheck) {
+        safeToSendDecision = await safeToSendService.evaluate({
+          prospectId: queueData.prospectId,
+          sequenceId: queueData.sequenceId,
+          mailboxId: mailbox?.id,
+          userId: queueData.userId,
+          aiConfidence: queueData.aiConfidence,
+          hasHallucinationFlag: queueData.hasHallucinationFlag,
+          generatedSubject: trimmedSubject,
+          generatedBody: trimmedBody,
+          personalizationFactors: queueData.personalizationFactors,
+          claimViolations: queueData.claimViolations,
+        });
+
+        if (!safeToSendDecision.canSend) {
+          const blockedReasons = safeToSendDecision.blockedReasons
+            .map(r => `[${r.severity}] ${r.rule}: ${r.message}`)
+            .join('; ');
+          console.warn(`🚫 SafeToSend BLOCKED: prospect ${queueData.prospectId} - ${blockedReasons}`);
+          throw new Error(`Email blocked by SafeToSend: ${blockedReasons}`);
+        }
+        
+        console.log(`✅ SafeToSend APPROVED: prospect ${queueData.prospectId}, score ${safeToSendDecision.finalScore.toFixed(2)}`);
       }
 
       // =====================================
@@ -269,9 +309,6 @@ export class EmailQueueService {
         queueData.scheduledFor = new Date(new Date(veryRecentEmail.createdAt).getTime() + 30000);
       }
 
-      // Select mailbox scoped to the user
-      const mailbox = await mailboxService.getNextMailbox(queueData.userId);
-
       // Generate idempotency key to prevent duplicate sends
       const idempotencyKey = queueData.sequenceId && queueData.stepOrder !== undefined && queueData.prospectId
         ? `${queueData.sequenceId}:${queueData.stepOrder}:${queueData.prospectId}`
@@ -290,7 +327,7 @@ export class EmailQueueService {
         .returning();
 
       console.log(`📬 Added email to queue: ${queueItem.id} for user ${queueData.userId} using mailbox ${mailbox.email} (scheduled for ${queueData.scheduledFor})`);
-      return queueItem;
+      return { ...queueItem, safeToSendDecision };
     } catch (error) {
       console.error("Failed to add email to queue:", error);
       if (isSentryEnabled()) {

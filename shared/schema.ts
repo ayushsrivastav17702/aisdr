@@ -49,6 +49,7 @@ export const prospects = pgTable("prospects", {
     phoneNumber?: { source: string; provider?: string; timestamp: string };
   }>(),
   leadScore: integer("lead_score").default(0),
+  isVip: boolean("is_vip").default(false),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
@@ -239,6 +240,7 @@ export const sequences = pgTable("sequences", {
   lastActivatedAt: timestamp("last_activated_at"),
   lastStatusChangeAt: timestamp("last_status_change_at"),
   activationToggleCount: integer("activation_toggle_count").default(0),
+  isApproved: boolean("is_approved").default(false),
 }, (table) => ({
   userIdStatusCreatedAtIdx: index("sequences_user_id_status_created_at_idx").on(table.userId, table.status, table.createdAt),
   userIdCreatedAtIdx: index("sequences_user_id_created_at_idx").on(table.userId, table.createdAt),
@@ -825,6 +827,45 @@ export const emailSendLog = pgTable("email_send_log", {
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
+// Safe-To-Send Decision Audit table
+export const emailSendAudit = pgTable("email_send_audit", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  prospectId: varchar("prospect_id").notNull().references(() => prospects.id, { onDelete: "cascade" }),
+  sequenceId: varchar("sequence_id").references(() => sequences.id, { onDelete: "cascade" }),
+  mailboxId: varchar("mailbox_id").references(() => emailMailboxes.id),
+  
+  decision: text("decision").notNull(), // 'send' or 'block'
+  finalScore: text("final_score").notNull(),
+  scoreBreakdown: jsonb("score_breakdown").$type<{
+    reasonConfidence: number;
+    dataQuality: number;
+    personalizationDepth: number;
+    total: number;
+  }>(),
+  
+  reasons: text("reasons").array(),
+  blockedReasons: jsonb("blocked_reasons").$type<{
+    rule: string;
+    message: string;
+    severity: 'critical' | 'high' | 'medium';
+  }[]>(),
+  
+  aiConfidence: text("ai_confidence"),
+  hasHallucinationFlag: boolean("has_hallucination_flag").default(false),
+  claimViolations: jsonb("claim_violations").$type<{ claim: string; source: string }[]>(),
+  
+  emailQueueId: varchar("email_queue_id").references(() => emailQueue.id),
+  
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  userIdIdx: index("email_send_audit_user_id_idx").on(table.userId),
+  prospectIdIdx: index("email_send_audit_prospect_id_idx").on(table.prospectId),
+  sequenceIdIdx: index("email_send_audit_sequence_id_idx").on(table.sequenceId),
+  decisionIdx: index("email_send_audit_decision_idx").on(table.decision),
+  createdAtIdx: index("email_send_audit_created_at_idx").on(table.createdAt),
+}));
+
 // Email mailbox types
 export type EmailMailbox = typeof emailMailboxes.$inferSelect;
 export type InsertEmailMailbox = typeof emailMailboxes.$inferInsert;
@@ -834,6 +875,8 @@ export type EmailSendLogEntry = typeof emailSendLog.$inferSelect;
 export type InsertEmailSendLogEntry = typeof emailSendLog.$inferInsert;
 export type SchedulerHeartbeat = typeof schedulerHeartbeat.$inferSelect;
 export type InsertSchedulerHeartbeat = typeof schedulerHeartbeat.$inferInsert;
+export type EmailSendAudit = typeof emailSendAudit.$inferSelect;
+export type InsertEmailSendAudit = typeof emailSendAudit.$inferInsert;
 
 // Email mailbox schemas
 export const insertEmailMailboxSchema = createInsertSchema(emailMailboxes).omit({

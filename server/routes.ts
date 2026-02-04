@@ -48,6 +48,7 @@ import campaignsRoutes from "./routes/campaigns.routes";
 import aiGenerationRoutes from "./routes/ai-generation.routes";
 import emailExecutionRoutes from "./routes/email-execution.routes";
 import userOnboardingRoutes from "./routes/user-onboarding.routes";
+import safeToSendRoutes from "./routes/safe-to-send.routes";
 import { sdrWorkflowService, WorkflowBlockedError } from "./services/sdr-workflow.service";
 import { hardeningService } from "./services/hardening.service";
 import { aiTrackingService } from "./services/ai-tracking.service";
@@ -1971,6 +1972,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Analytics routes
   app.use("/api/analytics", analyticsRoutes);
+
+  // Safe-To-Send decision engine routes
+  app.use("/api/safe-to-send", safeToSendRoutes);
 
   // Data export routes (GDPR compliance)
   app.use("/api", dataExportRoutes);
