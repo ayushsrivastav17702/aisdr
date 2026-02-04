@@ -262,6 +262,32 @@ export const sequenceSteps = pgTable("sequence_steps", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
+// Lead events for analytics tracking
+export const leadEvents = pgTable("lead_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(), // Multi-tenant owner for data isolation
+  leadId: varchar("lead_id").notNull().references(() => prospects.id, { onDelete: "cascade" }),
+  sequenceId: varchar("sequence_id").notNull().references(() => sequences.id, { onDelete: "cascade" }),
+  stepId: varchar("step_id").references(() => sequenceSteps.id, { onDelete: "set null" }),
+  eventType: text("event_type").notNull(), // contacted, opened, clicked, replied, interested, interrupted, bounced, unsubscribed, not_interested, not_sent, booked
+  timestamp: timestamp("timestamp").notNull().defaultNow(),
+  metadata: jsonb("metadata"),
+}, (table) => ({
+  userIdIdx: index("lead_events_user_id_idx").on(table.userId),
+  leadIdIdx: index("lead_events_lead_id_idx").on(table.leadId),
+  sequenceIdIdx: index("lead_events_sequence_id_idx").on(table.sequenceId),
+  stepIdIdx: index("lead_events_step_id_idx").on(table.stepId),
+  eventTypeIdx: index("lead_events_event_type_idx").on(table.eventType),
+}));
+
+// Insert schema for lead_events
+export const insertLeadEventSchema = createInsertSchema(leadEvents).omit({
+  id: true,
+  timestamp: true,
+});
+export type InsertLeadEvent = z.infer<typeof insertLeadEventSchema>;
+export type LeadEvent = typeof leadEvents.$inferSelect;
+
 // Sequence prospects (bridge table)
 export const sequenceProspects = pgTable("sequence_prospects", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

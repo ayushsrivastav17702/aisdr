@@ -3,7 +3,7 @@ import { storage, type RequestContext } from "./storage";
 import { generatePersonalizedEmail, type LinkedInData } from "./services/personalization.service";
 import { emailQueueService } from "./services/email-queue.service";
 import { db } from "./db";
-import { sequenceProspects, emailReplies, emailQueue, emails, prospects, personalizationResults, userActivityLogs } from "@shared/schema";
+import { sequenceProspects, emailReplies, emailQueue, emails, prospects, personalizationResults, userActivityLogs, leadEvents, sequenceSteps } from "@shared/schema";
 import { eq, and, sql, desc, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { authenticate, forbidManager, blockSuperAdminFromSDR } from "./middleware/auth.middleware";
@@ -2089,6 +2089,342 @@ router.post("/:id/revert-activation", authenticate, forbidManager, blockSuperAdm
     res.status(500).json({ 
       error: error instanceof Error ? error.message : "Failed to revert activation" 
     });
+  }
+});
+
+// ============================================
+// ANALYTICS ENDPOINTS
+// ============================================
+
+// GET /api/sequences/:id/funnel - Get funnel analytics for a sequence
+router.get("/:id/funnel", authenticate, async (req, res) => {
+  try {
+    const sequenceId = req.params.id;
+    
+    // Verify sequence ownership
+    const sequence = await storage.getSequence(req.userContext!, sequenceId);
+    if (!sequence) {
+      return res.status(404).json({ error: "Sequence not found" });
+    }
+    
+    // Get total enrolled prospects
+    const totalProspects = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(sequenceProspects)
+      .where(eq(sequenceProspects.sequenceId, sequenceId));
+    
+    const totalCount = totalProspects[0]?.count || 0;
+    
+    if (totalCount === 0) {
+      return res.json({
+        contacted: { count: 0, percent: 0 },
+        opened: { count: 0, percent: 0 },
+        interaction: { count: 0, percent: 0 },
+        answered: { count: 0, percent: 0 },
+        interested: { count: 0, percent: 0 },
+        interrupted: { count: 0, percent: 0 }
+      });
+    }
+    
+    // Get event counts from lead_events table
+    const eventCounts = await db
+      .select({
+        eventType: leadEvents.eventType,
+        count: sql<number>`count(distinct ${leadEvents.leadId})::int`
+      })
+      .from(leadEvents)
+      .where(eq(leadEvents.sequenceId, sequenceId))
+      .groupBy(leadEvents.eventType);
+    
+    const countMap: Record<string, number> = {};
+    eventCounts.forEach(e => { countMap[e.eventType] = e.count; });
+    
+    // Also get contacted count from email_queue (sent emails)
+    const sentEmails = await db
+      .select({ count: sql<number>`count(distinct ${emailQueue.prospectId})::int` })
+      .from(emailQueue)
+      .where(and(
+        eq(emailQueue.sequenceId, sequenceId),
+        eq(emailQueue.status, 'sent')
+      ));
+    
+    const contactedCount = sentEmails[0]?.count || countMap['contacted'] || 0;
+    
+    // Get opened count from email_queue
+    const openedEmails = await db
+      .select({ count: sql<number>`count(distinct ${emailQueue.prospectId})::int` })
+      .from(emailQueue)
+      .where(and(
+        eq(emailQueue.sequenceId, sequenceId),
+        sql`opened_at IS NOT NULL`
+      ));
+    const openedCount = openedEmails[0]?.count || countMap['opened'] || 0;
+    
+    // Get clicked count from email_queue
+    const clickedEmails = await db
+      .select({ count: sql<number>`count(distinct ${emailQueue.prospectId})::int` })
+      .from(emailQueue)
+      .where(and(
+        eq(emailQueue.sequenceId, sequenceId),
+        sql`clicked_at IS NOT NULL`
+      ));
+    const interactionCount = clickedEmails[0]?.count || countMap['clicked'] || 0;
+    
+    // Get replied count from email_replies
+    const repliedEmails = await db
+      .select({ count: sql<number>`count(distinct ${emailReplies.prospectId})::int` })
+      .from(emailReplies)
+      .where(eq(emailReplies.sequenceId, sequenceId));
+    const answeredCount = repliedEmails[0]?.count || countMap['replied'] || 0;
+    
+    const interestedCount = countMap['interested'] || 0;
+    const interruptedCount = countMap['interrupted'] || countMap['unsubscribed'] || countMap['bounced'] || 0;
+    
+    res.json({
+      contacted: { count: contactedCount, percent: totalCount > 0 ? Math.round((contactedCount / totalCount) * 100) : 0 },
+      opened: { count: openedCount, percent: totalCount > 0 ? Math.round((openedCount / totalCount) * 100) : 0 },
+      interaction: { count: interactionCount, percent: totalCount > 0 ? Math.round((interactionCount / totalCount) * 100) : 0 },
+      answered: { count: answeredCount, percent: totalCount > 0 ? Math.round((answeredCount / totalCount) * 100) : 0 },
+      interested: { count: interestedCount, percent: totalCount > 0 ? Math.round((interestedCount / totalCount) * 100) : 0 },
+      interrupted: { count: interruptedCount, percent: totalCount > 0 ? Math.round((interruptedCount / totalCount) * 100) : 0 }
+    });
+  } catch (error) {
+    console.error("Funnel analytics error:", error);
+    res.status(500).json({ error: "Failed to get funnel analytics" });
+  }
+});
+
+// GET /api/sequences/:id/summary - Get campaign summary stats
+router.get("/:id/summary", authenticate, async (req, res) => {
+  try {
+    const sequenceId = req.params.id;
+    
+    // Verify sequence ownership
+    const sequence = await storage.getSequence(req.userContext!, sequenceId);
+    if (!sequence) {
+      return res.status(404).json({ error: "Sequence not found" });
+    }
+    
+    // Total leads enrolled
+    const totalLeads = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(sequenceProspects)
+      .where(eq(sequenceProspects.sequenceId, sequenceId));
+    
+    // Leads launched (have at least one email in queue)
+    const launchedLeads = await db
+      .select({ count: sql<number>`count(distinct ${emailQueue.prospectId})::int` })
+      .from(emailQueue)
+      .where(eq(emailQueue.sequenceId, sequenceId));
+    
+    // Leads reached (have at least one sent email)
+    const reachedLeads = await db
+      .select({ count: sql<number>`count(distinct ${emailQueue.prospectId})::int` })
+      .from(emailQueue)
+      .where(and(
+        eq(emailQueue.sequenceId, sequenceId),
+        eq(emailQueue.status, 'sent')
+      ));
+    
+    // Messages sent
+    const sentMessages = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(emailQueue)
+      .where(and(
+        eq(emailQueue.sequenceId, sequenceId),
+        eq(emailQueue.status, 'sent')
+      ));
+    
+    // Messages failed
+    const failedMessages = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(emailQueue)
+      .where(and(
+        eq(emailQueue.sequenceId, sequenceId),
+        eq(emailQueue.status, 'failed')
+      ));
+    
+    const totalSent = sentMessages[0]?.count || 0;
+    const totalFailed = failedMessages[0]?.count || 0;
+    const totalAttempted = totalSent + totalFailed;
+    const deliveredPercent = totalAttempted > 0 ? Math.round((totalSent / totalAttempted) * 100) : 0;
+    
+    res.json({
+      totalLeads: totalLeads[0]?.count || 0,
+      launchedLeads: launchedLeads[0]?.count || 0,
+      reachedLeads: reachedLeads[0]?.count || 0,
+      deliveredPercent,
+      messagesSent: totalSent,
+      messagesFailed: totalFailed
+    });
+  } catch (error) {
+    console.error("Summary analytics error:", error);
+    res.status(500).json({ error: "Failed to get summary analytics" });
+  }
+});
+
+// GET /api/sequences/:id/steps/analytics - Get per-step analytics
+router.get("/:id/steps/analytics", authenticate, async (req, res) => {
+  try {
+    const sequenceId = req.params.id;
+    
+    // Verify sequence ownership
+    const sequence = await storage.getSequence(req.userContext!, sequenceId);
+    if (!sequence) {
+      return res.status(404).json({ error: "Sequence not found" });
+    }
+    
+    // Get all steps for this sequence
+    const steps = await db
+      .select()
+      .from(sequenceSteps)
+      .where(eq(sequenceSteps.sequenceId, sequenceId))
+      .orderBy(sequenceSteps.stepOrder);
+    
+    const stepAnalytics = await Promise.all(steps.map(async (step) => {
+      // Sent count for this step (using sequenceId + stepOrder)
+      const sent = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(emailQueue)
+        .where(and(
+          eq(emailQueue.sequenceId, sequenceId),
+          eq(emailQueue.stepOrder, step.stepOrder),
+          eq(emailQueue.status, 'sent')
+        ));
+      
+      // Opened count
+      const opened = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(emailQueue)
+        .where(and(
+          eq(emailQueue.sequenceId, sequenceId),
+          eq(emailQueue.stepOrder, step.stepOrder),
+          sql`opened_at IS NOT NULL`
+        ));
+      
+      // Clicked count
+      const clicked = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(emailQueue)
+        .where(and(
+          eq(emailQueue.sequenceId, sequenceId),
+          eq(emailQueue.stepOrder, step.stepOrder),
+          sql`clicked_at IS NOT NULL`
+        ));
+      
+      // Replied count - get from email_replies via sequenceId only (no step-level granularity in replies)
+      // For step 1, count all replies; for later steps, use lead_events if available
+      const replied = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(leadEvents)
+        .where(and(
+          eq(leadEvents.stepId, step.id),
+          eq(leadEvents.eventType, 'replied')
+        ));
+      
+      // Booked count (from lead_events)
+      const booked = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(leadEvents)
+        .where(and(
+          eq(leadEvents.stepId, step.id),
+          eq(leadEvents.eventType, 'booked')
+        ));
+      
+      const sentCount = sent[0]?.count || 0;
+      const openedCount = opened[0]?.count || 0;
+      const clickedCount = clicked[0]?.count || 0;
+      const repliedCount = replied[0]?.count || 0;
+      const bookedCount = booked[0]?.count || 0;
+      
+      return {
+        stepId: step.id,
+        stepOrder: step.stepOrder,
+        sent: sentCount,
+        opened: { count: openedCount, percent: sentCount > 0 ? Math.round((openedCount / sentCount) * 100) : 0 },
+        clicked: { count: clickedCount, percent: sentCount > 0 ? Math.round((clickedCount / sentCount) * 100) : 0 },
+        replied: { count: repliedCount, percent: sentCount > 0 ? Math.round((repliedCount / sentCount) * 100) : 0 },
+        booked: { count: bookedCount, percent: sentCount > 0 ? Math.round((bookedCount / sentCount) * 100) : 0 }
+      };
+    }));
+    
+    res.json({ stepAnalytics });
+  } catch (error) {
+    console.error("Step analytics error:", error);
+    res.status(500).json({ error: "Failed to get step analytics" });
+  }
+});
+
+// GET /api/sequences/:id/steps/negative-signals - Get negative signals per step
+router.get("/:id/steps/negative-signals", authenticate, async (req, res) => {
+  try {
+    const sequenceId = req.params.id;
+    
+    // Verify sequence ownership
+    const sequence = await storage.getSequence(req.userContext!, sequenceId);
+    if (!sequence) {
+      return res.status(404).json({ error: "Sequence not found" });
+    }
+    
+    // Get all steps for this sequence
+    const steps = await db
+      .select()
+      .from(sequenceSteps)
+      .where(eq(sequenceSteps.sequenceId, sequenceId))
+      .orderBy(sequenceSteps.stepOrder);
+    
+    const negativeSignals = await Promise.all(steps.map(async (step) => {
+      // Not sent (failed status)
+      const notSent = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(emailQueue)
+        .where(and(
+          eq(emailQueue.sequenceId, sequenceId),
+          eq(emailQueue.stepOrder, step.stepOrder),
+          eq(emailQueue.status, 'failed')
+        ));
+      
+      // Bounced
+      const bounced = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(leadEvents)
+        .where(and(
+          eq(leadEvents.stepId, step.id),
+          eq(leadEvents.eventType, 'bounced')
+        ));
+      
+      // Unsubscribed
+      const unsubscribed = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(leadEvents)
+        .where(and(
+          eq(leadEvents.stepId, step.id),
+          eq(leadEvents.eventType, 'unsubscribed')
+        ));
+      
+      // Not interested
+      const notInterested = await db
+        .select({ count: sql<number>`count(*)::int` })
+        .from(leadEvents)
+        .where(and(
+          eq(leadEvents.stepId, step.id),
+          eq(leadEvents.eventType, 'not_interested')
+        ));
+      
+      return {
+        stepId: step.id,
+        stepOrder: step.stepOrder,
+        notSent: notSent[0]?.count || 0,
+        bounced: bounced[0]?.count || 0,
+        unsubscribed: unsubscribed[0]?.count || 0,
+        notInterested: notInterested[0]?.count || 0
+      };
+    }));
+    
+    res.json({ negativeSignals });
+  } catch (error) {
+    console.error("Negative signals error:", error);
+    res.status(500).json({ error: "Failed to get negative signals" });
   }
 });
 
