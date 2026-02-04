@@ -545,6 +545,7 @@ Best regards`;
       }
       
       // Add follow-up email to queue with threading headers
+      // Skip SafeToSend during scheduling - it will be checked when email is processed/sent
       await emailQueueService.addToQueue({
         prospectId,
         sequenceId,
@@ -557,6 +558,7 @@ Best regards`;
         fromName: undefined, // Will use mailbox default
         inReplyTo, // Threading: reference the previous email
         references, // Threading: full thread history
+        skipSafeToSendCheck: true, // Check happens during send, not scheduling
       });
 
       // Update enrollment progress to track the new step

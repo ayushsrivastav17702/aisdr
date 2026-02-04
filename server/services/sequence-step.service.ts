@@ -336,6 +336,7 @@ Best regards`;
       // =====================================
       // Important: Add to queue first, then update progress.
       // If enqueue fails, we don't want to show progress without an actual scheduled email.
+      // Skip SafeToSend during scheduling - it will be checked when email is processed/sent
       await emailQueueService.addToQueue({
         prospectId,
         sequenceId,
@@ -346,6 +347,7 @@ Best regards`;
         userId, // CRITICAL: Multi-tenant security
         priority: 5, // Standard priority for first email
         fromName: undefined, // Will use mailbox default
+        skipSafeToSendCheck: true, // Check happens during send, not scheduling
       });
 
       console.log(`[SequenceStep] ✅ First email queued successfully for prospect ${prospectId}`);

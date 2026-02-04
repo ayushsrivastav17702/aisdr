@@ -126,6 +126,7 @@ async function initializeSequence(userContext: RequestContext, sequenceId: strin
       
       // Add email to queue with personalized content (or template fallback)
       // CRITICAL: Include stepOrder for deduplication to prevent duplicate emails
+      // Skip SafeToSend during initialization - it will be checked when email is processed/sent
       await emailQueueService.addToQueue({
         sequenceId,
         prospectId: enrolledProspect.prospectId,
@@ -135,6 +136,7 @@ async function initializeSequence(userContext: RequestContext, sequenceId: strin
         priority: 5,
         userId: userContext.userId,
         stepOrder: firstStep.stepOrder, // Required for deduplication check
+        skipSafeToSendCheck: true, // Check happens during send, not scheduling
       });
       
       console.log(`  ✅ Added email to queue for prospect ${enrolledProspect.prospectId}`);
