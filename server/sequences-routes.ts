@@ -2292,49 +2292,39 @@ router.get("/:id/steps/analytics", authenticate, async (req, res) => {
           eq(emailQueue.status, 'sent')
         ));
       
-      // Opened count
-      const opened = await db
-        .select({ count: sql<number>`count(*)::int` })
+      // Get opened/clicked/replied counts by joining email_queue with emails table
+      // Join on prospect_id + sequence_id (email_id may not be populated)
+      const stepMetrics = await db
+        .select({
+          opened: sql<number>`count(*) filter (where ${emails.openedAt} is not null)::int`,
+          clicked: sql<number>`count(*) filter (where ${emails.clickedAt} is not null)::int`,
+          replied: sql<number>`count(*) filter (where ${emails.repliedAt} is not null)::int`,
+        })
         .from(emailQueue)
+        .innerJoin(emails, and(
+          eq(emailQueue.prospectId, emails.prospectId),
+          eq(emailQueue.sequenceId, emails.sequenceId)
+        ))
         .where(and(
           eq(emailQueue.sequenceId, sequenceId),
           eq(emailQueue.stepOrder, step.stepOrder),
-          sql`opened_at IS NOT NULL`
+          eq(emailQueue.status, 'sent')
         ));
       
-      // Clicked count
-      const clicked = await db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(emailQueue)
-        .where(and(
-          eq(emailQueue.sequenceId, sequenceId),
-          eq(emailQueue.stepOrder, step.stepOrder),
-          sql`clicked_at IS NOT NULL`
-        ));
-      
-      // Replied count - get from email_replies via sequenceId only (no step-level granularity in replies)
-      // For step 1, count all replies; for later steps, use lead_events if available
-      const replied = await db
-        .select({ count: sql<number>`count(*)::int` })
-        .from(leadEvents)
-        .where(and(
-          eq(leadEvents.stepId, step.id),
-          eq(leadEvents.eventType, 'replied')
-        ));
-      
-      // Booked count (from lead_events)
+      // Booked count (from lead_events - meetings are tracked separately)
       const booked = await db
         .select({ count: sql<number>`count(*)::int` })
         .from(leadEvents)
         .where(and(
+          eq(leadEvents.sequenceId, sequenceId),
           eq(leadEvents.stepId, step.id),
           eq(leadEvents.eventType, 'booked')
         ));
       
       const sentCount = sent[0]?.count || 0;
-      const openedCount = opened[0]?.count || 0;
-      const clickedCount = clicked[0]?.count || 0;
-      const repliedCount = replied[0]?.count || 0;
+      const openedCount = stepMetrics[0]?.opened || 0;
+      const clickedCount = stepMetrics[0]?.clicked || 0;
+      const repliedCount = stepMetrics[0]?.replied || 0;
       const bookedCount = booked[0]?.count || 0;
       
       return {
