@@ -38,7 +38,7 @@ export interface SafeToSendInput {
 }
 
 const DOMAIN_REPUTATION_THRESHOLD = 70;
-const MIN_FINAL_SCORE = 2.0;
+const MIN_FINAL_SCORE = 1.0;
 const MIN_AI_CONFIDENCE = 0.6;
 
 class SafeToSendService {
