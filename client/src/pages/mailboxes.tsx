@@ -406,10 +406,10 @@ function MailboxCard({ mailbox }: { mailbox: EmailMailbox }) {
 }
 
 function AddMailboxButton() {
-  const [showForm, setShowForm] = useState(false);
+  const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [provider, setProvider] = useState<"gmail" | "outlook" | "smtp" | "sendgrid">("smtp");
+  const [provider, setProvider] = useState<"gmail" | "outlook" | "smtp" | "sendgrid">("gmail");
   const [smtpHost, setSmtpHost] = useState("");
   const [smtpPort, setSmtpPort] = useState("587");
   const [smtpUser, setSmtpUser] = useState("");
@@ -422,7 +422,7 @@ function AddMailboxButton() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/mailboxes"] });
       toast({ title: "Mailbox added successfully" });
-      setShowForm(false);
+      setOpen(false);
       resetForm();
     },
     onError: () => {
@@ -433,12 +433,26 @@ function AddMailboxButton() {
   const resetForm = () => {
     setName("");
     setEmail("");
-    setProvider("smtp");
+    setProvider("gmail");
     setSmtpHost("");
     setSmtpPort("587");
     setSmtpUser("");
     setSmtpPassword("");
     setApiKey("");
+  };
+
+  const handleProviderChange = (value: string) => {
+    setProvider(value as any);
+    if (value === "gmail") {
+      setSmtpHost("smtp.gmail.com");
+      setSmtpPort("465");
+    } else if (value === "outlook") {
+      setSmtpHost("smtp.office365.com");
+      setSmtpPort("587");
+    } else {
+      setSmtpHost("");
+      setSmtpPort("587");
+    }
   };
 
   const handleSubmit = () => {
@@ -461,122 +475,213 @@ function AddMailboxButton() {
     createMutation.mutate(data);
   };
 
-  if (showForm) {
-    return (
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle>Add Email Mailbox</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div>
-            <Label>Name</Label>
-            <Input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="My Mailbox"
-              data-testid="input-mailbox-name"
-            />
+  const providerHints: Record<string, { host: string; port: string; tip: string }> = {
+    gmail: {
+      host: "smtp.gmail.com",
+      port: "465",
+      tip: "Use a Gmail App Password. Go to Google Account → Security → 2-Step Verification → App Passwords"
+    },
+    outlook: {
+      host: "smtp.office365.com", 
+      port: "587",
+      tip: "Use your Microsoft account password or an App Password if 2FA is enabled"
+    },
+    smtp: {
+      host: "",
+      port: "587",
+      tip: "Enter your custom SMTP server details"
+    },
+    sendgrid: {
+      host: "",
+      port: "",
+      tip: "Get your API key from SendGrid dashboard → Settings → API Keys"
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button data-testid="button-new-mailbox">
+          <Plus className="w-4 h-4 mr-2" />
+          Add Mailbox
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-lg" data-testid="dialog-add-mailbox">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Mail className="w-5 h-5 text-primary" />
+            Add Email Mailbox
+          </DialogTitle>
+          <DialogDescription>
+            Connect your email account to send campaigns. We support Gmail, Outlook, and custom SMTP servers.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-6 py-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="name" className="text-sm font-medium">
+                Display Name
+              </Label>
+              <Input
+                id="name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Sales Outreach"
+                className="h-10"
+                data-testid="input-mailbox-name"
+              />
+              <p className="text-xs text-muted-foreground">A friendly name for this mailbox</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="email" className="text-sm font-medium">
+                Email Address
+              </Label>
+              <Input
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@company.com"
+                className="h-10"
+                data-testid="input-mailbox-email"
+              />
+              <p className="text-xs text-muted-foreground">The email you'll send from</p>
+            </div>
           </div>
-          <div>
-            <Label>Email</Label>
-            <Input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="sender@example.com"
-              data-testid="input-mailbox-email"
-            />
-          </div>
-          <div>
-            <Label>Provider</Label>
-            <Select value={provider} onValueChange={(v: any) => setProvider(v)}>
-              <SelectTrigger data-testid="select-provider">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="smtp">SMTP</SelectItem>
-                <SelectItem value="gmail">Gmail</SelectItem>
-                <SelectItem value="outlook">Outlook</SelectItem>
-                <SelectItem value="sendgrid">SendGrid</SelectItem>
-              </SelectContent>
-            </Select>
+
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Email Provider</Label>
+            <div className="grid grid-cols-4 gap-2">
+              {[
+                { value: "gmail", label: "Gmail", icon: "📧" },
+                { value: "outlook", label: "Outlook", icon: "📬" },
+                { value: "smtp", label: "SMTP", icon: "⚙️" },
+                { value: "sendgrid", label: "SendGrid", icon: "📨" },
+              ].map((p) => (
+                <button
+                  key={p.value}
+                  type="button"
+                  onClick={() => handleProviderChange(p.value)}
+                  className={`flex flex-col items-center gap-1 p-3 rounded-lg border-2 transition-all ${
+                    provider === p.value
+                      ? "border-primary bg-primary/5 text-primary"
+                      : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
+                  }`}
+                  data-testid={`provider-${p.value}`}
+                >
+                  <span className="text-xl">{p.icon}</span>
+                  <span className="text-xs font-medium">{p.label}</span>
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-muted-foreground mt-2 bg-blue-50 dark:bg-blue-950/30 p-2 rounded-md border border-blue-100 dark:border-blue-900">
+              💡 {providerHints[provider].tip}
+            </p>
           </div>
 
           {(provider === "smtp" || provider === "gmail" || provider === "outlook") && (
-            <>
-              <div>
-                <Label>SMTP Host</Label>
-                <Input
-                  value={smtpHost}
-                  onChange={(e) => setSmtpHost(e.target.value)}
-                  placeholder="smtp.example.com"
-                  data-testid="input-smtp-host"
-                />
+            <div className="space-y-4 pt-2 border-t">
+              <h4 className="text-sm font-medium text-muted-foreground">Server Settings</h4>
+              <div className="grid grid-cols-3 gap-4">
+                <div className="col-span-2 space-y-2">
+                  <Label htmlFor="smtpHost" className="text-sm">SMTP Host</Label>
+                  <Input
+                    id="smtpHost"
+                    value={smtpHost}
+                    onChange={(e) => setSmtpHost(e.target.value)}
+                    placeholder="smtp.example.com"
+                    className="h-10"
+                    data-testid="input-smtp-host"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="smtpPort" className="text-sm">Port</Label>
+                  <Input
+                    id="smtpPort"
+                    type="number"
+                    value={smtpPort}
+                    onChange={(e) => setSmtpPort(e.target.value)}
+                    placeholder="587"
+                    className="h-10"
+                    data-testid="input-smtp-port"
+                  />
+                </div>
               </div>
-              <div>
-                <Label>SMTP Port</Label>
-                <Input
-                  type="number"
-                  value={smtpPort}
-                  onChange={(e) => setSmtpPort(e.target.value)}
-                  placeholder="587"
-                  data-testid="input-smtp-port"
-                />
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="smtpUser" className="text-sm">Username (optional)</Label>
+                  <Input
+                    id="smtpUser"
+                    value={smtpUser}
+                    onChange={(e) => setSmtpUser(e.target.value)}
+                    placeholder="Uses email if blank"
+                    className="h-10"
+                    data-testid="input-smtp-user"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="smtpPassword" className="text-sm">
+                    {provider === "gmail" ? "App Password" : "Password"}
+                  </Label>
+                  <PasswordInput
+                    id="smtpPassword"
+                    value={smtpPassword}
+                    onChange={(e) => setSmtpPassword(e.target.value)}
+                    placeholder="••••••••••••••••"
+                    className="h-10"
+                    data-testid="input-smtp-password"
+                  />
+                </div>
               </div>
-              <div>
-                <Label>SMTP User (optional)</Label>
-                <Input
-                  value={smtpUser}
-                  onChange={(e) => setSmtpUser(e.target.value)}
-                  placeholder="Leave blank to use email"
-                  data-testid="input-smtp-user"
-                />
-              </div>
-              <div>
-                <Label>SMTP Password</Label>
-                <PasswordInput
-                  value={smtpPassword}
-                  onChange={(e) => setSmtpPassword(e.target.value)}
-                  placeholder="••••••••"
-                  data-testid="input-smtp-password"
-                />
-              </div>
-            </>
-          )}
-
-          {provider === "sendgrid" && (
-            <div>
-              <Label>SendGrid API Key</Label>
-              <PasswordInput
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder="SG.xxxxxxxxxxxxxxxx"
-                data-testid="input-api-key"
-              />
             </div>
           )}
 
-          <div className="flex gap-2">
-            <Button
-              onClick={handleSubmit}
-              disabled={!name || !email || createMutation.isPending}
-              data-testid="button-create-mailbox"
-            >
-              {createMutation.isPending ? "Adding..." : "Add Mailbox"}
-            </Button>
-            <Button variant="outline" onClick={() => setShowForm(false)} data-testid="button-cancel">
-              Cancel
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
+          {provider === "sendgrid" && (
+            <div className="space-y-4 pt-2 border-t">
+              <h4 className="text-sm font-medium text-muted-foreground">API Configuration</h4>
+              <div className="space-y-2">
+                <Label htmlFor="apiKey" className="text-sm">SendGrid API Key</Label>
+                <PasswordInput
+                  id="apiKey"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder="SG.xxxxxxxxxxxxxxxx"
+                  className="h-10"
+                  data-testid="input-api-key"
+                />
+              </div>
+            </div>
+          )}
+        </div>
 
-  return (
-    <Button onClick={() => setShowForm(true)} data-testid="button-new-mailbox">
-      <Plus className="w-4 h-4 mr-2" />
-      Add Mailbox
-    </Button>
+        <div className="flex justify-end gap-3 pt-4 border-t">
+          <Button
+            variant="outline"
+            onClick={() => setOpen(false)}
+            data-testid="button-cancel"
+          >
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={!name || !email || createMutation.isPending}
+            data-testid="button-create-mailbox"
+          >
+            {createMutation.isPending ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Adding...
+              </>
+            ) : (
+              <>
+                <CheckCircle className="w-4 h-4 mr-2" />
+                Add Mailbox
+              </>
+            )}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
