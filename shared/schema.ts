@@ -257,6 +257,7 @@ export const sequenceSteps = pgTable("sequence_steps", {
   stepType: text("step_type").notNull().default("email"),
   aiGenerated: boolean("ai_generated").default(false),
   variables: jsonb("variables"),
+  mailboxId: varchar("mailbox_id"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
