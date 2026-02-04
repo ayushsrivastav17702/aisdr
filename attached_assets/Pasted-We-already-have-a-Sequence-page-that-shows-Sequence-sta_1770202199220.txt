@@ -1,0 +1,259 @@
+We already have a Sequence page that shows:
+
+Sequence start → Step blocks (Email / Wait)
+
+We must add analytics ONLY inside this Sequence page UI.
+Do NOT create any new tabs, pages, or Overview changes.
+
+We will enhance the existing Sequence page with analytics in 3 locations:
+
+Top of sequence → Funnel
+
+Below funnel → Summary cards
+
+Inside each step → Step analytics + negative signals
+
+1️⃣ FUNNEL ANALYTICS (TOP OF SEQUENCE PAGE)
+UI PLACEMENT
+
+Insert a horizontal funnel bar:
+ABOVE the first step block
+Below “Sequence start”
+Not on Overview
+Not on a new page
+
+Render:
+
+[ Contacted ] → [ Opened ] → [ Interaction ] → [ Answered ] → [ Interested ] → [ Interrupted ]
+Each stage must show:
+
+%
+
+count
+
+Example:
+Contacted: 100% (228)
+Opened: 32% (72)
+Interaction: 10% (23)
+Answered: 6% (14)
+Interested: 2% (5)
+Interrupted: 4% (9)
+
+BACKEND LOGIC
+
+Track per lead:
+
+contacted_at
+
+opened_at
+
+clicked_at
+
+replied_at
+
+interested_at
+
+interrupted_at
+
+API:
+GET /sequence/:sequenceId/funnel
+
+Return:
+
+counts per stage
+
+conversion percentages
+
+2️⃣ CAMPAIGN SUMMARY CARDS (UNDER FUNNEL)
+UI PLACEMENT
+
+Immediately below Funnel bar, add a row of small stat cards:
+
+[ Leads in sequence ]
+[ Leads launched ]
+[ Leads reached ]
+[ Delivered % ]
+[ Messages sent ]
+[ Messages failed ]
+
+Layout:
+
+[FUNNEL BAR]
+
+[Leads] [Launched] [Reached] [Delivered %] [Sent] [Failed]
+
+[Sequence steps start here]
+
+BACKEND LOGIC
+
+API:
+GET /sequence/:sequenceId/summary
+
+Compute:
+
+total_leads
+
+launched_leads
+
+reached_leads
+
+delivered_count
+
+delivered_percent
+
+messages_sent
+
+messages_failed
+
+3️⃣ STEP-LEVEL ANALYTICS (INSIDE EACH STEP BLOCK)
+UI PLACEMENT
+
+Inside EACH step card (Email / Wait), under:
+
+Step name
+
+Channel
+
+To come
+
+Add a global metric toggle above steps:
+[ Opened ] [ Clicked ] [ Replied ] [ Booked ]
+
+Inside every Email step display:
+
+Opened: 33% (2)
+Clicked: 0% (0)
+Replied: 0% (0)
+Booked: 0% (0)
+
+This makes:
+Execution + Performance in same block.
+
+Wait steps show no metrics.
+
+BACKEND LOGIC
+
+Track per step:
+
+step_sent_at
+
+step_opened_at
+
+step_clicked_at
+
+step_replied_at
+
+step_booked_at
+
+API:
+GET /sequence/:sequenceId/steps/analytics
+
+Return per step:
+
+sent
+
+opened
+
+clicked
+
+replied
+
+booked
+
+percentages
+
+4️⃣ DELIVERABILITY & NEGATIVE SIGNALS (BOTTOM OF STEP BLOCK)
+UI PLACEMENT
+
+At the bottom of each Email step card:
+
+❌ Not sent: X
+📛 Bounced: X
+🚫 Unsubscribed: X
+👎 Not interested: X
+
+This is inside the same step card, NOT a new panel.
+
+BACKEND LOGIC
+
+Track:
+
+not_sent
+
+bounced
+
+unsubscribed
+
+not_interested
+
+API:
+GET /sequence/:sequenceId/steps/negative-signals
+
+Group by step.
+
+FINAL SEQUENCE PAGE STRUCTURE
+
+[Funnel Analytics Bar]
+
+[Summary Stat Cards]
+
+[Metric Toggle Buttons]
+
+[Step 1: Email]
+
+Opened %
+
+Clicked %
+
+Replied %
+
+Booked %
+
+Not sent / Bounced / Unsub / Not interested
+
+[Step 2: Wait]
+
+[Step 3: Email]
+
+Same analytics
+
+[Step 4: Wait]
+
+DATA MODEL ADDITIONS
+
+Add tables or columns:
+
+lead_events:
+
+lead_id
+
+sequence_id
+
+step_id
+
+event_type (contacted, opened, clicked, replied, interested, bounced, unsubscribed, not_interested)
+
+timestamp
+
+All analytics must be derived from this.
+
+ACCEPTANCE CRITERIA
+
+✔ Funnel appears above steps
+✔ Summary cards appear below funnel
+✔ Step analytics appear inside step cards
+✔ No new tab
+✔ No new page
+✔ No Overview changes
+✔ Percentages correct
+✔ Works with 500+ leads
+✔ Updates in real time
+
+DO NOT:
+
+❌ Create Analytics tab
+❌ Create new pages
+❌ Modify Overview
+❌ Change sending logic
+
+ONLY improve Sequence UI.
