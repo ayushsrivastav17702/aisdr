@@ -2115,17 +2115,6 @@ router.get("/:id/funnel", authenticate, async (req, res) => {
     
     const totalCount = totalProspects[0]?.count || 0;
     
-    if (totalCount === 0) {
-      return res.json({
-        contacted: { count: 0, percent: 0 },
-        opened: { count: 0, percent: 0 },
-        interaction: { count: 0, percent: 0 },
-        answered: { count: 0, percent: 0 },
-        interested: { count: 0, percent: 0 },
-        interrupted: { count: 0, percent: 0 }
-      });
-    }
-    
     // Get event counts from lead_events table
     const eventCounts = await db
       .select({
@@ -2150,23 +2139,23 @@ router.get("/:id/funnel", authenticate, async (req, res) => {
     
     const contactedCount = sentEmails[0]?.count || countMap['contacted'] || 0;
     
-    // Get opened count from email_queue
+    // Get opened count from emails table (tracking data is stored there, not in email_queue)
     const openedEmails = await db
-      .select({ count: sql<number>`count(distinct ${emailQueue.prospectId})::int` })
-      .from(emailQueue)
+      .select({ count: sql<number>`count(distinct ${emails.prospectId})::int` })
+      .from(emails)
       .where(and(
-        eq(emailQueue.sequenceId, sequenceId),
-        sql`opened_at IS NOT NULL`
+        eq(emails.sequenceId, sequenceId),
+        sql`${emails.openedAt} IS NOT NULL`
       ));
     const openedCount = openedEmails[0]?.count || countMap['opened'] || 0;
     
-    // Get clicked count from email_queue
+    // Get clicked count from emails table
     const clickedEmails = await db
-      .select({ count: sql<number>`count(distinct ${emailQueue.prospectId})::int` })
-      .from(emailQueue)
+      .select({ count: sql<number>`count(distinct ${emails.prospectId})::int` })
+      .from(emails)
       .where(and(
-        eq(emailQueue.sequenceId, sequenceId),
-        sql`clicked_at IS NOT NULL`
+        eq(emails.sequenceId, sequenceId),
+        sql`${emails.clickedAt} IS NOT NULL`
       ));
     const interactionCount = clickedEmails[0]?.count || countMap['clicked'] || 0;
     
@@ -2180,13 +2169,18 @@ router.get("/:id/funnel", authenticate, async (req, res) => {
     const interestedCount = countMap['interested'] || 0;
     const interruptedCount = countMap['interrupted'] || countMap['unsubscribed'] || countMap['bounced'] || 0;
     
+    // Use totalCount for percentages, but fall back to contactedCount if no enrolled prospects
+    const baseCount = totalCount > 0 ? totalCount : contactedCount;
+    
+    console.log(`[Funnel Analytics] sequenceId=${sequenceId}, total=${totalCount}, base=${baseCount}, contacted=${contactedCount}, opened=${openedCount}, clicked=${interactionCount}, answered=${answeredCount}`);
+    
     res.json({
-      contacted: { count: contactedCount, percent: totalCount > 0 ? Math.round((contactedCount / totalCount) * 100) : 0 },
-      opened: { count: openedCount, percent: totalCount > 0 ? Math.round((openedCount / totalCount) * 100) : 0 },
-      interaction: { count: interactionCount, percent: totalCount > 0 ? Math.round((interactionCount / totalCount) * 100) : 0 },
-      answered: { count: answeredCount, percent: totalCount > 0 ? Math.round((answeredCount / totalCount) * 100) : 0 },
-      interested: { count: interestedCount, percent: totalCount > 0 ? Math.round((interestedCount / totalCount) * 100) : 0 },
-      interrupted: { count: interruptedCount, percent: totalCount > 0 ? Math.round((interruptedCount / totalCount) * 100) : 0 }
+      contacted: { count: contactedCount, percent: baseCount > 0 ? Math.round((contactedCount / baseCount) * 100) : 0 },
+      opened: { count: openedCount, percent: baseCount > 0 ? Math.round((openedCount / baseCount) * 100) : 0 },
+      interaction: { count: interactionCount, percent: baseCount > 0 ? Math.round((interactionCount / baseCount) * 100) : 0 },
+      answered: { count: answeredCount, percent: baseCount > 0 ? Math.round((answeredCount / baseCount) * 100) : 0 },
+      interested: { count: interestedCount, percent: baseCount > 0 ? Math.round((interestedCount / baseCount) * 100) : 0 },
+      interrupted: { count: interruptedCount, percent: baseCount > 0 ? Math.round((interruptedCount / baseCount) * 100) : 0 }
     });
   } catch (error) {
     console.error("Funnel analytics error:", error);
