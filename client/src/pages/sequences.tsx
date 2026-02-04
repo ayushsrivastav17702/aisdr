@@ -1286,6 +1286,44 @@ function ProductionSequenceBuilder({ sequenceId }: { sequenceId: string }) {
   );
 }
 
+// Analytics types
+interface FunnelData {
+  contacted: { count: number; percent: number };
+  opened: { count: number; percent: number };
+  interaction: { count: number; percent: number };
+  answered: { count: number; percent: number };
+  interested: { count: number; percent: number };
+  interrupted: { count: number; percent: number };
+}
+
+interface SummaryData {
+  totalLeads: number;
+  launchedLeads: number;
+  reachedLeads: number;
+  deliveredPercent: number;
+  messagesSent: number;
+  messagesFailed: number;
+}
+
+interface StepAnalytics {
+  stepId: string;
+  stepOrder: number;
+  sent: number;
+  opened: { count: number; percent: number };
+  clicked: { count: number; percent: number };
+  replied: { count: number; percent: number };
+  booked: { count: number; percent: number };
+}
+
+interface NegativeSignal {
+  stepId: string;
+  stepOrder: number;
+  notSent: number;
+  bounced: number;
+  unsubscribed: number;
+  notInterested: number;
+}
+
 function SequenceTab({ 
   sequenceId, 
   steps, 
@@ -1316,12 +1354,58 @@ function SequenceTab({
   const [delayDays, setDelayDays] = useState("0");
   const [mailboxId, setMailboxId] = useState<string>("");
   const [usePreviousSubject, setUsePreviousSubject] = useState(false);
+  const [activeMetric, setActiveMetric] = useState<'opened' | 'clicked' | 'replied' | 'booked'>('opened');
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
   const { data: mailboxes = [] } = useQuery<any[]>({
     queryKey: ["/api/mailboxes"],
   });
+
+  // Analytics queries
+  const { data: funnelData } = useQuery<FunnelData>({
+    queryKey: ['/api/sequences', sequenceId, 'funnel'],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/sequences/${sequenceId}/funnel`, undefined);
+      return await res.json();
+    },
+    refetchInterval: 30000,
+  });
+
+  const { data: summaryData } = useQuery<SummaryData>({
+    queryKey: ['/api/sequences', sequenceId, 'summary'],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/sequences/${sequenceId}/summary`, undefined);
+      return await res.json();
+    },
+    refetchInterval: 30000,
+  });
+
+  const { data: stepAnalyticsData } = useQuery<{ stepAnalytics: StepAnalytics[] }>({
+    queryKey: ['/api/sequences', sequenceId, 'steps', 'analytics'],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/sequences/${sequenceId}/steps/analytics`, undefined);
+      return await res.json();
+    },
+    refetchInterval: 30000,
+  });
+
+  const { data: negativeSignalsData } = useQuery<{ negativeSignals: NegativeSignal[] }>({
+    queryKey: ['/api/sequences', sequenceId, 'steps', 'negative-signals'],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/sequences/${sequenceId}/steps/negative-signals`, undefined);
+      return await res.json();
+    },
+    refetchInterval: 30000,
+  });
+
+  const getStepAnalytics = (stepId: string) => {
+    return stepAnalyticsData?.stepAnalytics?.find(s => s.stepId === stepId);
+  };
+
+  const getStepNegativeSignals = (stepId: string) => {
+    return negativeSignalsData?.negativeSignals?.find(s => s.stepId === stepId);
+  };
 
   const addStepMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -1406,6 +1490,125 @@ function SequenceTab({
         </div>
       </div>
 
+      {/* Funnel Analytics Bar */}
+      {steps.length > 0 && funnelData && (
+        <Card className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/30 dark:to-indigo-950/30 border-blue-200 dark:border-blue-800">
+          <CardContent className="pt-4 pb-4">
+            <div className="flex items-center justify-between gap-2 overflow-x-auto" data-testid="funnel-analytics">
+              <div className="flex items-center gap-1 min-w-0">
+                <div className="flex items-center gap-4">
+                  <div className="text-center px-3 py-2 bg-blue-100 dark:bg-blue-900/50 rounded-lg min-w-[100px]">
+                    <div className="text-lg font-bold text-blue-700 dark:text-blue-300">{funnelData.contacted.percent}%</div>
+                    <div className="text-xs text-blue-600 dark:text-blue-400">Contacted ({funnelData.contacted.count})</div>
+                  </div>
+                  <span className="text-gray-400">→</span>
+                  <div className="text-center px-3 py-2 bg-green-100 dark:bg-green-900/50 rounded-lg min-w-[100px]">
+                    <div className="text-lg font-bold text-green-700 dark:text-green-300">{funnelData.opened.percent}%</div>
+                    <div className="text-xs text-green-600 dark:text-green-400">Opened ({funnelData.opened.count})</div>
+                  </div>
+                  <span className="text-gray-400">→</span>
+                  <div className="text-center px-3 py-2 bg-yellow-100 dark:bg-yellow-900/50 rounded-lg min-w-[100px]">
+                    <div className="text-lg font-bold text-yellow-700 dark:text-yellow-300">{funnelData.interaction.percent}%</div>
+                    <div className="text-xs text-yellow-600 dark:text-yellow-400">Interaction ({funnelData.interaction.count})</div>
+                  </div>
+                  <span className="text-gray-400">→</span>
+                  <div className="text-center px-3 py-2 bg-purple-100 dark:bg-purple-900/50 rounded-lg min-w-[100px]">
+                    <div className="text-lg font-bold text-purple-700 dark:text-purple-300">{funnelData.answered.percent}%</div>
+                    <div className="text-xs text-purple-600 dark:text-purple-400">Answered ({funnelData.answered.count})</div>
+                  </div>
+                  <span className="text-gray-400">→</span>
+                  <div className="text-center px-3 py-2 bg-emerald-100 dark:bg-emerald-900/50 rounded-lg min-w-[100px]">
+                    <div className="text-lg font-bold text-emerald-700 dark:text-emerald-300">{funnelData.interested.percent}%</div>
+                    <div className="text-xs text-emerald-600 dark:text-emerald-400">Interested ({funnelData.interested.count})</div>
+                  </div>
+                  <span className="text-gray-400">→</span>
+                  <div className="text-center px-3 py-2 bg-red-100 dark:bg-red-900/50 rounded-lg min-w-[100px]">
+                    <div className="text-lg font-bold text-red-700 dark:text-red-300">{funnelData.interrupted.percent}%</div>
+                    <div className="text-xs text-red-600 dark:text-red-400">Interrupted ({funnelData.interrupted.count})</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Summary Cards */}
+      {steps.length > 0 && summaryData && (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3" data-testid="summary-cards">
+          <Card className="bg-white dark:bg-gray-800">
+            <CardContent className="pt-4 pb-4 text-center">
+              <div className="text-2xl font-bold text-gray-900 dark:text-white">{summaryData.totalLeads}</div>
+              <div className="text-xs text-muted-foreground">Leads in sequence</div>
+            </CardContent>
+          </Card>
+          <Card className="bg-white dark:bg-gray-800">
+            <CardContent className="pt-4 pb-4 text-center">
+              <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">{summaryData.launchedLeads}</div>
+              <div className="text-xs text-muted-foreground">Leads launched</div>
+            </CardContent>
+          </Card>
+          <Card className="bg-white dark:bg-gray-800">
+            <CardContent className="pt-4 pb-4 text-center">
+              <div className="text-2xl font-bold text-green-600 dark:text-green-400">{summaryData.reachedLeads}</div>
+              <div className="text-xs text-muted-foreground">Leads reached</div>
+            </CardContent>
+          </Card>
+          <Card className="bg-white dark:bg-gray-800">
+            <CardContent className="pt-4 pb-4 text-center">
+              <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">{summaryData.deliveredPercent}%</div>
+              <div className="text-xs text-muted-foreground">Delivered</div>
+            </CardContent>
+          </Card>
+          <Card className="bg-white dark:bg-gray-800">
+            <CardContent className="pt-4 pb-4 text-center">
+              <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{summaryData.messagesSent}</div>
+              <div className="text-xs text-muted-foreground">Messages sent</div>
+            </CardContent>
+          </Card>
+          <Card className="bg-white dark:bg-gray-800">
+            <CardContent className="pt-4 pb-4 text-center">
+              <div className="text-2xl font-bold text-red-600 dark:text-red-400">{summaryData.messagesFailed}</div>
+              <div className="text-xs text-muted-foreground">Messages failed</div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Metric Toggle Buttons */}
+      {steps.length > 0 && (
+        <div className="flex gap-2" data-testid="metric-toggle">
+          <Button 
+            variant={activeMetric === 'opened' ? 'default' : 'outline'} 
+            size="sm"
+            onClick={() => setActiveMetric('opened')}
+          >
+            <Eye className="w-3 h-3 mr-1" /> Opened
+          </Button>
+          <Button 
+            variant={activeMetric === 'clicked' ? 'default' : 'outline'} 
+            size="sm"
+            onClick={() => setActiveMetric('clicked')}
+          >
+            <Target className="w-3 h-3 mr-1" /> Clicked
+          </Button>
+          <Button 
+            variant={activeMetric === 'replied' ? 'default' : 'outline'} 
+            size="sm"
+            onClick={() => setActiveMetric('replied')}
+          >
+            <Reply className="w-3 h-3 mr-1" /> Replied
+          </Button>
+          <Button 
+            variant={activeMetric === 'booked' ? 'default' : 'outline'} 
+            size="sm"
+            onClick={() => setActiveMetric('booked')}
+          >
+            <TrendingUp className="w-3 h-3 mr-1" /> Booked
+          </Button>
+        </div>
+      )}
+
       {/* Email Steps Section */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
@@ -1478,45 +1681,117 @@ function SequenceTab({
             </div>
           ) : (
             <div className="space-y-4">
-              {steps.map((step: any, index: number) => (
-                <Card key={step.id} className="border-l-4 border-l-blue-500">
-                  <CardContent className="pt-6">
-                    <div className="flex items-start justify-between">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
-                          <Badge>Step {index + 1}</Badge>
-                          {step.delayDays > 0 && (
-                            <Badge variant="outline">
-                              <Clock className="w-3 h-3 mr-1" />
-                              Wait {step.delayDays} day{step.delayDays > 1 ? 's' : ''}
+              {steps.map((step: any, index: number) => {
+                const stepAnalytics = getStepAnalytics(step.id);
+                const negativeSignals = getStepNegativeSignals(step.id);
+                
+                return (
+                  <Card key={step.id} className="border-l-4 border-l-blue-500">
+                    <CardContent className="pt-6">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-2">
+                            <Badge>Step {index + 1}</Badge>
+                            {step.delayDays > 0 && (
+                              <Badge variant="outline">
+                                <Clock className="w-3 h-3 mr-1" />
+                                Wait {step.delayDays} day{step.delayDays > 1 ? 's' : ''}
+                              </Badge>
+                            )}
+                            <Badge variant="outline" className="text-muted-foreground">
+                              <Mail className="w-3 h-3 mr-1" />
+                              Email
                             </Badge>
+                            {stepAnalytics && stepAnalytics.sent > 0 && (
+                              <Badge variant="secondary" className="text-xs">
+                                {stepAnalytics.sent} sent
+                              </Badge>
+                            )}
+                          </div>
+                          <h4 className="font-semibold text-lg">{step.subject}</h4>
+                          <p className="text-muted-foreground text-sm mt-2 line-clamp-2">{step.body}</p>
+                          
+                          {/* Step-level Analytics */}
+                          {stepAnalytics && stepAnalytics.sent > 0 && (
+                            <div className="mt-4 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg" data-testid={`step-analytics-${step.id}`}>
+                              <div className="grid grid-cols-4 gap-4 text-center">
+                                <div className={`${activeMetric === 'opened' ? 'ring-2 ring-blue-500 rounded-lg p-1' : ''}`}>
+                                  <div className="text-sm font-semibold text-green-600 dark:text-green-400">
+                                    {stepAnalytics.opened.percent}% ({stepAnalytics.opened.count})
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">Opened</div>
+                                </div>
+                                <div className={`${activeMetric === 'clicked' ? 'ring-2 ring-blue-500 rounded-lg p-1' : ''}`}>
+                                  <div className="text-sm font-semibold text-yellow-600 dark:text-yellow-400">
+                                    {stepAnalytics.clicked.percent}% ({stepAnalytics.clicked.count})
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">Clicked</div>
+                                </div>
+                                <div className={`${activeMetric === 'replied' ? 'ring-2 ring-blue-500 rounded-lg p-1' : ''}`}>
+                                  <div className="text-sm font-semibold text-purple-600 dark:text-purple-400">
+                                    {stepAnalytics.replied.percent}% ({stepAnalytics.replied.count})
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">Replied</div>
+                                </div>
+                                <div className={`${activeMetric === 'booked' ? 'ring-2 ring-blue-500 rounded-lg p-1' : ''}`}>
+                                  <div className="text-sm font-semibold text-emerald-600 dark:text-emerald-400">
+                                    {stepAnalytics.booked.percent}% ({stepAnalytics.booked.count})
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">Booked</div>
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                          
+                          {/* Negative Signals */}
+                          {negativeSignals && (negativeSignals.notSent > 0 || negativeSignals.bounced > 0 || negativeSignals.unsubscribed > 0 || negativeSignals.notInterested > 0) && (
+                            <div className="mt-3 flex flex-wrap gap-3 text-xs" data-testid={`step-negative-signals-${step.id}`}>
+                              {negativeSignals.notSent > 0 && (
+                                <span className="flex items-center gap-1 text-red-600 dark:text-red-400">
+                                  <X className="w-3 h-3" /> Not sent: {negativeSignals.notSent}
+                                </span>
+                              )}
+                              {negativeSignals.bounced > 0 && (
+                                <span className="flex items-center gap-1 text-orange-600 dark:text-orange-400">
+                                  <AlertTriangle className="w-3 h-3" /> Bounced: {negativeSignals.bounced}
+                                </span>
+                              )}
+                              {negativeSignals.unsubscribed > 0 && (
+                                <span className="flex items-center gap-1 text-gray-600 dark:text-gray-400">
+                                  <X className="w-3 h-3" /> Unsubscribed: {negativeSignals.unsubscribed}
+                                </span>
+                              )}
+                              {negativeSignals.notInterested > 0 && (
+                                <span className="flex items-center gap-1 text-gray-500 dark:text-gray-500">
+                                  <X className="w-3 h-3" /> Not interested: {negativeSignals.notInterested}
+                                </span>
+                              )}
+                            </div>
                           )}
                         </div>
-                        <h4 className="font-semibold text-lg">{step.subject}</h4>
-                        <p className="text-muted-foreground text-sm mt-2 line-clamp-2">{step.body}</p>
+                        <div className="flex gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => openEditModal(step)}
+                            data-testid={`button-edit-step-${step.id}`}
+                          >
+                            <Edit2 className="w-4 h-4 text-blue-500" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => deleteStepMutation.mutate(step.id)}
+                            data-testid={`button-delete-step-${step.id}`}
+                          >
+                            <Trash2 className="w-4 h-4 text-red-500" />
+                          </Button>
+                        </div>
                       </div>
-                      <div className="flex gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => openEditModal(step)}
-                          data-testid={`button-edit-step-${step.id}`}
-                        >
-                          <Edit2 className="w-4 h-4 text-blue-500" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => deleteStepMutation.mutate(step.id)}
-                          data-testid={`button-delete-step-${step.id}`}
-                        >
-                          <Trash2 className="w-4 h-4 text-red-500" />
-                        </Button>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+                    </CardContent>
+                  </Card>
+                );
+              })}
             </div>
           )}
         </div>
