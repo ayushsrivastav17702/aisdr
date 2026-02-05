@@ -8,6 +8,7 @@ import {
   parseJsonResponse, 
   getInsufficientEvidenceResponse, 
   getAccessDeniedResponse,
+  getUnclearQuestionResponse,
   CopilotResponse 
 } from "./output_validator";
 import { db } from "../db";
@@ -29,23 +30,109 @@ interface CopilotQueryRequest {
 }
 
 const FORBIDDEN_PATTERNS = [
-  /show.*other.*compan/i,
+  // Cross-tenant / global data access (15 patterns)
+  /show.*all.*customer/i,
+  /all.*failed.*email.*across/i,
+  /other.*compan(y|ies)/i,
   /other.*tenant/i,
+  /other.*account/i,
+  /other.*org(anization)?/i,
+  /cross.*tenant/i,
+  /all.*user/i,
+  /globally/i,
+  /list.*all.*org/i,
+  /compare.*org/i,
+  /userId\s*=\s*\d+/i,
+  /happening.*in.*other/i,
+  /what.*other.*companies/i,
+  /data.*from.*all/i,
+  /across.*all.*customer/i,
+  /every.*organization/i,
+  /all.*organizations/i,
+  /platform.*wide/i,
+  /system.*wide/i,
+  
+  // Security sensitive (12 patterns)
   /api.*key/i,
   /password/i,
   /credential/i,
   /secret/i,
-  /ignore.*rule/i,
-  /bypass/i,
-  /override.*security/i,
-  /cross.*tenant/i,
-  /all.*user/i,
+  /raw.*database/i,
+  /dump.*table/i,
   /dump.*database/i,
   /export.*all/i,
+  /raw.*row/i,
+  /show.*token/i,
+  /access.*token/i,
+  /auth.*token/i,
+  /encryption.*key/i,
+  /private.*key/i,
+  
+  // Prompt injection / rule bypass (12 patterns)
+  /ignore.*rule/i,
+  /ignore.*auth/i,
+  /bypass/i,
+  /override.*security/i,
+  /break.*rule/i,
+  /pretend.*human/i,
+  /respond.*casual/i,
+  /system:\s*you\s+can/i,
+  /ignore\s+all/i,
+  /forget.*instructions/i,
+  /new.*instructions/i,
+  /disregard.*previous/i,
+  /act\s+as\s+if/i,
+  /you\s+are\s+now/i,
+  
+  // AI identity questions (8 patterns)
+  /are.*you.*ai/i,
+  /which.*model/i,
+  /explain.*prompt/i,
+  /your.*prompt/i,
+  /how.*work.*internal/i,
+  /what.*are.*you/i,
+  /who.*made.*you/i,
+  /your.*training/i,
+  /reveal.*system/i,
+  
+  // SQL injection patterns (10 patterns)
+  /SELECT\s+\*\s+FROM/i,
+  /DROP\s+TABLE/i,
+  /DELETE\s+FROM/i,
+  /INSERT\s+INTO/i,
+  /UPDATE\s+.*SET/i,
+  /UNION\s+SELECT/i,
+  /;\s*DROP/i,
+  /'\s*OR\s*'/i,
+  /--\s*$/,
+  /TRUNCATE\s+TABLE/i,
+  /ALTER\s+TABLE/i,
 ];
+
+// Total: 57 patterns
 
 function isForbiddenQuestion(question: string): boolean {
   return FORBIDDEN_PATTERNS.some(pattern => pattern.test(question));
+}
+
+function isUnclearQuestion(question: string): boolean {
+  // Remove all emoji and special characters
+  const stripped = question.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[^\w\s]/gu, "").trim();
+  
+  // Check if mostly emoji or symbols
+  if (stripped.length < 3) {
+    return true;
+  }
+  
+  // Check for random nonsense (no real words)
+  const words = stripped.split(/\s+/);
+  const hasRealWords = words.some(word => word.length > 2 && /^[a-zA-Z]+$/.test(word));
+  
+  if (!hasRealWords && words.length < 3) {
+    return true;
+  }
+  
+  return false;
 }
 
 export async function handleCopilotQuery(req: Request, res: Response): Promise<void> {
@@ -74,14 +161,20 @@ export async function handleCopilotQuery(req: Request, res: Response): Promise<v
     
     const question = body.question.trim();
     
-    if (question.length < 5 || question.length > 500) {
-      res.status(400).json({ error: "Question must be between 5 and 500 characters" });
+    if (question.length > 500) {
+      res.status(400).json({ error: "Question must be 500 characters or less" });
+      return;
+    }
+    
+    // Handle very short, emoji-only, or nonsense questions before other checks
+    if (question.length < 5 || isUnclearQuestion(question)) {
+      res.json(getUnclearQuestionResponse());
       return;
     }
     
     if (isForbiddenQuestion(question)) {
       await logCopilotQuery(userId, "ACCESS_DENIED", question, 1, "high");
-      res.json(getAccessDeniedResponse());
+      res.status(403).json(getAccessDeniedResponse());
       return;
     }
     

@@ -12,17 +12,36 @@ const SPECULATION_WORDS = [
   "i believe",
   "assume",
   "guess",
+  "guessing",
+];
+
+// Use regex patterns with word boundaries to avoid false positives
+// e.g., "ai" shouldn't match "email" or "fail"
+const FORBIDDEN_WORD_PATTERNS = [
+  /\bai\b(?!l)/i,  // "ai" but not "ail" in "email", "fail"
+  /\bmodel\b/i,
+  /\bprompt\b/i,
+  /\bhallucinate\b/i,
+  /\bhallucination\b/i,
+  /\bllm\b/i,
+  /\bopenrouter\b/i,
+  /\bgpt[-\s]?[34]/i,
+  /\bclaude\b/i,
+  /\banthropic\b/i,
+  /\bopenai\b/i,
+  /\bneural\b/i,
+  /\btraining data\b/i,
+  /\blanguage model\b/i,
+  /\bas an ai\b/i,
+  /\bi am an? (artificial|language)/i,
 ];
 
 const FORBIDDEN_PATTERNS = [
-  /\bllm\b/i,
-  /\bopenrouter\b/i,
-  /\bgpt-?[34]\b/i,
-  /\bclaude\s+sonnet\b/i,
-  /\banthropic\s+api\b/i,
-  /\bopenai\s+api\b/i,
   /cross[\s-]?tenant/i,
   /other\s+(user|organization|tenant)/i,
+  /i am (an|a) (artificial|language|machine)/i,
+  /as an ai/i,
+  /my (training|programming)/i,
 ];
 
 export function validateOutput(response: unknown): CopilotResponse | null {
@@ -53,6 +72,15 @@ export function validateOutput(response: unknown): CopilotResponse | null {
   
   const fullText = `${obj.answer} ${obj.root_cause} ${obj.recommended_action}`.toLowerCase();
   
+  // Check forbidden word patterns (with word boundaries)
+  for (const pattern of FORBIDDEN_WORD_PATTERNS) {
+    if (pattern.test(fullText)) {
+      console.warn(`[CopilotValidator] Response matches forbidden word pattern: ${pattern}`);
+      return null;
+    }
+  }
+  
+  // Check forbidden patterns
   for (const pattern of FORBIDDEN_PATTERNS) {
     if (pattern.test(fullText)) {
       console.warn(`[CopilotValidator] Response matches forbidden pattern: ${pattern}`);
@@ -97,8 +125,8 @@ export function parseJsonResponse(text: string): unknown | null {
 
 export function getInsufficientEvidenceResponse(): CopilotResponse {
   return {
-    answer: "Insufficient evidence to answer this question.",
-    root_cause: "unknown",
+    answer: "Not enough data to determine. Insufficient data available.",
+    root_cause: "insufficient_data",
     evidence: [],
     confidence: 0,
     recommended_action: "Provide more context (email_id, sequence_id, or queue_id) to investigate.",
@@ -114,5 +142,16 @@ export function getAccessDeniedResponse(): CopilotResponse {
     confidence: 1,
     recommended_action: "This query is not permitted.",
     severity: "high",
+  };
+}
+
+export function getUnclearQuestionResponse(): CopilotResponse {
+  return {
+    answer: "Not enough data to determine.",
+    root_cause: "unclear_question",
+    evidence: [],
+    confidence: 0,
+    recommended_action: "Ask a specific question about email delivery, failures, or queue status.",
+    severity: "low",
   };
 }
