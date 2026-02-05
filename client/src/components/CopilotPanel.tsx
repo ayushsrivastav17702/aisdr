@@ -237,8 +237,8 @@ export function CopilotPanel({ context, isOpen, onClose }: CopilotPanelProps) {
                             {msg.response.severity}
                           </Badge>
                           <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                            {getConfidenceIcon(msg.response.confidence)}
-                            <span>{msg.response.confidence}% confidence</span>
+                            {getConfidenceIcon(msg.response.confidence * 100)}
+                            <span>{Math.round(msg.response.confidence * 100)}% confidence</span>
                           </div>
                         </div>
                         

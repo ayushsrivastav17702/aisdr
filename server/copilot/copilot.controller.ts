@@ -115,6 +115,9 @@ export async function handleCopilotQuery(req: Request, res: Response): Promise<v
     let response: CopilotResponse;
     
     try {
+      console.log("[Copilot] Evidence:", evidence);
+      console.log("[Copilot] SystemState keys:", Object.keys(systemState));
+      
       const rawResponse = await askCopilot({
         question,
         systemState,
@@ -123,7 +126,11 @@ export async function handleCopilotQuery(req: Request, res: Response): Promise<v
         role,
       });
       
+      console.log("[Copilot] Raw response:", rawResponse.substring(0, 500));
+      
       const parsed = parseJsonResponse(rawResponse);
+      console.log("[Copilot] Parsed:", parsed);
+      
       const validated = validateOutput(parsed);
       
       if (!validated) {
