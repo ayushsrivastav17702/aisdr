@@ -3118,6 +3118,176 @@ Return ONLY the email body text, no subject line needed.`;
   });
 
   // ============================================
+  // OPERATIONAL COPILOT
+  // ============================================
+  
+  // Copilot query - diagnostic and explanation engine
+  app.post("/api/copilot/query", authenticate, async (req, res) => {
+    const { handleCopilotQuery } = await import("./copilot/copilot.controller");
+    return handleCopilotQuery(req, res);
+  });
+
+  // ============================================
+  // HEALTH DASHBOARD
+  // ============================================
+  
+  // Health overview - delivery metrics and system status
+  app.get("/api/health/overview", authenticate, async (req, res) => {
+    try {
+      const { healthDashboardService } = await import("./services/health-dashboard.service");
+      
+      // Managers see organization data, users see only their own
+      const isManager = req.userContext?.roles.includes("manager") || req.userContext?.roles.includes("super_admin");
+      const userId = isManager ? undefined : req.userContext?.userId;
+      const organizationId = isManager ? req.userContext?.organizationId : undefined;
+      
+      // Guard: require at least one scope
+      if (!userId && !organizationId) {
+        return res.status(403).json({ error: "Organization or user context required" });
+      }
+      
+      const overview = await healthDashboardService.getHealthOverview(userId, organizationId);
+      
+      res.json({
+        success: true,
+        ...overview,
+      });
+    } catch (error) {
+      console.error("Health overview error:", error);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : "Failed to get health overview"
+      });
+    }
+  });
+
+  // Failed emails list
+  app.get("/api/health/failed-emails", authenticate, async (req, res) => {
+    try {
+      const { healthDashboardService } = await import("./services/health-dashboard.service");
+      const limit = Math.min(parseInt(req.query.limit as string) || 20, 50);
+      
+      const isManager = req.userContext?.roles.includes("manager") || req.userContext?.roles.includes("super_admin");
+      const userId = isManager ? undefined : req.userContext?.userId;
+      const organizationId = isManager ? req.userContext?.organizationId : undefined;
+      
+      if (!userId && !organizationId) {
+        return res.status(403).json({ error: "Organization or user context required" });
+      }
+      
+      const emails = await healthDashboardService.getFailedEmails(userId, organizationId, limit);
+      
+      res.json({ success: true, emails });
+    } catch (error) {
+      console.error("Failed emails error:", error);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : "Failed to get failed emails"
+      });
+    }
+  });
+
+  // Stuck emails list
+  app.get("/api/health/stuck-emails", authenticate, async (req, res) => {
+    try {
+      const { healthDashboardService } = await import("./services/health-dashboard.service");
+      const limit = Math.min(parseInt(req.query.limit as string) || 20, 50);
+      
+      const isManager = req.userContext?.roles.includes("manager") || req.userContext?.roles.includes("super_admin");
+      const userId = isManager ? undefined : req.userContext?.userId;
+      const organizationId = isManager ? req.userContext?.organizationId : undefined;
+      
+      if (!userId && !organizationId) {
+        return res.status(403).json({ error: "Organization or user context required" });
+      }
+      
+      const emails = await healthDashboardService.getStuckEmails(userId, organizationId, limit);
+      
+      res.json({ success: true, emails });
+    } catch (error) {
+      console.error("Stuck emails error:", error);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : "Failed to get stuck emails"
+      });
+    }
+  });
+
+  // Retry queue list
+  app.get("/api/health/retry-queue", authenticate, async (req, res) => {
+    try {
+      const { healthDashboardService } = await import("./services/health-dashboard.service");
+      const limit = Math.min(parseInt(req.query.limit as string) || 20, 50);
+      
+      const isManager = req.userContext?.roles.includes("manager") || req.userContext?.roles.includes("super_admin");
+      const userId = isManager ? undefined : req.userContext?.userId;
+      const organizationId = isManager ? req.userContext?.organizationId : undefined;
+      
+      if (!userId && !organizationId) {
+        return res.status(403).json({ error: "Organization or user context required" });
+      }
+      
+      const queue = await healthDashboardService.getRetryQueue(userId, organizationId, limit);
+      
+      res.json({ success: true, queue });
+    } catch (error) {
+      console.error("Retry queue error:", error);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : "Failed to get retry queue"
+      });
+    }
+  });
+
+  // ============================================
+  // ALERTING SYSTEM
+  // ============================================
+  
+  // Get active alerts (manager sees their org only)
+  app.get("/api/alerts/active", authenticate, requireManager, async (req, res) => {
+    try {
+      const organizationId = req.userContext?.organizationId;
+      if (!organizationId) {
+        return res.status(403).json({ error: "Organization context required" });
+      }
+      
+      const { alertService } = await import("./alerts/alert.service");
+      const alerts = await alertService.getActiveAlerts(organizationId);
+      
+      res.json({
+        success: true,
+        alerts,
+        count: alerts.length,
+      });
+    } catch (error) {
+      console.error("Active alerts error:", error);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : "Failed to get active alerts"
+      });
+    }
+  });
+
+  // Get alert history (manager sees their org only)
+  app.get("/api/alerts/history", authenticate, requireManager, async (req, res) => {
+    try {
+      const organizationId = req.userContext?.organizationId;
+      if (!organizationId) {
+        return res.status(403).json({ error: "Organization context required" });
+      }
+      
+      const { alertService } = await import("./alerts/alert.service");
+      const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
+      const history = await alertService.getAlertHistory(organizationId, limit);
+      
+      res.json({
+        success: true,
+        history,
+      });
+    } catch (error) {
+      console.error("Alert history error:", error);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : "Failed to get alert history"
+      });
+    }
+  });
+
+  // ============================================
   // SEQUENCE DRY RUN (PREVIEW MODE)
   // ============================================
   
