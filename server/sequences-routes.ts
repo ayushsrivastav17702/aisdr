@@ -1826,7 +1826,7 @@ function extractDynamicFields(template: string, resolvedContent: string): Array<
 }
 
 // GET /api/sequences/:id/preview - Generate bulk preview of emails for approval
-router.get("/:id/preview", authenticate, forbidManager, blockSuperAdminFromSDR, async (req, res) => {
+router.get("/sequences/:id/preview", authenticate, forbidManager, blockSuperAdminFromSDR, async (req, res) => {
   try {
     const sequenceId = req.params.id;
     const sampleSize = Math.min(parseInt(req.query.sampleSize as string) || 10, 20);
@@ -2097,7 +2097,7 @@ router.post("/:id/revert-activation", authenticate, forbidManager, blockSuperAdm
 // ============================================
 
 // GET /api/sequences/:id/funnel - Get funnel analytics for a sequence
-router.get("/:id/funnel", authenticate, async (req, res) => {
+router.get("/sequences/:id/funnel", authenticate, async (req, res) => {
   try {
     const sequenceId = req.params.id;
     
@@ -2189,7 +2189,7 @@ router.get("/:id/funnel", authenticate, async (req, res) => {
 });
 
 // GET /api/sequences/:id/summary - Get campaign summary stats
-router.get("/:id/summary", authenticate, async (req, res) => {
+router.get("/sequences/:id/summary", authenticate, async (req, res) => {
   try {
     const sequenceId = req.params.id;
     
@@ -2258,7 +2258,7 @@ router.get("/:id/summary", authenticate, async (req, res) => {
 });
 
 // GET /api/sequences/:id/steps/analytics - Get per-step analytics
-router.get("/:id/steps/analytics", authenticate, async (req, res) => {
+router.get("/sequences/:id/steps/analytics", authenticate, async (req, res) => {
   try {
     const sequenceId = req.params.id;
     
@@ -2341,7 +2341,7 @@ router.get("/:id/steps/analytics", authenticate, async (req, res) => {
 });
 
 // GET /api/sequences/:id/steps/negative-signals - Get negative signals per step
-router.get("/:id/steps/negative-signals", authenticate, async (req, res) => {
+router.get("/sequences/:id/steps/negative-signals", authenticate, async (req, res) => {
   try {
     const sequenceId = req.params.id;
     
