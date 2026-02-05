@@ -24,17 +24,15 @@ const SPECULATION_WORDS = [
   "guess",
 ];
 
-const FORBIDDEN_WORDS = [
-  "ai",
-  "model",
-  "prompt",
-  "openrouter",
-  "llm",
-  "training",
-  "gpt",
-  "claude",
-  "anthropic",
-  "openai",
+const FORBIDDEN_PATTERNS = [
+  /\bllm\b/i,
+  /\bopenrouter\b/i,
+  /\bgpt-?[34]\b/i,
+  /\bclaude\s+sonnet\b/i,
+  /\banthropic\s+api\b/i,
+  /\bopenai\s+api\b/i,
+  /cross[\s-]?tenant/i,
+  /other\s+(user|organization|tenant)/i,
 ];
 
 export function validateOutput(response: unknown): CopilotResponse | null {
@@ -65,9 +63,9 @@ export function validateOutput(response: unknown): CopilotResponse | null {
   
   const fullText = `${obj.answer} ${obj.root_cause} ${obj.recommended_action}`.toLowerCase();
   
-  for (const word of FORBIDDEN_WORDS) {
-    if (fullText.includes(word.toLowerCase())) {
-      console.warn(`[CopilotValidator] Response contains forbidden word: ${word}`);
+  for (const pattern of FORBIDDEN_PATTERNS) {
+    if (pattern.test(fullText)) {
+      console.warn(`[CopilotValidator] Response matches forbidden pattern: ${pattern}`);
       return null;
     }
   }
