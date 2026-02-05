@@ -1,0 +1,216 @@
+Build an Operational Copilot for AiSDR that allows users to query system health, failures, retries, and stuck queues via chat UI.
+
+Copilot must:
+• Be evidence-based
+• Be tenant-isolated
+• Never hallucinate
+• Never speculate
+• Never mention “AI”, “model”, “prompt”, or internal system design
+• Only answer using database facts
+
+🧠 BACKEND – API
+Create endpoint:
+POST /api/copilot/query
+
+Input:
+{
+  "question": "Why are emails failing?"
+}
+
+🔐 SECURITY RULES (MANDATORY)
+
+Require authenticated user
+
+Extract:
+
+userId
+
+role (user | manager | admin)
+
+organizationId
+
+Scope data:
+
+user → userId only
+
+manager → organizationId
+
+If missing scope → return 403
+
+No unscoped queries allowed
+
+No cross-tenant joins
+
+📦 DATA SOURCES Copilot Can Read
+
+Tables:
+• emails
+• email_logs
+• retry_queue
+• scheduler_status
+• alerts
+
+Fields allowed:
+• status
+• error_code
+• retry_count
+• sent_at
+• failure_reason
+• queue_time
+• user_id
+• organization_id
+
+🧩 QUERY PIPELINE
+
+Validate user scope
+
+Run structured SQL queries only
+
+Aggregate results:
+
+failure rate
+
+retry rate
+
+stuck count
+
+scheduler uptime
+
+Build evidence JSON:
+
+{
+  "failedEmails": 12,
+  "failureRate": 18,
+  "stuckQueue": 4,
+  "topErrors": ["SMTP_TIMEOUT", "INVALID_DOMAIN"]
+}
+
+🧠 LLM CALL (OpenRouter)
+
+Model:
+
+Claude Sonnet 4 via OpenRouter
+
+System Prompt:
+You are an operational diagnostic engine.
+
+Rules:
+- Answer only using provided evidence.
+- If evidence is insufficient, reply: "Not enough data to determine."
+- Never speculate.
+- Never use the words: AI, model, prompt, guess, maybe.
+- Never provide advice not supported by evidence.
+- Do not describe system design.
+- Output must be concise, technical, and factual.
+
+User Prompt:
+User Question: {{question}}
+
+Evidence:
+{{evidence_json}}
+
+🚫 FORBIDDEN OUTPUT FILTER
+
+Block responses containing:
+• "AI"
+• "model"
+• "prompt"
+• "I think"
+• "maybe"
+• "likely"
+• "could be"
+• "assume"
+
+If detected → regenerate with stricter prompt.
+
+🖥️ FRONTEND – COPILOT UI
+Add panel on:
+
+• Health Dashboard
+• Failed Emails
+• Stuck Queue
+
+UI Layout
+
+Right-side chat panel:
+
+┌───────────────┐
+│ Ask Copilot   │
+│───────────────│
+│ Why failing?  │
+│               │
+│ [Response]    │
+│               │
+│ [Input box]   │
+└───────────────┘
+
+UI Behavior
+
+User types question
+
+Call:
+
+POST /api/copilot/query
+
+
+Render response
+
+Show:
+
+status counts
+
+error types
+
+impacted volume
+
+🧩 CONTEXT INJECTION
+
+If user is on:
+• Failed Emails page → send failed_email_ids
+• Stuck Queue → send stuck_items
+• Health Dashboard → send metrics snapshot
+
+Example payload:
+
+{
+  "question": "Why are emails failing?",
+  "context": {
+    "page": "failed-emails",
+    "ids": [123,124,125]
+  }
+}
+
+⚙️ RATE LIMITING
+
+• 10 queries/min per user
+• Cache same question for 30s
+
+🧪 TEST CASES
+Should pass:
+
+• “Why are emails failing?”
+• “What is stuck?”
+• “How many retries?”
+
+Should fail:
+
+• “What will happen tomorrow?”
+• “Is my campaign good?”
+• “Optimize my copy”
+
+🚨 ERROR HANDLING
+
+If:
+• DB fails → return “System data unavailable”
+• Evidence empty → “Not enough data to determine”
+• Scope missing → 403
+
+🏁 DONE WHEN:
+
+✔ Endpoint works
+✔ UI renders chat
+✔ Evidence only
+✔ Tenant isolated
+✔ No hallucination
+✔ No speculative language
+✔ No cross-tenant leaks

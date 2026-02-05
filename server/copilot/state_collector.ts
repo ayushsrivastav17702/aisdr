@@ -53,6 +53,12 @@ export interface SystemState {
     module: string | null;
     createdAt: Date;
   }>;
+  metricsContext?: {
+    deliveryRate?: number;
+    failureRate?: number;
+    queueDepth?: number;
+    stuckCount?: number;
+  };
 }
 
 export async function getSystemState(params: {
@@ -61,8 +67,16 @@ export async function getSystemState(params: {
   emailId?: string;
   sequenceId?: string;
   queueId?: string;
+  emailIds?: string[];
+  queueIds?: string[];
+  metricsContext?: {
+    deliveryRate?: number;
+    failureRate?: number;
+    queueDepth?: number;
+    stuckCount?: number;
+  };
 }): Promise<SystemState> {
-  const { tenantId, userId, emailId, sequenceId, queueId } = params;
+  const { tenantId, userId, emailId, sequenceId, queueId, emailIds, queueIds, metricsContext } = params;
   
   let emailData: SystemState["email"] = null;
   let queueData: SystemState["queue"] = null;
@@ -256,5 +270,6 @@ export async function getSystemState(params: {
     prospect: prospectData,
     scheduler: schedulerData,
     recentAuditLogs,
+    metricsContext,
   };
 }

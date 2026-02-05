@@ -18,6 +18,14 @@ interface CopilotQueryRequest {
   email_id?: string;
   sequence_id?: string;
   queue_id?: string;
+  email_ids?: string[];
+  queue_ids?: string[];
+  metrics_context?: {
+    deliveryRate?: number;
+    failureRate?: number;
+    queueDepth?: number;
+    stuckCount?: number;
+  };
 }
 
 const FORBIDDEN_PATTERNS = [
@@ -83,12 +91,17 @@ export async function handleCopilotQuery(req: Request, res: Response): Promise<v
       emailId: body.email_id,
       sequenceId: body.sequence_id,
       queueId: body.queue_id,
+      emailIds: body.email_ids,
+      queueIds: body.queue_ids,
+      metricsContext: body.metrics_context,
     });
     
     const hasRelevantState = 
       systemState.email || 
       systemState.queue || 
-      systemState.sequence;
+      systemState.sequence ||
+      systemState.metricsContext ||
+      systemState.scheduler;
     
     if (!hasRelevantState && (body.email_id || body.sequence_id || body.queue_id)) {
       res.json(getInsufficientEvidenceResponse());

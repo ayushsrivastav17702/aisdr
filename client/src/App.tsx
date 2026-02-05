@@ -48,6 +48,7 @@ import CreateTenant from "@/pages/create-tenant";
 import StatusPage from "@/pages/status-page";
 import InboxPage from "@/pages/inbox";
 import UserGuidePage from "@/pages/user-guide";
+import HealthDashboard from "@/pages/health-dashboard";
 import NotFound from "@/pages/not-found";
 import { ImpersonationBanner } from "@/components/impersonation-banner";
 
@@ -205,6 +206,17 @@ function Router() {
       <Route path="/manager/dashboard">
         <ProtectedRoute requireRole="manager">
           <ManagerDashboard />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/manager/health">
+        <ProtectedRoute requireRole="manager">
+          <HealthDashboard />
+        </ProtectedRoute>
+      </Route>
+      {/* Health Dashboard - accessible by all authenticated users */}
+      <Route path="/health">
+        <ProtectedRoute>
+          <HealthDashboard />
         </ProtectedRoute>
       </Route>
       {/* Super Admin Routes - Separate from main app */}

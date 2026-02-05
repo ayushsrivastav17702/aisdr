@@ -3121,9 +3121,69 @@ Return ONLY the email body text, no subject line needed.`;
   // OPERATIONAL COPILOT
   // ============================================
   
+  // Copilot rate limiting: 10 queries/min per user, 30s cache
+  const copilotRateLimits = new Map<string, { count: number; resetAt: number }>();
+  const copilotCache = new Map<string, { response: any; expiresAt: number }>();
+
   // Copilot query - diagnostic and explanation engine
   app.post("/api/copilot/query", authenticate, async (req, res) => {
+    const userId = req.userContext?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    // Rate limiting: 10 queries/min per user
+    const now = Date.now();
+    const rateKey = `copilot:${userId}`;
+    let rateLimit = copilotRateLimits.get(rateKey);
+    
+    if (!rateLimit || now > rateLimit.resetAt) {
+      rateLimit = { count: 0, resetAt: now + 60000 };
+    }
+    
+    if (rateLimit.count >= 10) {
+      const retryAfter = Math.ceil((rateLimit.resetAt - now) / 1000);
+      res.set("Retry-After", String(retryAfter));
+      return res.status(429).json({ 
+        error: "Rate limit exceeded. Maximum 10 queries per minute.",
+        retryAfter 
+      });
+    }
+    
+    rateLimit.count++;
+    copilotRateLimits.set(rateKey, rateLimit);
+
+    // Check cache: 30s TTL for same question
+    const question = req.body?.question?.trim()?.toLowerCase();
+    if (question) {
+      const cacheKey = `${userId}:${question}`;
+      const cached = copilotCache.get(cacheKey);
+      if (cached && now < cached.expiresAt) {
+        return res.json(cached.response);
+      }
+    }
+
     const { handleCopilotQuery } = await import("./copilot/copilot.controller");
+    
+    // Intercept response to cache it
+    const originalJson = res.json.bind(res);
+    res.json = function(data: any) {
+      if (question && data && !data.error) {
+        const cacheKey = `${userId}:${question}`;
+        copilotCache.set(cacheKey, { response: data, expiresAt: now + 30000 });
+        
+        // Clean old cache entries periodically
+        if (copilotCache.size > 100) {
+          Array.from(copilotCache.entries()).forEach(([key, value]) => {
+            if (now > value.expiresAt) {
+              copilotCache.delete(key);
+            }
+          });
+        }
+      }
+      return originalJson(data);
+    };
+    
     return handleCopilotQuery(req, res);
   });
 
