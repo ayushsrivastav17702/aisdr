@@ -89,6 +89,27 @@ export function buildEvidence(state: SystemState): string[] {
     evidence.push(`scheduler.status=unknown`);
   }
   
+  if (state.metricsContext) {
+    if (state.metricsContext.deliveryRate !== undefined) {
+      evidence.push(`metrics.delivery_rate=${state.metricsContext.deliveryRate.toFixed(1)}%`);
+    }
+    if (state.metricsContext.failureRate !== undefined) {
+      evidence.push(`metrics.failure_rate=${state.metricsContext.failureRate.toFixed(1)}%`);
+      if (state.metricsContext.failureRate > 10) {
+        evidence.push(`metrics.warning=high_failure_rate`);
+      }
+    }
+    if (state.metricsContext.queueDepth !== undefined) {
+      evidence.push(`metrics.queue_depth=${state.metricsContext.queueDepth}`);
+    }
+    if (state.metricsContext.stuckCount !== undefined) {
+      evidence.push(`metrics.stuck_count=${state.metricsContext.stuckCount}`);
+      if (state.metricsContext.stuckCount > 5) {
+        evidence.push(`metrics.warning=high_stuck_count`);
+      }
+    }
+  }
+  
   return evidence;
 }
 
