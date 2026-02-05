@@ -1385,7 +1385,9 @@ function SequenceTab({
     queryKey: ['/api/sequences', sequenceId, 'steps', 'analytics'],
     queryFn: async () => {
       const res = await apiRequest("GET", `/api/sequences/${sequenceId}/steps/analytics`, undefined);
-      return await res.json();
+      const data = await res.json();
+      console.log(`[StepAnalyticsData] sequenceId=${sequenceId}`, data);
+      return data;
     },
     refetchInterval: 30000,
   });
@@ -1684,6 +1686,7 @@ function SequenceTab({
               {steps.map((step: any, index: number) => {
                 const stepAnalytics = getStepAnalytics(step.id);
                 const negativeSignals = getStepNegativeSignals(step.id);
+                console.log(`[Step ${index + 1}] stepId=${step.id}, stepAnalytics=`, stepAnalytics);
                 
                 return (
                   <Card key={step.id} className="border-l-4 border-l-blue-500">
