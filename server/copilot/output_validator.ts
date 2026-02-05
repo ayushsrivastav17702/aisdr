@@ -8,18 +8,8 @@ export interface CopilotResponse {
 }
 
 const SPECULATION_WORDS = [
-  "probably",
-  "maybe",
-  "might",
-  "possibly",
-  "perhaps",
   "i think",
   "i believe",
-  "could be",
-  "seems like",
-  "appears to",
-  "likely",
-  "unlikely",
   "assume",
   "guess",
 ];
@@ -77,7 +67,7 @@ export function validateOutput(response: unknown): CopilotResponse | null {
     }
   }
   
-  if (speculationCount > 2) {
+  if (speculationCount > 3) {
     console.warn(`[CopilotValidator] Response contains too much speculation (${speculationCount} words)`);
     return null;
   }
