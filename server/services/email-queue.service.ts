@@ -784,6 +784,21 @@ export class EmailQueueService {
       if (result.success) {
         const sentAt = new Date();
         
+        // SECURITY GUARD: Only mark as 'sent' if we have a valid SMTP messageId
+        // This prevents phantom "sent" status without delivery confirmation
+        if (!result.messageId) {
+          console.error(`[EmailQueue] SMTP returned success but no messageId for email ${email.id} - marking as failed`);
+          await db
+            .update(emailQueue)
+            .set({
+              status: "failed",
+              lastError: "SMTP returned success but no Message-ID - delivery unconfirmed",
+            })
+            .where(eq(emailQueue.id, email.id));
+          
+          return false;
+        }
+        
         // Update email queue status with rendered content and Message-ID (reset deferral counter on success)
         // CRITICAL: Store messageId in emailQueue - this is the authoritative source for threading
         await db
@@ -1176,6 +1191,77 @@ export class EmailQueueService {
       return { isDemoMode: false }; // Fail open - allow sends if check fails
     }
   }
+
+  /**
+   * Background monitor for stuck emails - logs warning every 5 minutes
+   * Starts automatically when service is initialized
+   */
+  private stuckEmailMonitorInterval: NodeJS.Timeout | null = null;
+  
+  startStuckEmailMonitoring(intervalMinutes: number = 5): void {
+    if (this.stuckEmailMonitorInterval) {
+      console.log("⚠️ Stuck email monitoring already running");
+      return;
+    }
+    
+    console.log(`🔍 Starting stuck email monitoring (every ${intervalMinutes} minutes)`);
+    
+    this.stuckEmailMonitorInterval = setInterval(async () => {
+      try {
+        const thresholdMinutes = 60; // Emails pending for more than 60 minutes
+        
+        const stuckCount = await db
+          .select({ count: sql<number>`COUNT(*)` })
+          .from(emailQueue)
+          .where(
+            and(
+              eq(emailQueue.status, "pending"),
+              sql`${emailQueue.createdAt} < NOW() - INTERVAL '${sql.raw(thresholdMinutes.toString())} minutes'`
+            )
+          );
+        
+        const count = Number(stuckCount[0]?.count || 0);
+        
+        if (count > 0) {
+          console.warn(`⚠️ [STUCK EMAIL ALERT] ${count} email(s) stuck in pending for over ${thresholdMinutes} minutes`);
+          
+          // Log details of oldest stuck emails
+          const oldestStuck = await db
+            .select({
+              id: emailQueue.id,
+              createdAt: emailQueue.createdAt,
+              lastError: emailQueue.lastError,
+            })
+            .from(emailQueue)
+            .where(
+              and(
+                eq(emailQueue.status, "pending"),
+                sql`${emailQueue.createdAt} < NOW() - INTERVAL '${sql.raw(thresholdMinutes.toString())} minutes'`
+              )
+            )
+            .orderBy(emailQueue.createdAt)
+            .limit(5);
+          
+          oldestStuck.forEach(email => {
+            console.warn(`  - Email ${email.id}: Created ${email.createdAt?.toISOString()}, Error: ${email.lastError || 'none'}`);
+          });
+        }
+      } catch (error) {
+        console.error("[StuckEmailMonitor] Error checking stuck emails:", error);
+      }
+    }, intervalMinutes * 60 * 1000);
+  }
+  
+  stopStuckEmailMonitoring(): void {
+    if (this.stuckEmailMonitorInterval) {
+      clearInterval(this.stuckEmailMonitorInterval);
+      this.stuckEmailMonitorInterval = null;
+      console.log("🛑 Stopped stuck email monitoring");
+    }
+  }
 }
 
 export const emailQueueService = new EmailQueueService();
+
+// Auto-start stuck email monitoring
+emailQueueService.startStuckEmailMonitoring(5);

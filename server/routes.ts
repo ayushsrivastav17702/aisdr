@@ -57,6 +57,9 @@ import { inboxRouter } from "./inbox-routes";
 import { authenticate, forbidManager, blockSuperAdminFromSDR, requireManager } from "./middleware/auth.middleware";
 import { emailVolumeConfig, getCapacityReport, getEstimatedTimeForEmails, EMAIL_VOLUME_PRESETS } from "./config/email-volume.config";
 import { analyticsCache } from "./utils/cache";
+import { db } from "./db";
+import { emailQueue } from "@shared/schema";
+import { eq, and, or, sql } from "drizzle-orm";
 
 const upload = multer({ 
   dest: 'uploads/',
@@ -112,23 +115,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
-  // Email queue simulation endpoint for load testing
-  app.post("/api/test/email-queue-simulation", async (req, res) => {
-    // This endpoint simulates email queuing for load testing
-    // It doesn't actually send emails
-    const { to, subject, body } = req.body;
-    
-    // Simulate processing time
-    await new Promise(r => setTimeout(r, Math.random() * 5));
-    
-    res.json({
-      success: true,
-      simulated: true,
-      queuedAt: new Date().toISOString(),
-      to,
-      subject: subject?.substring(0, 50)
+  // Email queue simulation endpoint for load testing - ONLY available in test/development mode
+  if (process.env.NODE_ENV === 'test' || process.env.DEMO_MODE === 'true') {
+    app.post("/api/test/email-queue-simulation", async (req, res) => {
+      const { to, subject, body } = req.body;
+      
+      await new Promise(r => setTimeout(r, Math.random() * 5));
+      
+      res.json({
+        success: true,
+        simulated: true,
+        queuedAt: new Date().toISOString(),
+        to,
+        subject: subject?.substring(0, 50)
+      });
     });
-  });
+  }
   
   // AI Search endpoint
   app.post("/api/ai-search", authenticate, forbidManager, async (req, res) => {
@@ -2942,6 +2944,116 @@ Return ONLY the email body text, no subject line needed.`;
   });
 
   // ============================================
+  // STUCK EMAIL QUEUE MONITORING
+  // ============================================
+  
+  // Get stuck emails in queue (pending > X minutes) - Admin endpoint
+  app.get("/api/admin/email-queue/stuck", authenticate, requireManager, async (req, res) => {
+    try {
+      const thresholdMinutes = parseInt(req.query.minutes as string) || 60; // Default 60 minutes
+      
+      const stuckEmails = await db
+        .select({
+          id: emailQueue.id,
+          prospectId: emailQueue.prospectId,
+          subject: emailQueue.subject,
+          status: emailQueue.status,
+          createdAt: emailQueue.createdAt,
+          scheduledFor: emailQueue.scheduledFor,
+          lastError: emailQueue.lastError,
+          deferralAttempts: emailQueue.deferralAttempts,
+        })
+        .from(emailQueue)
+        .where(
+          and(
+            eq(emailQueue.status, "pending"),
+            sql`${emailQueue.createdAt} < NOW() - INTERVAL '${sql.raw(thresholdMinutes.toString())} minutes'`
+          )
+        )
+        .orderBy(emailQueue.createdAt)
+        .limit(100);
+
+      const totalStuck = await db
+        .select({ count: sql<number>`COUNT(*)` })
+        .from(emailQueue)
+        .where(
+          and(
+            eq(emailQueue.status, "pending"),
+            sql`${emailQueue.createdAt} < NOW() - INTERVAL '${sql.raw(thresholdMinutes.toString())} minutes'`
+          )
+        );
+
+      res.json({
+        success: true,
+        stuckCount: Number(totalStuck[0]?.count || 0),
+        thresholdMinutes,
+        emails: stuckEmails,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error("Get stuck emails error:", error);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : "Failed to get stuck emails"
+      });
+    }
+  });
+
+  // Email queue health summary - Admin endpoint
+  app.get("/api/admin/email-queue/health", authenticate, requireManager, async (req, res) => {
+    try {
+      const stats = await db
+        .select({
+          status: emailQueue.status,
+          count: sql<number>`COUNT(*)`,
+        })
+        .from(emailQueue)
+        .groupBy(emailQueue.status);
+
+      const stuckCount = await db
+        .select({ count: sql<number>`COUNT(*)` })
+        .from(emailQueue)
+        .where(
+          and(
+            eq(emailQueue.status, "pending"),
+            sql`${emailQueue.createdAt} < NOW() - INTERVAL '60 minutes'`
+          )
+        );
+
+      const sentWithoutMessageId = await db
+        .select({ count: sql<number>`COUNT(*)` })
+        .from(emailQueue)
+        .where(
+          and(
+            eq(emailQueue.status, "sent"),
+            or(
+              sql`${emailQueue.messageId} IS NULL`,
+              eq(emailQueue.messageId, "")
+            )
+          )
+        );
+
+      const statusMap: Record<string, number> = {};
+      stats.forEach(s => { if (s.status) statusMap[s.status] = Number(s.count); });
+
+      const health = {
+        status: Number(stuckCount[0]?.count || 0) > 10 ? "unhealthy" : 
+                Number(stuckCount[0]?.count || 0) > 0 ? "degraded" : "healthy",
+        queueStats: statusMap,
+        stuckCount: Number(stuckCount[0]?.count || 0),
+        sentWithoutMessageId: Number(sentWithoutMessageId[0]?.count || 0),
+        timestamp: new Date().toISOString(),
+      };
+
+      res.json(health);
+    } catch (error) {
+      console.error("Email queue health error:", error);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : "Failed to get email queue health"
+      });
+    }
+  });
+
+  // ============================================
   // SEQUENCE DRY RUN (PREVIEW MODE)
   // ============================================
   
@@ -3314,8 +3426,8 @@ Return ONLY the email body text, no subject line needed.`;
     }
   });
 
-  // ICP Templates - Get all templates
-  app.get("/api/icp-templates", async (req, res) => {
+  // ICP Templates - Get all templates (PROTECTED)
+  app.get("/api/icp-templates", authenticate, async (req, res) => {
     try {
       const { icpTemplateService } = await import("./services/icp-template.service");
       const templates = await icpTemplateService.getAllTemplates();
@@ -3328,8 +3440,8 @@ Return ONLY the email body text, no subject line needed.`;
     }
   });
 
-  // ICP Templates - Get default templates
-  app.get("/api/icp-templates/defaults", async (req, res) => {
+  // ICP Templates - Get default templates (PROTECTED)
+  app.get("/api/icp-templates/defaults", authenticate, async (req, res) => {
     try {
       const { icpTemplateService } = await import("./services/icp-template.service");
       const templates = await icpTemplateService.getDefaultTemplates();
@@ -3342,8 +3454,8 @@ Return ONLY the email body text, no subject line needed.`;
     }
   });
 
-  // ICP Templates - Get by ID
-  app.get("/api/icp-templates/:id", async (req, res) => {
+  // ICP Templates - Get by ID (PROTECTED)
+  app.get("/api/icp-templates/:id", authenticate, async (req, res) => {
     try {
       const { icpTemplateService } = await import("./services/icp-template.service");
       const template = await icpTemplateService.getTemplateById(req.params.id);
