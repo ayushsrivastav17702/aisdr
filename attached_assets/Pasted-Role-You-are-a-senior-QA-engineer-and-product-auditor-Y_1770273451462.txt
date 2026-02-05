@@ -1,0 +1,398 @@
+Role:
+You are a senior QA engineer and product auditor.
+Your job is to verify whether AiSDR is actually ready to be sold to real customers.
+
+Audit the system strictly based on:
+
+Real behavior
+
+Not assumptions
+
+Not UI only
+
+Not mocked responses
+
+You must simulate real users and real workflows.
+
+🔹 1. CORE USER FLOW VALIDATION
+
+Test the full new user journey:
+
+Create a brand new user account
+
+Login
+
+Create a sequence
+
+Add email steps
+
+Add prospects
+
+Connect email inbox
+
+Send emails
+
+Receive replies
+
+Track status
+
+Book meeting (if supported)
+
+For each step, report:
+
+✅ Works
+
+⚠️ Partially works
+
+❌ Broken
+
+Also log:
+
+Any crash
+
+Any silent failure
+
+Any missing UI
+
+Any confusing flow
+
+Any place user gets stuck
+
+Output:
+
+Step Name | Status | Issue (if any) | Evidence
+
+🔹 2. EMAIL DELIVERY RELIABILITY TEST
+
+Run at least 100 email sends using:
+
+Different user accounts
+
+Different inboxes (Gmail, Outlook if possible)
+
+Different domains
+
+Different sequences
+
+Different timing
+
+Verify:
+
+Email is actually sent
+
+Email arrives in inbox
+
+No silent failure
+
+No UI-only “sent” status
+
+No missing SMTP logs
+
+No queue stuck
+
+No retry loops
+
+Report:
+
+Total attempted
+Total sent
+Total delivered
+Total failed
+Failure reason
+
+
+Flag system as ❌ NOT SALE READY if:
+
+Any email fails without user-visible error
+
+Any email shows “sent” but was never sent
+
+Any delay > expected send time
+
+🔹 3. ROLE & PERMISSION SECURITY TEST
+
+Test with:
+
+User role
+
+Manager role
+
+Super Admin role
+
+Verify:
+
+User cannot see admin data
+
+Manager cannot access system config
+
+User cannot change billing
+
+User cannot view other companies
+
+Admin can access all logs safely
+
+Try:
+
+API route bypass
+
+Direct URL access
+
+Devtools tampering
+
+Token reuse
+
+Report:
+
+Role | Forbidden Access Possible? | Evidence
+
+
+Fail if:
+
+Any role can see data they shouldn’t
+
+Any route is unprotected
+
+Any token exposes other users
+
+🔹 4. FAILURE HANDLING & ERROR TRANSPARENCY
+
+Test:
+
+SMTP down
+
+Invalid email
+
+Blocked domain
+
+Network fail
+
+Timeout
+
+Queue overload
+
+Check:
+
+Does user see error?
+
+Is it logged?
+
+Can user retry?
+
+Is there fallback?
+
+Fail if:
+
+System hides error
+
+User thinks email sent but it wasn’t
+
+No logs exist
+
+🔹 5. FUNNEL ANALYTICS VERIFICATION
+
+Verify funnel stages:
+[Contacted] → [Opened] → [Interaction] → [Answered] → [Interested] → [Interrupted]
+
+For each:
+
+Trigger logic exists
+
+State transitions correct
+
+Percentages accurate
+
+Counts accurate
+
+Based on real events
+
+Simulate:
+
+Open
+
+Reply
+
+Link click
+
+Bounce
+
+No reply
+
+Verify:
+
+Funnel updates correctly
+
+No double counting
+
+No skipped stages
+
+🔹 6. AI DECISION LOGIC AUDIT
+
+Verify:
+
+AI does NOT send email without signal
+
+AI reads:
+
+Role change
+
+Hiring
+
+Funding
+
+Company activity
+
+AI refuses to send generic emails
+
+AI logs why it sent an email
+
+Test:
+
+Prospect with no signal
+
+Prospect with signal
+
+Wrong signal
+
+Conflicting signals
+
+Output:
+
+Prospect | Signal Detected | Email Sent? | Reason Logged?
+
+
+Fail if:
+
+AI sends email with no reason
+
+No explanation exists
+
+Same email used across prospects
+
+🔹 7. DATA INTEGRITY TEST
+
+Check:
+
+Prospect duplication
+
+Email duplication
+
+Status mismatch
+
+Lost prospects
+
+Cross-user leakage
+
+Test:
+
+Import same CSV twice
+
+Same email in two sequences
+
+Delete prospect
+
+Restore prospect
+
+Verify:
+
+System handles it gracefully
+
+🔹 8. PERFORMANCE & STABILITY
+
+Run:
+
+10 parallel users
+
+1,000 prospects
+
+100 emails scheduled
+
+Check:
+
+App crash
+
+Queue stuck
+
+DB lock
+
+API timeouts
+
+UI freeze
+
+Fail if:
+
+Any deadlock
+
+Any silent failure
+
+Any backlog not visible
+
+🔹 9. SALES CLAIM VALIDATION
+
+Check if system truly supports these claims:
+
+Claim 1: “Only sends email when there is buying signal”
+Claim 2: “Tracks full funnel from contact to interest”
+Claim 3: “Works without babysitting”
+
+For each:
+
+Evidence
+
+Logs
+
+Screenshots
+
+Code references
+
+Mark:
+
+Claim | TRUE | PARTIAL | FALSE
+
+🔹 10. FINAL SALES READINESS VERDICT
+
+Generate:
+
+GO / NO-GO decision
+
+Top 10 critical risks
+
+Top 10 bugs blocking sales
+
+What must be fixed before first customer
+
+What can be fixed later
+
+🔹 OUTPUT FORMAT (MANDATORY)
+
+Produce:
+
+Executive summary
+
+Table of results
+
+Critical failures
+
+Medium issues
+
+Low issues
+
+Recommendation
+
+Use this legend:
+✅ Safe to sell
+⚠️ Beta only
+❌ Do not sell
+
+If any of these are true, final verdict must be ❌:
+
+Emails fail silently
+
+Role access is broken
+
+Funnel logic is fake
+
+AI sends generic emails
+
+User flow breaks
+
+END PROMPT
