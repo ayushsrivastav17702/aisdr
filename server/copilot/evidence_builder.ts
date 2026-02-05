@@ -55,6 +55,14 @@ export function buildEvidence(state: SystemState): string[] {
     }
   }
   
+  if (state.emailSummary) {
+    evidence.push(`email_summary.total_count=${state.emailSummary.totalCount}`);
+    evidence.push(`email_summary.failed_count=${state.emailSummary.failedCount}`);
+    if (state.emailSummary.topErrors.length > 0) {
+      evidence.push(`email_summary.top_errors=${state.emailSummary.topErrors.join(", ")}`);
+    }
+  }
+  
   if (state.sequence) {
     evidence.push(`sequence.name=${state.sequence.name}`);
     if (state.sequence.status) {
