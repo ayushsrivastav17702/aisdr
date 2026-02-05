@@ -9,6 +9,7 @@ import {
   getInsufficientEvidenceResponse, 
   getAccessDeniedResponse,
   getUnclearQuestionResponse,
+  getPredictionRefusalResponse,
   CopilotResponse 
 } from "./output_validator";
 import { db } from "../db";
@@ -30,13 +31,13 @@ interface CopilotQueryRequest {
 }
 
 const FORBIDDEN_PATTERNS = [
-  // Cross-tenant / global data access (15 patterns)
+  // Cross-tenant / global data access (25 patterns)
   /show.*all.*customer/i,
   /all.*failed.*email.*across/i,
   /other.*compan(y|ies)/i,
   /other.*tenant/i,
   /other.*account/i,
-  /other.*org(anization)?/i,
+  /other.*org(anization)?s?/i,
   /cross.*tenant/i,
   /all.*user/i,
   /globally/i,
@@ -51,8 +52,20 @@ const FORBIDDEN_PATTERNS = [
   /all.*organizations/i,
   /platform.*wide/i,
   /system.*wide/i,
+  /show.*data.*for.*org/i,
+  /for\s+organization\s+.+/i,
+  /across\s+system/i,
+  /data\s+for\s+org/i,
+  /top.*customers.*across/i,
+  /sends\s+most\s+emails/i,
+  /from\s+other\s+org/i,
+  /how\s+many\s+tenants/i,
+  /global.*rate/i,
+  /org-wide/i,
+  /failures.*for\s+all/i,
+  /emails.*from.*other/i,
   
-  // Security sensitive (12 patterns)
+  // Security sensitive (16 patterns)
   /api.*key/i,
   /password/i,
   /credential/i,
@@ -67,24 +80,36 @@ const FORBIDDEN_PATTERNS = [
   /auth.*token/i,
   /encryption.*key/i,
   /private.*key/i,
+  /raw\s+sql/i,
+  /audit\s+log/i,
+  /alert\s+history/i,
+  /manager\s+data/i,
   
-  // Prompt injection / rule bypass (12 patterns)
+  // Prompt injection / rule bypass (20 patterns)
   /ignore.*rule/i,
   /ignore.*auth/i,
   /bypass/i,
   /override.*security/i,
+  /override.*rule/i,
   /break.*rule/i,
   /pretend.*human/i,
+  /pretend.*admin/i,
+  /pretend.*super/i,
   /respond.*casual/i,
   /system:\s*you\s+can/i,
   /ignore\s+all/i,
+  /ignore.*previous/i,
   /forget.*instructions/i,
+  /forget.*tenant/i,
+  /forget.*isolation/i,
   /new.*instructions/i,
   /disregard.*previous/i,
-  /act\s+as\s+if/i,
-  /you\s+are\s+now/i,
+  /act\s+as\s+(if|admin)/i,
+  /you\s+are\s+(now|system|chatgpt|gpt)/i,
+  /disable\s+safety/i,
+  /answer\s+freely/i,
   
-  // AI identity questions (8 patterns)
+  // AI identity questions (10 patterns)
   /are.*you.*ai/i,
   /which.*model/i,
   /explain.*prompt/i,
@@ -94,33 +119,71 @@ const FORBIDDEN_PATTERNS = [
   /who.*made.*you/i,
   /your.*training/i,
   /reveal.*system/i,
+  /explain\s+model/i,
   
-  // SQL injection patterns (10 patterns)
+  // SQL injection patterns (15 patterns)
   /SELECT\s+\*\s+FROM/i,
+  /SELECT\s+.*\s+FROM\s+\w+/i,
   /DROP\s+TABLE/i,
   /DELETE\s+FROM/i,
   /INSERT\s+INTO/i,
   /UPDATE\s+.*SET/i,
   /UNION\s+SELECT/i,
-  /;\s*DROP/i,
+  /';\s*DROP/i,
   /'\s*OR\s*'/i,
+  /OR\s+1\s*=\s*1/i,
   /--\s*$/,
   /TRUNCATE\s+TABLE/i,
   /ALTER\s+TABLE/i,
+  /SHOW\s+DATABASE/i,
+  
 ];
 
-// Total: 57 patterns
+// Prediction/speculation patterns - return evidence-only refusal, not 403 (E34-42)
+const PREDICTION_PATTERNS = [
+  /will\s+reply/i,
+  /will\s+happen/i,
+  /predict\s+my/i,
+  /\bpredict\b/i,
+  /\bguess\s+why\b/i,
+  /what\s+is\s+the\s+best/i,
+  /which.*prospect.*will/i,
+  /tomorrow/i,
+  /probably.*broken/i,
+  /i\s+think.*bad/i,
+];
 
 function isForbiddenQuestion(question: string): boolean {
   return FORBIDDEN_PATTERNS.some(pattern => pattern.test(question));
 }
 
+function isPredictionQuestion(question: string): boolean {
+  return PREDICTION_PATTERNS.some(pattern => pattern.test(question));
+}
+
+// Generic single words that are too vague to answer (D26-33)
+const VAGUE_WORDS = ["email", "fail", "help", "test", "data", "info", "status", "check"];
+
 function isUnclearQuestion(question: string): boolean {
+  // Normalize unicode punctuation (curly quotes, etc.)
+  const normalized = question.normalize("NFKC");
+  
   // Remove all emoji and special characters
-  const stripped = question.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[^\w\s]/gu, "").trim();
+  const stripped = normalized.replace(/[\u{1F300}-\u{1F9FF}]|[\u{2600}-\u{26FF}]|[\u{2700}-\u{27BF}]|[^\w\s]/gu, "").trim();
   
   // Check if mostly emoji or symbols
   if (stripped.length < 3) {
+    return true;
+  }
+  
+  // Check for numeric-only input
+  if (/^\d+$/.test(stripped)) {
+    return true;
+  }
+  
+  // Check for single vague word (D26-33)
+  const lowerStripped = stripped.toLowerCase();
+  if (VAGUE_WORDS.includes(lowerStripped)) {
     return true;
   }
   
@@ -175,6 +238,12 @@ export async function handleCopilotQuery(req: Request, res: Response): Promise<v
     if (isForbiddenQuestion(question)) {
       await logCopilotQuery(userId, "ACCESS_DENIED", question, 1, "high");
       res.status(403).json(getAccessDeniedResponse());
+      return;
+    }
+    
+    // Handle prediction/speculation questions with evidence-only refusal (E34-42)
+    if (isPredictionQuestion(question)) {
+      res.json(getPredictionRefusalResponse());
       return;
     }
     
