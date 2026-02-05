@@ -30,7 +30,8 @@ import {
   TrendingUp,
   Target,
   Upload,
-  Search
+  Search,
+  Activity
 } from 'lucide-react';
 
 interface LayoutProps {
@@ -124,6 +125,7 @@ export function Layout({ children }: LayoutProps) {
     { href: '/content-management', icon: <FileText className="w-4 h-4" />, label: 'Content' },
     { href: '/mailboxes', icon: <Inbox className="w-4 h-4" />, label: 'Mailboxes' },
     { href: '/analytics', icon: <BarChart3Icon className="w-4 h-4" />, label: 'Analytics' },
+    { href: '/health', icon: <Activity className="w-4 h-4" />, label: 'System Health' },
     { href: '/settings', icon: <SettingsIcon className="w-4 h-4" />, label: 'Settings' },
   ];
 
