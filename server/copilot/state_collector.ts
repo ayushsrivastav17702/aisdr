@@ -20,6 +20,11 @@ export interface SystemState {
     failureReason: string | null;
     messageId: string | null;
   } | null;
+  emailSummary?: {
+    totalCount: number;
+    failedCount: number;
+    topErrors: string[];
+  };
   queue: {
     id: string;
     status: string | null;
@@ -84,6 +89,7 @@ export async function getSystemState(params: {
   let prospectData: SystemState["prospect"] = null;
   let schedulerData: SystemState["scheduler"] = null;
   let recentAuditLogs: SystemState["recentAuditLogs"] = [];
+  let emailSummary: SystemState["emailSummary"] = undefined;
   
   if (queueId) {
     const queueResult = await db
@@ -236,6 +242,52 @@ export async function getSystemState(params: {
     }
   }
   
+  // Process emailIds array for summary
+  if (emailIds && emailIds.length > 0) {
+    try {
+      const emailResults = await db
+        .select({
+          status: emailQueue.status,
+          lastError: emailQueue.lastError,
+          failureReason: emailQueue.failureReason,
+        })
+        .from(emailQueue)
+        .where(
+          and(
+            sql`${emailQueue.id} = ANY(${emailIds})`,
+            eq(emailQueue.userId, userId)
+          )
+        )
+        .limit(20);
+      
+      const failedCount = emailResults.filter(e => e.status === "failed").length;
+      const errorCounts = new Map<string, number>();
+      
+      emailResults.forEach(e => {
+        if (e.failureReason) {
+          const normalized = e.failureReason.substring(0, 50);
+          errorCounts.set(normalized, (errorCounts.get(normalized) || 0) + 1);
+        } else if (e.lastError) {
+          const normalized = e.lastError.substring(0, 50);
+          errorCounts.set(normalized, (errorCounts.get(normalized) || 0) + 1);
+        }
+      });
+      
+      const topErrors = Array.from(errorCounts.entries())
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([error]) => error);
+      
+      emailSummary = {
+        totalCount: emailResults.length,
+        failedCount,
+        topErrors,
+      };
+    } catch (error) {
+      console.error("[Copilot] Error processing emailIds:", error);
+    }
+  }
+  
   const heartbeatResult = await db
     .select({
       status: schedulerHeartbeat.status,
@@ -265,6 +317,7 @@ export async function getSystemState(params: {
   
   return {
     email: emailData,
+    emailSummary,
     queue: queueData,
     sequence: sequenceData,
     prospect: prospectData,
