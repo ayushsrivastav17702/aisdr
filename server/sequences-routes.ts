@@ -2332,6 +2332,7 @@ router.get("/:id/steps/analytics", authenticate, async (req, res) => {
       };
     }));
     
+    console.log(`[Step Analytics] sequenceId=${sequenceId}, steps=${steps.length}, analytics=`, JSON.stringify(stepAnalytics));
     res.json({ stepAnalytics });
   } catch (error) {
     console.error("Step analytics error:", error);
