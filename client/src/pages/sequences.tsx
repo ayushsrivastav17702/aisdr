@@ -1381,16 +1381,22 @@ function SequenceTab({
     refetchInterval: 30000,
   });
 
-  const { data: stepAnalyticsData } = useQuery<{ stepAnalytics: StepAnalytics[] }>({
+  const { data: stepAnalyticsData, isLoading: stepAnalyticsLoading, error: stepAnalyticsError } = useQuery<{ stepAnalytics: StepAnalytics[] }>({
     queryKey: ['/api/sequences', sequenceId, 'steps', 'analytics'],
     queryFn: async () => {
+      console.log(`[StepAnalyticsQuery] Fetching for sequenceId=${sequenceId}`);
       const res = await apiRequest("GET", `/api/sequences/${sequenceId}/steps/analytics`, undefined);
       const data = await res.json();
       console.log(`[StepAnalyticsData] sequenceId=${sequenceId}`, data);
       return data;
     },
+    enabled: !!sequenceId,
+    staleTime: 0,
     refetchInterval: 30000,
   });
+  
+  // Debug log for step analytics state
+  console.log(`[StepAnalyticsState] loading=${stepAnalyticsLoading}, error=${stepAnalyticsError?.message || 'none'}, data=`, stepAnalyticsData);
 
   const { data: negativeSignalsData } = useQuery<{ negativeSignals: NegativeSignal[] }>({
     queryKey: ['/api/sequences', sequenceId, 'steps', 'negative-signals'],
