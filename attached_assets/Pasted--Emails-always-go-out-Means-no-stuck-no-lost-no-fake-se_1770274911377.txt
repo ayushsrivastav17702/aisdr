@@ -1,0 +1,182 @@
+“Emails always go out”
+
+Means: no stuck, no lost, no fake-sent
+
+You need a guaranteed-delivery pipeline:
+
+Required rules
+PENDING → SENDING → SENT (only if message_id exists)
+PENDING > 10 min → RETRY
+RETRY > 3 times → FAIL + notify
+
+You must have:
+
+✅ Retry with exponential backoff
+✅ Dead-letter queue (failed emails go somewhere visible)
+✅ Idempotency key (no double sends)
+✅ DB constraint: sent MUST have message_id
+✅ Queue watchdog every X minutes
+
+This turns:
+❌ “hope it sends”
+into
+✅ “it WILL send or it WILL fail loudly”
+
+2️⃣ “Errors fix themselves”
+
+Means: auto-recovery, not error logs
+
+For every failure class:
+
+Failure	System must do
+SMTP down	auto-retry later
+Token expired	auto-refresh
+Rate limit	slow down
+Bounce spike	pause sequence
+Network fail	retry
+Parsing error	skip + log
+
+Rule:
+
+System tries to heal before involving human.
+
+Only escalate when:
+✔ retries exhausted
+✔ pattern detected
+✔ risk threshold crossed
+
+3️⃣ “I don’t need to monitor”
+
+Means: system monitors itself
+
+You need:
+
+Health metrics
+
+Queue depth
+
+Failure rate
+
+Send latency
+
+Bounce rate
+
+Auth failures
+
+With thresholds:
+failure_rate > 5% → pause
+queue_age > 15 min → alert
+bounce_rate > 8% → pause
+auth_error > 3 → reauth flow
+
+
+User should NOT:
+❌ check logs
+❌ check DB
+❌ refresh dashboard nervously
+
+System should:
+✅ auto-pause
+✅ auto-notify
+✅ auto-protect
+
+4️⃣ “No manual babysitting”
+
+Means: no daily intervention
+
+You must remove:
+❌ “check if emails sent”
+❌ “why didn’t this send?”
+❌ “should I pause?”
+
+Add:
+✔ Auto skip bad prospects
+✔ Auto drop duplicates
+✔ Auto block no-signal
+✔ Auto stop on anomalies
+
+User role becomes:
+👉 supervisor, not operator
+
+5️⃣ “No surprises”
+
+Means: predictable behavior
+
+So:
+
+No hidden retries
+
+No background changes
+
+No random pauses
+
+System must explain:
+
+WHY it paused
+
+WHY it skipped
+
+WHY it sent
+
+WHY it failed
+
+Every action must have:
+
+Action: SKIPPED
+Reason: No verified signal
+Source: LinkedIn hiring post
+
+
+This builds trust.
+
+6️⃣ “No silent failures”
+
+Means: no black holes
+
+You must enforce:
+
+NO STATE WITHOUT EVIDENCE
+
+
+So:
+
+No "sent" without SMTP proof
+
+No "delivered" without webhook
+
+No "opened" without pixel
+
+No "replied" without IMAP
+
+And:
+
+If system doesn’t know → it must say “unknown”
+
+
+Never lie with green checkmarks.
+
+🧠 Architecture pattern you need
+
+Think in 4 layers:
+
+Layer 1 — Execution
+
+Queue + SMTP + retry + idempotency
+
+Layer 2 — Proof
+
+message_id, webhooks, timestamps, logs
+
+Layer 3 — Watchdog
+
+Cron job that checks:
+
+stuck jobs
+
+missing proofs
+
+anomalies
+
+Layer 4 — Autonomy
+
+Auto pause / retry / skip / notify

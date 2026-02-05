@@ -3053,6 +3053,52 @@ Return ONLY the email body text, no subject line needed.`;
     }
   });
 
+  // Dead-letter queue - view failed emails with reasons (TENANT-SCOPED)
+  app.get("/api/admin/email-queue/dead-letter", authenticate, requireManager, async (req, res) => {
+    try {
+      const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
+      const offset = parseInt(req.query.offset as string) || 0;
+      
+      const { emailQueueService } = await import("./services/email-queue.service");
+      // Pass userId for tenant scoping - managers see their org's failed emails
+      const result = await emailQueueService.getDeadLetterQueue(
+        req.userContext!.userId,
+        { limit, offset }
+      );
+      
+      res.json({
+        success: true,
+        ...result,
+        limit,
+        offset,
+      });
+    } catch (error) {
+      console.error("Dead-letter queue error:", error);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : "Failed to get dead-letter queue"
+      });
+    }
+  });
+
+  // Trigger manual retry of stuck emails
+  app.post("/api/admin/email-queue/retry-stuck", authenticate, requireManager, async (req, res) => {
+    try {
+      const { emailQueueService } = await import("./services/email-queue.service");
+      const result = await emailQueueService.autoRetryStuckEmails();
+      
+      res.json({
+        success: true,
+        ...result,
+        message: `Processed stuck emails: ${result.retried} retried, ${result.failed} failed`,
+      });
+    } catch (error) {
+      console.error("Retry stuck emails error:", error);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : "Failed to retry stuck emails"
+      });
+    }
+  });
+
   // ============================================
   // SEQUENCE DRY RUN (PREVIEW MODE)
   // ============================================
