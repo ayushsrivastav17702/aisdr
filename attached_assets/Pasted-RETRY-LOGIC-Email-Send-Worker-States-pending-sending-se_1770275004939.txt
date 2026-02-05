@@ -1,0 +1,163 @@
+RETRY LOGIC (Email Send Worker)
+States
+pending → sending → sent
+        ↘ retrying → failed
+
+DB fields (must exist)
+status
+retry_count
+last_attempt_at
+next_retry_at
+failure_reason
+message_id
+
+SEND FLOW (Worker)
+function sendEmail(job):
+  if job.status in ('sent','failed'): return
+
+  update status = 'sending'
+  try:
+    response = smtp.send(job.payload)
+
+    if response.message_id exists:
+      update:
+        status = 'sent'
+        message_id = response.message_id
+        sent_at = now()
+        failure_reason = null
+    else:
+      throw MissingMessageIdError
+
+  catch error:
+    classifyError(error)
+
+ERROR CLASSIFICATION
+SMTP 4xx → retryable
+Timeout → retryable
+Network error → retryable
+Rate limit → retryable
+Auth error → retryable (once)
+Invalid email → non-retryable
+Blocked domain → non-retryable
+No signal (AI) → non-retryable
+
+RETRY RULES
+if retryable:
+  if retry_count < 3:
+    retry_count += 1
+    status = 'retrying'
+    next_retry_at = now() + backoff(retry_count)
+  else:
+    status = 'failed'
+    failure_reason = 'Max retries reached'
+else:
+  status = 'failed'
+  failure_reason = error.type
+
+BACKOFF FUNCTION
+retry #1 → +2 minutes
+retry #2 → +5 minutes
+retry #3 → +15 minutes
+
+
+No infinite loops.
+
+👁 WATCHDOG LOGIC (Background Monitor)
+
+Runs every 5 minutes.
+
+Query 1 — Stuck sending
+SELECT id FROM email_queue
+WHERE status='sending'
+AND last_attempt_at < NOW() - INTERVAL '5 minutes';
+
+
+Action:
+
+→ move to retrying
+→ retry_count += 1
+→ next_retry_at = now() + 2 min
+→ log watchdog intervention
+
+Query 2 — Pending too long
+SELECT id FROM email_queue
+WHERE status='pending'
+AND created_at < NOW() - INTERVAL '10 minutes';
+
+
+Action:
+
+→ push to retrying
+→ retry_count += 1
+→ next_retry_at = now() + 2 min
+
+Query 3 — Retry overdue
+SELECT id FROM email_queue
+WHERE status='retrying'
+AND next_retry_at < NOW();
+
+
+Action:
+
+→ enqueue sendEmail(job)
+
+Query 4 — Phantom sent (should be zero)
+SELECT id FROM email_queue
+WHERE status='sent' AND message_id IS NULL;
+
+
+Action:
+
+→ set status='failed'
+→ failure_reason='Sent without messageId (watchdog)'
+→ alert admin
+
+🚨 AUTO-ALERT RULES
+
+Trigger alert if:
+
+failed in last 10 min > 5
+retrying in queue > 20
+pending > 10 min > 10
+
+
+Alert should include:
+
+sequence id
+
+user id
+
+failure types
+
+count
+
+🧠 USER-FACING BEHAVIOR
+
+User sees:
+
+Paused due to delivery issues.
+We are retrying automatically.
+
+
+Not:
+❌ “Unknown error”
+❌ silent pause
+
+🔐 HARD SAFETY RULES
+
+❌ Never mark SENT without message_id
+
+❌ Never retry invalid email
+
+❌ Never retry AI-blocked sends
+
+❌ Never hide failed state
+
+❌ Never retry forever
+
+📊 METRICS TO TRACK
+queue_depth
+avg_send_time
+retry_rate
+failure_rate
+phantom_sent_count
