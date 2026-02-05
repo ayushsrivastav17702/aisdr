@@ -11,7 +11,7 @@ export const jobStatusEnum = pgEnum("job_status", ["queued", "running", "complet
 export const jobTypeEnum = pgEnum("job_type", ["enrichment", "import", "search"]);
 export const mailboxStatusEnum = pgEnum("mailbox_status", ["active", "paused", "error", "warming"]);
 export const mailboxProviderEnum = pgEnum("mailbox_provider", ["gmail", "outlook", "smtp", "sendgrid"]);
-export const emailQueueStatusEnum = pgEnum("email_queue_status", ["pending", "generating", "approved", "sending", "sent", "failed", "scheduled", "cancelled", "preview"]);
+export const emailQueueStatusEnum = pgEnum("email_queue_status", ["pending", "generating", "approved", "sending", "sent", "failed", "scheduled", "cancelled", "preview", "retrying"]);
 export const emailSendStatusEnum = pgEnum("email_send_status", ["success", "failed", "bounced"]);
 
 // Prospects table
@@ -786,6 +786,10 @@ export const emailQueue = pgTable("email_queue", {
   maxAttempts: integer("max_attempts").default(3),
   deferralAttempts: integer("deferral_attempts").default(0), // Separate counter for pause/limit deferrals
   lastError: text("last_error"),
+  
+  // Retry tracking timestamps per spec
+  lastAttemptAt: timestamp("last_attempt_at"), // When the last send attempt was made
+  nextRetryAt: timestamp("next_retry_at"), // When the next retry should occur
   
   // Email Content (denormalized for queue processing)
   subject: text("subject").notNull(),

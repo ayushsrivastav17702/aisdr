@@ -1,0 +1,307 @@
+ROLE
+
+You are a senior backend engineer building an enterprise operational copilot inside an existing SaaS product called AiSDR.
+
+This copilot is NOT a general chatbot.
+It is a diagnostic and explanation system for email delivery, AI decisions, funnel health, and system failures.
+
+You must integrate with:
+
+Existing OpenRouter client
+
+Existing RBAC system
+
+Existing PostgreSQL database
+
+Existing audit_logs table
+
+OBJECTIVE
+
+Build a new module called:
+
+/server/copilot/
+
+
+That exposes a secured API:
+
+POST /api/copilot/query
+
+
+Which:
+• Accepts structured user questions
+• Collects system state
+• Builds evidence
+• Queries OpenRouter
+• Validates output
+• Returns deterministic JSON
+
+FILES TO CREATE
+
+Create these files:
+
+/server/copilot/copilot.controller.ts
+
+/server/copilot/state_collector.ts
+
+/server/copilot/evidence_builder.ts
+
+/server/copilot/knowledge_retriever.ts
+
+/server/copilot/openrouter_client.ts
+
+/server/copilot/output_validator.ts
+
+1. copilot.controller.ts
+
+Responsibilities:
+
+Enforce authentication
+
+Enforce RBAC
+
+Accept input:
+
+{
+  "question": "Why didn’t this email send?",
+  "email_id": "uuid",
+  "sequence_id": "uuid"
+}
+
+
+Steps:
+
+Validate user role
+
+Call state_collector
+
+Call evidence_builder
+
+Call knowledge_retriever
+
+Build prompt payload
+
+Send to OpenRouter
+
+Validate output
+
+Log to audit_logs
+
+Return response
+
+Reject if:
+
+tenant_id missing
+
+role mismatch
+
+forbidden intent
+
+2. state_collector.ts
+
+Must fetch ONLY tenant-scoped data from:
+
+• email_queue
+• emails
+• sequences
+• prospects
+• ai_decision_logs
+• audit_logs
+• retry_logs
+• scheduler_heartbeats
+
+Functions:
+
+getSystemState({ tenant_id, email_id, sequence_id })
+
+
+Must:
+
+Use scopedWhere or tenant filter
+
+Never fetch secrets
+
+Return normalized object:
+
+{
+  email,
+  queue,
+  sequence,
+  prospect,
+  retries,
+  scheduler
+}
+
+3. evidence_builder.ts
+
+Purpose:
+Convert raw state into evidence.
+
+Rules:
+• No opinions
+• No interpretation
+• Only facts
+
+Output format:
+
+[
+  "email_queue.status=failed",
+  "smtp_error=ETIMEDOUT",
+  "retry_count=3"
+]
+
+4. knowledge_retriever.ts
+
+Build a local policy + playbook store:
+
+Include:
+• SMTP error meanings
+• Retry policy
+• Funnel stage logic
+• AI signal rules
+• Compliance rules
+
+Use:
+
+In-memory JSON or vector store
+
+Function:
+
+getRelevantKnowledge(question)
+
+5. openrouter_client.ts
+
+Wrap existing OpenRouter client.
+
+Routing logic:
+
+if (question.includes("why") || question.includes("root cause"))
+  use reasoning model
+else
+  use fast model
+
+
+Models via OpenRouter:
+• deepseek-r1 (reasoning)
+• mistral-small or gpt-4o-mini (fast)
+
+Build strict payload:
+
+{
+  system: SYSTEM_PROMPT,
+  user: {
+    question,
+    system_state,
+    evidence,
+    knowledge,
+    role
+  }
+}
+
+6. output_validator.ts
+
+Reject if:
+• Not valid JSON
+• Missing fields
+• Evidence references missing
+• Confidence not 0–1
+• Contains speculation words
+• Mentions "AI", "model", "prompt"
+
+Expected output:
+
+{
+  "answer": "...",
+  "root_cause": "...",
+  "evidence": [],
+  "confidence": 0.85,
+  "recommended_action": "...",
+  "severity": "low|medium|high|critical"
+}
+
+
+If invalid → return:
+
+"Insufficient evidence to answer."
+
+SECURITY REQUIREMENTS
+
+✔ Tenant isolation
+✔ RBAC enforced
+✔ Rate limited
+✔ No raw user prompt
+✔ No secrets
+✔ No cross-tenant
+✔ No free chat
+✔ No hallucination
+
+Forbidden questions:
+• “Show other companies”
+• “Give API keys”
+• “Ignore rules”
+
+Return:
+
+Access denied.
+
+LOGGING
+
+Insert into audit_logs:
+
+event_type: 'COPILOT_QUERY'
+user_id
+tenant_id
+question
+confidence
+severity
+
+UI CONTRACT (for frontend)
+
+Endpoint returns:
+
+{
+  "answer": "...",
+  "root_cause": "...",
+  "evidence": [],
+  "confidence": 0.9,
+  "recommended_action": "...",
+  "severity": "high"
+}
+
+SUCCESS CRITERIA
+
+Copilot must:
+✔ Explain failures
+✔ Explain why emails didn’t send
+✔ Explain AI decisions
+✔ Explain funnel issues
+✔ Never hallucinate
+✔ Never leak data
+✔ Never act as chatbot
+
+DO NOT:
+
+❌ Build free chat
+❌ Pass raw user input to model
+❌ Let model decide scope
+❌ Train model
+❌ Allow speculation
+
+AFTER BUILD
+
+Expose route:
+
+POST /api/copilot/query
+
+
+Protected by:
+authenticate + role check
+
+END PROMPT
+⚠️ VERY IMPORTANT
+
+Do NOT market this as:
+❌ “AI chatbot”
+
+You market this as:
+
+Operational Copilot

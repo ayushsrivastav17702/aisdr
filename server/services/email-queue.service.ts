@@ -806,10 +806,13 @@ export class EmailQueueService {
           .set({
             status: "sent",
             sentAt,
+            lastAttemptAt: sentAt, // Track when last attempt was made
             subject: renderedSubject, // Store rendered subject
             body: renderedBody, // Store rendered body
             messageId: result.messageId, // CRITICAL: Store Message-ID for RFC 5322 threading
             deferralAttempts: 0, // Reset deferral counter on successful send
+            failureReason: null, // Clear any previous failure reason
+            lastError: null, // Clear any previous error
           })
           .where(eq(emailQueue.id, email.id));
 
@@ -945,22 +948,46 @@ export class EmailQueueService {
           });
         }
       } else {
-        // Exponential backoff: 2^attempts minutes (2min, 4min, 8min...)
-        // Caps at 30 minutes to prevent excessive delays
-        const backoffMinutes = Math.min(Math.pow(2, attempts), 30);
-        const nextScheduledFor = new Date(Date.now() + backoffMinutes * 60 * 1000);
+        // Import error classifier for backoff timing (2, 5, 15 minutes per spec)
+        const { classifySmtpError, getBackoffDelay } = await import("./email-error-classifier.service");
+        const classified = classifySmtpError(error.message);
+        
+        // Non-retryable errors should fail immediately
+        if (!classified.retryable) {
+          await db
+            .update(emailQueue)
+            .set({
+              status: "failed",
+              failedAt: new Date(),
+              lastError: error.message,
+              failureReason: classified.type,
+              lastAttemptAt: new Date(),
+              attempts,
+            })
+            .where(eq(emailQueue.id, email.id));
+          
+          console.error(`❌ Non-retryable error for ${email.id}: ${classified.type}`);
+          return false;
+        }
+        
+        // Retryable error: use spec backoff (2, 5, 15 minutes)
+        const backoffMs = getBackoffDelay(attempts);
+        const nextRetryTime = new Date(Date.now() + backoffMs);
         
         await db
           .update(emailQueue)
           .set({
-            status: "pending",
+            status: "retrying",
             lastError: error.message,
+            failureReason: classified.type,
             attempts,
-            scheduledFor: nextScheduledFor, // Delay retry with exponential backoff
+            lastAttemptAt: new Date(),
+            nextRetryAt: nextRetryTime,
+            scheduledFor: nextRetryTime, // Sync for scheduler compatibility
           })
           .where(eq(emailQueue.id, email.id));
 
-        console.log(`🔄 Email retry ${attempts}/${maxAttempts}: ${email.id} (next attempt in ${backoffMinutes}min)`);
+        console.log(`🔄 Email retry ${attempts}/${maxAttempts}: ${email.id} (${classified.type}, next attempt at ${nextRetryTime.toISOString()})`);
       }
       
       return false; // Failed to send
@@ -1199,116 +1226,32 @@ export class EmailQueueService {
   private stuckEmailMonitorInterval: NodeJS.Timeout | null = null;
   
   /**
-   * Auto-retry stuck emails that have been pending for too long
-   * Implements: PENDING > 10 min → RETRY, RETRY > 3 times → FAIL + notify
-   * Uses createdAt for age check (not scheduledFor) to catch truly stuck emails
+   * Run comprehensive watchdog logic per spec:
+   * - Query 1: Stuck sending (>5 min)
+   * - Query 2: Pending too long (>10 min)
+   * - Query 3: Retry overdue
+   * - Query 4: Phantom sent (sent without messageId)
+   * Uses new 'retrying' state with proper backoff (2, 5, 15 minutes)
    */
   async autoRetryStuckEmails(): Promise<{ retried: number; failed: number }> {
-    const retryThresholdMinutes = 10; // Emails pending > 10 min should be retried
-    const maxRetries = 3;
+    const { runWatchdog } = await import("./email-error-classifier.service");
     
     try {
-      // Find stuck emails: pending/sending for > 10 min (using createdAt or scheduledFor if overdue)
-      // This catches both truly stuck items and items that missed their schedule
-      const stuckForRetry = await db
-        .select()
-        .from(emailQueue)
-        .where(
-          and(
-            sql`${emailQueue.status} IN ('pending', 'sending')`,
-            sql`(
-              ${emailQueue.createdAt} < NOW() - INTERVAL '${sql.raw(retryThresholdMinutes.toString())} minutes'
-              AND ${emailQueue.scheduledFor} < NOW()
-            )`,
-            sql`COALESCE(${emailQueue.attempts}, 0) < ${maxRetries}`
-          )
-        )
-        .limit(50); // Process in batches
+      const result = await runWatchdog();
       
-      let retriedCount = 0;
-      let failedCount = 0;
+      console.log(`🔧 [WATCHDOG] Run complete: stuckSending=${result.stuckSending}, pendingTooLong=${result.pendingTooLong}, retryOverdue=${result.retryOverdue}, phantomSent=${result.phantomSent}`);
       
-      for (const email of stuckForRetry) {
-        const currentAttempts = email.attempts || 0;
-        const newAttempts = currentAttempts + 1;
-        
-        if (newAttempts >= maxRetries) {
-          // Max retries exceeded → FAIL + notify
-          await db
-            .update(emailQueue)
-            .set({
-              status: "failed",
-              attempts: newAttempts,
-              failedAt: new Date(),
-              lastError: `Auto-failed: exceeded max retries (${maxRetries}) after being stuck`,
-              failureReason: "MAX_RETRIES_EXCEEDED",
-            })
-            .where(eq(emailQueue.id, email.id));
-          
-          console.warn(`❌ [AUTO-FAIL] Email ${email.id} failed after ${maxRetries} retry attempts`);
-          
-          // NOTIFY: Send alert for auto-failed emails with actual prospect data
-          try {
-            // Look up prospect details for notification
-            const prospect = await db
-              .select({ 
-                firstName: prospects.firstName, 
-                lastName: prospects.lastName, 
-                email: prospects.email 
-              })
-              .from(prospects)
-              .where(eq(prospects.id, email.prospectId))
-              .limit(1)
-              .then(rows => rows[0]);
-            
-            const prospectName = prospect 
-              ? `${prospect.firstName || ''} ${prospect.lastName || ''}`.trim() || 'Unknown'
-              : 'Unknown';
-            const prospectEmail = prospect?.email || 'Unknown';
-            
-            await notificationService.notify({
-              userId: email.userId,
-              type: "failed_send",
-              data: {
-                prospectName,
-                prospectEmail,
-                subject: email.subject || "Unknown subject",
-                errorMessage: `Auto-failed after ${maxRetries} retry attempts. Original error: ${email.lastError || 'Unknown'}`,
-                timestamp: new Date(),
-              },
-            });
-          } catch (notifyError) {
-            console.error("[AutoRetry] Failed to send notification:", notifyError);
-          }
-          
-          failedCount++;
-        } else {
-          // Reschedule for retry with exponential backoff
-          const backoffMinutes = Math.pow(2, newAttempts); // 2, 4, 8 minutes
-          const nextRetry = new Date(Date.now() + backoffMinutes * 60 * 1000);
-          
-          // Reset status to pending if it was stuck in 'sending'
-          await db
-            .update(emailQueue)
-            .set({
-              status: "pending",
-              scheduledFor: nextRetry,
-              attempts: newAttempts,
-              lastError: `Auto-retry #${newAttempts}: was stuck, rescheduled with ${backoffMinutes}min backoff`,
-            })
-            .where(eq(emailQueue.id, email.id));
-          
-          console.log(`🔄 [AUTO-RETRY] Email ${email.id} attempt ${newAttempts}/${maxRetries}, next retry at ${nextRetry.toISOString()}`);
-          retriedCount++;
-        }
-      }
-      
-      return { retried: retriedCount, failed: failedCount };
+      // Count items moved to retrying as "retried", phantom/stuck as "failed"
+      return {
+        retried: result.stuckSending + result.pendingTooLong + result.retryOverdue,
+        failed: result.phantomSent,
+      };
     } catch (error) {
-      console.error("[AutoRetry] Error processing stuck emails:", error);
+      console.error("[Watchdog] Error running watchdog:", error);
       return { retried: 0, failed: 0 };
     }
   }
+  
   
   /**
    * Get dead-letter queue (failed emails with reasons)

@@ -3099,6 +3099,24 @@ Return ONLY the email body text, no subject line needed.`;
     }
   });
 
+  // Email queue metrics for monitoring dashboard
+  app.get("/api/admin/email-queue/metrics", authenticate, requireManager, async (req, res) => {
+    try {
+      const { getQueueMetrics } = await import("./services/email-error-classifier.service");
+      const metrics = await getQueueMetrics();
+      
+      res.json({
+        success: true,
+        metrics,
+      });
+    } catch (error) {
+      console.error("Queue metrics error:", error);
+      res.status(500).json({
+        error: error instanceof Error ? error.message : "Failed to get queue metrics"
+      });
+    }
+  });
+
   // ============================================
   // SEQUENCE DRY RUN (PREVIEW MODE)
   // ============================================
