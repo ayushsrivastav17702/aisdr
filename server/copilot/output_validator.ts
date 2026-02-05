@@ -13,6 +13,14 @@ const SPECULATION_WORDS = [
   "assume",
   "guess",
   "guessing",
+  "probably",
+  "maybe",
+  "likely",
+  "perhaps",
+  "possibly",
+  "might be",
+  "could be",
+  "ai thinks",
 ];
 
 // Use regex patterns with word boundaries to avoid false positives
@@ -88,16 +96,12 @@ export function validateOutput(response: unknown): CopilotResponse | null {
     }
   }
   
-  let speculationCount = 0;
+  // Reject output if ANY speculation word is found (strict policy - G48-50)
   for (const word of SPECULATION_WORDS) {
     if (fullText.includes(word.toLowerCase())) {
-      speculationCount++;
+      console.warn(`[CopilotValidator] Response contains speculation word: "${word}"`);
+      return null;
     }
-  }
-  
-  if (speculationCount > 3) {
-    console.warn(`[CopilotValidator] Response contains too much speculation (${speculationCount} words)`);
-    return null;
   }
   
   return {
@@ -152,6 +156,17 @@ export function getUnclearQuestionResponse(): CopilotResponse {
     evidence: [],
     confidence: 0,
     recommended_action: "Ask a specific question about email delivery, failures, or queue status.",
+    severity: "low",
+  };
+}
+
+export function getPredictionRefusalResponse(): CopilotResponse {
+  return {
+    answer: "Cannot make predictions or speculate. Only factual data from the system is available.",
+    root_cause: "speculation_not_supported",
+    evidence: [],
+    confidence: 1,
+    recommended_action: "Ask about current status or historical data instead.",
     severity: "low",
   };
 }
