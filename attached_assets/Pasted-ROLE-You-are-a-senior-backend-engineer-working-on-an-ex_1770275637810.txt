@@ -1,0 +1,333 @@
+ROLE
+
+You are a senior backend engineer working on an existing Node.js + TypeScript SaaS called AiSDR.
+
+The system already has:
+• PostgreSQL
+• RBAC middleware (authenticate, forbidManager, blockSuperAdminFromSDR)
+• OpenRouter client
+• email_queue table
+• emails table
+• audit_logs table
+
+You must add reliability, observability, and operational intelligence.
+
+🧱 PART 1 — RETRY & WATCHDOG
+FILE: /server/queue/retry.service.ts
+
+Create function:
+
+export async function retryFailedEmails()
+
+
+Logic:
+
+Query:
+
+SELECT * FROM email_queue
+WHERE status = 'failed'
+AND retry_count < 3
+AND retryable = true
+AND tenant_id IS NOT NULL
+
+
+For each:
+• Compute delay:
+retry_count = 0 → 5 min
+retry_count = 1 → 15 min
+retry_count = 2 → 60 min
+
+Update:
+
+UPDATE email_queue
+SET status='pending',
+retry_count = retry_count + 1,
+next_retry_at = NOW() + INTERVAL 'X minutes'
+WHERE id = ?
+
+
+Insert into retry_logs:
+
+{
+  email_queue_id,
+  attempt,
+  reason,
+  timestamp
+}
+
+
+Never mark sent without messageId.
+
+FILE: /server/queue/watchdog.service.ts
+
+Create function:
+
+export async function scanForStuckEmails()
+
+
+Definition of stuck:
+• status = 'pending'
+• created_at < NOW() - INTERVAL '10 minutes'
+• no worker heartbeat
+
+Query:
+
+SELECT * FROM email_queue
+WHERE status='pending'
+AND created_at < NOW() - INTERVAL '10 minutes'
+
+
+For each:
+• Update:
+
+UPDATE email_queue SET status='stuck'
+
+
+• Insert audit_log:
+
+event_type='QUEUE_STUCK'
+
+
+• Call alert service.
+
+Schedule every 5 minutes with existing scheduler.
+
+🧠 PART 2 — COPILOT
+ROUTE
+
+Create:
+
+POST /api/copilot/query
+
+
+Protected by:
+
+authenticate
+
+FILE: /server/copilot/copilot.controller.ts
+
+Responsibilities:
+• Parse request
+• Enforce tenant + role
+• Call modules
+• Log result
+
+Input:
+
+{
+  "question": "Why didn’t this email send?",
+  "email_id": "uuid",
+  "sequence_id": "uuid"
+}
+
+
+Pipeline:
+
+state = getSystemState()
+evidence = buildEvidence(state)
+knowledge = getRelevantKnowledge(question)
+llmResponse = askOpenRouter(...)
+validated = validateOutput(llmResponse)
+log to audit_logs
+return validated
+
+
+Reject if:
+• tenant missing
+• forbidden intent
+• role mismatch
+
+FILE: /server/copilot/state_collector.ts
+
+Function:
+
+export async function getSystemState({ tenant_id, email_id, sequence_id })
+
+
+Query tables:
+• email_queue
+• emails
+• sequences
+• prospects
+• ai_decision_logs
+• retry_logs
+• scheduler_heartbeats
+
+All queries must include:
+
+WHERE tenant_id = ?
+
+
+Return object:
+
+{
+  email,
+  queue,
+  sequence,
+  prospect,
+  ai_decisions,
+  retries,
+  scheduler
+}
+
+FILE: /server/copilot/evidence_builder.ts
+
+Function:
+
+export function buildEvidence(state)
+
+
+Convert to strings like:
+
+"email_queue.status=failed"
+"smtp_error=ETIMEDOUT"
+"retry_count=2"
+
+
+No reasoning.
+
+FILE: /server/copilot/knowledge_retriever.ts
+
+Static JSON store:
+
+• SMTP errors
+• Retry policy
+• Funnel logic
+• AI rules
+
+Function:
+
+export function getRelevantKnowledge(question)
+
+
+Match by keyword.
+
+FILE: /server/copilot/openrouter_client.ts
+
+Call existing OpenRouter client.
+
+Routing:
+
+if(question.includes("why") || question.includes("root"))
+  use reasoning model
+else
+  use fast model
+
+
+Payload:
+
+{
+  system: SYSTEM_PROMPT,
+  user: {
+    question,
+    system_state,
+    evidence,
+    knowledge,
+    role
+  }
+}
+
+FILE: /server/copilot/output_validator.ts
+
+Validate JSON:
+Must contain:
+• answer
+• root_cause
+• evidence[]
+• confidence (0-1)
+• recommended_action
+• severity
+
+Reject if:
+• speculation
+• missing evidence
+• mentions "AI" or "model"
+
+Fallback:
+
+Insufficient evidence to answer.
+
+📊 PART 3 — HEALTH DASHBOARD
+ROUTE
+GET /api/health/overview
+
+
+Protected by:
+
+authenticate
+
+
+Compute:
+
+sent_today
+failed_today
+stuck_count
+retry_count
+ai_blocked
+open_rate
+reply_rate
+
+
+Return:
+
+{
+  "delivery_health": 92,
+  "stuck": 3,
+  "failed": 5,
+  "retrying": 4,
+  "ai_blocked": 7,
+  "open_rate": 0.31,
+  "reply_rate": 0.07
+}
+
+🚨 PART 4 — ALERTING
+FILE: /server/alerts/alert.service.ts
+
+Alert types:
+• STUCK_QUEUE
+• DELIVERY_FAILURE
+• AI_ERROR
+• SCHEDULER_DOWN
+
+Trigger when:
+• stuck > 5
+• failure rate > 10%
+• retry_count = 3
+• no scheduler heartbeat
+
+Throttle:
+• 1 alert per type per 30 minutes
+
+Insert into:
+
+alerts_log
+
+
+Send:
+• UI banner
+• optional email
+
+🔐 SECURITY RULES
+
+✔ tenant isolation
+✔ RBAC
+✔ no secrets
+✔ no raw prompt
+✔ no free chat
+✔ no hallucination
+
+Forbidden:
+• API keys
+• cross-tenant
+• system override
+
+🎯 SUCCESS CRITERIA
+
+After this build:
+• No silent failures
+• Self-healing retries
+• Explains failures
+• Shows health
+• Alerts humans
+
+END PROMPT
