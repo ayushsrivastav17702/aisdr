@@ -31,6 +31,8 @@ import { PersonalAnalytics } from "@/components/personal-analytics";
 import { SendingPreferences } from "@/components/sending-preferences";
 import { ActivityFeed } from "@/components/activity-feed";
 import { Layout } from "@/components/layout";
+import { CopilotPanel, CopilotButton } from "@/components/CopilotPanel";
+import { useState } from "react";
 
 interface EmailActivityStats {
   emailsSentToday: number;
@@ -156,6 +158,7 @@ function StatCard({
 }
 
 export default function SDRDashboard() {
+  const [copilotOpen, setCopilotOpen] = useState(false);
   const { data, isLoading, error, refetch } = useQuery<SDRDashboardData>({
     queryKey: ["/api/sdr/dashboard"],
     refetchInterval: 60000,
@@ -435,6 +438,21 @@ export default function SDRDashboard() {
 
       <ActivityFeed />
       </div>
+      
+      <CopilotButton onClick={() => setCopilotOpen(true)} isOpen={copilotOpen} />
+      <CopilotPanel
+        isOpen={copilotOpen}
+        onClose={() => setCopilotOpen(false)}
+        context={{
+          page: "health",
+          metrics: {
+            deliveryRate: emailActivity?.openRate7Days,
+            failureRate: 0,
+            queueDepth: quotaSnapshot?.activeEnrollments || 0,
+            stuckCount: 0,
+          },
+        }}
+      />
     </Layout>
   );
 }
