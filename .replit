@@ -53,5 +53,4 @@ APP_URL = "https://increff-aisdr-smitops.replit.app"
 EMAIL_VOLUME_PRESET = "medium"
 
 [userenv.development]
-REDIS_DISABLED = "true"
 DEMO_MODE = "true"

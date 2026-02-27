@@ -277,21 +277,31 @@ app.use((req, res, next) => {
     }
     
     // Start email queue processor
+    // Architecture: Adaptive poller is always the reliable backbone (exponential backoff,
+    // 10s → 5 min when idle). BullMQ/Redis adds event-driven speed on top when available.
+    // If Redis is unavailable or rate-limited, the poller handles everything automatically.
     log(`📧 Starting email queue processor...`);
-    setInterval(async () => {
+    const { initEmailQueueWorker } = await import("./queue/email-queue-bullmq");
+    const { emailQueuePoller } = await import("./queue/email-queue-poller");
+
+    // Always start adaptive poller first (reliable backbone)
+    emailQueuePoller.start(async () => {
       try {
-        await emailQueueService.processPendingEmails();
+        return await emailQueueService.processPendingEmails();
       } catch (error) {
         console.error("Email queue processor error:", error);
+        return 0;
       }
-    }, 10000); // Process every 10 seconds
-    
-    // Process immediately on startup
-    emailQueueService.processPendingEmails().catch(console.error);
-    
-    // Start reply detection polling
+    });
+    log(`✅ Email queue: adaptive poller started (10s → 5min backoff when idle)`);
+
+    // Attempt BullMQ for instant triggering when a job is added (speed layer)
+    await initEmailQueueWorker();
+    log(`✅ Email queue: BullMQ event-driven layer initialized (fallback to poller if Redis unavailable)`);
+
+    // Start reply detection polling — every 3 minutes (email is not real-time)
     const { replyDetectionService } = await import("./services/reply-detection.service");
-    replyDetectionService.startPolling(20); // Check every 20 seconds
+    replyDetectionService.startPolling(180); // Check every 3 minutes
     
     // Start sequence executor for follow-up emails
     log(`⏰ Starting sequence executor...`);

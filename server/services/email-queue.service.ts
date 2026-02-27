@@ -352,6 +352,16 @@ export class EmailQueueService {
         .returning();
 
       console.log(`📬 Added email to queue: ${queueItem.id} for user ${queueData.userId} using mailbox ${mailbox.email} (scheduled for ${queueData.scheduledFor})`);
+
+      // Signal event-driven layer: trigger BullMQ worker and reset adaptive poller backoff
+      try {
+        const { triggerEmailProcessing } = await import('../queue/email-queue-bullmq');
+        const { emailQueuePoller } = await import('../queue/email-queue-poller');
+        emailQueuePoller.resetBackoff();
+        await triggerEmailProcessing();
+      } catch {
+      }
+
       return { ...queueItem, safeToSendDecision };
     } catch (error) {
       console.error("Failed to add email to queue:", error);
@@ -365,7 +375,7 @@ export class EmailQueueService {
     }
   }
 
-  async processPendingEmails(userId?: string): Promise<void> {
+  async processPendingEmails(userId?: string): Promise<number> {
     const startTime = Date.now();
     let processedCount = 0;
     let failedCount = 0;
@@ -381,9 +391,6 @@ export class EmailQueueService {
       
       if (userId) {
         whereConditions.push(eq(emailQueue.userId, userId));
-        console.log(`📨 Processing pending emails for user ${userId}...`);
-      } else {
-        console.log(`📨 Processing pending emails for ALL users (background job)...`);
       }
       
       // Backpressure: Limit batch size for controlled processing
@@ -396,7 +403,8 @@ export class EmailQueueService {
         .orderBy(emailQueue.priority, emailQueue.scheduledFor)
         .limit(BATCH_LIMIT);
 
-      console.log(`📨 Found ${pendingEmails.length} pending emails`);
+      if (pendingEmails.length === 0) return 0;
+      console.log(`📨 Processing ${pendingEmails.length} pending emails${userId ? ` for user ${userId}` : ' (background job)'}...`);
 
       // Import hardening service for kill switch check
       const { hardeningService } = await import("./hardening.service");
@@ -548,6 +556,7 @@ export class EmailQueueService {
       });
 
       console.log(`📨 Batch complete: processed ${processedCount}, failed ${failedCount}, took ${processingMs}ms`);
+      return processedCount;
     } catch (error) {
       console.error("Failed to process pending emails:", error);
 
@@ -565,6 +574,7 @@ export class EmailQueueService {
           tags: { service: 'email-queue', operation: 'processPendingEmails' }
         });
       }
+      return 0;
     }
   }
 
