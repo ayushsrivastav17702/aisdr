@@ -403,7 +403,13 @@ export class EmailQueueService {
         .orderBy(emailQueue.priority, emailQueue.scheduledFor)
         .limit(BATCH_LIMIT);
 
-      if (pendingEmails.length === 0) return 0;
+      if (pendingEmails.length === 0) {
+        // Still record a heartbeat so the scheduler monitor knows the poller is alive
+        await schedulerMonitoringService.recordHeartbeat("email_queue", {
+          processedCount: 0, failedCount: 0, processingMs: Date.now() - startTime,
+        });
+        return 0;
+      }
       console.log(`📨 Processing ${pendingEmails.length} pending emails${userId ? ` for user ${userId}` : ' (background job)'}...`);
 
       // Import hardening service for kill switch check
