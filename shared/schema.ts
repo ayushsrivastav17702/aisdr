@@ -2621,6 +2621,10 @@ export const tenantSettings = pgTable("tenant_settings", {
   
   // Notes (internal use by super admins)
   internalNotes: text("internal_notes"),
+
+  // Credit control
+  creditPerUser: integer("credit_per_user").default(500),
+  billingCycleStart: date("billing_cycle_start"),
   
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
@@ -4023,6 +4027,56 @@ export type SDRWorkflowProgress = typeof sdrWorkflowProgress.$inferSelect;
 export type InsertSDRWorkflowProgress = typeof sdrWorkflowProgress.$inferInsert;
 
 export const insertSDRWorkflowProgressSchema = createInsertSchema(sdrWorkflowProgress).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+// Credit Logs — tracks every credit deduction per user
+export const creditLogs = pgTable("credit_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  tenantId: varchar("tenant_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  actionType: varchar("action_type", { length: 50 }).notNull(), // email_generation | enrichment
+  creditsDeducted: integer("credits_deducted").notNull(),
+  description: text("description"),
+  prospectId: varchar("prospect_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (table) => ({
+  userIdIdx: index("credit_logs_user_id_idx").on(table.userId),
+  tenantIdIdx: index("credit_logs_tenant_id_idx").on(table.tenantId),
+  createdAtIdx: index("credit_logs_created_at_idx").on(table.createdAt),
+}));
+
+export type CreditLog = typeof creditLogs.$inferSelect;
+export type InsertCreditLog = typeof creditLogs.$inferInsert;
+
+export const insertCreditLogSchema = createInsertSchema(creditLogs).omit({
+  id: true,
+  createdAt: true,
+});
+
+// User Credits — monthly balance per user (reset each billing cycle)
+export const userCredits = pgTable("user_credits", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  tenantId: varchar("tenant_id").notNull().references(() => organizations.id, { onDelete: "cascade" }),
+  creditsAssigned: integer("credits_assigned").notNull().default(500),
+  creditsUsed: integer("credits_used").notNull().default(0),
+  periodStart: date("period_start").notNull(),
+  periodEnd: date("period_end").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  userIdIdx: index("user_credits_user_id_idx").on(table.userId),
+  tenantIdIdx: index("user_credits_tenant_id_idx").on(table.tenantId),
+  userPeriodIdx: index("user_credits_user_period_idx").on(table.userId, table.periodStart),
+}));
+
+export type UserCredit = typeof userCredits.$inferSelect;
+export type InsertUserCredit = typeof userCredits.$inferInsert;
+
+export const insertUserCreditSchema = createInsertSchema(userCredits).omit({
   id: true,
   createdAt: true,
   updatedAt: true,

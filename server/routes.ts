@@ -58,6 +58,8 @@ import { authenticate, forbidManager, blockSuperAdminFromSDR, requireManager } f
 import { emailVolumeConfig, getCapacityReport, getEstimatedTimeForEmails, EMAIL_VOLUME_PRESETS } from "./config/email-volume.config";
 import { analyticsCache } from "./utils/cache";
 import { db } from "./db";
+import { checkCredits, deductCredits, initializeUserCredits } from "./services/credit.service";
+import creditRoutes from "./credit-routes";
 import { emailQueue } from "@shared/schema";
 import { eq, and, or, sql } from "drizzle-orm";
 
@@ -961,7 +963,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const { prospectIds } = enrichmentRequestSchema.parse(req.body);
-      
+
+      // Credit check — 1 credit per prospect enriched
+      const creditCheck = await checkCredits(userId, organizationId, "enrichment");
+      if (!creditCheck.allowed) {
+        return res.status(402).json({
+          error: "INSUFFICIENT_CREDITS",
+          message: creditCheck.message,
+          remaining: creditCheck.remaining,
+          required: creditCheck.required,
+        });
+      }
+      // Check if there are enough credits for all selected prospects
+      if (creditCheck.remaining < prospectIds.length) {
+        return res.status(402).json({
+          error: "INSUFFICIENT_CREDITS",
+          message: `You have ${creditCheck.remaining} credits remaining but selected ${prospectIds.length} prospects to enrich (1 credit each). Please select fewer prospects or wait for your monthly reset.`,
+          remaining: creditCheck.remaining,
+          required: prospectIds.length,
+        });
+      }
+
       // Check if Redis/job queue is available
       const redisEnabled = process.env.REDIS_URL || process.env.UPSTASH_REDIS_REST_URL;
       
@@ -1062,6 +1084,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
               error: error instanceof Error ? error.message : 'Unknown error' 
             });
             failureCount++;
+          }
+        }
+
+        // Deduct credits for each successfully enriched prospect
+        if (successCount > 0) {
+          try {
+            await deductCredits(
+              userId,
+              organizationId,
+              "enrichment",
+              successCount,
+              `Enriched ${successCount} prospect${successCount > 1 ? "s" : ""}`
+            );
+          } catch (creditErr) {
+            console.error("[credits] Failed to deduct enrichment credits:", creditErr);
           }
         }
 
@@ -2052,6 +2089,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Inbox routes (unified reply management)
   app.use("/api/inbox", inboxRouter);
+
+  // Credit control routes
+  app.use(creditRoutes);
 
   // Automation module routes
   registerAutomationRoutes(app);

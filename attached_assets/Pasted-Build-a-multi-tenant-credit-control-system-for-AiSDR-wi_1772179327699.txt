@@ -1,0 +1,127 @@
+Build a multi-tenant credit control system for AiSDR with the following logic:
+
+1. User Hierarchy
+
+Super Admin can create a Tenant (Company)
+
+When creating a tenant, Super Admin sets:
+
+credits_per_user_per_month (example: 500)
+
+Tenant Manager can create Users
+
+Each User automatically gets the same monthly credit limit set at tenant level
+
+Example:
+Tenant credit = 500 per user
+Manager adds 2 users →
+User 1 = 500 credits
+User 2 = 500 credits
+
+2. Credit Consumption Rules
+Actions that DO NOT consume credits:
+
+Uploading prospects manually (CSV or form upload)
+
+Sending emails (SMTP send)
+
+Viewing or editing prospects
+
+Editing templates
+
+Actions that CONSUME credits:
+
+AI-personalized email generation:
+→ 2 credits per email generated
+
+Prospect enrichment via Perplexity or Apollo:
+→ 1 credit per prospect enriched
+
+3. Monthly Reset
+
+Credits reset every month to the tenant-defined limit
+
+No rollover by default (can be configurable later)
+
+4. Blocking Logic
+
+If user has < 2 credits, block AI email generation
+
+If user has < 1 credit, block prospect enrichment
+
+Show clear error message when blocked
+
+5. UI Requirement (Very Important)
+
+On the User Dashboard, always display:
+
+Total credits assigned
+
+Credits used
+
+Credits remaining
+
+Example display:
+“Credits remaining: 245 / 500”
+
+Update this in real-time after every action that consumes credits.
+
+6. Data Model (Required)
+
+Tenant:
+
+credit_per_user
+
+billing_cycle_start
+
+User:
+
+credits_assigned
+
+credits_used
+
+credits_remaining
+
+Credit Log:
+
+user_id
+
+action_type (email_generation / enrichment)
+
+credits_deducted
+
+timestamp
+
+7. Example Flow
+
+Tenant sets:
+500 credits per user
+
+Manager adds 2 users:
+Each user gets 500 credits
+
+User uploads 200 prospects →
+Credits used = 0
+
+User enriches 200 prospects →
+Credits used = 200
+
+User generates 150 AI emails →
+Credits used = 300
+
+Total = 500 credits used
+System blocks further AI or enrichment actions
+UI shows:
+Credits remaining: 0 / 500
+
+8. Goal
+
+This system should:
+
+Enforce fair usage
+
+Protect AI & data costs
+
+Allow easy upsell of credits
+
+Be transparent to users with visible credit balance

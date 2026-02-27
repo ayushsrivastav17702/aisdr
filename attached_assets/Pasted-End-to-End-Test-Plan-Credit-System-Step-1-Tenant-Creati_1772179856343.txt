@@ -1,0 +1,170 @@
+End-to-End Test Plan (Credit System)
+🔹 Step 1: Tenant Creation (Super Admin)
+
+Login as Super Admin
+
+Create a new Tenant
+
+Set:
+
+Credits per user = 500
+
+✅ Expected:
+
+Tenant saved with 500 credits per user
+
+🔹 Step 2: Manager Creation
+
+As Super Admin or Tenant Admin:
+
+Create 1 Manager
+
+✅ Expected:
+
+Manager created successfully
+
+🔹 Step 3: User Creation (by Manager)
+
+Login as Manager
+
+Add 2 Users
+
+✅ Expected:
+
+User 1 → 500 credits
+
+User 2 → 500 credits
+
+No shared pool (each user has own 500)
+
+🔹 Step 4: UI Credit Display (Critical)
+
+Login as User 1
+
+Go to dashboard
+
+✅ Expected:
+
+You see something like:
+
+Credits remaining: 500 / 500
+
+(Also show used = 0)
+
+🔹 Step 5: Upload Prospects (No Credit Usage)
+
+Upload 100 prospects
+
+✅ Expected:
+
+Credits remain: 500
+
+No deduction
+
+🔹 Step 6: Enrich Prospects (Consumes 1 Credit Each)
+
+Enrich 100 prospects using Apollo/Perplexity
+
+✅ Expected:
+
+100 credits deducted
+
+Credits remaining: 400 / 500
+
+🔹 Step 7: Generate AI Emails (Consumes 2 Credits Each)
+
+Generate AI emails for 50 prospects
+
+Calculation:
+
+50 × 2 = 100 credits
+
+✅ Expected:
+
+Credits remaining: 300 / 500
+
+Credit log shows:
+
+50 × email_generation → 100 credits
+
+🔹 Step 8: Sending Emails (No Credit Usage)
+
+Send those 50 emails
+
+✅ Expected:
+
+Credits remain: 300
+
+No change
+
+🔹 Step 9: Blocking Test (Hard Stop)
+
+Keep generating emails until credits drop below 2
+
+✅ Expected:
+
+System blocks:
+
+“Insufficient credits to generate AI email”
+
+Try enriching when credits = 0
+
+✅ Expected:
+
+System blocks enrichment
+
+🔹 Step 10: Cross-User Isolation
+
+Login as User 2
+
+✅ Expected:
+
+User 2 still has 500 credits
+
+User 1’s usage does not affect User 2
+
+🔹 Step 11: Monthly Reset (Simulated)
+
+Ask Replit to:
+
+Temporarily set reset cycle to 1 minute (for test)
+
+Wait for reset.
+
+✅ Expected:
+
+User credits reset back to 500
+
+🔹 Step 12: Audit Log Test
+
+As Admin:
+
+Open credit usage logs
+
+✅ Expected:
+
+You can see:
+
+User ID
+
+Action type
+
+Credits deducted
+
+Timestamp
+
+🧪 If ANY of these fail → implementation is wrong
+
+You should report:
+
+Which step failed
+
+Screenshot
+
+Expected vs actual
+
+📌 What you should now ask Replit
+
+You should send them this exact request:
+
+Please share the test credentials for Super Admin, Manager, and User so I can validate the credit system end-to-end using the following test plan. I want to verify credit assignment, deduction, blocking, and UI display.

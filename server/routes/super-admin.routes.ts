@@ -47,6 +47,10 @@ const provisionTenantSchema = z.object({
   primaryContactName: z.string().max(200).optional().nullable(),
   primaryContactEmail: z.string().email().optional().nullable(),
   primaryContactPhone: z.string().max(50).optional().nullable(),
+  creditPerUser: z.number().int().min(0).max(100000).default(500),
+  maxUsers: z.number().int().min(1).optional(),
+  maxMailboxes: z.number().int().min(1).optional(),
+  maxDailyEmails: z.number().int().min(0).optional(),
 });
 
 const updateStatusSchema = z.object({
@@ -412,6 +416,7 @@ const updateConfigurationSchema = z.object({
   retentionDays: z.number().min(30).optional(),
   customDomainEnabled: z.boolean().optional(),
   whitelabelEnabled: z.boolean().optional(),
+  creditPerUser: z.number().int().min(0).max(100000).optional(),
   customBranding: z.object({
     primaryColor: z.string().optional(),
     logoUrl: z.string().optional(),

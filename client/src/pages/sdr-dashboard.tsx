@@ -32,6 +32,7 @@ import { SendingPreferences } from "@/components/sending-preferences";
 import { ActivityFeed } from "@/components/activity-feed";
 import { Layout } from "@/components/layout";
 import { CopilotPanel, CopilotButton } from "@/components/CopilotPanel";
+import { CreditBalance } from "@/components/CreditBalance";
 import { useState } from "react";
 
 interface EmailActivityStats {
@@ -275,6 +276,8 @@ export default function SDRDashboard() {
           testId="card-reply-rate"
         />
       </div>
+
+      <CreditBalance />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card data-testid="card-quota-snapshot">

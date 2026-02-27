@@ -348,6 +348,10 @@ class SuperAdminService {
       primaryContactName?: string;
       primaryContactEmail?: string;
       primaryContactPhone?: string;
+      creditPerUser?: number;
+      maxUsers?: number;
+      maxMailboxes?: number;
+      maxDailyEmails?: number;
     }
   ): Promise<{ organization: typeof organizations.$inferSelect; manager: typeof users.$inferSelect; settings: TenantSettings; workflowProgress: TenantWorkflowProgress }> {
     const existingSlug = await db
@@ -405,6 +409,9 @@ class SuperAdminService {
     const planLimits = this.getPlanLimits(orgData.plan || 'trial');
     const trialEndsAt = orgData.plan === 'trial' ? new Date(Date.now() + 14 * 24 * 60 * 60 * 1000) : null;
 
+    const today = new Date();
+    const billingCycleStart = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-01`;
+
     const [settings] = await db
       .insert(tenantSettings)
       .values({
@@ -413,6 +420,11 @@ class SuperAdminService {
         tenantStatus: orgData.plan === 'trial' ? 'trial' : 'active',
         trialEndsAt,
         ...planLimits,
+        ...(orgData.maxUsers && { maxUsers: orgData.maxUsers }),
+        ...(orgData.maxMailboxes && { maxMailboxes: orgData.maxMailboxes }),
+        ...(orgData.maxDailyEmails && { maxDailyEmails: orgData.maxDailyEmails }),
+        creditPerUser: orgData.creditPerUser ?? 500,
+        billingCycleStart,
         currentUserCount: 1,
         provisionedBy: superAdminId,
         provisionedAt: new Date(),
@@ -1115,9 +1127,28 @@ class SuperAdminService {
   async updateTenantConfiguration(
     superAdminId: string,
     organizationId: string,
-    config: Partial<Omit<TenantConfiguration, 'id' | 'organizationId' | 'createdAt' | 'updatedAt'>>
+    config: Partial<Omit<TenantConfiguration, 'id' | 'organizationId' | 'createdAt' | 'updatedAt'>> & { creditPerUser?: number; maxUsers?: number; maxProspects?: number; maxSequences?: number; maxMailboxes?: number; maxDailyEmails?: number }
   ): Promise<TenantConfiguration> {
-    // Check if record exists
+    // Extract credit/limits fields that belong in tenantSettings (not tenantConfiguration)
+    const { creditPerUser, maxUsers, maxProspects, maxSequences, maxMailboxes, maxDailyEmails, ...configRest } = config as any;
+
+    // Update tenantSettings if any settings-level fields were passed
+    const settingsUpdate: Record<string, any> = {};
+    if (creditPerUser !== undefined) settingsUpdate.creditPerUser = creditPerUser;
+    if (maxUsers !== undefined) settingsUpdate.maxUsers = maxUsers;
+    if (maxProspects !== undefined) settingsUpdate.maxProspects = maxProspects;
+    if (maxSequences !== undefined) settingsUpdate.maxSequences = maxSequences;
+    if (maxMailboxes !== undefined) settingsUpdate.maxMailboxes = maxMailboxes;
+    if (maxDailyEmails !== undefined) settingsUpdate.maxDailyEmails = maxDailyEmails;
+
+    if (Object.keys(settingsUpdate).length > 0) {
+      await db
+        .update(tenantSettings)
+        .set({ ...settingsUpdate, updatedAt: new Date() })
+        .where(eq(tenantSettings.organizationId, organizationId));
+    }
+
+    // Check if tenantConfiguration record exists
     const [existing] = await db
       .select()
       .from(tenantConfiguration)
@@ -1127,13 +1158,13 @@ class SuperAdminService {
     if (existing) {
       [result] = await db
         .update(tenantConfiguration)
-        .set({ ...config, updatedAt: new Date() })
+        .set({ ...configRest, updatedAt: new Date() })
         .where(eq(tenantConfiguration.organizationId, organizationId))
         .returning();
     } else {
       [result] = await db
         .insert(tenantConfiguration)
-        .values({ organizationId, ...config })
+        .values({ organizationId, ...configRest })
         .returning();
     }
 
