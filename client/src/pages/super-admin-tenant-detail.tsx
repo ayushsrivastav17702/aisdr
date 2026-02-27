@@ -290,6 +290,7 @@ export default function SuperAdminTenantDetail() {
     maxHourlyEmails?: number;
     storageQuotaMb?: number;
     apiRateLimitPerMinute?: number;
+    creditPerUser?: number;
   }>({});
 
   const { data: tenantDetails, isLoading, error } = useQuery<TenantDetails>({
@@ -1123,6 +1124,16 @@ export default function SuperAdminTenantDetail() {
                         value={limitFormData.apiRateLimitPerMinute ?? tenantDetails.configuration?.apiRateLimitPerMinute ?? 60}
                         onChange={(e) => setLimitFormData(prev => ({ ...prev, apiRateLimitPerMinute: parseInt(e.target.value) || 0 }))}
                         data-testid="input-api-rate-limit"
+                      />
+                    </div>
+                    <div>
+                      <Label>Credits / User / Month</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        value={limitFormData.creditPerUser ?? (tenantDetails as any).settings?.creditPerUser ?? 500}
+                        onChange={(e) => setLimitFormData(prev => ({ ...prev, creditPerUser: parseInt(e.target.value) || 0 }))}
+                        data-testid="input-credit-per-user"
                       />
                     </div>
                   </div>

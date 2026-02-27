@@ -11,6 +11,7 @@ import { checkAutomationStatus, throttleOperation, incrementThrottle, trackUsage
 import { sdrWorkflowService, WorkflowBlockedError } from "./services/sdr-workflow.service";
 import { hardeningService } from "./services/hardening.service";
 import { aiTrackingService } from "./services/ai-tracking.service";
+import { checkCredits, deductCredits } from "./services/credit.service";
 
 // Helper to log user activity for audit trail (TC-SDR-AUDIT-01)
 async function logActivity(
@@ -1191,6 +1192,21 @@ router.post("/sequences/ai-generate-email", authenticate, forbidManager, async (
     if (!prospectId || !emailType) {
       return res.status(400).json({ error: "prospectId and emailType are required" });
     }
+
+    // Credit check — 2 credits per AI email generated
+    const userId = req.userContext?.userId;
+    const tenantId = req.userContext?.organizationId;
+    if (userId && tenantId) {
+      const creditCheck = await checkCredits(userId, tenantId, "email_generation");
+      if (!creditCheck.allowed) {
+        return res.status(402).json({
+          error: "INSUFFICIENT_CREDITS",
+          message: creditCheck.message,
+          remaining: creditCheck.remaining,
+          required: creditCheck.required,
+        });
+      }
+    }
     
     // Fetch previous steps from sequence if sequenceId is provided
     let enrichedPreviousEmails = previousEmails || [];
@@ -1222,6 +1238,22 @@ router.post("/sequences/ai-generate-email", authenticate, forbidManager, async (
       previousEmails: enrichedPreviousEmails,
       tone
     });
+
+    // Deduct credits after successful generation
+    if (userId && tenantId) {
+      try {
+        await deductCredits(
+          userId,
+          tenantId,
+          "email_generation",
+          1,
+          `AI email generated for prospect ${prospectId}`,
+          prospectId
+        );
+      } catch (creditErr) {
+        console.error("[credits] Failed to deduct email generation credits:", creditErr);
+      }
+    }
     
     res.json(result);
   } catch (error) {

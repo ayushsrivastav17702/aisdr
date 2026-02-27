@@ -29,6 +29,7 @@ interface TenantFormData {
   maxUsers: number;
   maxMailboxes: number;
   dailySendLimit: number;
+  creditPerUser: number;
   managerEmail: string;
   managerFirstName: string;
   managerLastName: string;
@@ -80,6 +81,7 @@ export default function CreateTenant() {
     maxUsers: 5,
     maxMailboxes: 3,
     dailySendLimit: 500,
+    creditPerUser: 500,
     managerEmail: "",
     managerFirstName: "",
     managerLastName: "",
@@ -97,7 +99,20 @@ export default function CreateTenant() {
     mutationFn: async (data: TenantFormData) => {
       return await superAdminFetch("/api/super-admin/tenants", {
         method: "POST",
-        body: JSON.stringify(data),
+        body: JSON.stringify({
+          name: data.companyName,
+          slug: data.subdomain,
+          industry: data.industry || undefined,
+          companySize: data.companySize || undefined,
+          plan: data.planType,
+          managerEmail: data.managerEmail,
+          managerFirstName: data.managerFirstName || undefined,
+          managerLastName: data.managerLastName || undefined,
+          creditPerUser: data.creditPerUser,
+          maxUsers: data.maxUsers,
+          maxMailboxes: data.maxMailboxes,
+          maxDailyEmails: data.dailySendLimit,
+        }),
       });
     },
     onSuccess: () => {
@@ -303,7 +318,7 @@ export default function CreateTenant() {
                   </Select>
                 </div>
 
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="maxUsers">Max Users</Label>
                     <Input
@@ -335,6 +350,20 @@ export default function CreateTenant() {
                       value={formData.dailySendLimit}
                       onChange={(e) => setFormData({ ...formData, dailySendLimit: parseInt(e.target.value) || 500 })}
                       data-testid="input-daily-limit"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="creditPerUser">
+                      Credits per User / Month
+                      <span className="ml-1 text-xs text-muted-foreground font-normal">(AI actions)</span>
+                    </Label>
+                    <Input
+                      id="creditPerUser"
+                      type="number"
+                      min="0"
+                      value={formData.creditPerUser}
+                      onChange={(e) => setFormData({ ...formData, creditPerUser: parseInt(e.target.value) || 500 })}
+                      data-testid="input-credit-per-user"
                     />
                   </div>
                 </div>
@@ -440,6 +469,10 @@ export default function CreateTenant() {
                   <div className="p-4 bg-muted rounded-lg">
                     <p className="text-sm text-muted-foreground">Max Users</p>
                     <p className="font-medium" data-testid="review-max-users">{formData.maxUsers}</p>
+                  </div>
+                  <div className="p-4 bg-muted rounded-lg">
+                    <p className="text-sm text-muted-foreground">Credits / User / Month</p>
+                    <p className="font-medium" data-testid="review-credit-per-user">{formData.creditPerUser}</p>
                   </div>
                 </div>
 
