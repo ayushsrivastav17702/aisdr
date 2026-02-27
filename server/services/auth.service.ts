@@ -462,17 +462,25 @@ export class AuthService {
     await this.logAuditEvent(user.id, 'invitation_accepted', { invitationId: invitation.id });
 
     // Auto-initialize SDR workflow for user role (prevents WORKFLOW_BLOCKED error)
-    if (user.role === 'user' && (invitation.organizationId || user.organizationId)) {
+    const orgId = invitation.organizationId || user.organizationId;
+    if (user.role === 'user' && orgId) {
       try {
         const { sdrWorkflowService } = await import('./sdr-workflow.service');
-        const orgId = invitation.organizationId || user.organizationId;
-        if (orgId) {
-          await sdrWorkflowService.getOrCreateProgress(user.id, orgId);
-          console.log(`✅ Workflow initialized for SDR user: ${user.email}`);
-        }
+        await sdrWorkflowService.getOrCreateProgress(user.id, orgId);
+        console.log(`✅ Workflow initialized for SDR user: ${user.email}`);
       } catch (workflowError) {
         console.error(`⚠️ Failed to initialize workflow for user ${user.email}:`, workflowError);
-        // Continue - user activation succeeded, workflow can be initialized later
+      }
+    }
+
+    // Auto-initialize credits for all non-super-admin users
+    if (orgId && user.role !== 'super_admin') {
+      try {
+        const { initializeUserCredits } = await import('./credit.service');
+        await initializeUserCredits(user.id, orgId);
+        console.log(`✅ Credits initialized for user: ${user.email}`);
+      } catch (creditError) {
+        console.error(`⚠️ Failed to initialize credits for user ${user.email}:`, creditError);
       }
     }
 

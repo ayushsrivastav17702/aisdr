@@ -176,6 +176,11 @@ function Router() {
           <SDRDashboard />
         </ProtectedRoute>
       </Route>
+      <Route path="/dashboard">
+        <ProtectedRoute requireRole="user">
+          <SDRDashboard />
+        </ProtectedRoute>
+      </Route>
       <Route path="/best-practices">
         <ProtectedRoute requireRole="user">
           <BestPracticesPage />
