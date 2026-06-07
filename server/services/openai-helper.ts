@@ -32,21 +32,26 @@ class OpenAIHelper {
 
     if (process.env.OPENAI_API_KEY_BACKUP) {
       this.backupClient = new OpenAI({ apiKey: process.env.OPENAI_API_KEY_BACKUP });
-      console.log('✅ Backup OpenAI API key configured');
     }
 
     if (process.env.OPEN_ROUTER) {
-      this.openRouterClient = new OpenAI({ 
+      this.openRouterClient = new OpenAI({
         apiKey: process.env.OPEN_ROUTER,
         baseURL: 'https://openrouter.ai/api/v1'
       });
-      console.log('✅ OpenRouter API key configured');
     }
 
     if (process.env.ANTHROPIC_API_KEY) {
       this.anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-      console.log('✅ Anthropic API key configured as fallback');
     }
+
+    const providerCount = [
+      this.primaryClient,
+      this.backupClient,
+      this.openRouterClient,
+      this.anthropic,
+    ].filter(Boolean).length;
+    console.log(`[AIService] Initialized with ${providerCount} provider(s)`);
   }
 
   getOpenRouterClient(): OpenAI | null {

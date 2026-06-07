@@ -60,8 +60,8 @@ import { analyticsCache } from "./utils/cache";
 import { db } from "./db";
 import { checkCredits, deductCredits, initializeUserCredits } from "./services/credit.service";
 import creditRoutes from "./credit-routes";
-import { emailQueue } from "@shared/schema";
-import { eq, and, or, sql } from "drizzle-orm";
+import { emailQueue, prospectNotes, users } from "@shared/schema";
+import { eq, and, or, sql, desc } from "drizzle-orm";
 
 const upload = multer({ 
   dest: 'uploads/',
@@ -716,10 +716,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/prospects/all-ids", authenticate, blockSuperAdminFromSDR, async (req, res) => {
     try {
       const allProspects = await storage.getAllProspectIds(req.userContext!);
-      
+      const LIMIT = 10000;
+      const truncated = allProspects.length > LIMIT;
+      const ids = truncated ? allProspects.slice(0, LIMIT) : allProspects;
+
       res.json({
-        prospectIds: allProspects,
-        count: allProspects.length
+        prospectIds: ids,
+        count: ids.length,
+        truncated,
+        message: truncated
+          ? `Results truncated to ${LIMIT}. Use pagination for the full list.`
+          : undefined,
       });
     } catch (error) {
       console.error("Get all prospect IDs error:", error);
@@ -806,6 +813,95 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     }
   });
+
+  // ── Prospect Notes ──────────────────────────────────────────────────────────
+
+  // GET /api/prospects/:id/notes
+  app.get("/api/prospects/:id/notes", authenticate, blockSuperAdminFromSDR, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.userContext?.userId;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      const prospect = await storage.getProspect(req.userContext!, id);
+      if (!prospect) return res.status(404).json({ error: "Prospect not found" });
+
+      const notes = await db
+        .select({
+          id: prospectNotes.id,
+          content: prospectNotes.content,
+          createdAt: prospectNotes.createdAt,
+          authorId: prospectNotes.userId,
+          authorName: sql<string>`COALESCE(${users.firstName} || ' ' || ${users.lastName}, ${users.email})`,
+        })
+        .from(prospectNotes)
+        .leftJoin(users, eq(prospectNotes.userId, users.id))
+        .where(and(eq(prospectNotes.prospectId, id), eq(prospectNotes.userId, userId)))
+        .orderBy(desc(prospectNotes.createdAt));
+
+      res.json({ notes });
+    } catch (error) {
+      console.error("Get prospect notes error:", error);
+      res.status(500).json({ error: "Failed to get notes" });
+    }
+  });
+
+  // POST /api/prospects/:id/notes
+  app.post("/api/prospects/:id/notes", authenticate, forbidManager, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const userId = req.userContext?.userId;
+      const organizationId = req.userContext?.organizationId;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      const prospect = await storage.getProspect(req.userContext!, id);
+      if (!prospect) return res.status(404).json({ error: "Prospect not found" });
+
+      const { content } = req.body;
+      if (!content || typeof content !== "string" || !content.trim()) {
+        return res.status(400).json({ error: "content is required" });
+      }
+
+      const [note] = await db
+        .insert(prospectNotes)
+        .values({ prospectId: id, userId, organizationId: organizationId ?? null, content: content.trim() })
+        .returning();
+
+      res.status(201).json(note);
+    } catch (error) {
+      console.error("Create prospect note error:", error);
+      res.status(500).json({ error: "Failed to create note" });
+    }
+  });
+
+  // DELETE /api/prospects/:id/notes/:noteId
+  app.delete("/api/prospects/:id/notes/:noteId", authenticate, forbidManager, async (req, res) => {
+    try {
+      const { id, noteId } = req.params;
+      const userId = req.userContext?.userId;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+
+      const prospect = await storage.getProspect(req.userContext!, id);
+      if (!prospect) return res.status(404).json({ error: "Prospect not found" });
+
+      const [existing] = await db
+        .select()
+        .from(prospectNotes)
+        .where(and(eq(prospectNotes.id, noteId), eq(prospectNotes.prospectId, id)))
+        .limit(1);
+
+      if (!existing) return res.status(404).json({ error: "Note not found" });
+      if (existing.userId !== userId) return res.status(403).json({ error: "Cannot delete another user's note" });
+
+      await db.delete(prospectNotes).where(eq(prospectNotes.id, noteId));
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete prospect note error:", error);
+      res.status(500).json({ error: "Failed to delete note" });
+    }
+  });
+
+  // ────────────────────────────────────────────────────────────────────────────
 
   // Create prospect (workflow-gated: requires upload stage)
   app.post("/api/prospects", authenticate, forbidManager, async (req, res) => {
@@ -904,11 +1000,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       console.log(`✅ Bulk delete complete: ${result.deleted.toLocaleString()}/${prospectIds.length.toLocaleString()} prospects deleted`);
 
-      res.json({ 
+      res.json({
         success: true,
         deleted: result.deleted,
-        failed: result.failed,
-        total: prospectIds.length
       });
     } catch (error) {
       console.error("Bulk delete prospects error:", error);

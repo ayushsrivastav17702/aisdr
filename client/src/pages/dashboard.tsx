@@ -10,6 +10,7 @@ import { useAuth } from "@/contexts/auth-context";
 import AISearch from "@/components/ai-search";
 import ProspectsTable from "@/components/prospects-table";
 import ImportWizard from "@/components/import-wizard";
+import AddProspectModal from "@/components/add-prospect-modal";
 import JobDrawer from "@/components/job-drawer";
 import { EmailVerificationBanner } from "@/components/email-verification-banner";
 import { Link, useLocation } from "wouter";
@@ -43,6 +44,7 @@ export default function Dashboard() {
   const [selectedProspectIds, setSelectedProspectIds] = useState<string[]>([]);
   const [isImportWizardOpen, setIsImportWizardOpen] = useState(false);
   const [isJobDrawerOpen, setIsJobDrawerOpen] = useState(false);
+  const [isAddProspectOpen, setIsAddProspectOpen] = useState(false);
   const { toast } = useToast();
   const { user, logout } = useAuth();
   const [, setLocation] = useLocation();
@@ -354,6 +356,14 @@ export default function Dashboard() {
             </Button>
             
             <Button
+              variant="outline"
+              onClick={() => setIsAddProspectOpen(true)}
+              data-testid="button-add-prospect"
+            >
+              <PlusIcon className="w-4 h-4 mr-2" />
+              Add Prospect
+            </Button>
+            <Button
               onClick={() => setIsImportWizardOpen(true)}
               data-testid="button-new-import"
             >
@@ -375,8 +385,14 @@ export default function Dashboard() {
         </div>
       </main>
 
+      {/* Add Prospect Modal */}
+      <AddProspectModal
+        open={isAddProspectOpen}
+        onClose={() => setIsAddProspectOpen(false)}
+      />
+
       {/* Import Wizard Modal */}
-      <ImportWizard 
+      <ImportWizard
         open={isImportWizardOpen}
         onClose={() => setIsImportWizardOpen(false)}
       />

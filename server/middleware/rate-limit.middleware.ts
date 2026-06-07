@@ -11,25 +11,76 @@ interface RateLimitEntry {
   resetTime: number;
 }
 
+class RateLimitStore {
+  private memStore = new Map<string, RateLimitEntry>();
+  private redis: any = null;
+
+  constructor() {
+    // Lazily load Redis connection — avoids circular import at module load time
+    try {
+      const conn = require('../queue/redis-connection');
+      if (conn && conn.redisConnection) {
+        this.redis = conn.redisConnection;
+      }
+    } catch {
+      // Redis not available; fall back to in-memory store
+    }
+  }
+
+  async get(key: string): Promise<RateLimitEntry | null> {
+    if (this.redis) {
+      try {
+        const val = await this.redis.get(`rl:${key}`);
+        return val ? JSON.parse(val) : null;
+      } catch {
+        // Fall through to memory store
+      }
+    }
+    return this.memStore.get(key) ?? null;
+  }
+
+  async set(key: string, entry: RateLimitEntry, ttlSeconds: number): Promise<void> {
+    if (this.redis) {
+      try {
+        await this.redis.setex(`rl:${key}`, ttlSeconds, JSON.stringify(entry));
+        return;
+      } catch {
+        // Fall through to memory store
+      }
+    }
+    this.memStore.set(key, entry);
+  }
+
+  cleanupMemExpired() {
+    const now = Date.now();
+    for (const [key, entry] of this.memStore.entries()) {
+      if (now > entry.resetTime) {
+        this.memStore.delete(key);
+      }
+    }
+  }
+
+  clear() {
+    this.memStore.clear();
+  }
+}
+
 class RateLimiter {
-  private store = new Map<string, RateLimitEntry>();
+  private store = new RateLimitStore();
 
   createMiddleware(config: RateLimitConfig) {
     const { windowMs, maxRequests, message = 'Too many requests, please try again later' } = config;
 
-    return (req: Request, res: Response, next: NextFunction) => {
+    return async (req: Request, res: Response, next: NextFunction) => {
       const identifier = this.getIdentifier(req);
       const now = Date.now();
-      const entry = this.store.get(identifier);
+      const entry = await this.store.get(identifier);
 
       if (!entry || now > entry.resetTime) {
         const resetTime = now + windowMs;
-        this.store.set(identifier, {
-          count: 1,
-          resetTime,
-        });
-        this.cleanupExpiredEntries();
-        
+        await this.store.set(identifier, { count: 1, resetTime }, Math.ceil(windowMs / 1000));
+        this.store.cleanupMemExpired();
+
         res.setHeader('X-RateLimit-Limit', maxRequests.toString());
         res.setHeader('X-RateLimit-Remaining', (maxRequests - 1).toString());
         res.setHeader('X-RateLimit-Reset', new Date(resetTime).toISOString());
@@ -42,13 +93,14 @@ class RateLimiter {
         res.setHeader('X-RateLimit-Limit', maxRequests.toString());
         res.setHeader('X-RateLimit-Remaining', '0');
         res.setHeader('X-RateLimit-Reset', new Date(entry.resetTime).toISOString());
-        return res.status(429).json({ 
+        return res.status(429).json({
           error: message,
-          retryAfter 
+          retryAfter
         });
       }
 
       entry.count++;
+      await this.store.set(identifier, entry, Math.ceil((entry.resetTime - now) / 1000));
       res.setHeader('X-RateLimit-Limit', maxRequests.toString());
       res.setHeader('X-RateLimit-Remaining', (maxRequests - entry.count).toString());
       res.setHeader('X-RateLimit-Reset', new Date(entry.resetTime).toISOString());
@@ -56,23 +108,23 @@ class RateLimiter {
     };
   }
 
-  private getIdentifier(req: Request): string {
-    const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0] || 
-               req.socket.remoteAddress || 
-               'unknown';
-    const userId = req.user?.id || '';
-    return `${ip}:${userId}`;
-  }
-
-  private cleanupExpiredEntries() {
-    const now = Date.now();
-    const entries = Array.from(this.store.entries());
-    
-    for (const [key, entry] of entries) {
-      if (now > entry.resetTime) {
-        this.store.delete(key);
+  private getClientIp(req: Request): string {
+    // Only trust X-Forwarded-For if a trusted proxy is configured.
+    // Without this guard, attackers can spoof the header to bypass rate limits.
+    if (process.env.TRUSTED_PROXY) {
+      const forwarded = req.headers['x-forwarded-for'];
+      if (forwarded) {
+        const ips = String(forwarded).split(',');
+        return ips[0].trim();
       }
     }
+    return req.socket.remoteAddress || '0.0.0.0';
+  }
+
+  private getIdentifier(req: Request): string {
+    const ip = this.getClientIp(req);
+    const userId = req.user?.id || '';
+    return `${ip}:${userId}`;
   }
 
   reset() {

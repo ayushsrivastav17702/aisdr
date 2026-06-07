@@ -11,7 +11,7 @@ export const jobStatusEnum = pgEnum("job_status", ["queued", "running", "complet
 export const jobTypeEnum = pgEnum("job_type", ["enrichment", "import", "search"]);
 export const mailboxStatusEnum = pgEnum("mailbox_status", ["active", "paused", "error", "warming"]);
 export const mailboxProviderEnum = pgEnum("mailbox_provider", ["gmail", "outlook", "smtp", "sendgrid"]);
-export const emailQueueStatusEnum = pgEnum("email_queue_status", ["pending", "generating", "approved", "sending", "sent", "failed", "scheduled", "cancelled", "preview", "retrying"]);
+export const emailQueueStatusEnum = pgEnum("email_queue_status", ["pending", "generating", "approved", "sending", "sent", "failed", "scheduled", "cancelled", "preview", "retrying", "paused_failed", "simulated"]);
 export const emailSendStatusEnum = pgEnum("email_send_status", ["success", "failed", "bounced"]);
 
 // Prospects table
@@ -935,7 +935,7 @@ export const insertEmailQueueSchema = createInsertSchema(emailQueue).omit({
 export const userStatusEnum = pgEnum("user_status", ["active", "inactive", "suspended", "invited", "pending"]);
 
 // User role enum - extended with manager and read-only roles
-export const userRoleEnum = pgEnum("user_role", ["admin", "manager", "user", "read_only"]);
+export const userRoleEnum = pgEnum("user_role", ["admin", "manager", "user", "read_only", "super_admin"]);
 
 // Auth provider enum for passwordless login
 export const authProviderEnum = pgEnum("auth_provider", ["google", "microsoft", "magic", "password"]);
@@ -988,6 +988,7 @@ export const userSessions = pgTable("user_sessions", {
   isActive: boolean("is_active").notNull().default(true),
   rememberMe: boolean("remember_me").default(false),
   expiresAt: timestamp("expires_at").notNull(),
+  expiredAt: timestamp("expired_at"),
   lastActivity: timestamp("last_activity").notNull().defaultNow(),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
@@ -4090,3 +4091,27 @@ export type MailboxReadinessFlags = {
   lastCheckedAt?: string;
   errors?: string[];
 };
+
+// ─── Prospect Notes ───────────────────────────────────────────────────────────
+
+export const prospectNotes = pgTable("prospect_notes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  prospectId: varchar("prospect_id").notNull().references(() => prospects.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull(),        // author
+  organizationId: varchar("organization_id"),  // tenant scope
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (table) => ({
+  prospectIdIdx: index("prospect_notes_prospect_id_idx").on(table.prospectId),
+  userIdIdx: index("prospect_notes_user_id_idx").on(table.userId),
+}));
+
+export type ProspectNote = typeof prospectNotes.$inferSelect;
+export type InsertProspectNote = typeof prospectNotes.$inferInsert;
+
+export const insertProspectNoteSchema = createInsertSchema(prospectNotes).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});

@@ -3,7 +3,7 @@ import { storage, type RequestContext } from "./storage";
 import { generatePersonalizedEmail, type LinkedInData } from "./services/personalization.service";
 import { emailQueueService } from "./services/email-queue.service";
 import { db } from "./db";
-import { sequenceProspects, emailReplies, emailQueue, emails, prospects, personalizationResults, userActivityLogs, leadEvents, sequenceSteps } from "@shared/schema";
+import { sequenceProspects, emailReplies, emailQueue, emails, prospects, personalizationResults, userActivityLogs, leadEvents, sequenceSteps, sequences } from "@shared/schema";
 import { eq, and, sql, desc, inArray } from "drizzle-orm";
 import { z } from "zod";
 import { authenticate, forbidManager, blockSuperAdminFromSDR } from "./middleware/auth.middleware";
@@ -285,7 +285,7 @@ router.post("/sequences", authenticate, forbidManager, async (req, res) => {
     await logActivity(userId, "sequence.create", "sequence", sequence.id, { name, type: type || "outbound" });
 
     // Try to advance workflow stage after sequence creation
-    await sdrWorkflowService.tryAutoAdvance(userId);
+    try { await sdrWorkflowService.tryAutoAdvance(userId); } catch (err) { console.error('[Sequences] Workflow auto-advance failed:', err); }
     
     res.json(sequence);
   } catch (error) {
@@ -392,7 +392,7 @@ router.post("/sequences/generate-with-ai", authenticate, forbidManager, async (r
     });
 
     // Try to advance workflow stage after sequence creation
-    await sdrWorkflowService.tryAutoAdvance(userId);
+    try { await sdrWorkflowService.tryAutoAdvance(userId); } catch (err) { console.error('[Sequences] Workflow auto-advance failed:', err); }
     
     res.json({ sequence, steps: generatedSequence.steps });
   } catch (error) {
@@ -578,7 +578,7 @@ router.post("/sequences/from-template", authenticate, forbidManager, async (req,
     console.log(`✅ Created sequence from template "${template.name}" with ${template.steps.length} steps`);
 
     // Try to advance workflow stage after sequence creation
-    await sdrWorkflowService.tryAutoAdvance(userId);
+    try { await sdrWorkflowService.tryAutoAdvance(userId); } catch (err) { console.error('[Sequences] Workflow auto-advance failed:', err); }
     
     res.json({ 
       sequenceId: sequence.id, 
@@ -653,7 +653,7 @@ router.put("/sequences/:id", authenticate, forbidManager, async (req, res) => {
     if (req.body.status === "active") {
       await initializeSequence(req.userContext!, req.params.id);
       await hardeningService.recordSequenceStatusChange(req.params.id, "active");
-      await sdrWorkflowService.tryAutoAdvance(userId);
+      try { await sdrWorkflowService.tryAutoAdvance(userId); } catch (err) { console.error('[Sequences] Workflow auto-advance failed:', err); }
     } else if (req.body.status && req.body.status !== "active") {
       // Record any status change for rate limiting
       await hardeningService.recordSequenceStatusChange(req.params.id, req.body.status);
@@ -728,7 +728,7 @@ router.patch("/sequences/:id", authenticate, forbidManager, async (req, res) => 
     if (req.body.status === "active") {
       await initializeSequence(req.userContext!, req.params.id);
       await hardeningService.recordSequenceStatusChange(req.params.id, "active");
-      await sdrWorkflowService.tryAutoAdvance(userId);
+      try { await sdrWorkflowService.tryAutoAdvance(userId); } catch (err) { console.error('[Sequences] Workflow auto-advance failed:', err); }
       // Log activity for audit trail (TC-SDR-AUDIT-01)
       await logActivity(userId, "sequence.activate", "sequence", req.params.id, { name: sequence?.name });
     } else if (req.body.status === "paused") {
@@ -896,6 +896,58 @@ router.get("/sequences/:id/prospects", authenticate, blockSuperAdminFromSDR, asy
   }
 });
 
+// Get all sequences a specific prospect is enrolled in, with progress info
+router.get("/prospects/:prospectId/sequence-progress", authenticate, blockSuperAdminFromSDR, async (req, res) => {
+  try {
+    const { prospectId } = req.params;
+    const userId = req.userContext?.userId;
+
+    if (!userId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    // Verify the prospect belongs to this user
+    const prospect = await storage.getProspect(req.userContext!, prospectId);
+    if (!prospect) {
+      return res.status(404).json({ error: "Prospect not found" });
+    }
+
+    // Fetch enrollments with joined sequence data
+    const enrollments = await db
+      .select({
+        id: sequenceProspects.id,
+        sequenceId: sequenceProspects.sequenceId,
+        sequenceName: sequences.name,
+        sequenceStatus: sequences.status,
+        enrollmentStatus: sequenceProspects.status,
+        enrolledAt: sequenceProspects.enrolledAt,
+        lastContactedAt: sequenceProspects.lastContactedAt,
+        completedAt: sequenceProspects.completedAt,
+        replies: sequenceProspects.replies,
+        opens: sequenceProspects.opens,
+        clicks: sequenceProspects.clicks,
+        currentStepId: sequenceProspects.currentStepId,
+        totalSteps: sql<number>`(
+          SELECT COUNT(*) FROM sequence_steps
+          WHERE sequence_steps.sequence_id = ${sequenceProspects.sequenceId}
+        )`.mapWith(Number),
+        currentStepNumber: sql<number>`COALESCE((
+          SELECT step_order FROM sequence_steps
+          WHERE sequence_steps.id = ${sequenceProspects.currentStepId}
+        ), 0)`.mapWith(Number),
+      })
+      .from(sequenceProspects)
+      .innerJoin(sequences, eq(sequenceProspects.sequenceId, sequences.id))
+      .where(eq(sequenceProspects.prospectId, prospectId))
+      .orderBy(desc(sequenceProspects.enrolledAt));
+
+    res.json({ enrollments });
+  } catch (error) {
+    console.error("Error fetching prospect sequence progress:", error);
+    res.status(500).json({ error: "Failed to fetch sequence progress" });
+  }
+});
+
 // Add prospects to sequence (with throttling, automation check, and workflow gate) - workflow-gated
 router.post("/sequences/:id/prospects", authenticate, forbidManager, checkUserPause, checkEnrollmentConcurrency, checkAutomationStatus, throttleOperation('enrollments'), async (req, res) => {
   try {
@@ -1008,7 +1060,7 @@ router.post("/sequences/:id/prospects", authenticate, forbidManager, checkUserPa
 
     // Try to advance workflow stage after successful enrollment
     if (enrolled.length > 0) {
-      await sdrWorkflowService.tryAutoAdvance(userId);
+      try { await sdrWorkflowService.tryAutoAdvance(userId); } catch (err) { console.error('[Sequences] Workflow auto-advance failed:', err); }
       // Log activity for audit trail (TC-SDR-AUDIT-01)
       await logActivity(userId, "prospect.enroll", "sequence", sequenceId, { 
         count: enrolled.length, 
@@ -1386,7 +1438,7 @@ router.post("/sequences/analyze-response", authenticate, forbidManager, async (r
     });
 
     // Try to advance workflow stage after reply analysis
-    await sdrWorkflowService.tryAutoAdvance(userId);
+    try { await sdrWorkflowService.tryAutoAdvance(userId); } catch (err) { console.error('[Sequences] Workflow auto-advance failed:', err); }
     
     res.json(analysis);
   } catch (error) {
@@ -1506,7 +1558,7 @@ router.post("/sequences/followup-preview", authenticate, forbidManager, async (r
     });
 
     // Try to advance workflow stage after preview generation
-    await sdrWorkflowService.tryAutoAdvance(userId);
+    try { await sdrWorkflowService.tryAutoAdvance(userId); } catch (err) { console.error('[Sequences] Workflow auto-advance failed:', err); }
     
     res.json(preview);
   } catch (error) {
@@ -1755,7 +1807,7 @@ router.post("/sequences/send-reply", authenticate, forbidManager, async (req, re
     });
 
     // Try to advance workflow stage after sending
-    await sdrWorkflowService.tryAutoAdvance(userId);
+    try { await sdrWorkflowService.tryAutoAdvance(userId); } catch (err) { console.error('[Sequences] Workflow auto-advance failed:', err); }
     
     res.json({ 
       success: true, 

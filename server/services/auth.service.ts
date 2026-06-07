@@ -234,7 +234,8 @@ export class AuthService {
         and(
           eq(userSessions.id, decoded.sessionId),
           eq(userSessions.userId, decoded.userId),
-          gt(userSessions.expiresAt, new Date())
+          gt(userSessions.expiresAt, new Date()),
+          isNull(userSessions.expiredAt)
         )
       )
       .limit(1);
@@ -246,7 +247,10 @@ export class AuthService {
     if (checkIdleTimeout) {
       const idleTime = Date.now() - new Date(session.lastActivity).getTime();
       if (idleTime > SESSION_IDLE_TIMEOUT) {
-        await db.delete(userSessions).where(eq(userSessions.id, session.id));
+        // Mark as expired rather than deleting immediately to avoid killing concurrent requests
+        await db.update(userSessions)
+          .set({ expiredAt: new Date() })
+          .where(eq(userSessions.id, session.id));
         return null;
       }
     }
@@ -301,7 +305,8 @@ export class AuthService {
         and(
           eq(userSessions.id, decoded.sessionId),
           eq(userSessions.userId, decoded.userId),
-          gt(userSessions.expiresAt, new Date())
+          gt(userSessions.expiresAt, new Date()),
+          isNull(userSessions.expiredAt)
         )
       )
       .limit(1);
@@ -312,7 +317,9 @@ export class AuthService {
 
     const idleTime = Date.now() - new Date(session.lastActivity).getTime();
     if (idleTime > SESSION_IDLE_TIMEOUT) {
-      await db.delete(userSessions).where(eq(userSessions.id, session.id));
+      await db.update(userSessions)
+        .set({ expiredAt: new Date() })
+        .where(eq(userSessions.id, session.id));
       return null;
     }
 

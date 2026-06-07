@@ -3,8 +3,8 @@ import { z } from "zod";
 import { authenticate, forbidManager } from "../middleware/auth.middleware";
 import { storage } from "../storage";
 import { db } from "../db";
-import { sequences } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { sequences, emailMailboxes } from "@shared/schema";
+import { eq, and, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
 
 const router = Router();
@@ -38,6 +38,24 @@ function validationMiddleware(schema: z.ZodSchema) {
   };
 }
 
+// GET /api/campaigns — list all campaigns (sequences) for the authenticated user
+router.get("/", authenticate, async (req, res) => {
+  try {
+    if (!req.userContext) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+    const { userId } = req.userContext;
+    const campaigns = await db
+      .select()
+      .from(sequences)
+      .where(eq(sequences.userId, userId));
+    return res.json(campaigns);
+  } catch (error) {
+    console.error("List campaigns error:", error);
+    return res.status(500).json({ error: "Failed to list campaigns" });
+  }
+});
+
 router.post("/", validationMiddleware(campaignSchema), authenticate, forbidManager, async (req, res) => {
   try {
     if (!req.userContext) {
@@ -45,6 +63,17 @@ router.post("/", validationMiddleware(campaignSchema), authenticate, forbidManag
     }
 
     const { name, description, status } = req.body;
+
+    const existing = await db
+      .select({ id: sequences.id })
+      .from(sequences)
+      .where(and(eq(sequences.userId, req.userContext.userId), eq(sequences.name, name)))
+      .limit(1);
+    if (existing.length) {
+      return res.status(409).json({
+        error: `A campaign named "${name}" already exists. Please choose a different name.`,
+      });
+    }
 
     const sequenceId = nanoid();
     await db.insert(sequences).values({
@@ -142,25 +171,33 @@ router.post("/:id/launch", authenticate, forbidManager, async (req, res) => {
     }
 
     const missingSteps: string[] = [];
-    
-    const sequenceIcpId = (sequence as any).icpId;
-    if (!sequenceIcpId) {
-      missingSteps.push("ICP selection required");
-    }
 
     const steps = await storage.getSequenceSteps(req.userContext, req.params.id);
     if (steps.length === 0) {
       missingSteps.push("At least one sequence step required");
     }
 
-    const mailboxes = (await (storage as any).getMailboxes?.(req.userContext)) || [];
+    const mailboxes = await db
+      .select({ id: emailMailboxes.id })
+      .from(emailMailboxes)
+      .where(
+        and(
+          eq(emailMailboxes.userId, req.userContext.userId),
+          eq(emailMailboxes.status, 'active')
+        )
+      )
+      .limit(1);
     if (mailboxes.length === 0) {
-      missingSteps.push("No mailbox configured");
+      missingSteps.push("No active mailbox connected");
     }
 
     if (missingSteps.length > 0) {
+      const hasMailboxIssue = missingSteps.some(s => s.toLowerCase().includes("mailbox"));
+      const onlyMailbox = missingSteps.every(s => s.toLowerCase().includes("mailbox"));
       return res.status(400).json({
-        error: "Cannot launch campaign: " + missingSteps.join(", "),
+        error: onlyMailbox
+          ? "No active mailbox connected. Please connect a mailbox before launching."
+          : "Cannot launch campaign: " + missingSteps.join(", "),
         missingSteps,
         launched: false,
         status: sequence.status,

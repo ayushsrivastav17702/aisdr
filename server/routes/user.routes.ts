@@ -91,6 +91,29 @@ router.get('/api/users', authenticate, requireAdmin, async (req, res) => {
   }
 });
 
+// GET /api/user/me — returns the currently authenticated user's profile
+router.get('/api/user/me', authenticate, async (req, res) => {
+  if (!req.user) {
+    return res.status(401).json({ error: 'Not authenticated' });
+  }
+  const [user] = await db
+    .select({
+      id: users.id,
+      email: users.email,
+      firstName: users.firstName,
+      lastName: users.lastName,
+      role: users.role,
+      organizationId: users.organizationId,
+      status: users.status,
+    })
+    .from(users)
+    .where(eq(users.id, req.user.id));
+  if (!user) {
+    return res.status(404).json({ error: 'User not found' });
+  }
+  return res.json(user);
+});
+
 router.get('/api/users/:id', authenticate, async (req, res) => {
   try {
     if (!req.user) {

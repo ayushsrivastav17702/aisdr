@@ -1,10 +1,15 @@
 import { defineConfig } from "vitest/config";
 import path from "path";
+import { config } from "dotenv";
+
+// Load test environment variables before any test file imports server code
+config({ path: path.resolve(__dirname, ".env.test") });
 
 export default defineConfig({
   test: {
     globals: true,
     environment: "node",
+    globalSetup: ["./tests/fixtures/global-setup.ts"],
     setupFiles: ["./tests/fixtures/setup.ts"],
     testTimeout: 30000,
     hookTimeout: 30000,

@@ -11,6 +11,7 @@ import { OnboardingWizard } from "@/components/onboarding-wizard";
 import { OnboardingTooltips } from "@/components/onboarding-tooltips";
 import { CookieConsent } from "@/components/CookieConsent";
 import Dashboard from "@/pages/dashboard";
+import ProspectDetail from "@/pages/prospect-detail";
 import Sequences from "@/pages/sequences";
 import Mailboxes from "@/pages/mailboxes";
 import ContentManagement from "@/pages/content-management";
@@ -109,6 +110,11 @@ function Router() {
       <Route path="/ai-search">
         <ProtectedRoute requireRole="user">
           <Dashboard />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/prospects/:id">
+        <ProtectedRoute requireRole="user">
+          <ProspectDetail />
         </ProtectedRoute>
       </Route>
       <Route path="/prospects">

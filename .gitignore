@@ -4,3 +4,6 @@ dist
 server/public
 vite.config.ts.*
 *.tar.gzattached_assets/*.csv
+
+# Test environment secrets
+tests/.env.test

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -28,8 +28,17 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Card, CardContent } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { api, type ProspectsResponse } from "@/lib/api";
+import { apiRequest } from "@/lib/queryClient";
 import { 
   EyeIcon,
   SparklesIcon,
@@ -72,6 +81,10 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
   const [personalizationOpen, setPersonalizationOpen] = useState(false);
   const [selectedProspect, setSelectedProspect] = useState<any>(null);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [enrollSequenceOpen, setEnrollSequenceOpen] = useState(false);
+  const [selectedSequenceId, setSelectedSequenceId] = useState<string>("");
+  const [sheetEnrollOpen, setSheetEnrollOpen] = useState(false);
+  const [sheetSelectedSequenceId, setSheetSelectedSequenceId] = useState<string>("");
   
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -341,6 +354,58 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
       });
     },
   });
+
+  const { data: sequencesData } = useQuery<{ sequences: any[] }>({
+    queryKey: ["/api/sequences"],
+    enabled: enrollSequenceOpen,
+  });
+
+  const enrollInSequenceMutation = useMutation({
+    mutationFn: ({ sequenceId, prospectIds }: { sequenceId: string; prospectIds: string[] }) =>
+      apiRequest("POST", `/api/sequences/${sequenceId}/prospects`, { prospectIds }),
+    onSuccess: () => {
+      const seq = sequencesData?.sequences?.find((s: any) => s.id === selectedSequenceId);
+      toast({ title: "Enrolled", description: `${selectedIds.length} prospect(s) enrolled in ${seq?.name || "sequence"}.` });
+      setEnrollSequenceOpen(false);
+      setSelectedSequenceId("");
+      onSelectionChange([]);
+    },
+    onError: (err: any) => {
+      toast({ variant: "destructive", title: "Enrollment failed", description: err?.message || "An error occurred." });
+    },
+  });
+
+  const handleEnrollInSequence = () => {
+    if (!selectedSequenceId) {
+      toast({ variant: "destructive", title: "Select a sequence", description: "Please pick a sequence first." });
+      return;
+    }
+    enrollInSequenceMutation.mutate({ sequenceId: selectedSequenceId, prospectIds: selectedIds });
+  };
+
+  const { data: sheetSequencesData } = useQuery<{ sequences: any[] }>({
+    queryKey: ["/api/sequences"],
+    enabled: sheetEnrollOpen,
+  });
+
+  const sheetEnrollMutation = useMutation({
+    mutationFn: ({ sequenceId, prospectId }: { sequenceId: string; prospectId: string }) =>
+      apiRequest("POST", `/api/sequences/${sequenceId}/prospects`, { prospectIds: [prospectId] }),
+    onSuccess: () => {
+      const seq = sheetSequencesData?.sequences?.find((s: any) => s.id === sheetSelectedSequenceId);
+      toast({ title: "Enrolled", description: `Enrolled in ${seq?.name || "sequence"}.` });
+      setSheetEnrollOpen(false);
+      setSheetSelectedSequenceId("");
+    },
+    onError: (err: any) => {
+      toast({ variant: "destructive", title: "Failed to enroll", description: err?.message || "An error occurred." });
+    },
+  });
+
+  const handleSheetEnroll = () => {
+    if (!sheetSelectedSequenceId || !selectedProspect) return;
+    sheetEnrollMutation.mutate({ sequenceId: sheetSelectedSequenceId, prospectId: selectedProspect.id });
+  };
 
   const [selectingAll, setSelectingAll] = useState(false);
 
@@ -756,7 +821,7 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
                   <SparklesIcon className="w-4 h-4 mr-2" />
                   {enrichMutation.isPending ? "Enriching..." : "Enrich Selected"}
                 </Button>
-                <Button 
+                <Button
                   size="sm"
                   onClick={() => setPersonalizationOpen(true)}
                   data-testid="button-ai-personalization"
@@ -764,6 +829,15 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
                 >
                   <WandIcon className="w-4 h-4 mr-2" />
                   AI Personalization
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setEnrollSequenceOpen(true)}
+                  data-testid="button-add-to-sequence"
+                >
+                  <MailIcon className="w-4 h-4 mr-2" />
+                  Add to Sequence
                 </Button>
               </div>
             </div>
@@ -883,9 +957,11 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
                             {getInitials(prospect.firstName, prospect.lastName)}
                           </div>
                           <div>
-                            <p className="text-sm font-medium" data-testid={`prospect-name-${prospect.id}`}>
-                              {prospect.fullName || `${prospect.firstName || ""} ${prospect.lastName || ""}`.trim() || "Unknown"}
-                            </p>
+                            <Link href={`/prospects/${prospect.id}`}>
+                              <span className="text-sm font-medium cursor-pointer hover:text-primary hover:underline" data-testid={`prospect-name-${prospect.id}`}>
+                                {prospect.fullName || `${prospect.firstName || ""} ${prospect.lastName || ""}`.trim() || "Unknown"}
+                              </span>
+                            </Link>
                             <p className={`text-xs ${prospect.primaryEmail ? 'text-muted-foreground' : 'text-orange-500'}`} data-testid={`prospect-email-${prospect.id}`}>
                               {prospect.primaryEmail || (
                                 prospect.enrichmentData?.emailStatus === 'not_unlocked' 
@@ -1092,6 +1168,12 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
           
           {selectedProspect && (
             <div className="mt-6 space-y-6">
+              {/* Link to full profile page */}
+              <Link href={`/prospects/${selectedProspect.id}`}>
+                <Button variant="outline" size="sm" className="w-full" data-testid="button-view-full-profile">
+                  View full profile →
+                </Button>
+              </Link>
               {/* Header with avatar */}
               <div className="flex items-center gap-4">
                 <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary to-accent flex items-center justify-center text-white font-medium text-xl" data-testid="prospect-avatar">
@@ -1231,33 +1313,132 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
               <Separator />
 
               {/* Actions */}
-              <div className="flex gap-2">
-                <Button 
-                  className="flex-1"
-                  onClick={() => {
-                    enrichMutation.mutate([selectedProspect.id]);
-                    setDetailOpen(false);
-                  }}
-                  disabled={enrichMutation.isPending}
-                  data-testid="button-enrich-prospect-detail"
+              <div className="flex flex-col gap-2">
+                <Button
+                  className="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+                  onClick={() => setSheetEnrollOpen(true)}
+                  data-testid="button-sheet-add-to-sequence"
                 >
-                  <SparklesIcon className="w-4 h-4 mr-2" />
-                  Enrich Prospect
+                  <MailIcon className="w-4 h-4 mr-2" />
+                  Add to Sequence
                 </Button>
-                <Button 
-                  variant="outline"
-                  onClick={() => {
-                    setDetailOpen(false);
-                  }}
-                  data-testid="button-close-detail"
-                >
-                  Close
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    className="flex-1"
+                    variant="outline"
+                    onClick={() => {
+                      enrichMutation.mutate([selectedProspect.id]);
+                      setDetailOpen(false);
+                    }}
+                    disabled={enrichMutation.isPending}
+                    data-testid="button-enrich-prospect-detail"
+                  >
+                    <SparklesIcon className="w-4 h-4 mr-2" />
+                    Enrich Prospect
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => setDetailOpen(false)}
+                    data-testid="button-close-detail"
+                  >
+                    Close
+                  </Button>
+                </div>
               </div>
             </div>
           )}
         </SheetContent>
       </Sheet>
+
+      {/* Enroll in Sequence Dialog */}
+      <Dialog open={enrollSequenceOpen} onOpenChange={(o) => !o && setEnrollSequenceOpen(false)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add to Sequence</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-muted-foreground">
+              Enroll {selectedIds.length} selected prospect{selectedIds.length !== 1 ? "s" : ""} into a sequence.
+            </p>
+            <div className="space-y-2">
+              <Label htmlFor="sequence-select">Sequence</Label>
+              <Select value={selectedSequenceId} onValueChange={setSelectedSequenceId}>
+                <SelectTrigger id="sequence-select" data-testid="select-sequence">
+                  <SelectValue placeholder="Select a sequence..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {sequencesData?.sequences?.map((seq: any) => (
+                    <SelectItem key={seq.id} value={seq.id}>
+                      {seq.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEnrollSequenceOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleEnrollInSequence}
+              disabled={!selectedSequenceId || enrollInSequenceMutation.isPending}
+              data-testid="button-confirm-enroll"
+            >
+              {enrollInSequenceMutation.isPending ? "Enrolling..." : `Enroll ${selectedIds.length}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Sheet: Enroll single prospect in sequence */}
+      <Dialog open={sheetEnrollOpen} onOpenChange={(o) => { if (!o) { setSheetEnrollOpen(false); setSheetSelectedSequenceId(""); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add to Sequence</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-muted-foreground">
+              Enroll <span className="font-medium">{selectedProspect?.firstName} {selectedProspect?.lastName}</span> into a sequence.
+            </p>
+            <div className="space-y-2">
+              <Label htmlFor="sheet-sequence-select">Sequence</Label>
+              <Select value={sheetSelectedSequenceId} onValueChange={setSheetSelectedSequenceId}>
+                <SelectTrigger id="sheet-sequence-select" data-testid="sheet-select-sequence">
+                  <SelectValue placeholder="Select a sequence..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {sheetSequencesData?.sequences?.map((seq: any) => (
+                    <SelectItem key={seq.id} value={seq.id}>
+                      <span className="flex items-center gap-2">
+                        {seq.name}
+                        <Badge
+                          variant="outline"
+                          className={`text-xs ml-1 ${seq.status === "active" ? "text-green-600 border-green-300" : seq.status === "paused" ? "text-yellow-600 border-yellow-300" : "text-muted-foreground"}`}
+                        >
+                          {seq.status}
+                        </Badge>
+                      </span>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setSheetEnrollOpen(false); setSheetSelectedSequenceId(""); }}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleSheetEnroll}
+              disabled={!sheetSelectedSequenceId || sheetEnrollMutation.isPending}
+              data-testid="button-sheet-confirm-enroll"
+            >
+              {sheetEnrollMutation.isPending ? "Enrolling..." : "Enroll"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

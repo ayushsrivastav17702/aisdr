@@ -575,8 +575,13 @@ export async function generateEmail(request: EmailGenerationRequest, prospectDat
     // Use passed prospect data if available, otherwise fetch from storage
     let prospect: Prospect | null | undefined = prospectData;
     
-    // Create a default context if not provided (for backward compatibility)
-    const reqCtx: RequestContext = ctx || { userId: prospectData?.userId || 'system', roles: [] };
+    if (!ctx && !prospectData?.userId) {
+      throw new Error(
+        '[AIGenerator] Cannot generate email without valid user context. ' +
+        'Caller must provide RequestContext or prospectData.userId.'
+      );
+    }
+    const reqCtx: RequestContext = ctx || { userId: prospectData!.userId, roles: [] };
     
     if (!prospect) {
       prospect = await storage.getProspect(reqCtx, request.prospectId);
@@ -784,9 +789,10 @@ When given an AI Decision Engine recommendation, prioritize its template pattern
     
   } catch (error) {
     console.error('Email generation failed:', error);
-    // Create a system context for fallback retrieval
-    const fallbackCtx: RequestContext = { userId: 'system', roles: [] };
-    const fallbackProspect = await storage.getProspect(fallbackCtx, request.prospectId);
+    // Attempt fallback using the caller-provided context only
+    const fallbackProspect = reqCtx
+      ? await storage.getProspect(reqCtx, request.prospectId).catch(() => null)
+      : null;
     if (fallbackProspect) {
       return generateFallbackEmail(fallbackProspect, request);
     }
@@ -1027,20 +1033,23 @@ export class EmailGenerationService {
     if (now - lastRequest < 60000) {
       throw new Error('Rate limit exceeded. Please wait before generating another email.');
     }
-    
+
+    // Set before the first await to prevent race condition (Node.js is single-threaded
+    // for synchronous code, so no other caller can read the Map between set and await)
+    this.rateLimiter.set(key, now);
+
     const cacheKey = this.generateCacheKey(request);
     if (this.cache.has(cacheKey)) {
       return this.cache.get(cacheKey)!;
     }
-    
+
     let lastError: Error | null = null;
-    
+
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
         const result = await generateEmail(request);
-        
+
         this.cache.set(cacheKey, result);
-        this.rateLimiter.set(key, now);
         
         return result;
         

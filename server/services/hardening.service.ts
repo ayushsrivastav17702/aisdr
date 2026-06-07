@@ -10,6 +10,7 @@ import {
   organizations,
   users,
   userActivityLogs,
+  emailQueue,
   type TenantControl,
   type ThrottleWindow,
   type ManagerQuota,
@@ -600,7 +601,17 @@ class HardeningService {
       })
       .where(eq(userControls.userId, userId))
       .returning();
-    
+
+    // Recover emails that failed solely due to pause (BUG-008)
+    await db.update(emailQueue)
+      .set({
+        status: 'pending',
+        deferralAttempts: 0,
+        scheduledFor: new Date(),
+        lastError: null,
+      })
+      .where(and(eq(emailQueue.userId, userId), eq(emailQueue.status, 'paused_failed')));
+
     return updated || null;
   }
   

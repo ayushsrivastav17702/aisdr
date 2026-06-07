@@ -17,8 +17,17 @@ import { safeToSendService, type SafeToSendDecision } from "./safe-to-send.servi
  * Supports fallback syntax: {{fieldName|fallback text}}
  * Returns both the rendered content and validation info about unresolved fields.
  */
-export function renderMergeFields(content: string, prospect: any): { 
-  rendered: string; 
+function htmlEncode(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
+}
+
+export function renderMergeFields(content: string, prospect: any): {
+  rendered: string;
   unresolvedFields: string[];
   usedFallbacks: string[];
 } {
@@ -88,7 +97,7 @@ export function renderMergeFields(content: string, prospect: any): {
   const getValue = (fieldName: string): string | undefined => {
     for (const key of normalizeKey(fieldName)) {
       if (mergeData[key] && mergeData[key].trim()) {
-        return mergeData[key];
+        return htmlEncode(mergeData[key]);
       }
     }
     return undefined;
@@ -339,7 +348,7 @@ export class EmailQueueService {
         ? `${queueData.sequenceId}:${queueData.stepOrder}:${queueData.prospectId}`
         : null;
 
-      const [queueItem] = await db
+      const insertResult = await db
         .insert(emailQueue)
         .values({
           ...queueData,
@@ -349,7 +358,15 @@ export class EmailQueueService {
           stepOrder: queueData.stepOrder || null,
           idempotencyKey,
         })
+        .onConflictDoNothing()
         .returning();
+
+      if (!insertResult.length) {
+        console.log(`[EmailQueue] Duplicate skipped (idempotency key already exists): ${idempotencyKey}`);
+        return null as any;
+      }
+
+      const queueItem = insertResult[0];
 
       console.log(`📬 Added email to queue: ${queueItem.id} for user ${queueData.userId} using mailbox ${mailbox.email} (scheduled for ${queueData.scheduledFor})`);
 
@@ -359,7 +376,8 @@ export class EmailQueueService {
         const { emailQueuePoller } = await import('../queue/email-queue-poller');
         emailQueuePoller.resetBackoff();
         await triggerEmailProcessing();
-      } catch {
+      } catch (err) {
+        console.error('[EmailQueue] Failed to trigger processing:', err);
       }
 
       return { ...queueItem, safeToSendDecision };
@@ -613,8 +631,8 @@ export class EmailQueueService {
         
         if (currentDeferrals >= maxPauseDeferrals) {
           await db.update(emailQueue)
-            .set({ 
-              status: 'failed',
+            .set({
+              status: 'paused_failed',
               failedAt: new Date(),
               lastError: `Max pause deferrals exceeded (${maxPauseDeferrals}). User still paused at ${pauseLevel} level.`,
             })
@@ -688,13 +706,13 @@ export class EmailQueueService {
         console.log(`🎭 [Demo Mode] Email ${email.id} simulated (not sent) - tenant is in demo mode`);
         
         await db.update(emailQueue)
-          .set({ 
-            status: 'sent',
+          .set({
+            status: 'simulated',
             sentAt: new Date(),
             lastError: 'Demo mode: Email simulated (not actually sent)',
           })
           .where(eq(emailQueue.id, email.id));
-        
+
         return true; // Simulate success without sending
       }
       

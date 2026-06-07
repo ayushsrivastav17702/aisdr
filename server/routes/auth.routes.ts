@@ -200,7 +200,6 @@ router.post('/api/auth/login', loginRateLimit, async (req, res) => {
 
     res.json({
       userType: 'user',
-      token: session.token,
       expiresAt: session.expiresAt,
       userId: session.userId,
       redirectTo,
@@ -335,13 +334,11 @@ router.post('/api/auth/magic-link', loginRateLimit, async (req, res) => {
     const ipAddress = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.ip || 'unknown';
     const userAgent = req.headers['user-agent'];
 
-    const result = await magicLinkService.createMagicLink(email, ipAddress, userAgent);
+    await magicLinkService.createMagicLink(email, ipAddress, userAgent).catch(() => {
+      // Suppress errors — never reveal whether the email exists
+    });
 
-    if (!result.success) {
-      return res.status(401).json({ error: result.message });
-    }
-
-    res.json({ message: result.message });
+    res.json({ message: 'If this email is registered, you will receive a login link shortly.' });
   } catch (error) {
     console.error('Magic link error:', error);
     res.status(500).json({ error: 'Failed to send magic link' });
@@ -377,7 +374,6 @@ router.get('/api/auth/magic/verify', async (req, res) => {
 
     res.json({
       success: true,
-      token: result.sessionToken,
       userId: result.userId,
     });
   } catch (error) {
@@ -610,15 +606,23 @@ router.post('/api/auth/invitations/accept', async (req, res) => {
 
     const session = loginResult as { userId: string; sessionId: string; token: string; expiresAt: Date };
 
-    auditService.logFromRequest(req, 'INVITATION_ACCEPTED', 'auth', { 
-      userId: user.id, 
+    auditService.logFromRequest(req, 'INVITATION_ACCEPTED', 'auth', {
+      userId: user.id,
       email: user.email,
-      role: user.role 
+      role: user.role
+    });
+
+    const isProduction = process.env.NODE_ENV === 'production';
+    res.cookie('auth_token', session.token, {
+      httpOnly: true,
+      secure: isProduction,
+      sameSite: isProduction ? 'strict' : 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+      path: '/',
     });
 
     res.json({
       message: 'Invitation accepted successfully',
-      token: session.token,
       expiresAt: session.expiresAt,
       user: {
         id: user.id,

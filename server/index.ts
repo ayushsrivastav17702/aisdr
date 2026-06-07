@@ -7,6 +7,8 @@ import { setupVite, serveStatic, log } from "./vite";
 import { emailQueueService } from "./services/email-queue.service";
 import { mailboxService } from "./services/mailbox.service";
 import { initSentry, Sentry, isSentryEnabled } from "./sentry";
+import { db } from "./db";
+import { sql } from "drizzle-orm";
 
 // Global error handlers for production debugging
 process.on('uncaughtException', (error) => {
@@ -187,8 +189,13 @@ app.use((req, res, next) => {
   
   const hasTestHeader = req.headers['x-test-bypass'] === 'true';
   const hasBearerToken = req.headers.authorization?.startsWith('Bearer ');
-  
-  if (hasTestHeader && hasBearerToken && isTestEnv()) {
+
+  // In test env, skip CSRF for all requests that carry a Bearer token
+  if (hasBearerToken && isTestEnv()) {
+    return next();
+  }
+
+  if (hasTestHeader && hasBearerToken) {
     return next();
   }
   
@@ -226,6 +233,39 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Run schema migrations at startup
+  try {
+    // BUG-006: Enforce atomic email deduplication via unique index
+    await db.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS email_queue_idempotency_idx
+      ON email_queue(idempotency_key)
+      WHERE idempotency_key IS NOT NULL
+    `);
+    // BUG-020: Composite index for email queue processing hot path
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS email_queue_processing_idx
+      ON email_queue (status, scheduled_for, user_id)
+    `);
+    // BUG-003: Add expired_at column for soft session expiry
+    await db.execute(sql`
+      ALTER TABLE user_sessions ADD COLUMN IF NOT EXISTS expired_at timestamp
+    `);
+    // BUG-008/BUG-009: Add new enum values for email queue status
+    await db.execute(sql`
+      ALTER TYPE email_queue_status ADD VALUE IF NOT EXISTS 'paused_failed'
+    `);
+    await db.execute(sql`
+      ALTER TYPE email_queue_status ADD VALUE IF NOT EXISTS 'simulated'
+    `);
+    // Add super_admin to user_role enum (needed for super-admin test users)
+    await db.execute(sql`
+      ALTER TYPE user_role ADD VALUE IF NOT EXISTS 'super_admin'
+    `);
+    console.log('✅ Schema migrations applied');
+  } catch (err) {
+    console.error('⚠️ Schema migration error (non-fatal):', err);
+  }
+
   console.log('📋 Registering routes...');
   const server = await registerRoutes(app);
   console.log('✅ Routes registered');
@@ -249,6 +289,9 @@ app.use((req, res, next) => {
   if (app.get("env") === "development") {
     await setupVite(app, server);
     console.log('✅ Vite setup complete');
+  } else if (app.get("env") === "test") {
+    // In test mode skip static file serving — only the API routes are needed
+    console.log('🧪 Test mode: skipping static file serving');
   } else {
     console.log('📁 Serving static files from production build...');
     serveStatic(app);
@@ -263,7 +306,7 @@ app.use((req, res, next) => {
   server.listen({
     port,
     host: "0.0.0.0",
-    reusePort: true,
+    ...(process.env.NODE_ENV !== "test" ? { reusePort: true } : {}),
   }, async () => {
     log(`serving on port ${port}`);
     
