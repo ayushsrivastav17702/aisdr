@@ -1,6 +1,26 @@
 import { Resend } from 'resend';
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+// Lazy Resend client — never initialized at module load time so the server
+// starts successfully even when RESEND_API_KEY is absent.
+let _resendClient: Resend | null = null;
+
+function getResendClient(): Resend {
+  const apiKey = process.env.RESEND_API_KEY || '';
+  if (!apiKey) {
+    throw new Error(
+      'RESEND_API_KEY is not configured. ' +
+      'Add it in the super admin vault or environment variables.'
+    );
+  }
+  if (!_resendClient) {
+    _resendClient = new Resend(apiKey);
+  }
+  return _resendClient;
+}
+
+export function refreshResendClient(): void {
+  _resendClient = null; // force re-init on next use (e.g. after vault key update)
+}
 
 // Validate and get the from email address
 // RESEND_FROM_EMAIL must be a valid email, not an API key
@@ -86,7 +106,7 @@ export class EmailService {
     }
 
     try {
-      const response = await resend.emails.send({
+      const response = await getResendClient().emails.send({
         from: this.fromEmail,
         to,
         subject: `You've been invited to join ${this.productName}`,
@@ -103,7 +123,7 @@ export class EmailService {
     const { to, resetUrl, userName } = data;
 
     try {
-      await resend.emails.send({
+      await getResendClient().emails.send({
         from: this.fromEmail,
         to,
         subject: `Reset your ${this.productName} password`,
@@ -119,7 +139,7 @@ export class EmailService {
     const { to, verificationUrl, userName } = data;
 
     try {
-      await resend.emails.send({
+      await getResendClient().emails.send({
         from: this.fromEmail,
         to,
         subject: `Verify your ${this.productName} email address`,
@@ -135,7 +155,7 @@ export class EmailService {
     const { to, userName, lockoutDuration, lockoutTier, failedAttempts, lockedUntil, ipAddress } = data;
 
     try {
-      await resend.emails.send({
+      await getResendClient().emails.send({
         from: this.fromEmail,
         to,
         subject: `🔒 Security Alert: Account Temporarily Locked - ${this.productName}`,
@@ -172,7 +192,7 @@ export class EmailService {
     }
 
     try {
-      const response = await resend.emails.send({
+      const response = await getResendClient().emails.send({
         from: this.fromEmail,
         to,
         subject: `Welcome to ${this.productName} - Your Login Credentials`,
@@ -504,7 +524,7 @@ export class EmailService {
     const { to, subject, html } = data;
 
     try {
-      await resend.emails.send({
+      await getResendClient().emails.send({
         from: this.fromEmail,
         to,
         subject,
@@ -525,7 +545,7 @@ export class EmailService {
     const { to, subject, body, tenantName } = data;
 
     try {
-      await resend.emails.send({
+      await getResendClient().emails.send({
         from: this.fromEmail,
         to,
         subject,
