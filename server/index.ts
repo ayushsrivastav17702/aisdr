@@ -2,8 +2,20 @@ import express, { type Request, Response, NextFunction } from "express";
 import cookieParser from "cookie-parser";
 import helmet from "helmet";
 import { doubleCsrf } from "csrf-csrf";
+import path from "path";
 import { registerRoutes } from "./routes";
-import { setupVite, serveStatic, log } from "./vite";
+
+// Inline log helper — avoids importing server/vite.ts (which imports the "vite"
+// package) in production where vite is not installed.
+function log(message: string, source = "express") {
+  const formattedTime = new Date().toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  });
+  console.log(`${formattedTime} [${source}] ${message}`);
+}
 import { emailQueueService } from "./services/email-queue.service";
 import { mailboxService } from "./services/mailbox.service";
 import { initSentry, Sentry, isSentryEnabled } from "./sentry";
@@ -287,14 +299,22 @@ app.use((req, res, next) => {
   // doesn't interfere with the other routes
   console.log('📁 Setting up static/vite server, env:', app.get("env"));
   if (app.get("env") === "development") {
+    // Dynamic import so "vite" package is never required at module load time
+    const { setupVite } = await import("./vite");
     await setupVite(app, server);
     console.log('✅ Vite setup complete');
   } else if (app.get("env") === "test") {
     // In test mode skip static file serving — only the API routes are needed
     console.log('🧪 Test mode: skipping static file serving');
   } else {
+    // Production: serve the pre-built client bundle directly via express.static
+    // (avoids importing the "vite" package which is not installed in production)
     console.log('📁 Serving static files from production build...');
-    serveStatic(app);
+    const distPath = path.resolve(process.cwd(), "dist/public");
+    app.use(express.static(distPath));
+    app.get("*", (_req, res) => {
+      res.sendFile(path.resolve(distPath, "index.html"));
+    });
     console.log('✅ Static files setup complete');
   }
 
