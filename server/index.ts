@@ -20,7 +20,9 @@ import { emailQueueService } from "./services/email-queue.service";
 import { mailboxService } from "./services/mailbox.service";
 import { initSentry, Sentry, isSentryEnabled } from "./sentry";
 import { db } from "./db";
-import { sql } from "drizzle-orm";
+import { sql, eq } from "drizzle-orm";
+import { superAdmins } from "@shared/schema";
+import bcrypt from "bcrypt";
 
 // Global error handlers for production debugging
 process.on('uncaughtException', (error) => {
@@ -308,6 +310,42 @@ app.use((req, res, next) => {
     console.log('✅ Schema migrations applied');
   } catch (err) {
     console.error('⚠️ Schema migration error (non-fatal):', err);
+  }
+
+  // ── Seed default super admin (idempotent — skipped if email already exists) ──
+  try {
+    const SEED_EMAIL = 'ayush@gmail.com';
+    const SEED_PASSWORD = 'Ayush@114988';
+    const [existing] = await db
+      .select({ id: superAdmins.id })
+      .from(superAdmins)
+      .where(eq(superAdmins.email, SEED_EMAIL))
+      .limit(1);
+
+    if (!existing) {
+      const passwordHash = await bcrypt.hash(SEED_PASSWORD, 12);
+      await db.insert(superAdmins).values({
+        email: SEED_EMAIL,
+        passwordHash,
+        firstName: 'Ayush',
+        lastName: '',
+        status: 'active',
+        isMasterAdmin: true,
+        permissions: {
+          canProvisionTenants: true,
+          canManageBilling: true,
+          canImpersonateManagers: true,
+          canSuspendTenants: true,
+          canDeleteTenants: true,
+          canViewAllData: true,
+        },
+      });
+      console.log(`✅ Seeded super admin: ${SEED_EMAIL}`);
+    } else {
+      console.log(`ℹ️  Super admin ${SEED_EMAIL} already exists, skipping seed`);
+    }
+  } catch (seedErr) {
+    console.error('⚠️ Super admin seed error (non-fatal):', seedErr);
   }
 
   console.log('📋 Registering routes...');
