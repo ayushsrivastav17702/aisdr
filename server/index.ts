@@ -21,7 +21,7 @@ import { mailboxService } from "./services/mailbox.service";
 import { initSentry, Sentry, isSentryEnabled } from "./sentry";
 import { db } from "./db";
 import { sql, eq } from "drizzle-orm";
-import { superAdmins } from "@shared/schema";
+import { superAdmins, users } from "@shared/schema";
 import bcrypt from "bcrypt";
 
 // Global error handlers for production debugging
@@ -346,6 +346,38 @@ app.use((req, res, next) => {
     }
   } catch (seedErr) {
     console.error('⚠️ Super admin seed error (non-fatal):', seedErr);
+  }
+
+  // ── Seed SDR user ayushsri.17@gmail.com (idempotent) ──
+  try {
+    const SDR_EMAIL = 'ayushsri.17@gmail.com';
+    const SDR_PASSWORD = 'Ayush@12345';
+    const [existingSdr] = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eq(users.email, SDR_EMAIL))
+      .limit(1);
+
+    if (!existingSdr) {
+      const passwordHash = await bcrypt.hash(SDR_PASSWORD, 12);
+      await db.insert(users).values({
+        email: SDR_EMAIL,
+        passwordHash,
+        authProvider: 'password',
+        passwordLoginEnabled: true,
+        firstName: 'Ayush',
+        lastName: 'Srivastava',
+        role: 'user',
+        status: 'active',
+        isActive: true,
+        emailVerified: true,
+      });
+      console.log(`✅ Seeded SDR user: ${SDR_EMAIL}`);
+    } else {
+      console.log(`ℹ️  SDR user ${SDR_EMAIL} already exists, skipping seed`);
+    }
+  } catch (sdrSeedErr) {
+    console.error('⚠️ SDR user seed error (non-fatal):', sdrSeedErr);
   }
 
   console.log('📋 Registering routes...');
