@@ -3316,7 +3316,11 @@ router.post('/reset-password', async (req, res) => {
 
     await db
       .update(users)
-      .set({ passwordHash: hashed, updatedAt: new Date() })
+      .set({
+        passwordHash: hashed,
+        passwordLoginEnabled: true,  // required — login guard rejects if false
+        updatedAt: new Date(),
+      })
       .where(eq(users.id, user.id));
 
     console.log(`[SuperAdmin] Password reset for ${email} (id: ${user.id})`);
