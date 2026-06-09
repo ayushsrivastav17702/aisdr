@@ -125,8 +125,8 @@ router.get("/api/handoffs", authenticate, blockSuperAdminFromSDR, async (req, re
         prospectEmail: prospects.primaryEmail,
         prospectCompany: prospects.companyName,
         prospectTitle: prospects.jobTitle,
-        sdrName: sql<string>`sdr.full_name`,
-        aeName: sql<string>`ae.full_name`,
+        sdrName: sql<string>`trim(concat(sdr.first_name, ' ', sdr.last_name))`,
+        aeName: sql<string>`trim(concat(ae.first_name, ' ', ae.last_name))`,
       })
       .from(aeHandoffs)
       .leftJoin(prospects, eq(aeHandoffs.prospectId, prospects.id))

@@ -48,6 +48,7 @@ export const prospects = pgTable("prospects", {
     linkedinUrl?: { source: string; provider?: string; timestamp: string };
     phoneNumber?: { source: string; provider?: string; timestamp: string };
   }>(),
+  timezone: text("timezone"), // IANA timezone, e.g. "Asia/Kolkata", "America/New_York"
   leadScore: integer("lead_score").default(0),
   isVip: boolean("is_vip").default(false),
   createdAt: timestamp("created_at").defaultNow(),
@@ -722,6 +723,10 @@ export const emailMailboxes = pgTable("email_mailboxes", {
   smtpUser: text("smtp_user"),
   smtpPassword: text("smtp_password"),
   smtpSecure: boolean("smtp_secure").default(true),
+
+  // IMAP Settings (for reply detection)
+  imapHost: text("imap_host"),
+  imapPort: integer("imap_port"),
   
   // SendGrid/API Settings
   apiKey: text("api_key"),

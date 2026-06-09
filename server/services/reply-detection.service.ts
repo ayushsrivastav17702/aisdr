@@ -115,12 +115,43 @@ export class ReplyDetectionService {
           return;
         }
 
-        // Configure IMAP for Gmail
+        // FIX-4: Determine IMAP host based on provider or stored settings
+        let imapHost: string;
+        let imapPort: number;
+        const emailAddress: string = mailbox.smtpUser || mailbox.email || '';
+        if (
+          mailbox.provider === 'gmail' ||
+          emailAddress.endsWith('@gmail.com') ||
+          emailAddress.endsWith('@googlemail.com')
+        ) {
+          imapHost = 'imap.gmail.com';
+          imapPort = 993;
+        } else if (
+          mailbox.provider === 'microsoft' ||
+          emailAddress.endsWith('@outlook.com') ||
+          emailAddress.endsWith('@hotmail.com') ||
+          emailAddress.endsWith('@live.com')
+        ) {
+          imapHost = 'outlook.office365.com';
+          imapPort = 993;
+        } else if (mailbox.imapHost) {
+          // Custom SMTP mailbox with stored IMAP settings
+          imapHost = mailbox.imapHost;
+          imapPort = mailbox.imapPort || 993;
+        } else {
+          console.warn(
+            `[IMAP] No IMAP host configured for mailbox ${mailbox.email} (provider: ${mailbox.provider}). ` +
+            `Set imap_host on the mailbox record to enable reply detection.`
+          );
+          resolve();
+          return;
+        }
+
         const imapConfig: Imap.Config = {
           user: mailbox.smtpUser || mailbox.email,
           password: password,
-          host: mailbox.provider === "gmail" ? "imap.gmail.com" : "imap.gmail.com",
-          port: 993,
+          host: imapHost,
+          port: imapPort,
           tls: true,
           tlsOptions: { rejectUnauthorized: false },
         };
@@ -1078,6 +1109,39 @@ export class ReplyDetectionService {
         } else if (classification.replyType === "bounce") {
           // Explicit logging for bounces - handled separately via handleBounce
           console.log(`📭 Bounce: Future emails cancelled for prospect ${matchedEmail.prospectId} via bounce handler.`);
+        }
+      }
+
+      // FIX-5: Emit 'replied' (and 'interested' for positive) lead_events for funnel analytics
+      if (matchedEmail.sequenceId) {
+        try {
+          const { leadEvents: leadEventsTable } = await import("@shared/schema");
+          const replyProspect = await db.query.prospects.findFirst({
+            where: eq(prospectsTable.id, matchedEmail.prospectId)
+          });
+          if (replyProspect?.userId) {
+            await db.insert(leadEventsTable).values({
+              userId: replyProspect.userId,
+              leadId: matchedEmail.prospectId,
+              sequenceId: matchedEmail.sequenceId,
+              stepId: null,
+              eventType: 'replied',
+              metadata: { replyType: classification.replyType, sentiment: classification.sentiment },
+            }).onConflictDoNothing();
+            // Also mark 'interested' if sentiment is positive
+            if (classification.sentiment === 'positive') {
+              await db.insert(leadEventsTable).values({
+                userId: replyProspect.userId,
+                leadId: matchedEmail.prospectId,
+                sequenceId: matchedEmail.sequenceId,
+                stepId: null,
+                eventType: 'interested',
+                metadata: { intent: classification.intent },
+              }).onConflictDoNothing();
+            }
+          }
+        } catch (leErr) {
+          console.warn('[lead_events] Failed to insert replied event (non-fatal):', leErr);
         }
       }
 

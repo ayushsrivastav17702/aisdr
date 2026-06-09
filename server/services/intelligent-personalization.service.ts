@@ -123,26 +123,20 @@ Respond in JSON format with this exact structure:
 
       const systemPrompt = "You are an expert sales intelligence analyst who provides deep insights for personalized B2B outreach. Focus on actionable intelligence that will help create highly relevant, personalized emails. Use your knowledge of business roles, industry dynamics, and professional challenges to provide comprehensive analysis.";
       
-      const response = await openaiHelper.callWithFallback(
-        // OpenAI call
-        (client) =>
-          client.chat.completions.create({
-            model: "gpt-4o",
+      const response: any = await openaiHelper.callWithFallback(
+        // 1. Groq
+        (groqClient) =>
+          groqClient.chat.completions.create({
+            model: "llama-3.3-70b-versatile",
             messages: [
-              {
-                role: "system",
-                content: systemPrompt
-              },
-              {
-                role: "user",
-                content: analysisPrompt
-              }
+              { role: "system", content: systemPrompt },
+              { role: "user", content: analysisPrompt }
             ],
             temperature: 0.7,
             max_tokens: 2000,
             response_format: { type: "json_object" }
-          }),
-        // Anthropic fallback
+          } as any),
+        // 4. Anthropic fallback
         async (anthropic) => {
           const anthropicResponse = await anthropic.messages.create({
             model: "claude-sonnet-4-20250514",
@@ -152,12 +146,12 @@ Respond in JSON format with this exact structure:
               { role: "user", content: analysisPrompt }
             ],
           });
-          
+
           const textContent = anthropicResponse.content.find(block => block.type === 'text');
           if (!textContent || textContent.type !== 'text') {
             throw new Error('No text response from Anthropic');
           }
-          
+
           // Return in OpenAI format for consistency
           return {
             choices: [{
@@ -167,19 +161,15 @@ Respond in JSON format with this exact structure:
             }]
           } as any;
         },
-        // OpenRouter fallback (uses OpenAI-compatible API)
-        (openRouterClient) =>
-          openRouterClient.chat.completions.create({
-            model: process.env.OPENROUTER_MODEL || "openai/gpt-4o",
+        // 2. DeepSeek / 3. OpenRouter
+        (client) =>
+          client.chat.completions.create({
+            model: (client as any).baseURL?.includes('openrouter')
+              ? (process.env.OPENROUTER_MODEL || "openai/gpt-4o")
+              : "deepseek-chat",
             messages: [
-              {
-                role: "system",
-                content: systemPrompt
-              },
-              {
-                role: "user",
-                content: analysisPrompt
-              }
+              { role: "system", content: systemPrompt },
+              { role: "user", content: analysisPrompt }
             ],
             temperature: 0.7,
             max_tokens: 2000

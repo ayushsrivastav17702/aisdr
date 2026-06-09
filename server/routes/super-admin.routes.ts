@@ -237,6 +237,9 @@ router.post('/tenants', authenticateSuperAdmin, requireSuperAdminPermission('can
     });
   } catch (error: any) {
     console.error('Error provisioning tenant:', error);
+    if (error?.code === '23505' || /duplicate key value violates unique constraint/i.test(error?.message || '')) {
+      return res.status(409).json({ error: 'Resource already exists' });
+    }
     res.status(400).json({ error: error.message || 'Failed to provision tenant' });
   }
 });

@@ -4,7 +4,7 @@ import { generatePersonalizedEmail, type LinkedInData } from "./services/persona
 import { emailQueueService } from "./services/email-queue.service";
 import { db } from "./db";
 import { sequenceProspects, emailReplies, emailQueue, emails, prospects, personalizationResults, userActivityLogs, leadEvents, sequenceSteps, sequences } from "@shared/schema";
-import { eq, and, sql, desc, inArray } from "drizzle-orm";
+import { eq, and, sql, desc, asc, inArray, isNotNull } from "drizzle-orm";
 import { z } from "zod";
 import { authenticate, forbidManager, blockSuperAdminFromSDR } from "./middleware/auth.middleware";
 import { checkAutomationStatus, throttleOperation, incrementThrottle, trackUsage, checkUserPause, checkDailyEmailLimit, checkEnrollmentConcurrency } from "./middleware/throttle.middleware";
@@ -35,6 +35,38 @@ async function logActivity(
 }
 
 const router = Router();
+
+/**
+ * FIX-2: Schedule within 9am–5pm local business hours, skipping weekends.
+ * Uses Intl (no external deps) to work in prospect's IANA timezone.
+ */
+function getNextBusinessHour(delayDays: number, tz: string = 'UTC'): Date {
+  const safeTz = (() => {
+    try { Intl.DateTimeFormat(undefined, { timeZone: tz }); return tz; }
+    catch { return 'UTC'; }
+  })();
+  const MS_PER_DAY = 24 * 60 * 60 * 1000;
+  const MS_PER_HOUR = 60 * 60 * 1000;
+  const getLocalParts = (d: Date) =>
+    new Intl.DateTimeFormat('en-US', { timeZone: safeTz, weekday: 'short', hour: 'numeric', hour12: false }).formatToParts(d);
+  const getHour = (d: Date): number =>
+    parseInt(getLocalParts(d).find(p => p.type === 'hour')?.value ?? '12', 10);
+  const getDow = (d: Date): string =>
+    getLocalParts(d).find(p => p.type === 'weekday')?.value ?? 'Mon';
+  const skipWeekend = (d: Date): Date => {
+    let cur = d;
+    while (getDow(cur) === 'Sat' || getDow(cur) === 'Sun')
+      cur = new Date(cur.getTime() + MS_PER_DAY);
+    return cur;
+  };
+  let target = skipWeekend(new Date(Date.now() + delayDays * MS_PER_DAY));
+  const h = getHour(target);
+  if (h < 9) target = new Date(target.getTime() + (9 - h) * MS_PER_HOUR);
+  else if (h >= 17) {
+    target = skipWeekend(new Date(target.getTime() + (24 - h + 9) * MS_PER_HOUR));
+  }
+  return target;
+}
 
 // Helper function to initialize sequence when activated
 async function initializeSequence(userContext: RequestContext, sequenceId: string): Promise<void> {
@@ -84,11 +116,13 @@ async function initializeSequence(userContext: RequestContext, sequenceId: strin
         console.log(`  📌 Set current step for prospect ${enrolledProspect.prospectId}`);
       }
       
-      // Calculate scheduled time based on delay
-      const scheduledFor = new Date();
-      if (firstStep.delayDays && firstStep.delayDays > 0) {
-        scheduledFor.setDate(scheduledFor.getDate() + firstStep.delayDays);
-      }
+      // FIX-2: Calculate scheduled time using business-hours window in prospect's timezone
+      const prospectRecord = await db.query.prospects.findFirst({
+        where: eq(prospects.id, enrolledProspect.prospectId)
+      });
+      const prospectTimezone = (prospectRecord as any)?.timezone || 'UTC';
+      const scheduledFor = getNextBusinessHour(firstStep.delayDays || 0, prospectTimezone);
+      console.log(`  🕘 Scheduled first email at ${scheduledFor.toISOString()} (tz: ${prospectTimezone})`);
       
       // Start with template content
       let emailSubject = firstStep.subject;
@@ -288,8 +322,11 @@ router.post("/sequences", authenticate, forbidManager, async (req, res) => {
     try { await sdrWorkflowService.tryAutoAdvance(userId); } catch (err) { console.error('[Sequences] Workflow auto-advance failed:', err); }
     
     res.json(sequence);
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error creating sequence:", error);
+    if (error?.code === '23505' || /duplicate key value violates unique constraint/i.test(error?.message || '')) {
+      return res.status(409).json({ error: "A sequence with this name already exists" });
+    }
     res.status(500).json({ error: "Failed to create sequence" });
   }
 });
@@ -395,8 +432,11 @@ router.post("/sequences/generate-with-ai", authenticate, forbidManager, async (r
     try { await sdrWorkflowService.tryAutoAdvance(userId); } catch (err) { console.error('[Sequences] Workflow auto-advance failed:', err); }
     
     res.json({ sequence, steps: generatedSequence.steps });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error generating sequence with AI:", error);
+    if (error?.code === '23505' || /duplicate key value violates unique constraint/i.test(error?.message || '')) {
+      return res.status(409).json({ error: "A sequence with this name already exists" });
+    }
     res.status(500).json({ error: error instanceof Error ? error.message : "Failed to generate sequence" });
   }
 });
@@ -585,8 +625,11 @@ router.post("/sequences/from-template", authenticate, forbidManager, async (req,
       sequence, 
       stepsCount: template.steps.length 
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error creating sequence from template:", error);
+    if (error?.code === '23505' || /duplicate key value violates unique constraint/i.test(error?.message || '')) {
+      return res.status(409).json({ error: "A sequence with this name already exists" });
+    }
     res.status(500).json({ error: error instanceof Error ? error.message : "Failed to create sequence from template" });
   }
 });
@@ -651,7 +694,20 @@ router.put("/sequences/:id", authenticate, forbidManager, async (req, res) => {
     
     // If status changed to active, initialize and record status change
     if (req.body.status === "active") {
-      await initializeSequence(req.userContext!, req.params.id);
+      try {
+        await initializeSequence(req.userContext!, req.params.id);
+      } catch (initError) {
+        const initMessage = initError instanceof Error ? initError.message : String(initError);
+        if (/no available mailbox/i.test(initMessage)) {
+          // Roll the sequence back to draft so it isn't left "active" with no way to send
+          await storage.updateSequence(req.userContext!, req.params.id, { status: "draft", isApproved: false }).catch(() => {});
+          return res.status(400).json({
+            error: "No active mailbox connected. Please connect a mailbox before activating a sequence.",
+            code: "NO_ACTIVE_MAILBOX",
+          });
+        }
+        throw initError;
+      }
       await hardeningService.recordSequenceStatusChange(req.params.id, "active");
       try { await sdrWorkflowService.tryAutoAdvance(userId); } catch (err) { console.error('[Sequences] Workflow auto-advance failed:', err); }
     } else if (req.body.status && req.body.status !== "active") {
@@ -726,7 +782,20 @@ router.patch("/sequences/:id", authenticate, forbidManager, async (req, res) => 
     
     // If status changed to active, initialize and record status change
     if (req.body.status === "active") {
-      await initializeSequence(req.userContext!, req.params.id);
+      try {
+        await initializeSequence(req.userContext!, req.params.id);
+      } catch (initError) {
+        const initMessage = initError instanceof Error ? initError.message : String(initError);
+        if (/no available mailbox/i.test(initMessage)) {
+          // Roll the sequence back to draft so it isn't left "active" with no way to send
+          await storage.updateSequence(req.userContext!, req.params.id, { status: "draft", isApproved: false }).catch(() => {});
+          return res.status(400).json({
+            error: "No active mailbox connected. Please connect a mailbox before activating a sequence.",
+            code: "NO_ACTIVE_MAILBOX",
+          });
+        }
+        throw initError;
+      }
       await hardeningService.recordSequenceStatusChange(req.params.id, "active");
       try { await sdrWorkflowService.tryAutoAdvance(userId); } catch (err) { console.error('[Sequences] Workflow auto-advance failed:', err); }
       // Log activity for audit trail (TC-SDR-AUDIT-01)
@@ -1069,8 +1138,24 @@ router.post("/sequences/:id/prospects", authenticate, forbidManager, checkUserPa
     }
     
     res.json({ message: `${enrolled.length} prospects enrolled and emails scheduled`, enrolled });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error enrolling prospects:", error);
+
+    const message = error instanceof Error ? error.message : String(error);
+
+    // Map "not found" validation errors raised by storage.enrollProspects to 404
+    if (message.startsWith('Sequence not found')) {
+      return res.status(404).json({ error: message });
+    }
+    if (message.startsWith('Prospects not found')) {
+      return res.status(404).json({ error: message });
+    }
+
+    // Map Postgres unique-constraint violations (duplicate enrollment) to 409
+    if (error?.code === '23505' || /duplicate key value violates unique constraint/i.test(message)) {
+      return res.status(409).json({ error: 'One or more prospects are already enrolled in this sequence' });
+    }
+
     res.status(500).json({ error: "Failed to enroll prospects" });
   }
 });
@@ -1260,21 +1345,29 @@ router.post("/sequences/ai-generate-email", authenticate, forbidManager, async (
       }
     }
     
-    // Fetch previous steps from sequence if sequenceId is provided
-    let enrichedPreviousEmails = previousEmails || [];
+    // FIX-3: Fetch previous steps from sequence so follow-up steps have full context
+    let enrichedPreviousEmails: string[] = previousEmails || [];
+    let threadSubjectHint: string | undefined;
     if (sequenceId && !previousEmails) {
       try {
         const steps = await storage.getSequenceSteps(req.userContext!, sequenceId);
         if (steps && steps.length > 0) {
-          // Get all steps except the current one being written
-          const previousSteps = sequenceStep 
-            ? steps.slice(0, sequenceStep - 1) 
+          // Get all steps before the current one being written
+          const previousSteps = sequenceStep
+            ? steps.slice(0, sequenceStep - 1)
             : steps;
-          
-          enrichedPreviousEmails = previousSteps.map((step, index) => 
+
+          enrichedPreviousEmails = previousSteps.map((step, index) =>
             `Step ${index + 1} - Subject: ${step.subject}\n\nBody:\n${step.body}`
           );
-          
+
+          // FIX-3: Capture step 1 subject for Re: threading hint on follow-ups
+          const sortedSteps = [...steps].sort((a, b) => a.stepOrder - b.stepOrder);
+          if (sequenceStep && sequenceStep > 1 && sortedSteps[0]?.subject) {
+            const baseSubject = sortedSteps[0].subject.replace(/^Re:\s*/i, '');
+            threadSubjectHint = `Re: ${baseSubject}`;
+          }
+
           console.log(`📧 Loaded ${enrichedPreviousEmails.length} previous steps from sequence for context`);
         }
       } catch (error) {
@@ -1282,7 +1375,17 @@ router.post("/sequences/ai-generate-email", authenticate, forbidManager, async (
         // Continue without previous steps if fetch fails
       }
     }
-    
+
+    // If this is a follow-up and we have the original subject, prepend a threading instruction
+    if (threadSubjectHint) {
+      enrichedPreviousEmails = [
+        `THREADING INSTRUCTION: This is follow-up email #${sequenceStep}. ` +
+        `The subject line MUST start with "${threadSubjectHint}" to keep the email thread intact. ` +
+        `Do NOT invent a new subject line.`,
+        ...enrichedPreviousEmails,
+      ];
+    }
+
     const result = await emailGenerationService.generateWithRetry({
       prospectId,
       emailType,
@@ -1748,37 +1851,43 @@ router.post("/sequences/send-reply", authenticate, forbidManager, async (req, re
       return res.status(400).json({ error: "prospectId, subject, and body are required" });
     }
     
-    // Get the most recent email to this prospect in this sequence for threading
+    // FIX-6: Fetch ALL prior Message-IDs for a complete RFC 5322 References chain.
+    // In-Reply-To = latest; References = all IDs in chronological order (space-separated).
     let inReplyTo: string | undefined;
     let references: string | undefined;
-    
+
     if (sequenceId) {
-      const [previousEmail] = await db
-        .select()
+      const threadEmails = await db
+        .select({ messageId: emails.messageId, sentAt: emails.sentAt })
         .from(emails)
         .where(
           and(
             eq(emails.prospectId, prospectId),
             eq(emails.sequenceId, sequenceId),
-            sql`${emails.messageId} IS NOT NULL`
+            isNotNull(emails.messageId)
           )
         )
-        .orderBy(sql`${emails.sentAt} DESC`)
-        .limit(1);
-      
-      if (previousEmail?.messageId) {
-        inReplyTo = previousEmail.messageId;
-        // References should be the entire thread history
-        references = previousEmail.messageId;
-        console.log(`🔗 Threading reply - In-Reply-To: ${inReplyTo}`);
+        .orderBy(asc(emails.sentAt));
+
+      const allMessageIds = threadEmails
+        .map(e => e.messageId)
+        .filter((id): id is string => Boolean(id));
+
+      if (allMessageIds.length > 0) {
+        inReplyTo = allMessageIds[allMessageIds.length - 1]; // Latest
+        references = allMessageIds.join(' ');               // Full chain (RFC 5322)
+        console.log(`🔗 Threading reply - In-Reply-To: ${inReplyTo} | References chain length: ${allMessageIds.length}`);
       }
     }
+
+    // FIX-7: Ensure subject has Re: prefix for proper email-client threading
+    const replySubject = subject.startsWith('Re:') ? subject : `Re: ${subject}`;
 
     // Add to email queue with immediate sending (scheduled for now)
     const queueItem = await emailQueueService.addToQueue({
       prospectId,
       sequenceId: sequenceId || null,
-      subject,
+      subject: replySubject,
       body,
       scheduledFor: new Date(), // Send immediately
       priority: 1, // High priority

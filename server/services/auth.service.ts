@@ -450,15 +450,24 @@ export class AuthService {
       console.log(`✅ Activated pending user: ${user.email}`);
     } else {
       // Create new user (standard invitation flow)
-      [user] = await db.insert(users).values({
-        email: invitation.email,
-        firstName,
-        lastName,
-        role: invitation.role as 'admin' | 'user',
-        passwordHash,
-        status: 'active',
-        organizationId: invitation.organizationId,
-      }).returning();
+      try {
+        [user] = await db.insert(users).values({
+          email: invitation.email,
+          firstName,
+          lastName,
+          role: invitation.role as 'admin' | 'user',
+          passwordHash,
+          status: 'active',
+          organizationId: invitation.organizationId,
+        }).returning();
+      } catch (insertErr: any) {
+        if (insertErr?.code === '23505' || /duplicate key value violates unique constraint/i.test(insertErr?.message || '')) {
+          const dupErr: any = new Error('A user with this email already exists');
+          dupErr.code = '23505';
+          throw dupErr;
+        }
+        throw insertErr;
+      }
     }
 
     await db

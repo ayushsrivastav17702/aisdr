@@ -3,6 +3,8 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { X, Cookie } from 'lucide-react';
 import { Link } from 'wouter';
+import { useAuth } from '@/contexts/auth-context';
+import { useLocation } from 'wouter';
 
 const CONSENT_KEY = 'cookie-consent';
 const CONSENT_TIMESTAMP_KEY = 'cookie-consent-timestamp';
@@ -11,10 +13,19 @@ const CONSENT_EXPIRY_DAYS = 365;
 type ConsentValue = 'accepted' | 'rejected' | null;
 
 export function CookieConsent() {
+  const { user, isLoading } = useAuth();
+  const [location] = useLocation();
   const [showBanner, setShowBanner] = useState(false);
   const [isEU, setIsEU] = useState(false);
 
+  const PUBLIC_PATHS = ['/login', '/', '/pricing', '/signup', '/register', '/cookie-policy', '/privacy-policy'];
+  const isPublicPath = PUBLIC_PATHS.includes(location);
+
   useEffect(() => {
+    if (user || isLoading || !isPublicPath) {
+      setShowBanner(false);
+      return;
+    }
     // Check if consent was already given
     const consent = localStorage.getItem(CONSENT_KEY) as ConsentValue;
     const timestamp = localStorage.getItem(CONSENT_TIMESTAMP_KEY);
@@ -64,7 +75,7 @@ export function CookieConsent() {
     if (!consent) {
       setShowBanner(true);
     }
-  }, []);
+  }, [user, isLoading, location]);
 
   const handleAccept = () => {
     localStorage.setItem(CONSENT_KEY, 'accepted');
@@ -83,7 +94,7 @@ export function CookieConsent() {
     handleReject();
   };
 
-  if (!showBanner) {
+  if (user || isLoading || !isPublicPath || !showBanner) {
     return null;
   }
 

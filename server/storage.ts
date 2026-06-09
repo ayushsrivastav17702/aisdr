@@ -243,11 +243,21 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createProspect(ctx: RequestContext, prospect: InsertProspect): Promise<Prospect> {
-    const [created] = await db
-      .insert(prospects)
-      .values({ ...prospect, userId: getEffectiveUserId(ctx), updatedAt: new Date() })
-      .returning();
-    return created;
+    try {
+      const [created] = await db
+        .insert(prospects)
+        .values({ ...prospect, userId: getEffectiveUserId(ctx), updatedAt: new Date() })
+        .returning();
+      return created;
+    } catch (error: any) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (error?.code === '23505' || /duplicate key value violates unique constraint/i.test(message)) {
+        const dupErr: any = new Error('A prospect with this email already exists');
+        dupErr.code = '23505';
+        throw dupErr;
+      }
+      throw error;
+    }
   }
 
   async bulkCreateProspects(ctx: RequestContext, prospectsToCreate: InsertProspect[]): Promise<Prospect[]> {
@@ -685,11 +695,21 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createSequence(ctx: RequestContext, sequence: InsertSequence): Promise<Sequence> {
-    const [created] = await db
-      .insert(sequences)
-      .values({ ...sequence, userId: getEffectiveUserId(ctx), updatedAt: new Date() })
-      .returning();
-    return created;
+    try {
+      const [created] = await db
+        .insert(sequences)
+        .values({ ...sequence, userId: getEffectiveUserId(ctx), updatedAt: new Date() })
+        .returning();
+      return created;
+    } catch (error: any) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (error?.code === '23505' || /duplicate key value violates unique constraint/i.test(message)) {
+        const dupErr: any = new Error('A sequence with this name already exists');
+        dupErr.code = '23505';
+        throw dupErr;
+      }
+      throw error;
+    }
   }
 
   async updateSequence(ctx: RequestContext, id: string, updates: Partial<Sequence>): Promise<Sequence> {

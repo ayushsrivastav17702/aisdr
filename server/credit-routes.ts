@@ -68,6 +68,12 @@ router.put("/api/admin/credits/limit", authenticate, async (req: any, res) => {
     return res.json({ success: true, creditPerUser: settings?.creditPerUser });
   } catch (err) {
     console.error("[credits] update limit error:", err);
+    if (err instanceof z.ZodError) {
+      return res.status(400).json({ error: "Invalid input", details: err.errors.map(e => e.message) });
+    }
+    if ((err as any)?.code === '23505') {
+      return res.status(409).json({ error: "Resource already exists" });
+    }
     return res.status(500).json({ error: "Failed to update credit limit" });
   }
 });

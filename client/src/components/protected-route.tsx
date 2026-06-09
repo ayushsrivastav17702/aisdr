@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useLocation } from 'wouter';
+import { useLocation, Redirect } from 'wouter';
 import { useAuth } from '@/contexts/auth-context';
 import { Loader2 } from 'lucide-react';
 
@@ -53,7 +53,7 @@ export function ProtectedRoute({ children, requireRole, allowedRoles }: Protecte
   }
 
   if (!isAuthenticated) {
-    return null;
+    return <Redirect to="/login" />;
   }
 
   // Check role requirements

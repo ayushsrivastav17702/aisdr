@@ -182,6 +182,7 @@ const csrfExcludedPaths = [
   '/api/personalization/generate-email',
   '/api/personalization/batch-analyze',
   '/api/test/email-queue-simulation',
+  '/api/test/e2e-login',
 ];
 
 const csrfExcludedPrefixes = [
@@ -189,7 +190,7 @@ const csrfExcludedPrefixes = [
 ];
 
 function isTestEnv(): boolean {
-  return process.env.NODE_ENV === 'test' || process.env.DEMO_MODE === 'true';
+  return process.env.NODE_ENV === 'test' || process.env.DEMO_MODE === 'true' || process.env.E2E_TESTING === 'true';
 }
 
 app.use((req, res, next) => {
@@ -273,6 +274,37 @@ app.use((req, res, next) => {
     await db.execute(sql`
       ALTER TYPE user_role ADD VALUE IF NOT EXISTS 'super_admin'
     `);
+    // Audit fix: prevent duplicate prospects per user (by email)
+    try {
+      await db.execute(sql`
+        CREATE UNIQUE INDEX IF NOT EXISTS prospects_user_email_unique_idx
+        ON prospects (user_id, primary_email)
+        WHERE primary_email IS NOT NULL
+      `);
+    } catch (idxErr) {
+      console.error('⚠️ prospects_user_email_unique_idx creation error (non-fatal):', idxErr);
+    }
+    // Audit fix: prevent duplicate sequences/campaigns per user (by name)
+    try {
+      await db.execute(sql`
+        CREATE UNIQUE INDEX IF NOT EXISTS sequences_user_name_unique_idx
+        ON sequences (user_id, name)
+        WHERE name IS NOT NULL
+      `);
+    } catch (idxErr) {
+      console.error('⚠️ sequences_user_name_unique_idx creation error (non-fatal):', idxErr);
+    }
+    // FIX-1: Add timezone column to prospects for timezone-aware delivery
+    await db.execute(sql`
+      ALTER TABLE prospects ADD COLUMN IF NOT EXISTS timezone text
+    `);
+    // FIX-4: Add IMAP settings to email_mailboxes for non-Gmail reply detection
+    await db.execute(sql`
+      ALTER TABLE email_mailboxes ADD COLUMN IF NOT EXISTS imap_host text
+    `);
+    await db.execute(sql`
+      ALTER TABLE email_mailboxes ADD COLUMN IF NOT EXISTS imap_port integer
+    `);
     console.log('✅ Schema migrations applied');
   } catch (err) {
     console.error('⚠️ Schema migration error (non-fatal):', err);
@@ -294,6 +326,13 @@ app.use((req, res, next) => {
     res.status(status).json({ message });
   });
 
+  // API 404: any /api/ path that fell through every registered API route
+  // must return JSON 404 rather than falling into Vite's SPA handler.
+  // This must live AFTER all route registrations and BEFORE setupVite/serveStatic.
+  app.use('/api', (_req, res) => {
+    res.status(404).json({ error: `API route not found: ${_req.method} ${_req.originalUrl}` });
+  });
+
   // importantly only setup vite in development and after
   // setting up all the other routes so the catch-all route
   // doesn't interfere with the other routes
@@ -312,6 +351,12 @@ app.use((req, res, next) => {
     console.log('📁 Serving static files from production build...');
     const distPath = path.resolve(process.cwd(), "dist/public");
     app.use(express.static(distPath));
+    app.use((req, res, next) => {
+      if (req.path.startsWith('/api/')) {
+        return res.status(404).json({ error: `API route not found: ${req.method} ${req.path}` });
+      }
+      next();
+    });
     app.get("*", (_req, res) => {
       res.sendFile(path.resolve(distPath, "index.html"));
     });
@@ -326,7 +371,7 @@ app.use((req, res, next) => {
   server.listen({
     port,
     host: "0.0.0.0",
-    ...(process.env.NODE_ENV !== "test" ? { reusePort: true } : {}),
+    ...(process.env.NODE_ENV !== "test" && process.env.E2E_TESTING !== "true" ? { reusePort: true } : {}),
   }, async () => {
     log(`serving on port ${port}`);
     

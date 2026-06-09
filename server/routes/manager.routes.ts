@@ -339,8 +339,11 @@ router.post("/api/manager/users", authenticate, requireManager, async (req, res)
         ? "User created. An invitation email has been sent." 
         : "User created. Email sending failed - please share the invite link manually.",
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error creating user:", error);
+    if (error?.code === '23505' || /duplicate key value violates unique constraint/i.test(error?.message || '')) {
+      return res.status(409).json({ error: "A user with this email already exists" });
+    }
     res.status(500).json({ error: "Failed to create user" });
   }
 });

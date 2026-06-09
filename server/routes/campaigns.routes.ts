@@ -95,6 +95,12 @@ router.post("/", validationMiddleware(campaignSchema), authenticate, forbidManag
     });
   } catch (error) {
     console.error("Campaign creation error:", error);
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: "Invalid input", details: error.errors.map(e => e.message) });
+    }
+    if ((error as any)?.code === '23505') {
+      return res.status(409).json({ error: "Resource already exists" });
+    }
     res.status(500).json({ error: "Failed to create campaign" });
   }
 });

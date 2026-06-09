@@ -1,5 +1,5 @@
 import { db } from "../db";
-import { emailQueue, InsertEmailQueueItem, EmailQueueItem, prospects, emails, sequenceProspects, emailMailboxes, automationRuns, emailSendAudit } from "@shared/schema";
+import { emailQueue, InsertEmailQueueItem, EmailQueueItem, prospects, emails, sequenceProspects, emailMailboxes, automationRuns, emailSendAudit, leadEvents } from "@shared/schema";
 import { eq, and, lte, sql } from "drizzle-orm";
 import { emailSendingService } from "./email-sending.service";
 import { mailboxService } from "./mailbox.service";
@@ -936,6 +936,38 @@ export class EmailQueueService {
               .where(eq(automationRuns.id, automationRunId));
 
             console.log(`📊 Incremented emailsSent for automation run ${automationRunId}`);
+          }
+        }
+
+        // FIX-5: Record 'contacted' lead_event for funnel + per-step analytics
+        if (email.sequenceId && email.prospectId) {
+          try {
+            // Resolve stepId from stepOrder so per-step analytics work
+            let resolvedStepId: string | null = null;
+            if (email.stepOrder != null) {
+              const { sequenceSteps: stepsTable } = await import("@shared/schema");
+              const [stepRow] = await db
+                .select({ id: stepsTable.id })
+                .from(stepsTable)
+                .where(
+                  and(
+                    eq(stepsTable.sequenceId, email.sequenceId),
+                    eq(stepsTable.stepOrder, email.stepOrder)
+                  )
+                )
+                .limit(1);
+              resolvedStepId = stepRow?.id ?? null;
+            }
+            await db.insert(leadEvents).values({
+              userId: email.userId,
+              leadId: email.prospectId,
+              sequenceId: email.sequenceId,
+              stepId: resolvedStepId,
+              eventType: 'contacted',
+              metadata: { emailQueueId: email.id, messageId: result.messageId },
+            }).onConflictDoNothing();
+          } catch (leErr) {
+            console.warn('[lead_events] Failed to insert contacted event (non-fatal):', leErr);
           }
         }
 

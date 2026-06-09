@@ -89,6 +89,9 @@ router.post("/search", authenticate, forbidManager, async (req, res) => {
     });
   } catch (error) {
     console.error('Waterfall search error:', error);
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ success: false, error: "Invalid input", details: error.errors.map(e => e.message) });
+    }
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Search failed'
@@ -278,6 +281,9 @@ router.post("/search-and-save", authenticate, forbidManager, async (req, res) =>
     });
   } catch (error) {
     console.error('Waterfall search and save error:', error);
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ success: false, error: "Invalid input", details: error.errors.map(e => e.message) });
+    }
     res.status(500).json({
       success: false,
       error: error instanceof Error ? error.message : 'Search and save failed'

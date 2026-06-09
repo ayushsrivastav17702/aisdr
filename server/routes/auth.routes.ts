@@ -637,8 +637,8 @@ router.post('/api/auth/invitations/accept', async (req, res) => {
       if (error.message.includes('Invalid or expired')) {
         return res.status(400).json({ error: 'Invalid or expired invitation' });
       }
-      if (error.message.includes('already exists')) {
-        return res.status(400).json({ error: 'User with this email already exists' });
+      if (error.message.includes('already exists') || (error as any)?.code === '23505') {
+        return res.status(409).json({ error: 'User with this email already exists' });
       }
     }
     console.error('Accept invitation error:', error);
@@ -1038,5 +1038,112 @@ router.get('/test-email', async (req, res) => {
     });
   }
 });
+
+// ─────────────────────────────────────────────────────────────────────────
+// TEST-ONLY: E2E login bypass. Only mounted when E2E_TESTING=true so that
+// Playwright browser tests can authenticate without exercising the full
+// magic-link/email flow. Creates (or reuses) a dedicated E2E test user +
+// organization and sets the same `auth_token` cookie the real login flow
+// uses, so the rest of the app behaves identically post-login.
+// NEVER enable E2E_TESTING in production.
+// ─────────────────────────────────────────────────────────────────────────
+if (process.env.E2E_TESTING === 'true') {
+  router.post('/api/test/e2e-login', async (req, res) => {
+    try {
+      const { nanoid } = await import('nanoid');
+      const { organizations, sdrWorkflowProgress } = await import('@shared/schema');
+      const email = (req.body?.email || 'e2e-test@playwright.local').toLowerCase();
+
+      let [org] = await db.select().from(organizations)
+        .where(eq(organizations.slug, 'e2e-test-org')).limit(1);
+      if (!org) {
+        [org] = await db.insert(organizations).values({
+          id: nanoid(), name: 'E2E Test Org', slug: 'e2e-test-org', status: 'active',
+        }).returning();
+      }
+
+      let [user] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+      if (!user) {
+        const bcrypt = await import('bcrypt');
+        [user] = await db.insert(users).values({
+          id: nanoid(),
+          email,
+          password: await bcrypt.hash(`E2ETest${nanoid(8)}!`, 10),
+          firstName: 'E2E',
+          lastName: 'Tester',
+          role: 'user',
+          status: 'active',
+          organizationId: org.id,
+        }).returning();
+      }
+
+      // Advance the E2E user's workflow to the final stage so that
+      // assertStage() never blocks any operation during tests.
+      const now = new Date();
+      await db.insert(sdrWorkflowProgress).values({
+        userId: user.id,
+        organizationId: org.id,
+        currentStage: 'analytics',
+        readinessCompletedAt: now,
+        uploadCompletedAt: now,
+        enrichmentCompletedAt: now,
+        sequenceCompletedAt: now,
+        enrollmentCompletedAt: now,
+        activationCompletedAt: now,
+        sendingStartedAt: now,
+        repliesDetectedAt: now,
+        analyticsUnlockedAt: now,
+        blockingReasons: [],
+      }).onConflictDoUpdate({
+        target: sdrWorkflowProgress.userId,
+        set: {
+          currentStage: 'analytics',
+          readinessCompletedAt: now,
+          uploadCompletedAt: now,
+          enrichmentCompletedAt: now,
+          sequenceCompletedAt: now,
+          enrollmentCompletedAt: now,
+          activationCompletedAt: now,
+          sendingStartedAt: now,
+          repliesDetectedAt: now,
+          analyticsUnlockedAt: now,
+          blockingReasons: [],
+          updatedAt: now,
+        },
+      });
+
+      const sessionId = nanoid();
+      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
+      const sessionToken = nanoid(32);
+      await db.insert(userSessions).values({
+        id: sessionId, userId: user.id, token: sessionToken, expiresAt, lastActivity: new Date(),
+      });
+
+      const jwtModule = await import('jsonwebtoken');
+      const jwt = (jwtModule as any).default ?? jwtModule;
+      const token = jwt.sign(
+        { userId: user.id, sessionId },
+        process.env.SESSION_SECRET || 'test-secret-key',
+        { expiresIn: '1d' }
+      );
+
+      res.cookie('auth_token', token, {
+        httpOnly: true,
+        secure: false,
+        sameSite: 'lax',
+        maxAge: 24 * 60 * 60 * 1000,
+        path: '/',
+      });
+
+      res.json({ ok: true, userId: user.id, organizationId: user.organizationId, token });
+    } catch (error: any) {
+      console.error('[E2E_LOGIN] error:', error);
+      if (error?.code === '23505' || /duplicate key value violates unique constraint/i.test(error?.message || '')) {
+        return res.status(409).json({ error: "Resource already exists" });
+      }
+      res.status(500).json({ error: 'E2E login failed', details: error?.message });
+    }
+  });
+}
 
 export default router;

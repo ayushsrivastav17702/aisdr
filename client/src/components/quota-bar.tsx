@@ -3,6 +3,7 @@ import { Progress } from "@/components/ui/progress";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
 import { MailIcon, AlertTriangleIcon, ClockIcon } from "lucide-react";
+import { useAuth } from "@/contexts/auth-context";
 import { formatDistanceToNow } from "date-fns";
 
 interface QuotaBarData {
@@ -17,9 +18,11 @@ interface QuotaBarData {
 }
 
 export function QuotaBar() {
+  const { user } = useAuth();
   const { data, isLoading } = useQuery<QuotaBarData>({
     queryKey: ["/api/sdr/quota-bar"],
     refetchInterval: 30000,
+    enabled: !!user,
   });
 
   if (isLoading || !data) {

@@ -741,7 +741,7 @@ export default function ProspectsTable({ selectedIds, onSelectionChange }: Prosp
 
         {/* Bulk Actions Bar */}
         {selectedIds.length > 0 && (
-          <Card className="p-4 bg-primary/10 border-primary/20">
+          <Card className="p-4 bg-primary/10 border-primary/20" data-testid="bulk-actions-bar">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
                 <span className="text-sm font-medium text-primary" data-testid="selected-count">

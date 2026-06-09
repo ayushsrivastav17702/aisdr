@@ -7,6 +7,7 @@ import { CheckCircle2, Circle, Mail, FileText, Users, Rocket, ArrowRight, ArrowL
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
+import { useAuth } from "@/contexts/auth-context";
 
 interface OnboardingStep {
   id: number;
@@ -24,20 +25,26 @@ export function OnboardingWizard() {
   const [currentStep, setCurrentStep] = useState(0);
   const [isOpen, setIsOpen] = useState(false);
 
+  const { isAuthenticated } = useAuth();
+
   const { data: user } = useQuery<any>({
     queryKey: ['/api/user'],
+    enabled: isAuthenticated,
   });
 
   const { data: mailboxes } = useQuery<any[]>({
     queryKey: ['/api/mailboxes'],
+    enabled: isAuthenticated,
   });
 
   const { data: sequences } = useQuery<any[]>({
     queryKey: ['/api/sequences'],
+    enabled: isAuthenticated,
   });
 
   const { data: prospects } = useQuery<any>({
     queryKey: ['/api/prospects'],
+    enabled: isAuthenticated,
   });
 
   const completeOnboardingMutation = useMutation({

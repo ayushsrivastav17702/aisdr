@@ -70,6 +70,54 @@ const upload = multer({
   }
 });
 
+/**
+ * FIX-1: Derive prospect timezone from location string using a simple keyword map.
+ * No external API needed — covers ~90% of use cases.
+ */
+function inferTimezone(location: string): string {
+  const l = location.toLowerCase();
+  // India
+  if (l.includes('india') || l.includes('bengaluru') || l.includes('bangalore') ||
+      l.includes('mumbai') || l.includes('delhi') || l.includes('chennai') ||
+      l.includes('hyderabad') || l.includes('pune') || l.includes('kolkata'))
+    return 'Asia/Kolkata';
+  // US East
+  if (l.includes('new york') || l.includes('boston') || l.includes('miami') ||
+      l.includes('atlanta') || l.includes('toronto') || l.includes('philadelphia'))
+    return 'America/New_York';
+  // US Central
+  if (l.includes('chicago') || l.includes('dallas') || l.includes('houston') ||
+      l.includes('austin') || l.includes('minneapolis'))
+    return 'America/Chicago';
+  // US Mountain
+  if (l.includes('denver') || l.includes('phoenix') || l.includes('salt lake'))
+    return 'America/Denver';
+  // US Pacific
+  if (l.includes('san francisco') || l.includes('los angeles') || l.includes('seattle') ||
+      l.includes('portland') || l.includes('california') || l.includes('san jose') ||
+      l.includes('san diego'))
+    return 'America/Los_Angeles';
+  // UK
+  if (l.includes('london') || l.includes(' uk') || l.includes('england') ||
+      l.includes('united kingdom'))
+    return 'Europe/London';
+  // Europe
+  if (l.includes('paris') || l.includes('berlin') || l.includes('amsterdam') ||
+      l.includes('madrid') || l.includes('rome') || l.includes('stockholm') ||
+      l.includes('frankfurt') || l.includes('munich') || l.includes('zurich'))
+    return 'Europe/Paris';
+  // Asia Pacific
+  if (l.includes('singapore')) return 'Asia/Singapore';
+  if (l.includes('sydney') || l.includes('australia') || l.includes('melbourne'))
+    return 'Australia/Sydney';
+  if (l.includes('dubai') || l.includes('uae') || l.includes('abu dhabi'))
+    return 'Asia/Dubai';
+  if (l.includes('tokyo') || l.includes('japan')) return 'Asia/Tokyo';
+  if (l.includes('beijing') || l.includes('shanghai') || l.includes('china') ||
+      l.includes('hong kong')) return 'Asia/Shanghai';
+  return 'UTC';
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
   
   // Health check endpoint for monitoring (UptimeRobot, etc.)
@@ -190,6 +238,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       console.error("AI search error:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid input", details: error.errors.map(e => e.message) });
+      }
       res.status(500).json({ 
         error: error instanceof Error ? error.message : "AI search failed" 
       });
@@ -736,6 +787,54 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // GET /api/company-knowledge — minimal stub so the Knowledge Base UI tab has a
+  // working contract. TODO: back this with a real `company_knowledge` table +
+  // CRUD once the feature is built out (currently no schema/route existed at all,
+  // causing a 404 — see docs/test-coverage-report.md Bug 6).
+  app.get("/api/company-knowledge", authenticate, async (req, res) => {
+    try {
+      if (!req.userContext?.userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+      res.json({ entries: [] });
+    } catch (error) {
+      console.error("Get company knowledge error:", error);
+      res.status(500).json({ error: "Failed to fetch company knowledge" });
+    }
+  });
+
+  app.post("/api/company-knowledge", authenticate, forbidManager, async (req, res) => {
+    try {
+      if (!req.userContext?.userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+      const schema = z.object({ type: z.string().min(1), content: z.string().min(1) });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ error: "Invalid input", details: parsed.error.errors.map(e => e.message) });
+      }
+      // Not yet persisted — feature pending schema support
+      res.status(501).json({ error: "Company knowledge persistence is not yet implemented" });
+    } catch (error) {
+      console.error("Create company knowledge error:", error);
+      res.status(500).json({ error: "Failed to create company knowledge entry" });
+    }
+  });
+
+  // GET /api/intent-signals — minimal stub for the Signals UI tab (same rationale
+  // as /api/company-knowledge above; see docs/test-coverage-report.md Bug 6).
+  app.get("/api/intent-signals", authenticate, async (req, res) => {
+    try {
+      if (!req.userContext?.userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
+      res.json({ signals: [] });
+    } catch (error) {
+      console.error("Get intent signals error:", error);
+      res.status(500).json({ error: "Failed to fetch intent signals" });
+    }
+  });
+
   // Get prospects with filters
   app.get("/api/prospects", authenticate, blockSuperAdminFromSDR, async (req, res) => {
     try {
@@ -939,18 +1038,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(503).json({ error: "Unable to verify tenant automation status" });
       }
 
-      const prospectData = insertProspectSchema.parse(req.body);
+      // Require a valid email address (primaryEmail is nullable in schema but required for manual creation)
+      if (!req.body.primaryEmail || typeof req.body.primaryEmail !== 'string' || !req.body.primaryEmail.trim()) {
+        return res.status(400).json({ error: "Email is required", field: "primaryEmail" });
+      }
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(req.body.primaryEmail.trim())) {
+        return res.status(400).json({ error: "Invalid email format", field: "primaryEmail" });
+      }
+
+      // userId comes from the authenticated session, not the request body
+      const prospectData = insertProspectSchema.parse({
+        ...req.body,
+        userId: req.userContext!.userId,
+      });
+      // FIX-1: Auto-derive timezone from contactLocation if not explicitly provided
+      const timezone =
+        req.body.timezone ||
+        (prospectData.contactLocation
+          ? inferTimezone(prospectData.contactLocation)
+          : 'UTC');
       // Set enrichmentStatus to 'new' for fresh prospects (RAW status)
       const prospect = await storage.createProspect(req.userContext!, {
         ...prospectData,
         enrichmentStatus: 'new',
         source: 'manual',
+        timezone,
       });
       res.json(prospect);
-    } catch (error) {
+    } catch (error: any) {
       console.error("Create prospect error:", error);
-      res.status(500).json({ 
-        error: error instanceof Error ? error.message : "Failed to create prospect" 
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          error: "Invalid input",
+          details: error.errors.map(e => e.message),
+        });
+      }
+      if (error?.code === '23505' || /duplicate key value violates unique constraint/i.test(error?.message || '')) {
+        return res.status(409).json({ error: "A prospect with this email already exists" });
+      }
+      res.status(500).json({
+        error: error instanceof Error ? error.message : "Failed to create prospect"
       });
     }
   });
@@ -964,8 +1092,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(prospect);
     } catch (error) {
       console.error("Update prospect error:", error);
-      res.status(500).json({ 
-        error: error instanceof Error ? error.message : "Failed to update prospect" 
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({
+          error: "Invalid input",
+          details: error.errors.map(e => e.message),
+        });
+      }
+      res.status(500).json({
+        error: error instanceof Error ? error.message : "Failed to update prospect"
       });
     }
   });
@@ -1230,6 +1364,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     } catch (error) {
       console.error("Enrichment error:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid input", details: error.errors.map(e => e.message) });
+      }
       res.status(500).json({ 
         error: error instanceof Error ? error.message : "Failed to start enrichment" 
       });
@@ -1329,6 +1466,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       console.error("Lusha enrichment error:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid input", details: error.errors.map(e => e.message) });
+      }
       res.status(500).json({ 
         error: error instanceof Error ? error.message : "Lusha enrichment failed" 
       });
@@ -1527,6 +1667,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       console.error("Waterfall enrichment error:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid input", details: error.errors.map(e => e.message) });
+      }
       res.status(500).json({ 
         error: error instanceof Error ? error.message : "Waterfall enrichment failed" 
       });
@@ -1840,6 +1983,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       console.error("Apollo bulk enrichment error:", error);
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: "Invalid input", details: error.errors.map(e => e.message) });
+      }
       res.status(500).json({ 
         error: error instanceof Error ? error.message : "Apollo bulk enrichment failed" 
       });
@@ -2344,9 +2490,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { prospectId, personalizationData, settings, customPrompt, useAdvanced, contentItemIds, sequenceId, sequenceStep } = req.body;
       
-      if (!process.env.OPENAI_API_KEY) {
-        return res.status(500).json({ 
-          error: "OpenAI API key not configured. Please set OPENAI_API_KEY in environment variables." 
+      if (!process.env.GROQ_API_KEY && !process.env.DEEPSEEK_API_KEY && !process.env.OPEN_ROUTER && !process.env.ANTHROPIC_API_KEY) {
+        return res.status(500).json({
+          error: "No AI provider configured. Please set GROQ_API_KEY, DEEPSEEK_API_KEY, OPEN_ROUTER, or ANTHROPIC_API_KEY."
         });
       }
 
@@ -2956,9 +3102,9 @@ What would be most helpful as a next step?`;
     try {
       const { replyId, prospectId, replyContent } = req.body;
       
-      if (!process.env.OPENAI_API_KEY && !process.env.ANTHROPIC_API_KEY) {
-        return res.status(500).json({ 
-          error: "No AI provider configured. Please set OPENAI_API_KEY or ANTHROPIC_API_KEY." 
+      if (!process.env.GROQ_API_KEY && !process.env.DEEPSEEK_API_KEY && !process.env.OPEN_ROUTER && !process.env.ANTHROPIC_API_KEY) {
+        return res.status(500).json({
+          error: "No AI provider configured. Please set GROQ_API_KEY, DEEPSEEK_API_KEY, OPEN_ROUTER, or ANTHROPIC_API_KEY."
         });
       }
 
@@ -3988,9 +4134,9 @@ Return ONLY the email body text, no subject line needed.`;
         return res.status(400).json({ error: "At least one content item must be selected" });
       }
 
-      if (!process.env.OPENAI_API_KEY) {
-        return res.status(500).json({ 
-          error: "OpenAI API key not configured. Please configure OPENAI_API_KEY in environment variables." 
+      if (!process.env.GROQ_API_KEY && !process.env.DEEPSEEK_API_KEY && !process.env.OPEN_ROUTER && !process.env.ANTHROPIC_API_KEY) {
+        return res.status(500).json({
+          error: "No AI provider configured. Please configure GROQ_API_KEY, DEEPSEEK_API_KEY, OPEN_ROUTER, or ANTHROPIC_API_KEY."
         });
       }
 
@@ -4014,10 +4160,6 @@ ${item.useCase ? `Use Case: ${item.useCase}` : ''}`;
       const tone = settings?.tone || 'professional';
       const length = settings?.length || 'medium';
       const cta = settings?.callToAction || 'schedule a call';
-
-      // Generate template using OpenAI
-      const OpenAI = (await import('openai')).default;
-      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
       const aiPrompt = `You are an expert email template creator. Generate a reusable email template based on the following:
 
@@ -4052,24 +4194,48 @@ Respond in JSON format:
 
       console.log('Generating AI email template with', selectedContent.length, 'content items');
 
-      const response = await openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [
-          {
-            role: "system",
-            content: "You are an expert email template creator who generates high-quality, reusable email templates based strictly on provided content. Always respond with valid JSON."
-          },
-          {
-            role: "user",
-            content: aiPrompt
-          }
-        ],
-        response_format: { type: "json_object" },
-        temperature: 0.7,
-        max_tokens: 1500
-      });
+      const { openaiHelper: _oh } = await import('./services/openai-helper');
+      const templateSystemMsg = "You are an expert email template creator who generates high-quality, reusable email templates based strictly on provided content. Always respond with valid JSON.";
+      const templateResponse: any = await _oh.callWithFallback(
+        (groqClient) => groqClient.chat.completions.create({
+          model: "llama-3.3-70b-versatile",
+          messages: [
+            { role: "system", content: templateSystemMsg },
+            { role: "user", content: aiPrompt }
+          ],
+          response_format: { type: "json_object" },
+          temperature: 0.7,
+          max_tokens: 1500
+        } as any),
+        (anthropic) => anthropic.messages.create({
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 1500,
+          system: templateSystemMsg,
+          messages: [{ role: "user", content: `${aiPrompt}\n\nRespond with valid JSON only.` }]
+        }) as any,
+        (client) => client.chat.completions.create({
+          model: (client as any).baseURL?.includes('openrouter')
+            ? (process.env.OPENROUTER_MODEL || "openai/gpt-4o")
+            : "deepseek-chat",
+          messages: [
+            { role: "system", content: templateSystemMsg },
+            { role: "user", content: aiPrompt }
+          ],
+          response_format: { type: "json_object" },
+          temperature: 0.7,
+          max_tokens: 1500
+        })
+      );
 
-      const result = JSON.parse(response.choices[0].message.content || '{}');
+      const rawTemplateContent = 'choices' in templateResponse
+        ? (templateResponse as any).choices[0].message.content || '{}'
+        : (() => {
+            const c = (templateResponse as any).content[0];
+            const t = c.type === 'text' ? c.text : '{}';
+            const m = t.match(/```json\s*([\s\S]*?)\s*```/) || t.match(/```\s*([\s\S]*?)\s*```/);
+            return m ? m[1] : t;
+          })();
+      const result = JSON.parse(rawTemplateContent);
 
       // Harden response parsing with fallbacks
       const subject = result.subject || 'Quick question about your business';

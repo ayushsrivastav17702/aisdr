@@ -194,20 +194,20 @@ IF COMPANY IS UNKNOWN:
 
 Return ONLY the personalized line, no quotes, no explanation.`;
 
-  const response = await openaiHelper.callWithFallback(
-    (client) =>
-      client.chat.completions.create({
-        model: "gpt-4o-mini",
+  const systemMsg = "You are an expert at writing personalized email opening lines. Be specific but never fabricate information.";
+  const response: any = await openaiHelper.callWithFallback(
+    // 1. Groq
+    (groqClient) =>
+      groqClient.chat.completions.create({
+        model: "llama-3.3-70b-versatile",
         messages: [
-          {
-            role: "system",
-            content: "You are an expert at writing personalized email opening lines. Be specific but never fabricate information."
-          },
+          { role: "system", content: systemMsg },
           { role: "user", content: prompt }
         ],
         temperature: 0.7,
         max_tokens: 100
-      }),
+      } as any),
+    // 4. Anthropic
     (anthropic) =>
       anthropic.messages.create({
         model: "claude-sonnet-4-20250514",
@@ -215,14 +215,14 @@ Return ONLY the personalized line, no quotes, no explanation.`;
         temperature: 0.7,
         messages: [{ role: "user", content: prompt }]
       }) as any,
+    // 2. DeepSeek / 3. OpenRouter
     (client) =>
       client.chat.completions.create({
-        model: process.env.OPENROUTER_MODEL || "openai/gpt-4o-mini",
+        model: (client as any).baseURL?.includes('openrouter')
+          ? (process.env.OPENROUTER_MODEL || "openai/gpt-4o-mini")
+          : "deepseek-chat",
         messages: [
-          {
-            role: "system",
-            content: "You are an expert at writing personalized email opening lines. Be specific but never fabricate information."
-          },
+          { role: "system", content: systemMsg },
           { role: "user", content: prompt }
         ],
         temperature: 0.7,

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useAuth } from "@/contexts/auth-context";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -124,20 +125,26 @@ export function OnboardingTooltips() {
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [dismissedUntil, setDismissedUntil] = useState<number | null>(null);
 
+  const { isAuthenticated } = useAuth();
+
   const { data: user } = useQuery<any>({
     queryKey: ['/api/user'],
+    enabled: isAuthenticated,
   });
 
   const { data: mailboxes } = useQuery<any[]>({
     queryKey: ['/api/mailboxes'],
+    enabled: isAuthenticated,
   });
 
   const { data: sequences } = useQuery<any[]>({
     queryKey: ['/api/sequences'],
+    enabled: isAuthenticated,
   });
 
   const { data: prospects } = useQuery<any>({
     queryKey: ['/api/prospects'],
+    enabled: isAuthenticated,
   });
 
   const hasProfile = user?.firstName && user?.lastName;

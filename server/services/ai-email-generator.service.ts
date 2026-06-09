@@ -662,26 +662,20 @@ ${verifiedSignalsContext}
 
 When given an AI Decision Engine recommendation, prioritize its template pattern and style.`;
 
-    const response = await openaiHelper.callWithFallback(
-      // Primary OpenAI call
-      (client) =>
-        client.chat.completions.create({
-          model: "gpt-4o",
+    const response: any = await openaiHelper.callWithFallback(
+      // 1. Groq (llama-3.3-70b-versatile) — OpenAI-compatible interface
+      (groqClient) =>
+        groqClient.chat.completions.create({
+          model: "llama-3.3-70b-versatile",
           messages: [
-            {
-              role: "system",
-              content: systemPrompt
-            },
-            {
-              role: "user",
-              content: prompt
-            }
+            { role: "system", content: systemPrompt },
+            { role: "user", content: prompt }
           ],
           response_format: { type: "json_object" },
           temperature: 0.7,
           max_tokens: 1000
-        }),
-      // Anthropic fallback
+        } as any),
+      // 4. Anthropic fallback
       (anthropic) =>
         anthropic.messages.create({
           model: "claude-sonnet-4-20250514",
@@ -695,35 +689,33 @@ When given an AI Decision Engine recommendation, prioritize its template pattern
             }
           ]
         }) as any,
-      // OpenRouter fallback - uses OpenAI-compatible API
+      // 2. DeepSeek / 3. OpenRouter — OpenAI-compatible API
       (client) => {
-        const openRouterModel = process.env.OPENROUTER_MODEL || "openai/gpt-4o";
-        
-        // JSON Mode Compatibility: Only OpenAI and Anthropic models support response_format
-        // See AI_PROVIDER.md for full compatibility matrix
-        const supportsJsonMode = openRouterModel.includes('openai/') || openRouterModel.includes('anthropic/');
-        
+        // When called for DeepSeek the client baseURL is deepseek.com;
+        // when called for OpenRouter it is openrouter.ai — same request shape.
+        const isOpenRouter = (client as any).baseURL?.includes('openrouter');
+        const model = isOpenRouter
+          ? (process.env.OPENROUTER_MODEL || "openai/gpt-4o")
+          : "deepseek-chat";
+
+        // JSON mode: DeepSeek supports it; OpenRouter only for openai/ or anthropic/ prefixed models
+        const supportsJsonMode = !isOpenRouter ||
+          model.includes('openai/') || model.includes('anthropic/');
+
         const requestParams: any = {
-          model: openRouterModel,
+          model,
           messages: [
-            {
-              role: "system",
-              content: systemPrompt
-            },
-            {
-              role: "user",
-              content: prompt
-            }
+            { role: "system", content: systemPrompt },
+            { role: "user", content: prompt }
           ],
           temperature: 0.7,
           max_tokens: 1000
         };
-        
-        // Only add response_format for models that support it
+
         if (supportsJsonMode) {
           requestParams.response_format = { type: "json_object" };
         }
-        
+
         return client.chat.completions.create(requestParams);
       }
     );

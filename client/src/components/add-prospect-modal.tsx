@@ -93,7 +93,7 @@ export default function AddProspectModal({ open, onClose }: AddProspectModalProp
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-lg">
+      <DialogContent className="sm:max-w-lg" data-testid="modal-add-prospect">
         <DialogHeader>
           <DialogTitle>Add Prospect</DialogTitle>
         </DialogHeader>
@@ -109,7 +109,7 @@ export default function AddProspectModal({ open, onClose }: AddProspectModalProp
             <Button type="button" variant="outline" onClick={onClose}>
               Cancel
             </Button>
-            <Button type="submit" disabled={createMutation.isPending} data-testid="button-add-prospect-submit">
+            <Button type="submit" disabled={createMutation.isPending} data-testid="button-submit-prospect">
               {createMutation.isPending ? "Adding..." : "Add Prospect"}
             </Button>
           </DialogFooter>

@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import { AlertCircle, CheckCircle2, Clock, XCircle } from "lucide-react";
+import { useAuth } from "@/contexts/auth-context";
 
 interface SchedulerHealth {
   status: "healthy" | "delayed" | "down";
@@ -43,9 +44,11 @@ function formatTimeAgo(dateString: string | null): string {
 }
 
 export function SchedulerStatusIndicator() {
+  const { user } = useAuth();
   const { data, isLoading, error } = useQuery<SchedulerHealthResponse>({
     queryKey: ["/api/scheduler/health"],
     refetchInterval: 30000,
+    enabled: !!user,
   });
 
   if (isLoading) {
@@ -140,9 +143,11 @@ export function SchedulerStatusIndicator() {
 }
 
 export function SchedulerStatusBadge({ compact = false }: { compact?: boolean }) {
+  const { user } = useAuth();
   const { data, isLoading } = useQuery<SchedulerHealthResponse>({
     queryKey: ["/api/scheduler/health"],
     refetchInterval: 30000,
+    enabled: !!user,
   });
 
   if (isLoading || !data?.emailQueue) {

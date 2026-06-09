@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { CoinsIcon, SparklesIcon, DatabaseIcon, InfoIcon } from "lucide-react";
+import { useAuth } from "@/contexts/auth-context";
 
 interface CreditBalanceData {
   assigned: number;
@@ -19,9 +20,11 @@ interface CreditBalanceData {
 }
 
 export function CreditBalance() {
+  const { user } = useAuth();
   const { data, isLoading, isError } = useQuery<CreditBalanceData>({
     queryKey: ["/api/credits/balance"],
     refetchInterval: 30000,
+    enabled: !!user,
   });
 
   if (isLoading) {

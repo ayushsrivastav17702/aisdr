@@ -1,5 +1,5 @@
 import { db } from "../db";
-import { emails, emailQueue, prospects, sequences, emailReplies } from "@shared/schema";
+import { emails, emailQueue, prospects, sequences, emailReplies, leadEvents } from "@shared/schema";
 import { eq, and, sql, gte, count, desc } from "drizzle-orm";
 import { Sentry, isSentryEnabled } from "../sentry";
 import { nanoid } from "nanoid";
@@ -183,6 +183,22 @@ export class EmailTrackingService {
           .where(eq(emails.id, email.id));
 
         console.log(`📨 Email opened: ${email.id}`);
+
+        // FIX-5: Emit 'opened' lead_event for funnel analytics
+        if (email.sequenceId && email.userId) {
+          try {
+            await db.insert(leadEvents).values({
+              userId: email.userId,
+              leadId: email.prospectId,
+              sequenceId: email.sequenceId,
+              stepId: null, // trackingId → stepId lookup not needed for funnel
+              eventType: 'opened',
+              metadata: { emailId: email.id },
+            }).onConflictDoNothing();
+          } catch (leErr) {
+            console.warn('[lead_events] Failed to insert opened event (non-fatal):', leErr);
+          }
+        }
       }
 
       return true;
@@ -218,6 +234,22 @@ export class EmailTrackingService {
             .where(eq(emails.id, email.id));
 
           console.log(`🔗 Email link clicked: ${email.id}`);
+
+          // FIX-5: Emit 'clicked' lead_event for funnel analytics
+          if (email.sequenceId && email.userId) {
+            try {
+              await db.insert(leadEvents).values({
+                userId: email.userId,
+                leadId: email.prospectId,
+                sequenceId: email.sequenceId,
+                stepId: null,
+                eventType: 'clicked',
+                metadata: { emailId: email.id },
+              }).onConflictDoNothing();
+            } catch (leErr) {
+              console.warn('[lead_events] Failed to insert clicked event (non-fatal):', leErr);
+            }
+          }
         }
       }
 

@@ -334,12 +334,21 @@ class AutomationService {
           }
 
           // Enroll prospect
-          const [sequenceProspect] = await db.insert(sequenceProspects).values({
-            sequenceId,
-            prospectId,
-            automationRunId,
-            status: "active",
-          }).returning();
+          let sequenceProspect;
+          try {
+            [sequenceProspect] = await db.insert(sequenceProspects).values({
+              sequenceId,
+              prospectId,
+              automationRunId,
+              status: "active",
+            }).returning();
+          } catch (insertErr: any) {
+            if (insertErr?.code === '23505' || /duplicate key value violates unique constraint/i.test(insertErr?.message || '')) {
+              console.warn(`[Automation ${automationRunId}] Prospect ${prospectId} already enrolled, skipping`);
+              continue;
+            }
+            throw insertErr;
+          }
 
           console.log(`[Automation ${automationRunId}] Enrolled prospect ${prospectId}`);
 

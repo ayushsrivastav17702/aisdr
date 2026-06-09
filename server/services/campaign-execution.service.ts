@@ -209,6 +209,7 @@ class CampaignExecutionService {
       })
       .returning();
 
+    try {
     await db.insert(emailQueue)
       .values({
         userId,
@@ -226,6 +227,13 @@ class CampaignExecutionService {
         inReplyTo,
         references,
       });
+    } catch (insertErr: any) {
+      if (insertErr?.code === '23505' || /duplicate key value violates unique constraint/i.test(insertErr?.message || '')) {
+        console.warn(`[CampaignExecution] Duplicate email queue entry for prospect ${enrollment.prospectId}, skipping`);
+        return false;
+      }
+      throw insertErr;
+    }
 
     const nextStepIndex = actualIndex + 1;
     const hasMoreSteps = nextStepIndex < steps.length;
