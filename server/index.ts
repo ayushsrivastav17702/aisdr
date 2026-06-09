@@ -21,7 +21,7 @@ import { mailboxService } from "./services/mailbox.service";
 import { initSentry, Sentry, isSentryEnabled } from "./sentry";
 import { db } from "./db";
 import { sql, eq } from "drizzle-orm";
-import { superAdmins, users } from "@shared/schema";
+import { superAdmins, users, accountLockouts } from "@shared/schema";
 import bcrypt from "bcrypt";
 
 // Global error handlers for production debugging
@@ -322,6 +322,9 @@ app.use((req, res, next) => {
       .where(eq(superAdmins.email, SEED_EMAIL))
       .limit(1);
 
+    // Clear any lockout for the super admin email
+    await db.delete(accountLockouts).where(eq(accountLockouts.email, SEED_EMAIL)).catch(() => {});
+
     if (!existing) {
       const passwordHash = await bcrypt.hash(SEED_PASSWORD, 12);
       await db.insert(superAdmins).values({
@@ -357,6 +360,9 @@ app.use((req, res, next) => {
       .from(users)
       .where(eq(users.email, SDR_EMAIL))
       .limit(1);
+
+    // Always clear any lockout for this email (in case of failed pre-deploy attempts)
+    await db.delete(accountLockouts).where(eq(accountLockouts.email, SDR_EMAIL)).catch(() => {});
 
     if (!existingSdr) {
       const passwordHash = await bcrypt.hash(SDR_PASSWORD, 12);
