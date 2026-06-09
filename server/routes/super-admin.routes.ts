@@ -3280,4 +3280,52 @@ router.get('/tenants/:id/reset-confirmation', authenticateSuperAdmin, requireSup
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ONE-TIME SUPER ADMIN PASSWORD RESET
+// Gated by SUPER_ADMIN_RESET_SECRET env var.
+// Remove this endpoint once the password has been reset.
+// ─────────────────────────────────────────────────────────────────────────────
+router.post('/reset-password', async (req, res) => {
+  // If env var not set, behave as if the route doesn't exist
+  if (!process.env.SUPER_ADMIN_RESET_SECRET) {
+    return res.status(404).json({ error: 'Not found' });
+  }
+
+  const { resetSecret, email, newPassword } = req.body;
+
+  if (!resetSecret || resetSecret !== process.env.SUPER_ADMIN_RESET_SECRET) {
+    return res.status(403).json({ error: 'Forbidden' });
+  }
+
+  if (!email || !newPassword || newPassword.length < 8) {
+    return res.status(400).json({ error: 'email and newPassword (min 8 chars) are required' });
+  }
+
+  try {
+    const [user] = await db
+      .select({ id: users.id, email: users.email })
+      .from(users)
+      .where(eq(users.email, email.toLowerCase().trim()))
+      .limit(1);
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const hashed = await bcrypt.hash(newPassword, 12);
+
+    await db
+      .update(users)
+      .set({ passwordHash: hashed, updatedAt: new Date() })
+      .where(eq(users.id, user.id));
+
+    console.log(`[SuperAdmin] Password reset for ${email} (id: ${user.id})`);
+
+    return res.json({ ok: true, message: `Password updated for ${email}. Remove SUPER_ADMIN_RESET_SECRET from env now.` });
+  } catch (error) {
+    console.error('[SuperAdmin] Password reset error:', error);
+    return res.status(500).json({ error: 'Failed to reset password' });
+  }
+});
+
 export default router;
