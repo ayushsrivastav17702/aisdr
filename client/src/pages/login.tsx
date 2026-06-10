@@ -85,8 +85,8 @@ export default function LoginPage() {
 
       if (data.token) {
         localStorage.setItem('auth_token', data.token);
-        window.location.href = data.redirectTo || '/';
       }
+      window.location.href = data.redirectTo || '/';
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
     } finally {
