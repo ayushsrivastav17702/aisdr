@@ -307,6 +307,22 @@ app.use((req, res, next) => {
     await db.execute(sql`
       ALTER TABLE email_mailboxes ADD COLUMN IF NOT EXISTS imap_port integer
     `);
+    // P1 FIX 4: Sending window, daily pacing, and re-engagement settings on sequences
+    await db.execute(sql`
+      ALTER TABLE sequences ADD COLUMN IF NOT EXISTS sending_window_start integer DEFAULT 9
+    `);
+    await db.execute(sql`
+      ALTER TABLE sequences ADD COLUMN IF NOT EXISTS sending_window_end integer DEFAULT 17
+    `);
+    await db.execute(sql`
+      ALTER TABLE sequences ADD COLUMN IF NOT EXISTS daily_email_limit integer DEFAULT 50
+    `);
+    await db.execute(sql`
+      ALTER TABLE sequences ADD COLUMN IF NOT EXISTS re_engagement_days integer DEFAULT 30
+    `);
+    await db.execute(sql`
+      ALTER TABLE sequences ADD COLUMN IF NOT EXISTS max_re_engagements integer DEFAULT 3
+    `);
     console.log('✅ Schema migrations applied');
   } catch (err) {
     console.error('⚠️ Schema migration error (non-fatal):', err);

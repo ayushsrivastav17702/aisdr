@@ -4,71 +4,7 @@ import { eq, and, isNotNull, desc, sql } from "drizzle-orm";
 import { emailQueueService } from "./email-queue.service";
 import { Sentry, isSentryEnabled } from "../sentry";
 import { schedulerMonitoringService } from "./scheduler-monitoring.service";
-
-/**
- * FIX-2: Compute next scheduledFor that falls within 9am–5pm on a weekday,
- * all in the prospect's local timezone using Intl (no external deps).
- *
- * @param delayDays  How many days to add before finding the window
- * @param tz         IANA timezone string (e.g. "Asia/Kolkata").  Falls back to "UTC".
- */
-function getNextBusinessHour(delayDays: number, tz: string = 'UTC'): Date {
-  const safeTz = (() => {
-    try {
-      Intl.DateTimeFormat(undefined, { timeZone: tz });
-      return tz;
-    } catch {
-      return 'UTC';
-    }
-  })();
-
-  const getLocalParts = (d: Date) =>
-    new Intl.DateTimeFormat('en-US', {
-      timeZone: safeTz,
-      weekday: 'short',
-      hour: 'numeric',
-      hour12: false,
-    }).formatToParts(d);
-
-  const getHour = (d: Date): number => {
-    const parts = getLocalParts(d);
-    return parseInt(parts.find(p => p.type === 'hour')?.value ?? '12', 10);
-  };
-
-  const getDayOfWeek = (d: Date): string => {
-    const parts = getLocalParts(d);
-    return parts.find(p => p.type === 'weekday')?.value ?? 'Mon';
-  };
-
-  const MS_PER_DAY = 24 * 60 * 60 * 1000;
-  const MS_PER_HOUR = 60 * 60 * 1000;
-
-  // Start from now + requested delay
-  let target = new Date(Date.now() + delayDays * MS_PER_DAY);
-
-  // Skip weekends
-  const skipWeekend = (d: Date): Date => {
-    let cur = d;
-    while (getDayOfWeek(cur) === 'Sat' || getDayOfWeek(cur) === 'Sun') {
-      cur = new Date(cur.getTime() + MS_PER_DAY);
-    }
-    return cur;
-  };
-
-  target = skipWeekend(target);
-
-  const localHour = getHour(target);
-  if (localHour < 9) {
-    // Move forward to 9 AM
-    target = new Date(target.getTime() + (9 - localHour) * MS_PER_HOUR);
-  } else if (localHour >= 17) {
-    // Past 5 PM — advance to next day at 9 AM
-    target = new Date(target.getTime() + (24 - localHour + 9) * MS_PER_HOUR);
-    target = skipWeekend(target);
-  }
-
-  return target;
-}
+import { getNextBusinessHour } from "./sequence-init.service";
 
 // Health monitoring types
 export interface ExecutorHealthStatus {

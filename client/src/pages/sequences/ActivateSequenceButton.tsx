@@ -1,22 +1,29 @@
+import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { Play, Pause } from "lucide-react";
+import { SequenceApprovalPreview } from "@/components/SequenceApprovalPreview";
 
 export function ActivateSequenceButton({
   sequenceId,
+  sequenceName,
   currentStatus,
   hasSteps,
   hasProspects
 }: {
   sequenceId: string;
+  sequenceName?: string;
   currentStatus: string;
   hasSteps: boolean;
   hasProspects: boolean;
 }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  // P0 FIX 4: Show the AI email approval preview after activation, before
+  // any emails are actually approved for sending.
+  const [showApprovalPreview, setShowApprovalPreview] = useState(false);
 
   const activateMutation = useMutation({
     mutationFn: async () => {
@@ -30,8 +37,11 @@ export function ActivateSequenceButton({
       queryClient.invalidateQueries({ queryKey: ['/api/sequences'] });
       toast({
         title: "Sequence activated!",
-        description: "Your sequence is now active and emails will be sent to enrolled prospects."
+        description: "Review and approve the AI-generated emails before they are sent."
       });
+      // P0 FIX 4: Surface the approval preview immediately after activation
+      // so the user can review AI emails before they go out.
+      setShowApprovalPreview(true);
     },
     onError: () => {
       toast({
@@ -101,6 +111,19 @@ export function ActivateSequenceButton({
           {tooltipMessage}
         </div>
       )}
+
+      {/* P0 FIX 4: Approval preview shown right after activation so the user
+          can review AI-generated emails before they are approved for sending. */}
+      <SequenceApprovalPreview
+        sequenceId={sequenceId}
+        sequenceName={sequenceName || ""}
+        open={showApprovalPreview}
+        onClose={() => setShowApprovalPreview(false)}
+        onApprove={() => {
+          queryClient.invalidateQueries({ queryKey: ['/api/sequences', sequenceId] });
+          queryClient.invalidateQueries({ queryKey: ['/api/sequences'] });
+        }}
+      />
     </div>
   );
 }

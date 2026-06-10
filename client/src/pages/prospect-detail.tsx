@@ -71,8 +71,43 @@ function StatusIcon({ status }: { status: string }) {
 // ─── Overview tab ────────────────────────────────────────────────────────────
 
 function OverviewTab({ prospect }: { prospect: any }) {
+  const { toast } = useToast();
+
+  // P1 FIX 6: Manual AE Handoff from prospect profile
+  const createHandoffMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/handoffs", {
+        prospectId: prospect.id,
+        handoffReason: "manual_sdr_handoff",
+        handoffNotes: `Manually handed off from prospect profile on ${new Date().toLocaleDateString()}.`,
+      });
+      return await res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Handed off to AE", description: "This prospect has been sent to the AE queue." });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Handoff failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
   return (
     <div className="space-y-6">
+      <div className="flex justify-end">
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => createHandoffMutation.mutate()}
+          disabled={createHandoffMutation.isPending}
+          data-testid="button-handoff-to-ae"
+        >
+          {createHandoffMutation.isPending ? "Handing off..." : "🤝 Hand off to AE"}
+        </Button>
+      </div>
       <Card>
         <CardHeader><CardTitle className="text-sm">Contact Information</CardTitle></CardHeader>
         <CardContent className="space-y-3">

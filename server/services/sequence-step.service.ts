@@ -421,22 +421,6 @@ Best regards`;
       throw error;
     }
   }
-
-  /**
-   * Schedule a follow-up email (for future implementation)
-   * Called after a prospect completes a step to schedule the next one
-   */
-  async scheduleNextEmail(params: {
-    sequenceProspectId: string;
-    currentStepOrder: number;
-    prospectId: string;
-    sequenceId: string;
-    userId: string;
-  }): Promise<void> {
-    // TODO: Implement next step scheduling for follow-ups
-    // This will be called by reply detection or time-based triggers
-    console.log(`[SequenceStep] TODO: Schedule next email after step ${params.currentStepOrder}`);
-  }
 }
 
 export default new SequenceStepService();

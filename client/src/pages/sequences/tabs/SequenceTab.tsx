@@ -183,6 +183,8 @@ export function SequenceTab({
   const [editMailboxId, setEditMailboxId] = useState<string>("");
   const [showAIPersonalization, setShowAIPersonalization] = useState(false);
   const [showAITemplate, setShowAITemplate] = useState(false);
+  // P1 FIX 1: Per-step AI email generator shown inline in the Edit Step modal
+  const [showStepAIGenerator, setShowStepAIGenerator] = useState(false);
   const [subject, setSubject] = useState("");
   const [manualSubject, setManualSubject] = useState("");
   const [body, setBody] = useState("");
@@ -298,6 +300,7 @@ export function SequenceTab({
     setEditBody(step.body);
     setEditDelayDays(String(step.delayDays || 0));
     setEditMailboxId(step.mailboxId || "");
+    setShowStepAIGenerator(false);
     setShowEditModal(true);
   };
 
@@ -768,6 +771,33 @@ export function SequenceTab({
             <DialogTitle>Edit Email Step</DialogTitle>
           </DialogHeader>
           <div className="space-y-4">
+            {/* P1 FIX 1: Per-step AI email generator */}
+            {!showStepAIGenerator ? (
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowStepAIGenerator(true)}
+                  data-testid="btn-ai-generate-step"
+                >
+                  <Sparkles className="w-4 h-4 mr-2" />
+                  Generate with AI
+                </Button>
+              </div>
+            ) : (
+              <AIEmailGenerator
+                sequenceId={sequenceId}
+                stepNumber={editingStep?.stepOrder || 1}
+                onUseEmail={(email) => {
+                  setEditSubject(email.subject);
+                  setEditBody(email.body);
+                  setShowStepAIGenerator(false);
+                  toast({ title: "AI email applied", description: "Review and save your changes." });
+                }}
+                onCancel={() => setShowStepAIGenerator(false)}
+              />
+            )}
             <div>
               <Label>Subject Line</Label>
               <Input

@@ -38,6 +38,15 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
+import { Loader2, Send } from "lucide-react";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -80,6 +89,9 @@ export default function InboxPage() {
   const [intentFilter, setIntentFilter] = useState<string>("all");
   const [aiSuggestion, setAiSuggestion] = useState<ReplySuggestion | null>(null);
   const [isLoadingAiSuggestion, setIsLoadingAiSuggestion] = useState(false);
+  // P1 FIX 3: Compose Reply dialog state
+  const [showComposeReply, setShowComposeReply] = useState(false);
+  const [composeReplyBody, setComposeReplyBody] = useState("");
 
   const { data: replies, isLoading } = useQuery<ReplyWithDetails[]>({
     queryKey: ["/api/inbox/replies"],
@@ -109,6 +121,38 @@ export default function InboxPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/inbox/replies"] });
       setSelectedReply(null);
+    },
+  });
+
+  // P1 FIX 3: Wire "Compose Reply" to the existing send-reply endpoint
+  const sendReplyMutation = useMutation({
+    mutationFn: async ({ reply, body }: { reply: ReplyWithDetails; body: string }) => {
+      const subject = (reply as any).subject?.startsWith("Re:")
+        ? (reply as any).subject
+        : `Re: ${(reply as any).subject || "Your inquiry"}`;
+      const res = await apiRequest("POST", "/api/sequences/send-reply", {
+        prospectId: reply.prospectId,
+        sequenceId: reply.sequenceId,
+        subject,
+        body,
+      });
+      return await res.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Reply sent",
+        description: "Your reply has been queued and will be sent shortly.",
+      });
+      setShowComposeReply(false);
+      setComposeReplyBody("");
+      queryClient.invalidateQueries({ queryKey: ["/api/inbox/replies"] });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to send reply",
+        description: error.message,
+        variant: "destructive",
+      });
     },
   });
 
@@ -507,7 +551,14 @@ export default function InboxPage() {
                         Quick Actions
                       </p>
                       <div className="flex flex-wrap gap-2">
-                        <Button size="sm" data-testid="button-compose-reply">
+                        <Button
+                          size="sm"
+                          onClick={() => {
+                            setComposeReplyBody("");
+                            setShowComposeReply(true);
+                          }}
+                          data-testid="button-compose-reply"
+                        >
                           <Reply className="h-4 w-4 mr-2" />
                           Compose Reply
                         </Button>
@@ -537,10 +588,11 @@ export default function InboxPage() {
                           suggestion={aiSuggestion}
                           isLoading={isLoadingAiSuggestion}
                           onInsertReply={(reply) => {
-                            navigator.clipboard.writeText(reply);
+                            setComposeReplyBody(reply);
+                            setShowComposeReply(true);
                             toast({
-                              title: "Reply copied",
-                              description: "The suggested reply has been copied to your clipboard"
+                              title: "Reply inserted",
+                              description: "Edit and send the AI-suggested reply."
                             });
                           }}
                           onRefresh={() => selectedReply && fetchAiSuggestion(selectedReply)}
@@ -565,6 +617,48 @@ export default function InboxPage() {
           </Card>
         </div>
       </div>
+
+      {/* P1 FIX 3: Compose Reply dialog */}
+      <Dialog open={showComposeReply} onOpenChange={setShowComposeReply}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>
+              Reply to {selectedReply?.prospect?.fullName || "Prospect"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Textarea
+              value={composeReplyBody}
+              onChange={(e) => setComposeReplyBody(e.target.value)}
+              placeholder="Write your reply..."
+              className="min-h-[200px]"
+              data-testid="textarea-compose-reply"
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setShowComposeReply(false)}
+              data-testid="button-cancel-compose-reply"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => {
+                if (selectedReply && composeReplyBody.trim()) {
+                  sendReplyMutation.mutate({ reply: selectedReply, body: composeReplyBody.trim() });
+                }
+              }}
+              disabled={!composeReplyBody.trim() || sendReplyMutation.isPending}
+              data-testid="button-send-compose-reply"
+            >
+              {sendReplyMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              <Send className="h-4 w-4 mr-2" />
+              {sendReplyMutation.isPending ? "Sending..." : "Send Reply"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

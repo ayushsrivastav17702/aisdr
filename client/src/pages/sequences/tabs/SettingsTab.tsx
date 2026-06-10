@@ -12,22 +12,78 @@ import { apiRequest } from "@/lib/queryClient";
 import { Trash2, Zap, BarChart3 } from "lucide-react";
 import { AutomationModal } from "@/components/AutomationModal";
 
+const HOUR_OPTIONS = Array.from({ length: 24 }, (_, h) => h);
+
+function formatHour(h: number): string {
+  const period = h >= 12 ? "PM" : "AM";
+  const display = h % 12 === 0 ? 12 : h % 12;
+  return `${display}${period}`;
+}
+
 export function SettingsTab({ sequenceId, sequence }: { sequenceId: string; sequence: any }) {
   const [name, setName] = useState(sequence?.name || "");
   const [description, setDescription] = useState(sequence?.description || "");
   const [status, setStatus] = useState(sequence?.status || "draft");
   const [showAutomationModal, setShowAutomationModal] = useState(false);
+  // P1 FIX 4: Sending window, daily pacing, and re-engagement settings
+  const [sendingWindowStart, setSendingWindowStart] = useState(
+    String(sequence?.sendingWindowStart ?? 9)
+  );
+  const [sendingWindowEnd, setSendingWindowEnd] = useState(
+    String(sequence?.sendingWindowEnd ?? 17)
+  );
+  const [dailyEmailLimit, setDailyEmailLimit] = useState(
+    String(sequence?.dailyEmailLimit ?? 50)
+  );
+  const [reEngagementDays, setReEngagementDays] = useState(
+    String(sequence?.reEngagementDays ?? 14)
+  );
+  const [maxReEngagements, setMaxReEngagements] = useState(
+    String(sequence?.maxReEngagements ?? 2)
+  );
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   const updateMutation = useMutation({
     mutationFn: async (data: any) => {
-      const res = await apiRequest("PUT", `/api/sequences/${sequenceId}`, data);
+      const res = await apiRequest("PATCH", `/api/sequences/${sequenceId}`, data);
       return await res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/sequences', sequenceId] });
       toast({ title: "Sequence updated successfully" });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to save settings",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
+
+  // P1 FIX 4: Save sending window / pacing / re-engagement settings
+  const savePacingMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("PATCH", `/api/sequences/${sequenceId}`, {
+        sendingWindowStart: parseInt(sendingWindowStart, 10),
+        sendingWindowEnd: parseInt(sendingWindowEnd, 10),
+        dailyEmailLimit: parseInt(dailyEmailLimit, 10) || 1,
+        reEngagementDays: parseInt(reEngagementDays, 10) || 0,
+        maxReEngagements: parseInt(maxReEngagements, 10) || 0,
+      });
+      return await res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/sequences', sequenceId] });
+      toast({ title: "Settings saved" });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to save settings",
+        description: error.message,
+        variant: "destructive",
+      });
     },
   });
 
@@ -102,6 +158,100 @@ export function SettingsTab({ sequenceId, sequence }: { sequenceId: string; sequ
           >
             <Trash2 className="w-4 h-4 mr-2" />
             Delete Sequence
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+
+    {/* P1 FIX 4: Sending window, daily pacing, and re-engagement controls */}
+    <Card className="mt-6">
+      <CardHeader>
+        <CardTitle>Sending & Pacing</CardTitle>
+        <CardDescription>Control when and how often emails are sent for this sequence</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        <div>
+          <Label>Send emails between</Label>
+          <div className="flex items-center gap-2 mt-1">
+            <Select value={sendingWindowStart} onValueChange={setSendingWindowStart}>
+              <SelectTrigger className="w-32" data-testid="select-sending-window-start">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {HOUR_OPTIONS.map((h) => (
+                  <SelectItem key={h} value={String(h)}>{formatHour(h)}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <span className="text-sm text-muted-foreground">and</span>
+            <Select value={sendingWindowEnd} onValueChange={setSendingWindowEnd}>
+              <SelectTrigger className="w-32" data-testid="select-sending-window-end">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {HOUR_OPTIONS.map((h) => (
+                  <SelectItem key={h} value={String(h)}>{formatHour(h)}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <p className="text-sm text-muted-foreground mt-1">
+            Emails are only scheduled to send within this local-time window (skipping weekends).
+          </p>
+        </div>
+
+        <div>
+          <Label htmlFor="daily-email-limit">Max emails per day</Label>
+          <Input
+            id="daily-email-limit"
+            type="number"
+            min={1}
+            max={200}
+            value={dailyEmailLimit}
+            onChange={(e) => setDailyEmailLimit(e.target.value)}
+            className="w-32"
+            data-testid="input-daily-email-limit"
+          />
+          <p className="text-sm text-muted-foreground mt-1">
+            Maximum number of emails this sequence can send per day.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <Label htmlFor="re-engagement-days">Re-engage after (days)</Label>
+            <Input
+              id="re-engagement-days"
+              type="number"
+              min={0}
+              value={reEngagementDays}
+              onChange={(e) => setReEngagementDays(e.target.value)}
+              data-testid="input-re-engagement-days"
+            />
+          </div>
+          <div>
+            <Label htmlFor="max-re-engagements">Max re-engagements</Label>
+            <Input
+              id="max-re-engagements"
+              type="number"
+              min={0}
+              value={maxReEngagements}
+              onChange={(e) => setMaxReEngagements(e.target.value)}
+              data-testid="input-max-re-engagements"
+            />
+          </div>
+        </div>
+        <p className="text-sm text-muted-foreground -mt-4">
+          Prospects with no reply will be re-engaged after this many days, up to the max re-engagements.
+        </p>
+
+        <div className="pt-2">
+          <Button
+            onClick={() => savePacingMutation.mutate()}
+            disabled={savePacingMutation.isPending}
+            data-testid="button-save-pacing-settings"
+          >
+            {savePacingMutation.isPending ? "Saving..." : "Save Settings"}
           </Button>
         </div>
       </CardContent>

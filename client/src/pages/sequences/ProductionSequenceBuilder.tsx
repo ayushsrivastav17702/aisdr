@@ -195,6 +195,7 @@ export function ProductionSequenceBuilder({ sequenceId }: { sequenceId: string }
                 </Button>
                 <ActivateSequenceButton
                   sequenceId={sequenceId}
+                  sequenceName={sequenceName || sequence?.name}
                   currentStatus={sequence?.status}
                   hasSteps={(sequence?.steps?.length || 0) > 0}
                   hasProspects={(prospectsData?.prospects?.length || 0) > 0}

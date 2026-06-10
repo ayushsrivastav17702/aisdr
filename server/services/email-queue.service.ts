@@ -1,5 +1,5 @@
 import { db } from "../db";
-import { emailQueue, InsertEmailQueueItem, EmailQueueItem, prospects, emails, sequenceProspects, emailMailboxes, automationRuns, emailSendAudit, leadEvents } from "@shared/schema";
+import { emailQueue, InsertEmailQueueItem, EmailQueueItem, prospects, emails, sequenceProspects, emailMailboxes, automationRuns, emailSendAudit, leadEvents, unsubscribes, doNotContactList } from "@shared/schema";
 import { eq, and, lte, sql } from "drizzle-orm";
 import { emailSendingService } from "./email-sending.service";
 import { mailboxService } from "./mailbox.service";
@@ -163,6 +163,81 @@ export function renderMergeFields(content: string, prospect: any): {
   }
   
   return { rendered, unresolvedFields, usedFallbacks };
+}
+
+/**
+ * P0 FIX 2: Check whether a prospect's email is blocked from sending at
+ * send-time — covers the case where a prospect unsubscribes (or is added
+ * to the org's Do-Not-Contact list) AFTER their sequence emails were
+ * already queued.
+ *
+ * Checks (in order):
+ *  1. `unsubscribes` table (per-user opt-outs, e.g. via reply-detection)
+ *  2. `do_not_contact_list` by exact email (org-level DNC)
+ *  3. `do_not_contact_list` by sender domain (org-level domain blocklist)
+ */
+export async function isProspectBlockedFromSending(
+  prospectEmail: string,
+  userId: string,
+  organizationId: string | null
+): Promise<{ blocked: boolean; reason: string }> {
+  // 1. Per-user unsubscribe list
+  const unsubscribed = await db
+    .select({ id: unsubscribes.id })
+    .from(unsubscribes)
+    .where(
+      and(
+        eq(unsubscribes.email, prospectEmail),
+        eq(unsubscribes.userId, userId)
+      )
+    )
+    .limit(1);
+
+  if (unsubscribed.length > 0) {
+    return { blocked: true, reason: 'unsubscribed' };
+  }
+
+  // Org-level DNC checks require an organizationId
+  if (!organizationId) {
+    return { blocked: false, reason: '' };
+  }
+
+  // 2. Org DNC list — exact email match
+  const onDNC = await db
+    .select({ id: doNotContactList.id })
+    .from(doNotContactList)
+    .where(
+      and(
+        eq(doNotContactList.email, prospectEmail),
+        eq(doNotContactList.organizationId, organizationId)
+      )
+    )
+    .limit(1);
+
+  if (onDNC.length > 0) {
+    return { blocked: true, reason: 'dnc' };
+  }
+
+  // 3. Org DNC list — domain blocklist
+  const domain = prospectEmail.split('@')[1];
+  if (domain) {
+    const domainBlocked = await db
+      .select({ id: doNotContactList.id })
+      .from(doNotContactList)
+      .where(
+        and(
+          eq(doNotContactList.domain, domain),
+          eq(doNotContactList.organizationId, organizationId)
+        )
+      )
+      .limit(1);
+
+    if (domainBlocked.length > 0) {
+      return { blocked: true, reason: 'domain_blocked' };
+    }
+  }
+
+  return { blocked: false, reason: '' };
 }
 
 export class EmailQueueService {
@@ -731,6 +806,31 @@ export class EmailQueueService {
 
       if (!prospect || !prospect.primaryEmail) {
         throw new Error(`Prospect ${email.prospectId} not found or has no email`);
+      }
+
+      // ========================================
+      // P0 FIX 2: DNC / unsubscribe check at send-time
+      // ========================================
+      const organizationId = await hardeningService.getOrganizationIdForUser(email.userId);
+      const blockCheck = await isProspectBlockedFromSending(prospect.primaryEmail, email.userId, organizationId);
+      if (blockCheck.blocked) {
+        // Cancel this email and any other pending/scheduled emails for this
+        // prospect in this sequence — they should not receive further sends.
+        await db.update(emailQueue)
+          .set({
+            status: 'cancelled',
+            lastError: `Blocked: ${blockCheck.reason}`,
+          })
+          .where(
+            and(
+              eq(emailQueue.prospectId, email.prospectId),
+              email.sequenceId ? eq(emailQueue.sequenceId, email.sequenceId) : sql`1=1`,
+              sql`${emailQueue.status} IN ('pending', 'scheduled', 'approved', 'generating')`
+            )
+          );
+
+        console.log(`[EmailQueue] Cancelled emails for ${prospect.primaryEmail}: ${blockCheck.reason}`);
+        return false;
       }
 
       await db

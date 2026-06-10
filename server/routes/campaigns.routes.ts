@@ -6,6 +6,7 @@ import { db } from "../db";
 import { sequences, emailMailboxes } from "@shared/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { nanoid } from "nanoid";
+import { initializeSequence } from "../services/sequence-init.service";
 
 const router = Router();
 
@@ -210,7 +211,22 @@ router.post("/:id/launch", authenticate, forbidManager, async (req, res) => {
       });
     }
 
-    await storage.updateSequence(req.userContext, req.params.id, { status: "active" });
+    await storage.updateSequence(req.userContext, req.params.id, { status: "active", isApproved: true });
+
+    // P0 FIX 1: Campaigns are rows in the `sequences` table — launching a campaign
+    // must queue the first email for every enrolled prospect, exactly like
+    // activating a sequence does via PUT/PATCH /api/sequences/:id.
+    try {
+      await initializeSequence(req.userContext, req.params.id);
+    } catch (initError) {
+      console.error("Campaign launch: initializeSequence failed, rolling back to draft:", initError);
+      await storage.updateSequence(req.userContext, req.params.id, { status: "draft", isApproved: false });
+      return res.status(500).json({
+        error: "Failed to queue emails for campaign launch. Campaign reverted to draft.",
+        launched: false,
+        status: "draft",
+      });
+    }
 
     res.json({
       success: true,

@@ -16,6 +16,17 @@ function AIReplyComposer({ reply, sequenceId, open, onOpenChange }: { reply: any
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
+  // P1 FIX 5: Full email thread history for this prospect
+  const { data: threadData, isLoading: isThreadLoading } = useQuery({
+    queryKey: ['/api/sequences', sequenceId, 'prospects', reply.prospectId, 'thread'],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/sequences/${sequenceId}/prospects/${reply.prospectId}/thread`, undefined);
+      return await res.json();
+    },
+    enabled: open && !!reply?.prospectId,
+  });
+  const thread = threadData?.thread || [];
+
   const generateReplyMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", `/api/sequences/${sequenceId}/generate-reply`, {
@@ -89,6 +100,37 @@ function AIReplyComposer({ reply, sequenceId, open, onOpenChange }: { reply: any
         </DialogHeader>
 
         <div className="flex-1 min-h-0 overflow-y-auto space-y-4 p-4">
+          {/* P1 FIX 5: Email thread history */}
+          <div>
+            <Label className="text-sm font-medium">Conversation History</Label>
+            {isThreadLoading ? (
+              <div className="mt-2 text-sm text-muted-foreground">Loading thread...</div>
+            ) : thread.length === 0 ? (
+              <div className="mt-2 text-sm text-muted-foreground">No prior emails found.</div>
+            ) : (
+              <div className="mt-2 space-y-2 max-h-64 overflow-y-auto">
+                {thread.map((item: any, idx: number) => (
+                  <div
+                    key={idx}
+                    className={`p-3 rounded-lg text-sm border ${
+                      item.direction === 'outbound'
+                        ? 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800'
+                        : 'bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between text-xs text-muted-foreground mb-1">
+                      <span className="font-medium">
+                        {item.direction === 'outbound' ? '[Sent] You' : '[Reply] Prospect'} - {item.subject}
+                      </span>
+                      <span>{item.timestamp ? new Date(item.timestamp).toLocaleString() : ''}</span>
+                    </div>
+                    <p className="whitespace-pre-wrap line-clamp-3">{item.body}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div>
             <Label className="text-sm font-medium">Original Reply from {reply.prospect?.fullName}</Label>
             <div className="mt-2 p-3 bg-muted rounded-lg text-sm">
@@ -156,7 +198,31 @@ function AIReplyComposer({ reply, sequenceId, open, onOpenChange }: { reply: any
 
 export function RepliesTab({ sequenceId, replies }: { sequenceId: string; replies: any[] }) {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const [selectedReply, setSelectedReply] = useState<any>(null);
+
+  // P1 FIX 6: Manual AE Handoff
+  const createHandoffMutation = useMutation({
+    mutationFn: async (reply: any) => {
+      const res = await apiRequest("POST", "/api/handoffs", {
+        prospectId: reply.prospectId,
+        handoffReason: "manual_sdr_handoff",
+        handoffNotes: `Manually handed off from sequence replies on ${new Date().toLocaleDateString()}. Reply: "${(reply.replyContent || '').slice(0, 300)}"`,
+      });
+      return await res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Handed off to AE", description: "This prospect has been sent to the AE queue." });
+      queryClient.invalidateQueries({ queryKey: ['/api/handoffs'] });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Handoff failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    },
+  });
 
   const { data: sequence } = useQuery({
     queryKey: ['/api/sequences', sequenceId],
@@ -263,6 +329,15 @@ export function RepliesTab({ sequenceId, replies }: { sequenceId: string; replie
                     >
                       <Zap className="w-4 h-4 mr-2" />
                       AI Follow-up
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => createHandoffMutation.mutate(reply)}
+                      disabled={createHandoffMutation.isPending}
+                      data-testid={`button-create-handoff-${reply.id}`}
+                    >
+                      🤝 Hand off to AE
                     </Button>
                   </div>
                 </div>

@@ -242,6 +242,12 @@ export const sequences = pgTable("sequences", {
   lastStatusChangeAt: timestamp("last_status_change_at"),
   activationToggleCount: integer("activation_toggle_count").default(0),
   isApproved: boolean("is_approved").default(false),
+  // P1 FIX 4: Sending window, daily pacing, and re-engagement settings
+  sendingWindowStart: integer("sending_window_start").default(9), // hour of day, 0-23
+  sendingWindowEnd: integer("sending_window_end").default(17), // hour of day, 0-23
+  dailyEmailLimit: integer("daily_email_limit").default(50),
+  reEngagementDays: integer("re_engagement_days").default(30),
+  maxReEngagements: integer("max_re_engagements").default(3),
 }, (table) => ({
   userIdStatusCreatedAtIdx: index("sequences_user_id_status_created_at_idx").on(table.userId, table.status, table.createdAt),
   userIdCreatedAtIdx: index("sequences_user_id_created_at_idx").on(table.userId, table.createdAt),

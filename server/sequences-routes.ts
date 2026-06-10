@@ -3,7 +3,7 @@ import { storage, type RequestContext } from "./storage";
 import { generatePersonalizedEmail, type LinkedInData } from "./services/personalization.service";
 import { emailQueueService } from "./services/email-queue.service";
 import { db } from "./db";
-import { sequenceProspects, emailReplies, emailQueue, emails, prospects, personalizationResults, userActivityLogs, leadEvents, sequenceSteps, sequences } from "@shared/schema";
+import { sequenceProspects, emailReplies, emailQueue, emails, prospects, personalizationResults, userActivityLogs, leadEvents, sequenceSteps, sequences, aiFollowupJobs } from "@shared/schema";
 import { eq, and, sql, desc, asc, inArray, isNotNull } from "drizzle-orm";
 import { z } from "zod";
 import { authenticate, forbidManager, blockSuperAdminFromSDR } from "./middleware/auth.middleware";
@@ -12,6 +12,7 @@ import { sdrWorkflowService, WorkflowBlockedError } from "./services/sdr-workflo
 import { hardeningService } from "./services/hardening.service";
 import { aiTrackingService } from "./services/ai-tracking.service";
 import { checkCredits, deductCredits } from "./services/credit.service";
+import { initializeSequence } from "./services/sequence-init.service";
 
 // Helper to log user activity for audit trail (TC-SDR-AUDIT-01)
 async function logActivity(
@@ -36,153 +37,6 @@ async function logActivity(
 
 const router = Router();
 
-/**
- * FIX-2: Schedule within 9am–5pm local business hours, skipping weekends.
- * Uses Intl (no external deps) to work in prospect's IANA timezone.
- */
-function getNextBusinessHour(delayDays: number, tz: string = 'UTC'): Date {
-  const safeTz = (() => {
-    try { Intl.DateTimeFormat(undefined, { timeZone: tz }); return tz; }
-    catch { return 'UTC'; }
-  })();
-  const MS_PER_DAY = 24 * 60 * 60 * 1000;
-  const MS_PER_HOUR = 60 * 60 * 1000;
-  const getLocalParts = (d: Date) =>
-    new Intl.DateTimeFormat('en-US', { timeZone: safeTz, weekday: 'short', hour: 'numeric', hour12: false }).formatToParts(d);
-  const getHour = (d: Date): number =>
-    parseInt(getLocalParts(d).find(p => p.type === 'hour')?.value ?? '12', 10);
-  const getDow = (d: Date): string =>
-    getLocalParts(d).find(p => p.type === 'weekday')?.value ?? 'Mon';
-  const skipWeekend = (d: Date): Date => {
-    let cur = d;
-    while (getDow(cur) === 'Sat' || getDow(cur) === 'Sun')
-      cur = new Date(cur.getTime() + MS_PER_DAY);
-    return cur;
-  };
-  let target = skipWeekend(new Date(Date.now() + delayDays * MS_PER_DAY));
-  const h = getHour(target);
-  if (h < 9) target = new Date(target.getTime() + (9 - h) * MS_PER_HOUR);
-  else if (h >= 17) {
-    target = skipWeekend(new Date(target.getTime() + (24 - h + 9) * MS_PER_HOUR));
-  }
-  return target;
-}
-
-// Helper function to initialize sequence when activated
-async function initializeSequence(userContext: RequestContext, sequenceId: string): Promise<void> {
-  try {
-    console.log(`🚀 Initializing sequence ${sequenceId}...`);
-    
-    // Get sequence details to check aiPersonalizationEnabled flag
-    const sequence = await storage.getSequence(userContext, sequenceId);
-    if (!sequence) {
-      console.log(`  ❌ Sequence ${sequenceId} not found`);
-      return;
-    }
-    const usePersonalization = sequence.aiPersonalizationEnabled === true;
-    console.log(`  AI Personalization: ${usePersonalization ? 'enabled' : 'disabled'}`);
-    
-    // Get all enrolled prospects
-    const enrolledProspects = await storage.getSequenceProspects(userContext, sequenceId);
-    console.log(`  Found ${enrolledProspects.length} enrolled prospects`);
-    
-    if (enrolledProspects.length === 0) {
-      console.log(`  ⚠️ No prospects enrolled, skipping initialization`);
-      return;
-    }
-    
-    // Get sequence steps
-    const steps = await storage.getSequenceSteps(userContext, sequenceId);
-    console.log(`  Found ${steps.length} sequence steps`);
-    
-    if (steps.length === 0) {
-      console.log(`  ⚠️ No steps found, skipping initialization`);
-      return;
-    }
-    
-    // Sort steps by order and get first step
-    const sortedSteps = steps.sort((a, b) => a.stepOrder - b.stepOrder);
-    const firstStep = sortedSteps[0];
-    console.log(`  First step: ${firstStep.subject} (ID: ${firstStep.id})`);
-    
-    // Initialize each prospect
-    for (const enrolledProspect of enrolledProspects) {
-      // Set current step if not already set
-      if (!enrolledProspect.currentStepId) {
-        await db
-          .update(sequenceProspects)
-          .set({ currentStepId: firstStep.id })
-          .where(eq(sequenceProspects.id, enrolledProspect.id));
-        console.log(`  📌 Set current step for prospect ${enrolledProspect.prospectId}`);
-      }
-      
-      // FIX-2: Calculate scheduled time using business-hours window in prospect's timezone
-      const prospectRecord = await db.query.prospects.findFirst({
-        where: eq(prospects.id, enrolledProspect.prospectId)
-      });
-      const prospectTimezone = (prospectRecord as any)?.timezone || 'UTC';
-      const scheduledFor = getNextBusinessHour(firstStep.delayDays || 0, prospectTimezone);
-      console.log(`  🕘 Scheduled first email at ${scheduledFor.toISOString()} (tz: ${prospectTimezone})`);
-      
-      // Start with template content
-      let emailSubject = firstStep.subject;
-      let emailBody = firstStep.body;
-      
-      // ALWAYS check for pre-generated personalized emails (from PersonalizationWizard)
-      // These are explicitly created by the user, so we should always use them
-      const allPersonalizations = await db.query.personalizationResults.findMany({
-        where: and(
-          eq(personalizationResults.prospectId, enrolledProspect.prospectId),
-          eq(personalizationResults.userId, userContext.userId)
-        ),
-        orderBy: (pr, { desc }) => [desc(pr.createdAt)],
-        limit: 10
-      });
-      
-      // STRICT: Only use personalization that matches THIS specific sequence
-      const matchingPersonalization = allPersonalizations.find(p => {
-        const emailSuggestions = p.emailSuggestions as { sequenceId?: string } | null;
-        return emailSuggestions?.sequenceId === sequenceId;
-      });
-      
-      if (matchingPersonalization?.emailSuggestions) {
-        const savedEmail = matchingPersonalization.emailSuggestions as { subject?: string; body?: string; generatedAt?: string; sequenceId?: string };
-        
-        if (savedEmail.subject && savedEmail.body) {
-          emailSubject = savedEmail.subject;
-          emailBody = savedEmail.body;
-          console.log(`  ✨ Using pre-generated personalized email for prospect ${enrolledProspect.prospectId} (generated: ${savedEmail.generatedAt || 'unknown'})`);
-        }
-      } else if (usePersonalization) {
-        // No pre-generated email found, and AI personalization is enabled
-        // The aiPersonalizationEnabled flag controls ON-THE-FLY generation (done elsewhere)
-        console.log(`  ℹ️ No pre-generated email found for prospect ${enrolledProspect.prospectId}, using template`);
-      }
-      
-      // Add email to queue with personalized content (or template fallback)
-      // CRITICAL: Include stepOrder for deduplication to prevent duplicate emails
-      // Skip SafeToSend during initialization - it will be checked when email is processed/sent
-      await emailQueueService.addToQueue({
-        sequenceId,
-        prospectId: enrolledProspect.prospectId,
-        subject: emailSubject,
-        body: emailBody,
-        scheduledFor,
-        priority: 5,
-        userId: userContext.userId,
-        stepOrder: firstStep.stepOrder, // Required for deduplication check
-        skipSafeToSendCheck: true, // Check happens during send, not scheduling
-      });
-      
-      console.log(`  ✅ Added email to queue for prospect ${enrolledProspect.prospectId}`);
-    }
-    
-    console.log(`🎉 Sequence ${sequenceId} initialized successfully!`);
-  } catch (error) {
-    console.error(`❌ Failed to initialize sequence ${sequenceId}:`, error);
-    throw error;
-  }
-}
 
 // Get all sequences with pagination
 router.get("/sequences", authenticate, blockSuperAdminFromSDR, async (req, res) => {
@@ -965,6 +819,82 @@ router.get("/sequences/:id/prospects", authenticate, blockSuperAdminFromSDR, asy
   }
 });
 
+// P1 FIX 5: Email thread view - all sent + received emails for a prospect in a sequence
+router.get("/sequences/:id/prospects/:prospectId/thread", authenticate, blockSuperAdminFromSDR, async (req, res) => {
+  try {
+    const sequenceId = req.params.id;
+    const { prospectId } = req.params;
+
+    const sequence = await storage.getSequence(req.userContext!, sequenceId);
+    if (!sequence) {
+      return res.status(404).json({ error: "Sequence not found" });
+    }
+
+    const prospect = await storage.getProspect(req.userContext!, prospectId);
+    if (!prospect) {
+      return res.status(404).json({ error: "Prospect not found" });
+    }
+
+    // Outbound: emails actually sent
+    const sentEmails = await db
+      .select({
+        subject: emailQueue.subject,
+        body: emailQueue.body,
+        sentAt: emailQueue.sentAt,
+        status: emailQueue.status,
+      })
+      .from(emailQueue)
+      .where(
+        and(
+          eq(emailQueue.sequenceId, sequenceId),
+          eq(emailQueue.prospectId, prospectId),
+          eq(emailQueue.status, 'sent')
+        )
+      );
+
+    // Inbound: prospect replies
+    const replies = await db
+      .select({
+        subject: emailReplies.aiSummary, // no separate subject column on replies; fall back below
+        replyContent: emailReplies.replyContent,
+        receivedAt: emailReplies.receivedAt,
+      })
+      .from(emailReplies)
+      .where(
+        and(
+          eq(emailReplies.sequenceId, sequenceId),
+          eq(emailReplies.prospectId, prospectId)
+        )
+      );
+
+    const thread = [
+      ...sentEmails.map((e) => ({
+        direction: 'outbound' as const,
+        subject: e.subject,
+        body: e.body,
+        timestamp: e.sentAt,
+        status: e.status,
+      })),
+      ...replies.map((r) => ({
+        direction: 'inbound' as const,
+        subject: 'Re: ' + (sequence.name || 'Your inquiry'),
+        body: r.replyContent,
+        timestamp: r.receivedAt,
+        status: 'received',
+      })),
+    ].sort((a, b) => {
+      const at = a.timestamp ? new Date(a.timestamp).getTime() : 0;
+      const bt = b.timestamp ? new Date(b.timestamp).getTime() : 0;
+      return at - bt;
+    });
+
+    res.json({ thread });
+  } catch (error) {
+    console.error("Error fetching email thread:", error);
+    res.status(500).json({ error: "Failed to fetch email thread" });
+  }
+});
+
 // Get all sequences a specific prospect is enrolled in, with progress info
 router.get("/prospects/:prospectId/sequence-progress", authenticate, blockSuperAdminFromSDR, async (req, res) => {
   try {
@@ -1094,7 +1024,9 @@ router.post("/sequences/:id/prospects", authenticate, forbidManager, checkUserPa
           sequenceId,
           prospectId: enrolledProspect.prospectId,
           automationRunId: '', // Manual enrollment, no automation run
-          aiPersonalizationEnabled: false, // Use template content for manual enrollment
+          // P1 FIX 2: Respect the sequence's own AI personalization setting instead of
+          // hardcoding it off for manual enrollment.
+          aiPersonalizationEnabled: sequence?.aiPersonalizationEnabled === true,
           userId
         });
         console.log(`[Manual Enrollment] Scheduled first email for prospect ${enrolledProspect.prospectId}`);
@@ -1672,83 +1604,232 @@ router.post("/sequences/followup-preview", authenticate, forbidManager, async (r
   }
 });
 
-// AI Email Generation - Main endpoint
-router.post("/sequences/ai-generate-email", authenticate, forbidManager, async (req, res) => {
+// Get AI follow-up job settings for a sequence (P0 FIX 3B)
+router.get("/sequences/:id/followup-job", authenticate, async (req, res) => {
   try {
-    const { generateEmail } = await import("./services/ai-email-generator.service");
-    const { prospectId, emailType, sequenceStep, tone } = req.body;
-    
-    if (!prospectId) {
-      return res.status(400).json({ error: "prospectId is required" });
+    const sequence = await storage.getSequence(req.userContext!, req.params.id);
+    if (!sequence) {
+      return res.status(404).json({ error: "Sequence not found" });
     }
-    
-    const request = {
-      prospectId,
-      emailType: emailType || 'cold_outreach',
-      sequenceStep: sequenceStep || 1,
-      tone: tone || 'professional',
-    };
-    
-    const result = await generateEmail(request);
-    
-    res.json(result);
-  } catch (error) {
-    console.error("AI email generation error:", error);
-    res.status(500).json({ 
-      error: error instanceof Error ? error.message : "Failed to generate email" 
+
+    const [job] = await db
+      .select()
+      .from(aiFollowupJobs)
+      .where(eq(aiFollowupJobs.sequenceId, req.params.id))
+      .limit(1);
+
+    res.json(job || {
+      sequenceId: req.params.id,
+      active: false,
+      daysBetween: 3,
+      maxFollowups: 3,
+      followupType: "gentle",
+      triggerCondition: "no_response",
+      totalSent: 0,
     });
+  } catch (error) {
+    console.error("Get follow-up job error:", error);
+    res.status(500).json({ error: "Failed to get follow-up job settings" });
   }
 });
 
-// AI Email Variants - A/B testing
-router.post("/sequences/ai-generate-variants", authenticate, forbidManager, async (req, res) => {
+// Create/update AI follow-up job settings - Start/Stop Scheduler toggle (P0 FIX 3B)
+router.patch("/sequences/:id/followup-job", authenticate, forbidManager, async (req, res) => {
   try {
-    const { generateEmailVariants } = await import("./services/ai-email-generator.service");
-    const { prospectId, emailType, sequenceStep, variantCount } = req.body;
-    
-    if (!prospectId) {
-      return res.status(400).json({ error: "prospectId is required" });
+    const sequence = await storage.getSequence(req.userContext!, req.params.id);
+    if (!sequence) {
+      return res.status(404).json({ error: "Sequence not found" });
     }
-    
-    const request = {
-      prospectId,
-      emailType: emailType || 'cold_outreach',
-      sequenceStep: sequenceStep || 1,
-      tone: 'professional' as const,
-    };
-    
-    const variants = await generateEmailVariants(request, variantCount || 2);
-    
-    res.json({ variants });
+
+    const { active, daysBetween, maxFollowups, followupType, triggerCondition } = req.body;
+
+    const [existing] = await db
+      .select({ id: aiFollowupJobs.id })
+      .from(aiFollowupJobs)
+      .where(eq(aiFollowupJobs.sequenceId, req.params.id))
+      .limit(1);
+
+    const updates: Record<string, unknown> = { updatedAt: new Date() };
+    if (typeof active === "boolean") updates.active = active;
+    if (typeof daysBetween === "number") updates.daysBetween = daysBetween;
+    if (typeof maxFollowups === "number") updates.maxFollowups = maxFollowups;
+    if (typeof followupType === "string") updates.followupType = followupType;
+    if (typeof triggerCondition === "string") updates.triggerCondition = triggerCondition;
+
+    let job;
+    if (existing) {
+      [job] = await db
+        .update(aiFollowupJobs)
+        .set(updates)
+        .where(eq(aiFollowupJobs.id, existing.id))
+        .returning();
+    } else {
+      [job] = await db
+        .insert(aiFollowupJobs)
+        .values({ sequenceId: req.params.id, ...updates })
+        .returning();
+    }
+
+    res.json(job);
   } catch (error) {
-    console.error("AI variant generation error:", error);
-    res.status(500).json({ 
-      error: error instanceof Error ? error.message : "Failed to generate variants" 
-    });
+    console.error("Update follow-up job error:", error);
+    res.status(500).json({ error: "Failed to update follow-up job settings" });
   }
 });
 
-// Enhanced Personalization - Deep research
-router.post("/sequences/enhanced-personalization", authenticate, forbidManager, async (req, res) => {
+// Generate AI follow-up emails for enrolled prospects (P0 FIX 3A)
+router.post("/sequences/:id/generate-followups", authenticate, forbidManager, async (req, res) => {
   try {
-    const { generateEnhancedPersonalizedEmail } = await import("./services/enhanced-personalization.service");
-    const { prospectId } = req.body;
-    
-    if (!prospectId) {
-      return res.status(400).json({ error: "prospectId is required" });
+    const userId = req.userContext?.userId;
+    const organizationId = req.userContext?.organizationId;
+    if (!userId || !organizationId) {
+      return res.status(401).json({ error: "Authentication required" });
     }
-    
-    const result = await generateEnhancedPersonalizedEmail({
-      prospectId,
-      organizationId: req.userContext?.organizationId || '',
-      includeLinkedInData: true,
+
+    const sequenceId = req.params.id;
+    const sequence = await storage.getSequence(req.userContext!, sequenceId);
+    if (!sequence) {
+      return res.status(404).json({ error: "Sequence not found" });
+    }
+
+    // Workflow stage gate: must be at or past replies stage
+    try {
+      await sdrWorkflowService.assertStage(userId, "replies");
+    } catch (stageError) {
+      if (stageError instanceof WorkflowBlockedError) {
+        return res.status(403).json(stageError.toJSON());
+      }
+      console.error("Workflow stage check failed:", stageError);
+      return res.status(503).json({ error: "Unable to verify workflow stage" });
+    }
+
+    // Tenant automation pause check - fail-closed
+    try {
+      const isPaused = await hardeningService.isAutomationPaused(organizationId);
+      if (isPaused) {
+        return res.status(403).json({
+          error: "Tenant automation is paused",
+          message: "Cannot generate follow-ups while tenant automation is paused.",
+        });
+      }
+    } catch (guardError) {
+      console.error("Failed to check tenant automation status:", guardError);
+      return res.status(503).json({ error: "Unable to verify tenant automation status" });
+    }
+
+    const { maxFollowups, daysBetween, tone, prospectIds } = req.body;
+    const followupCount = Math.max(1, Math.min(Number(maxFollowups) || 3, 10));
+    const gapDays = Math.max(1, Number(daysBetween) || 3);
+
+    // 1. Get enrolled prospects (optionally filtered to a specific selection)
+    let enrolledProspects = await storage.getSequenceProspects(req.userContext!, sequenceId);
+    if (Array.isArray(prospectIds) && prospectIds.length > 0) {
+      const idSet = new Set(prospectIds);
+      enrolledProspects = enrolledProspects.filter(p => idSet.has(p.prospectId));
+    }
+
+    if (enrolledProspects.length === 0) {
+      return res.status(400).json({ error: "No prospects to generate follow-ups for" });
+    }
+
+    // 2. Get existing steps (for thread-subject continuity)
+    const steps = await storage.getSequenceSteps(req.userContext!, sequenceId);
+    const sortedSteps = [...steps].sort((a, b) => a.stepOrder - b.stepOrder);
+    const baseSubject = (sortedSteps[0]?.subject || sequence.name || "Follow-up").replace(/^Re:\s*/i, '');
+
+    const { emailGenerationService } = await import("./services/ai-email-generator.service");
+
+    let generatedCount = 0;
+    const errors: string[] = [];
+
+    // 3. For each prospect x each follow-up step, generate content
+    for (const enrolledProspect of enrolledProspects) {
+      for (let i = 1; i <= followupCount; i++) {
+        try {
+          // Credit check - 2 credits per AI email generated
+          const creditCheck = await checkCredits(userId, organizationId, "email_generation");
+          if (!creditCheck.allowed) {
+            errors.push(`Insufficient credits to generate follow-up #${i} for prospect ${enrolledProspect.prospectId}`);
+            break;
+          }
+
+          const result = await emailGenerationService.generateWithRetry({
+            prospectId: enrolledProspect.prospectId,
+            emailType: 'follow_up',
+            sequenceStep: i + 1,
+            tone: tone || 'professional',
+            previousEmails: [
+              `THREADING INSTRUCTION: This is follow-up email #${i}. The subject line MUST start with "Re: ${baseSubject}" to keep the email thread intact. Do NOT invent a new subject line.`,
+            ],
+          });
+
+          // 4. Save generated content to personalizationResults
+          await db.insert(personalizationResults).values({
+            userId,
+            prospectId: enrolledProspect.prospectId,
+            personalizationScore: 70,
+            emailSuggestions: {
+              subject: result.subject,
+              body: result.body,
+              generatedAt: new Date().toISOString(),
+              sequenceId,
+              followupNumber: i,
+            },
+            status: "completed",
+          });
+
+          await deductCredits(
+            userId,
+            organizationId,
+            "email_generation",
+            1,
+            `AI follow-up #${i} generated for prospect ${enrolledProspect.prospectId}`,
+            enrolledProspect.prospectId
+          ).catch(err => console.error("[credits] Failed to deduct follow-up credits:", err));
+
+          generatedCount++;
+        } catch (genError) {
+          console.error(`Follow-up generation failed for prospect ${enrolledProspect.prospectId}, step ${i}:`, genError);
+          errors.push(`Prospect ${enrolledProspect.prospectId} step ${i}: ${genError instanceof Error ? genError.message : 'unknown error'}`);
+        }
+      }
+    }
+
+    // 5. Persist scheduler settings + total generated count
+    const [existingJob] = await db
+      .select({ id: aiFollowupJobs.id })
+      .from(aiFollowupJobs)
+      .where(eq(aiFollowupJobs.sequenceId, sequenceId))
+      .limit(1);
+
+    if (existingJob) {
+      await db.update(aiFollowupJobs)
+        .set({
+          maxFollowups: followupCount,
+          daysBetween: gapDays,
+          totalSent: sql`${aiFollowupJobs.totalSent} + ${generatedCount}`,
+          updatedAt: new Date(),
+        })
+        .where(eq(aiFollowupJobs.id, existingJob.id));
+    } else {
+      await db.insert(aiFollowupJobs).values({
+        sequenceId,
+        maxFollowups: followupCount,
+        daysBetween: gapDays,
+        totalSent: generatedCount,
+      });
+    }
+
+    res.json({
+      success: true,
+      generated: generatedCount,
+      prospectCount: enrolledProspects.length,
+      errors: errors.length > 0 ? errors : undefined,
     });
-    
-    res.json(result);
   } catch (error) {
-    console.error("Enhanced personalization error:", error);
-    res.status(500).json({ 
-      error: error instanceof Error ? error.message : "Failed to enhance personalization" 
+    console.error("Generate follow-ups error:", error);
+    res.status(500).json({
+      error: error instanceof Error ? error.message : "Failed to generate follow-ups"
     });
   }
 });

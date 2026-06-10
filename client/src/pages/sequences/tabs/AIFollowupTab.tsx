@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,7 +12,6 @@ import { apiRequest } from "@/lib/queryClient";
 import { Play, RefreshCw, Eye, Send, Search } from "lucide-react";
 
 export function AIFollowupTab({ sequenceId }: { sequenceId: string }) {
-  const [schedulerActive, setSchedulerActive] = useState(false);
   const [daysBetween, setDaysBetween] = useState("3");
   const [maxFollowups, setMaxFollowups] = useState("3");
   const [followupType, setFollowupType] = useState("gentle_reminder");
@@ -24,6 +23,7 @@ export function AIFollowupTab({ sequenceId }: { sequenceId: string }) {
   const [showPreview, setShowPreview] = useState(false);
   const [previewData, setPreviewData] = useState<any>(null);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
   const { data: contentLibrary } = useQuery({
     queryKey: ["/api/content-library"],
@@ -36,6 +36,26 @@ export function AIFollowupTab({ sequenceId }: { sequenceId: string }) {
       return await res.json();
     },
   });
+
+  // P0 FIX 3B: Real scheduler settings from the ai_followup_jobs table
+  const { data: followupJob } = useQuery({
+    queryKey: ['/api/sequences', sequenceId, 'followup-job'],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/sequences/${sequenceId}/followup-job`, undefined);
+      return await res.json();
+    },
+  });
+
+  // P0 FIX 3C: Real campaign summary statistics
+  const { data: stats } = useQuery({
+    queryKey: ['/api/sequences', sequenceId, 'summary'],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/sequences/${sequenceId}/summary`, undefined);
+      return await res.json();
+    },
+  });
+
+  const schedulerActive = !!followupJob?.active;
 
   const contentItems = (contentLibrary as any)?.items || [];
   const prospects = prospectsData?.prospects || [];
@@ -113,13 +133,80 @@ export function AIFollowupTab({ sequenceId }: { sequenceId: string }) {
     }
   };
 
+  // P0 FIX 3A: Real "Schedule Follow-ups" call
+  const generateFollowupsMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/sequences/${sequenceId}/generate-followups`, {
+        maxFollowups: parseInt(maxFollowups, 10) || 3,
+        daysBetween: parseInt(daysBetween, 10) || 3,
+        tone: followupType,
+        prospectIds: selectedProspects.length > 0
+          ? selectedProspects
+              .map((id) => prospects.find((p: any) => p.id === id)?.prospectId)
+              .filter(Boolean)
+          : undefined,
+      });
+      return await res.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: `Follow-ups generated`,
+        description: `${data.generated ?? 0} AI follow-up email(s) generated for ${data.prospectCount ?? selectedProspects.length} prospect(s).`
+      });
+      setSelectedProspects([]);
+      queryClient.invalidateQueries({ queryKey: ['/api/sequences', sequenceId, 'followup-job'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/sequences', sequenceId, 'summary'] });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to generate follow-ups",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
+  });
+
   const handleScheduleFollowups = () => {
-    toast({
-      title: `Follow-ups scheduled for ${selectedProspects.length} prospects`,
-      description: "AI will generate personalized follow-ups based on your settings"
-    });
-    setSelectedProspects([]);
+    if (selectedProspects.length === 0) {
+      toast({
+        title: "No prospects selected",
+        description: "Please select at least one prospect",
+        variant: "destructive"
+      });
+      return;
+    }
+    generateFollowupsMutation.mutate();
   };
+
+  // P0 FIX 3B: Persist scheduler toggle + settings to ai_followup_jobs
+  const schedulerToggleMutation = useMutation({
+    mutationFn: async (active: boolean) => {
+      const res = await apiRequest("PATCH", `/api/sequences/${sequenceId}/followup-job`, {
+        active,
+        daysBetween: parseInt(daysBetween, 10) || 3,
+        maxFollowups: parseInt(maxFollowups, 10) || 3,
+        followupType,
+        triggerCondition,
+      });
+      return await res.json();
+    },
+    onSuccess: (_data, active) => {
+      toast({
+        title: active ? "Scheduler started" : "Scheduler stopped",
+        description: active
+          ? "AI will automatically generate follow-ups based on your settings"
+          : "Automatic follow-up generation has been paused"
+      });
+      queryClient.invalidateQueries({ queryKey: ['/api/sequences', sequenceId, 'followup-job'] });
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Failed to update scheduler",
+        description: error.message,
+        variant: "destructive"
+      });
+    }
+  });
 
   return (
     <div className="space-y-6">
@@ -131,11 +218,14 @@ export function AIFollowupTab({ sequenceId }: { sequenceId: string }) {
         </div>
         <Button
           variant={schedulerActive ? "default" : "outline"}
-          onClick={() => setSchedulerActive(!schedulerActive)}
+          onClick={() => schedulerToggleMutation.mutate(!schedulerActive)}
+          disabled={schedulerToggleMutation.isPending}
           data-testid="button-start-scheduler"
         >
           <Play className="w-4 h-4 mr-2" />
-          {schedulerActive ? "Stop Scheduler" : "Start Scheduler"}
+          {schedulerToggleMutation.isPending
+            ? "Saving..."
+            : schedulerActive ? "Stop Scheduler" : "Start Scheduler"}
         </Button>
       </div>
 
@@ -266,11 +356,17 @@ export function AIFollowupTab({ sequenceId }: { sequenceId: string }) {
         <CardContent>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <p className="text-3xl font-bold">0</p>
+              <p className="text-3xl font-bold">{followupJob?.totalSent ?? 0}</p>
               <p className="text-sm text-muted-foreground">Total Follow-ups Sent</p>
             </div>
             <div>
-              <p className="text-3xl font-bold">0.0</p>
+              <p className="text-3xl font-bold">
+                {(() => {
+                  const totalLeads = stats?.totalLeads || 0;
+                  const totalSent = followupJob?.totalSent ?? 0;
+                  return totalLeads > 0 ? (totalSent / totalLeads).toFixed(1) : "0.0";
+                })()}
+              </p>
               <p className="text-sm text-muted-foreground">Avg per Prospect</p>
             </div>
           </div>
@@ -369,11 +465,18 @@ export function AIFollowupTab({ sequenceId }: { sequenceId: string }) {
             </Button>
             <Button
               onClick={handleScheduleFollowups}
-              disabled={selectedProspects.length === 0}
+              disabled={selectedProspects.length === 0 || generateFollowupsMutation.isPending}
               className="flex-1"
               data-testid="button-schedule-followups"
             >
-              Schedule for {selectedProspects.length} prospects
+              {generateFollowupsMutation.isPending ? (
+                <>
+                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                `Schedule for ${selectedProspects.length} prospects`
+              )}
             </Button>
           </div>
         </CardContent>
@@ -413,6 +516,7 @@ export function AIFollowupTab({ sequenceId }: { sequenceId: string }) {
                     setShowPreview(false);
                     handleScheduleFollowups();
                   }}
+                  disabled={generateFollowupsMutation.isPending}
                   className="flex-1"
                   data-testid="button-schedule-from-preview"
                 >
