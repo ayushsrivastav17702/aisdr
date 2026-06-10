@@ -2,7 +2,7 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import { db } from '../db';
-import { users, userSessions, userInvitations, auditLogs, passwordResetTokens, emailVerificationTokens, managerAccounts } from '@shared/schema';
+import { users, userSessions, userInvitations, auditLogs, passwordResetTokens, emailVerificationTokens, managerAccounts, organizations } from '@shared/schema';
 import { eq, and, gt, isNull } from 'drizzle-orm';
 
 const SALT_ROUNDS = 12;
@@ -64,6 +64,35 @@ export class AuthService {
 
   generateInvitationToken(): string {
     return crypto.randomBytes(INVITATION_TOKEN_LENGTH).toString('hex');
+  }
+
+  /**
+   * BUG 2 FIX: Ensure a user has an organization. Orphaned users
+   * (organizationId = null) caused every write operation to return 401
+   * because tenant context could not be resolved. If the user has no
+   * organization, create a default one for them and link it.
+   * Returns the (possibly newly-created) organizationId.
+   */
+  async ensureUserOrganization(user: { id: string; email: string; firstName: string | null; organizationId: string | null }): Promise<string> {
+    if (user.organizationId) {
+      return user.organizationId;
+    }
+
+    const displayName = user.firstName || user.email.split('@')[0];
+    const slug = `${user.email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '-')}-${Date.now()}`;
+
+    const [org] = await db.insert(organizations).values({
+      name: `${displayName}'s Workspace`,
+      slug,
+      status: 'active',
+      ownerId: user.id,
+    }).returning();
+
+    await db.update(users).set({ organizationId: org.id }).where(eq(users.id, user.id));
+
+    console.log(`[AUTH] Created default organization ${org.id} for orphaned user ${user.email}`);
+
+    return org.id;
   }
 
   async login(email: string, password: string, ipAddress?: string, userAgent?: string, userId?: string): Promise<SessionData | { multipleAccounts: true; accounts: Array<{ id: string; organizationId: string | null; createdBy: string | null }> } | null> {
@@ -155,10 +184,15 @@ export class AuthService {
       lastActivity: new Date(),
     }).returning();
 
+    // BUG 2 FIX: auto-create an organization for orphaned users so the
+    // JWT carries a valid tenantId and subsequent requests aren't 401'd.
+    const organizationId = await this.ensureUserOrganization(user);
+    user.organizationId = organizationId;
+
     // Normalize role: 'admin' -> 'manager' for consistency
     const normalizedRole = user.role === 'admin' ? 'manager' : user.role;
     console.log(`[AUTH_LOGIN] User ${email} logged in with role: ${user.role} (normalized: ${normalizedRole}), tenantId: ${user.organizationId || 'none'}`);
-    
+
     const token = this.generateToken(user.id, session.id, normalizedRole, user.organizationId);
 
     await db.update(users).set({ lastLogin: new Date() }).where(eq(users.id, user.id));
@@ -207,10 +241,15 @@ export class AuthService {
       lastActivity: new Date(),
     }).returning();
 
+    // BUG 2 FIX: auto-create an organization for orphaned users so the
+    // JWT carries a valid tenantId and subsequent requests aren't 401'd.
+    const organizationId = await this.ensureUserOrganization(user);
+    user.organizationId = organizationId;
+
     // Normalize role: 'admin' -> 'manager' for consistency
     const normalizedRole = user.role === 'admin' ? 'manager' : user.role;
     console.log(`[AUTH_CREATE_SESSION] Creating session for user ${user.email} with role: ${user.role} (normalized: ${normalizedRole}), tenantId: ${user.organizationId || 'none'}`);
-    
+
     const token = this.generateToken(userId, session.id, normalizedRole, user.organizationId);
 
     return {
@@ -336,6 +375,11 @@ export class AuthService {
         expiresAt: newExpiresAt
       })
       .where(eq(userSessions.id, session.id));
+
+    // BUG 2 FIX: auto-create an organization for orphaned users so the
+    // refreshed JWT carries a valid tenantId.
+    const organizationId = await this.ensureUserOrganization(user);
+    user.organizationId = organizationId;
 
     // Normalize role: 'admin' -> 'manager' for consistency
     const normalizedRole = user.role === 'admin' ? 'manager' : user.role;

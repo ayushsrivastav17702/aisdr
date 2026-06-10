@@ -624,12 +624,31 @@ router.get("/analytics", authenticate, async (req: Request, res: Response) => {
 });
 
 // Team Benchmarking - TC-SDR-AN-03
+// Empty/default benchmark payload returned when team data can't be computed
+// (e.g. user has no organization yet, or a query error occurs).
+function emptyTeamBenchmark(period: unknown) {
+  return {
+    period,
+    you: { totalSent: 0, openRate: 0, replyRate: 0 },
+    teamAverage: { totalSent: 0, openRate: 0, replyRate: 0 },
+    comparison: { sentVsTeam: 0, openRateVsTeam: 0, replyRateVsTeam: 0 },
+    teamSize: 0
+  };
+}
+
 router.get("/team-benchmark", authenticate, async (req: Request, res: Response) => {
+  const { period = "30d" } = req.query;
   try {
     const userId = req.userContext!.userId;
     const organizationId = req.userContext!.organizationId;
-    const { period = "30d" } = req.query;
-    
+
+    // BUG 4 fix: users without an organization (e.g. orphaned accounts)
+    // would previously cause this query to throw and return a 500.
+    // Return an empty benchmark instead of crashing.
+    if (!organizationId) {
+      return res.json(emptyTeamBenchmark(period));
+    }
+
     const now = new Date();
     let startDate: Date;
     
@@ -705,7 +724,9 @@ router.get("/team-benchmark", authenticate, async (req: Request, res: Response) 
     });
   } catch (error) {
     console.error("Team benchmark error:", error);
-    res.status(500).json({ error: "Failed to fetch team benchmark data" });
+    // BUG 4 fix: return empty benchmark data instead of a 500 so the
+    // dashboard doesn't break when team metrics can't be computed.
+    res.json(emptyTeamBenchmark(period));
   }
 });
 

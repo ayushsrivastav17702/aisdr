@@ -571,18 +571,22 @@ function formatEmailBody(body: string): string {
 }
 
 export async function generateEmail(request: EmailGenerationRequest, prospectData?: Prospect, ctx?: RequestContext): Promise<GeneratedEmail> {
+  // BUG FIX: declare reqCtx outside the try block so it remains in scope
+  // inside the catch block's fallback logic below (was previously
+  // `const reqCtx` inside try, causing "reqCtx is not defined" in catch).
+  let reqCtx: RequestContext | undefined;
   try {
     // Use passed prospect data if available, otherwise fetch from storage
     let prospect: Prospect | null | undefined = prospectData;
-    
+
     if (!ctx && !prospectData?.userId) {
       throw new Error(
         '[AIGenerator] Cannot generate email without valid user context. ' +
         'Caller must provide RequestContext or prospectData.userId.'
       );
     }
-    const reqCtx: RequestContext = ctx || { userId: prospectData!.userId, roles: [] };
-    
+    reqCtx = ctx || { userId: prospectData!.userId, roles: [] };
+
     if (!prospect) {
       prospect = await storage.getProspect(reqCtx, request.prospectId);
     }

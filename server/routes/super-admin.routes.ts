@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { superAdminService } from '../services/super-admin.service';
+import { authService } from '../services/auth.service';
 import { hardeningService } from '../services/hardening.service';
 import { 
   authenticateSuperAdmin, 
@@ -3329,6 +3330,73 @@ router.post('/reset-password', async (req, res) => {
   } catch (error) {
     console.error('[SuperAdmin] Password reset error:', error);
     return res.status(500).json({ error: 'Failed to reset password' });
+  }
+});
+
+// BUG 2 FIX: Manually link an orphaned user (organizationId = null) to an
+// organization. Useful when a single user account needs to be repaired.
+router.patch('/users/:userId/organization', authenticateSuperAdmin, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { organizationId } = z.object({ organizationId: z.string().min(1) }).parse(req.body);
+
+    const [org] = await db.select({ id: organizations.id }).from(organizations).where(eq(organizations.id, organizationId)).limit(1);
+    if (!org) {
+      return res.status(404).json({ error: 'Organization not found' });
+    }
+
+    const [user] = await db.select({ id: users.id }).from(users).where(eq(users.id, userId)).limit(1);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    await db.update(users)
+      .set({ organizationId, updatedAt: new Date() })
+      .where(eq(users.id, userId));
+
+    return res.json({ success: true });
+  } catch (error: any) {
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: 'Invalid input', details: error.errors.map(e => e.message) });
+    }
+    console.error('[SuperAdmin] Error setting user organization:', error);
+    return res.status(500).json({ error: 'Failed to update user organization' });
+  }
+});
+
+// BUG 2 FIX: One-time bulk fix for orphaned users (organizationId = null).
+// Creates a default organization for each and links them to it.
+router.post('/fix-orphaned-users', authenticateSuperAdmin, async (req, res) => {
+  try {
+    const orphanedUsers = await db
+      .select({ id: users.id, email: users.email, firstName: users.firstName, organizationId: users.organizationId })
+      .from(users)
+      .where(isNull(users.organizationId));
+
+    let fixedCount = 0;
+    const fixed: Array<{ userId: string; email: string; organizationId: string }> = [];
+
+    for (const user of orphanedUsers) {
+      try {
+        const organizationId = await authService.ensureUserOrganization(user);
+        fixedCount++;
+        fixed.push({ userId: user.id, email: user.email, organizationId });
+      } catch (err) {
+        console.error(`[SuperAdmin] Failed to fix orphaned user ${user.email}:`, err);
+      }
+    }
+
+    console.log(`[SuperAdmin] Fixed ${fixedCount}/${orphanedUsers.length} orphaned users`);
+
+    return res.json({
+      success: true,
+      totalOrphaned: orphanedUsers.length,
+      fixedCount,
+      fixed,
+    });
+  } catch (error) {
+    console.error('[SuperAdmin] Error fixing orphaned users:', error);
+    return res.status(500).json({ error: 'Failed to fix orphaned users' });
   }
 });
 

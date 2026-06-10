@@ -41,6 +41,7 @@ import leaderboardRoutes from "./routes/leaderboard.routes";
 import bestPracticesRoutes from "./routes/best-practices.routes";
 import aeHandoffRoutes from "./routes/ae-handoff.routes";
 import waterfallSearchRoutes from "./routes/waterfall-search.routes";
+import findLeadsRoutes from "./routes/find-leads.routes";
 import managerRoutes from "./routes/manager.routes";
 import sdrWorkflowRoutes from "./routes/sdr-workflow.routes";
 import sdrDashboardRoutes from "./routes/sdr-dashboard.routes";
@@ -2305,6 +2306,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Multi-Provider Waterfall Search routes
   app.use(waterfallSearchRoutes.path, waterfallSearchRoutes.router);
+
+  // Find Leads (natural-language search) routes
+  app.use(findLeadsRoutes.path, findLeadsRoutes.router);
 
   // Manager routes (FR-M features)
   app.use(managerRoutes);
