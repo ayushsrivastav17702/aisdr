@@ -35,17 +35,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshUser = async (tokenOverride?: string) => {
     const authToken = tokenOverride ?? token;
-    if (!authToken) {
-      setUser(null);
-      setIsLoading(false);
-      return;
-    }
 
     try {
       const response = await fetch('/api/auth/me', {
-        headers: {
+        credentials: 'include',
+        headers: authToken ? {
           'Authorization': `Bearer ${authToken}`,
-        },
+        } : {},
       });
 
       if (response.ok) {
@@ -80,9 +76,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     const newToken = data.token;
-    setToken(newToken);
-    localStorage.setItem(TOKEN_KEY, newToken);
-    
+    if (newToken) {
+      setToken(newToken);
+      localStorage.setItem(TOKEN_KEY, newToken);
+    }
+
     await refreshUser(newToken);
   };
 
