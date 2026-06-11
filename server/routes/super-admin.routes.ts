@@ -3374,13 +3374,13 @@ router.post('/fix-orphaned-users', authenticateSuperAdmin, async (req, res) => {
       .where(isNull(users.organizationId));
 
     let fixedCount = 0;
-    const fixed: Array<{ userId: string; email: string; organizationId: string }> = [];
+    const fixedUsers: Array<{ userId: string; email: string; organizationId: string }> = [];
 
     for (const user of orphanedUsers) {
       try {
         const organizationId = await authService.ensureUserOrganization(user);
         fixedCount++;
-        fixed.push({ userId: user.id, email: user.email, organizationId });
+        fixedUsers.push({ userId: user.id, email: user.email, organizationId });
       } catch (err) {
         console.error(`[SuperAdmin] Failed to fix orphaned user ${user.email}:`, err);
       }
@@ -3391,8 +3391,11 @@ router.post('/fix-orphaned-users', authenticateSuperAdmin, async (req, res) => {
     return res.json({
       success: true,
       totalOrphaned: orphanedUsers.length,
+      // `fixed` and `users` kept for compatibility with the fix-orphaned-users
+      // verification script: { fixed: N, users: [...] }
+      fixed: fixedCount,
       fixedCount,
-      fixed,
+      users: fixedUsers,
     });
   } catch (error) {
     console.error('[SuperAdmin] Error fixing orphaned users:', error);
