@@ -1352,6 +1352,37 @@ router.post("/sequences/ai-generate-email", authenticate, forbidManager, async (
       tone
     }, req.userContext);
 
+    // FIX 2: Persist the generated subject/body to sequence_steps so that
+    // later steps (e.g. step 2's "Re: <subject>" threading) can read the
+    // actual generated step 1 subject via getSequenceSteps, even if the
+    // caller never explicitly PATCHed the step back.
+    if (sequenceId && sequenceStep) {
+      try {
+        const existingSteps = await storage.getSequenceSteps(req.userContext!, sequenceId);
+        const existingStep = existingSteps.find(s => s.stepOrder === sequenceStep);
+        if (existingStep) {
+          await storage.updateSequenceStep(req.userContext!, existingStep.id, {
+            subject: result.subject,
+            body: result.body,
+            aiGenerated: true,
+          });
+        } else {
+          await storage.createSequenceStep(req.userContext!, {
+            sequenceId,
+            subject: result.subject,
+            body: result.body,
+            stepOrder: sequenceStep,
+            delayDays: sequenceStep === 1 ? 0 : 3,
+            stepType: "email",
+            aiGenerated: true,
+          });
+        }
+      } catch (persistErr) {
+        console.error("Failed to persist generated step content:", persistErr);
+        // Non-fatal: generation already succeeded, continue
+      }
+    }
+
     // Deduct credits after successful generation
     if (userId && tenantId) {
       try {
