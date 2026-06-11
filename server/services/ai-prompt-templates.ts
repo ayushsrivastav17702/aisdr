@@ -1,5 +1,6 @@
 export interface PromptContext {
   prospectName: string;
+  firstName?: string;
   prospectTitle: string;
   prospectCompany: string;
   prospectIndustry?: string;
@@ -1194,7 +1195,10 @@ HALLUCINATION PREVENTION (CRITICAL):
 
 EMAIL STRUCTURE (80 words maximum):
 1. **Subject**: Specific to their role + a clear benefit (e.g., "{{prospectTitle}} - reduce markdown by 26%")
-2. **Opening**: Address them by name, reference their specific role at their company (1 sentence)
+2. **Opening**: Address the prospect by their FIRST NAME ONLY ({{firstName}}), then reference their specific role at their company (1 sentence).
+   - NEVER use their job title as the greeting.
+   - CORRECT: "Hi {{firstName}}," or "Hi {{firstName}}, as {{prospectTitle}} at {{prospectCompany}}..."
+   - WRONG: "Dear {{prospectTitle}}," or "Dear {{prospectTitle}} at {{prospectCompany}},"
 3. **Problem**: State ONE pain point relevant to their role (1 sentence, be specific)
 4. **Solution**: What Increff does in ONE sentence with a specific number from the content library
 5. **CTA**: Ask ONE simple question to start a conversation

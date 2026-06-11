@@ -1316,12 +1316,30 @@ router.post("/sequences/ai-generate-email", authenticate, forbidManager, async (
       }
     }
 
+    // FIX 2: If step 1's subject was never saved to sequence_steps (e.g. the
+    // user generated it via the API but never PATCHed it back), fall back to
+    // extracting the actual generated subject from previousEmails[0], which
+    // is formatted as "Step 1 - Subject: <subject>\n\nBody:\n...".
+    if (!threadSubjectHint && sequenceStep && sequenceStep > 1 && enrichedPreviousEmails.length > 0) {
+      const step1Subject = enrichedPreviousEmails[0]?.match(/Subject:\s*(.+)/)?.[1]?.trim();
+      if (step1Subject) {
+        threadSubjectHint = `Re: ${step1Subject.replace(/^Re:\s*/i, '')}`;
+      }
+    }
+
     // If this is a follow-up and we have the original subject, prepend a threading instruction
     if (threadSubjectHint) {
       enrichedPreviousEmails = [
         `THREADING INSTRUCTION: This is follow-up email #${sequenceStep}. ` +
-        `The subject line MUST start with "${threadSubjectHint}" to keep the email thread intact. ` +
+        `The original email subject was: "${threadSubjectHint.replace(/^Re:\s*/i, '')}". ` +
+        `Your subject MUST be exactly: "${threadSubjectHint}". ` +
         `Do NOT invent a new subject line.`,
+        ...enrichedPreviousEmails,
+      ];
+    } else if (sequenceStep && sequenceStep > 1) {
+      enrichedPreviousEmails = [
+        `THREADING INSTRUCTION: This is follow-up email #${sequenceStep}. ` +
+        `Use "Re: [your step 1 subject]" format for the subject line.`,
         ...enrichedPreviousEmails,
       ];
     }

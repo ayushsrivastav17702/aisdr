@@ -908,6 +908,7 @@ function buildPromptContext(
 
   return {
     prospectName: `${prospect.firstName || ""} ${prospect.lastName || ""}`.trim(),
+    firstName: prospect.firstName || `${prospect.firstName || ""} ${prospect.lastName || ""}`.trim() || 'there',
     prospectTitle: prospect.jobTitle || 'Professional',
     prospectCompany: prospect.companyName || 'their company',
     prospectIndustry: prospect.companyIndustry || extractIndustry(prospect),
