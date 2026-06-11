@@ -1262,6 +1262,14 @@ router.post("/sequences/ai-generate-email", authenticate, forbidManager, async (
       return res.status(400).json({ error: "prospectId and emailType are required" });
     }
 
+    // BUG 1 fix: validate the prospect exists before attempting generation so
+    // an invalid prospectId returns a clean 404 instead of a 500 from a
+    // retried/wrapped "not found" error deep in the AI generation pipeline.
+    const targetProspect = await storage.getProspect(req.userContext!, prospectId);
+    if (!targetProspect) {
+      return res.status(404).json({ error: "Prospect not found" });
+    }
+
     // Credit check — 2 credits per AI email generated
     const userId = req.userContext?.userId;
     const tenantId = req.userContext?.organizationId;
@@ -1324,7 +1332,7 @@ router.post("/sequences/ai-generate-email", authenticate, forbidManager, async (
       sequenceStep,
       previousEmails: enrichedPreviousEmails,
       tone
-    });
+    }, req.userContext);
 
     // Deduct credits after successful generation
     if (userId && tenantId) {
@@ -1363,7 +1371,8 @@ router.post("/sequences/ai-generate-variants", authenticate, forbidManager, asyn
     
     const variants = await generateEmailVariants(
       { prospectId, emailType },
-      variantCount || 2
+      variantCount || 2,
+      req.userContext
     );
     
     res.json({ variants });
@@ -1761,7 +1770,7 @@ router.post("/sequences/:id/generate-followups", authenticate, forbidManager, as
             previousEmails: [
               `THREADING INSTRUCTION: This is follow-up email #${i}. The subject line MUST start with "Re: ${baseSubject}" to keep the email thread intact. Do NOT invent a new subject line.`,
             ],
-          });
+          }, req.userContext);
 
           // 4. Save generated content to personalizationResults
           await db.insert(personalizationResults).values({

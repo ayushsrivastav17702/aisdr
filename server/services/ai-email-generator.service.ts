@@ -798,34 +798,35 @@ When given an AI Decision Engine recommendation, prioritize its template pattern
 
 export async function generateEmailVariants(
   request: EmailGenerationRequest,
-  variantCount: number = 2
+  variantCount: number = 2,
+  ctx?: RequestContext
 ): Promise<EmailVariant[]> {
   const variants: EmailVariant[] = [];
-  
+
   try {
     const approaches = [
       { tone: 'professional', approach: 'Value-focused' },
       { tone: 'friendly', approach: 'Relationship-building' },
       { tone: 'urgent', approach: 'Urgency-driven' }
     ];
-    
+
     for (let i = 0; i < Math.min(variantCount, approaches.length); i++) {
       const variantRequest: EmailGenerationRequest = {
         ...request,
         tone: approaches[i].tone as 'professional' | 'friendly' | 'urgent'
       };
-      
-      const email = await generateEmail(variantRequest);
-      
+
+      const email = await generateEmail(variantRequest, undefined, ctx);
+
       variants.push({
         id: `variant_${i + 1}`,
         email,
         approach: approaches[i].approach
       });
     }
-    
+
     return variants;
-    
+
   } catch (error) {
     console.error('Email variant generation failed:', error);
     throw error;
@@ -835,7 +836,8 @@ export async function generateEmailVariants(
 export async function generateFollowUp(
   prospectId: string,
   previousEmails: string[],
-  sequenceStep: number
+  sequenceStep: number,
+  ctx?: RequestContext
 ): Promise<GeneratedEmail> {
   const request: EmailGenerationRequest = {
     prospectId,
@@ -844,18 +846,18 @@ export async function generateFollowUp(
     previousEmails,
     tone: sequenceStep >= 3 ? 'professional' : 'friendly'
   };
-  
-  return generateEmail(request);
+
+  return generateEmail(request, undefined, ctx);
 }
 
-export async function generateBreakupEmail(prospectId: string): Promise<GeneratedEmail> {
+export async function generateBreakupEmail(prospectId: string, ctx?: RequestContext): Promise<GeneratedEmail> {
   const request: EmailGenerationRequest = {
     prospectId,
     emailType: EMAIL_TYPES.BREAKUP,
     tone: 'professional'
   };
-  
-  return generateEmail(request);
+
+  return generateEmail(request, undefined, ctx);
 }
 
 function buildPromptContext(
@@ -1019,7 +1021,8 @@ export class EmailGenerationService {
   private rateLimiter = new Map<string, number>();
   
   async generateWithRetry(
-    request: EmailGenerationRequest, 
+    request: EmailGenerationRequest,
+    ctx?: RequestContext,
     maxRetries: number = 3
   ): Promise<GeneratedEmail> {
     const key = `${request.prospectId}_${request.emailType}`;
@@ -1043,7 +1046,7 @@ export class EmailGenerationService {
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        const result = await generateEmail(request);
+        const result = await generateEmail(request, undefined, ctx);
 
         this.cache.set(cacheKey, result);
         
