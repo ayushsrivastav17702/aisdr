@@ -232,6 +232,72 @@ export class MailboxService {
       .where(eq(emailMailboxes.userId, userId));
   }
 
+  /**
+   * Create or update a Gmail mailbox connected via OAuth. If the user
+   * already has a mailbox for this email address, refresh its OAuth
+   * tokens; otherwise create a new mailbox entry.
+   */
+  async upsertGmailOAuthMailbox(params: {
+    userId: string;
+    email: string;
+    accessToken: string;
+    refreshToken?: string;
+    expiresIn: number;
+  }): Promise<EmailMailbox> {
+    const tokenExpiry = new Date(Date.now() + params.expiresIn * 1000);
+    const encryptedAccessToken = this.encrypt(params.accessToken);
+    const encryptedRefreshToken = params.refreshToken ? this.encrypt(params.refreshToken) : undefined;
+
+    const [existing] = await db
+      .select()
+      .from(emailMailboxes)
+      .where(and(eq(emailMailboxes.userId, params.userId), eq(emailMailboxes.email, params.email)));
+
+    if (existing) {
+      const updateData: Partial<InsertEmailMailbox> & { updatedAt: Date } = {
+        accessToken: encryptedAccessToken,
+        tokenExpiry,
+        status: "active",
+        updatedAt: new Date(),
+      };
+      // Google only returns a refresh_token on the first consent grant;
+      // don't overwrite an existing one with undefined on re-connect.
+      if (encryptedRefreshToken) {
+        updateData.refreshToken = encryptedRefreshToken;
+      }
+
+      const [updated] = await db
+        .update(emailMailboxes)
+        .set(updateData)
+        .where(eq(emailMailboxes.id, existing.id))
+        .returning();
+      return updated;
+    }
+
+    const [created] = await db
+      .insert(emailMailboxes)
+      .values({
+        userId: params.userId,
+        name: params.email,
+        email: params.email,
+        provider: "gmail",
+        smtpHost: "smtp.gmail.com",
+        smtpPort: 587,
+        smtpUser: params.email,
+        smtpSecure: true,
+        accessToken: encryptedAccessToken,
+        refreshToken: encryptedRefreshToken,
+        tokenExpiry,
+        status: "warming",
+        warmupStage: 1,
+        dailyLimit: this.getWarmupLimit(1),
+      })
+      .returning();
+
+    console.log(`✅ Connected Gmail mailbox via OAuth: ${created.email} for user ${params.userId}`);
+    return created;
+  }
+
   async getMailboxById(id: string): Promise<EmailMailbox | undefined> {
     const [mailbox] = await db
       .select()

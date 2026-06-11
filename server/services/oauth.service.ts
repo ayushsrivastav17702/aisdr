@@ -271,6 +271,105 @@ class OAuthService {
   isMicrosoftConfigured(): boolean {
     return !!(process.env.MICROSOFT_CLIENT_ID && process.env.MICROSOFT_CLIENT_SECRET);
   }
+
+  /**
+   * OAuth config for connecting a Gmail mailbox for sending email
+   * (separate redirect URI from the "Sign in with Google" login flow).
+   */
+  private getGmailMailboxConfig(): OAuthConfig {
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+    const baseUrl = process.env.APP_URL ||
+      (process.env.REPLIT_DEV_DOMAIN ? `https://${process.env.REPLIT_DEV_DOMAIN}` : 'http://localhost:5000');
+
+    if (!clientId || !clientSecret) {
+      throw new Error('Google OAuth credentials not configured');
+    }
+
+    return {
+      clientId,
+      clientSecret,
+      redirectUri: `${baseUrl}/api/mailboxes/oauth/gmail/callback`,
+    };
+  }
+
+  /**
+   * Build the Google consent screen URL for connecting a Gmail mailbox.
+   * `state` should encode the requesting user's id so the callback can
+   * verify which user/organization the mailbox belongs to.
+   */
+  getGmailMailboxAuthUrl(state: string): string {
+    const config = this.getGmailMailboxConfig();
+    const params = new URLSearchParams({
+      client_id: config.clientId,
+      redirect_uri: config.redirectUri,
+      response_type: 'code',
+      scope: [
+        'https://www.googleapis.com/auth/gmail.send',
+        'https://www.googleapis.com/auth/userinfo.email',
+        'openid',
+      ].join(' '),
+      access_type: 'offline',
+      prompt: 'consent',
+      state,
+    });
+
+    return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+  }
+
+  /**
+   * Exchange the OAuth authorization code for Gmail mailbox tokens and
+   * fetch the connected Google account's email address.
+   */
+  async handleGmailMailboxCallback(code: string): Promise<{
+    email: string;
+    accessToken: string;
+    refreshToken?: string;
+    expiresIn: number;
+  }> {
+    const config = this.getGmailMailboxConfig();
+
+    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code,
+        client_id: config.clientId,
+        client_secret: config.clientSecret,
+        redirect_uri: config.redirectUri,
+        grant_type: 'authorization_code',
+      }),
+    });
+
+    if (!tokenResponse.ok) {
+      console.error('Gmail mailbox token exchange failed:', await tokenResponse.text());
+      throw new Error('Failed to authenticate with Google');
+    }
+
+    const tokens = await tokenResponse.json() as {
+      access_token: string;
+      refresh_token?: string;
+      expires_in: number;
+    };
+
+    const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+      headers: { Authorization: `Bearer ${tokens.access_token}` },
+    });
+
+    if (!userInfoResponse.ok) {
+      console.error('Failed to fetch Google account info for Gmail mailbox');
+      throw new Error('Failed to get Gmail account information');
+    }
+
+    const userInfo = await userInfoResponse.json() as { email: string };
+
+    return {
+      email: userInfo.email.toLowerCase(),
+      accessToken: tokens.access_token,
+      refreshToken: tokens.refresh_token,
+      expiresIn: tokens.expires_in,
+    };
+  }
 }
 
 export const oauthService = new OAuthService();

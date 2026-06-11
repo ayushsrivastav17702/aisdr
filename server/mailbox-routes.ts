@@ -2,12 +2,87 @@ import { Router } from "express";
 import { mailboxService } from "./services/mailbox.service";
 import { emailSendingService } from "./services/email-sending.service";
 import { emailQueueService } from "./services/email-queue.service";
+import { oauthService } from "./services/oauth.service";
 import { insertEmailMailboxSchema } from "@shared/schema";
 import { z } from "zod";
 import { authenticate, forbidManager, blockSuperAdminFromSDR } from "./middleware/auth.middleware";
 import { checkUserPause, checkDailyEmailLimit } from "./middleware/throttle.middleware";
 
 const router = Router();
+
+// ─────────────────────────────────────────────────────────────────────────
+// Gmail OAuth: connect a Gmail mailbox for sending email.
+// GET /api/mailboxes/oauth/gmail/connect  -> redirect to Google consent screen
+// GET /api/mailboxes/oauth/gmail/callback -> exchange code, save tokens
+// ─────────────────────────────────────────────────────────────────────────
+router.get("/mailboxes/oauth/gmail/connect", authenticate, forbidManager, async (req, res) => {
+  try {
+    if (!oauthService.isGoogleConfigured()) {
+      return res.status(503).json({ error: "Google OAuth is not configured" });
+    }
+
+    const userId = req.userContext?.userId;
+    if (!userId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    // Encode the requesting user's id in `state` so the callback can be
+    // verified even if the auth cookie isn't sent on the redirect back.
+    const state = Buffer.from(JSON.stringify({ userId, ts: Date.now() })).toString("base64url");
+
+    const authUrl = oauthService.getGmailMailboxAuthUrl(state);
+    res.redirect(authUrl);
+  } catch (error) {
+    console.error("Gmail mailbox OAuth connect error:", error);
+    res.status(500).json({ error: error instanceof Error ? error.message : "Failed to start Gmail OAuth" });
+  }
+});
+
+router.get("/mailboxes/oauth/gmail/callback", authenticate, async (req, res) => {
+  try {
+    const { code, error: oauthError, state } = req.query;
+
+    if (oauthError) {
+      return res.redirect("/settings/mailboxes?error=gmail_oauth_denied");
+    }
+
+    if (!code || typeof code !== "string") {
+      return res.status(400).json({ error: "Missing OAuth authorization code" });
+    }
+
+    // Prefer the authenticated session's user; fall back to the user id
+    // encoded in `state` if for some reason the session cookie is missing.
+    let userId = req.userContext?.userId;
+    if (!userId && typeof state === "string") {
+      try {
+        const decoded = JSON.parse(Buffer.from(state, "base64url").toString("utf8"));
+        userId = decoded?.userId;
+      } catch {
+        // ignore malformed state
+      }
+    }
+
+    if (!userId) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    const { email, accessToken, refreshToken, expiresIn } = await oauthService.handleGmailMailboxCallback(code);
+
+    const mailbox = await mailboxService.upsertGmailOAuthMailbox({
+      userId,
+      email,
+      accessToken,
+      refreshToken,
+      expiresIn,
+    });
+
+    console.log(`✅ Gmail mailbox connected: ${mailbox.email} (id=${mailbox.id})`);
+    res.redirect("/settings/mailboxes?connected=gmail");
+  } catch (error) {
+    console.error("Gmail mailbox OAuth callback error:", error);
+    res.redirect("/settings/mailboxes?error=gmail_oauth_failed");
+  }
+});
 
 router.get("/mailboxes", authenticate, blockSuperAdminFromSDR, async (req, res) => {
   try {
