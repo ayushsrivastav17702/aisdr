@@ -1352,6 +1352,15 @@ router.post("/sequences/ai-generate-email", authenticate, forbidManager, async (
       tone
     }, req.userContext);
 
+    // Safety net: if AI ignored the threading instruction and didn't return
+    // a "Re: ..." subject for a follow-up step, force it to match step 1's
+    // actual subject. Only applied when step1Subject (threadSubjectHint) is known.
+    if (sequenceStep && sequenceStep > 1 && threadSubjectHint) {
+      if (!result.subject.startsWith('Re: ')) {
+        result.subject = threadSubjectHint;
+      }
+    }
+
     // FIX 2: Persist the generated subject/body to sequence_steps so that
     // later steps (e.g. step 2's "Re: <subject>" threading) can read the
     // actual generated step 1 subject via getSequenceSteps, even if the
