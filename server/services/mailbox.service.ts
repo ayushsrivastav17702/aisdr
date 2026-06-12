@@ -98,13 +98,10 @@ export class MailboxService {
       .limit(1);
 
     if (defaultMailbox) {
-      await db
-        .update(emailMailboxes)
-        .set({
-          lastUsedAt: new Date(),
-        })
-        .where(eq(emailMailboxes.id, defaultMailbox.id));
-
+      // NOTE: lastUsedAt is intentionally NOT updated here. It is only
+      // updated in incrementDailySent() after an actual send, so the
+      // 30s mailbox-delay check in email-queue.service.ts measures time
+      // since the last real send, not time since last selection.
       console.log(`✅ Selected default mailbox for user ${userId || 'system'}: ${defaultMailbox.email}`);
       return defaultMailbox;
     }
@@ -125,13 +122,10 @@ export class MailboxService {
 
     const mailbox = availableMailboxes[0];
 
-    await db
-      .update(emailMailboxes)
-      .set({
-        lastUsedAt: new Date(),
-      })
-      .where(eq(emailMailboxes.id, mailbox.id));
-
+    // NOTE: lastUsedAt is intentionally NOT updated here. It is only
+    // updated in incrementDailySent() after an actual send, so the
+    // 30s mailbox-delay check in email-queue.service.ts measures time
+    // since the last real send, not time since last selection.
     console.log(`✅ Selected mailbox for user ${userId || 'system'}: ${mailbox.email}`);
     return mailbox;
   }
