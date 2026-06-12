@@ -496,6 +496,8 @@ export class EmailQueueService {
         .orderBy(emailQueue.priority, emailQueue.scheduledFor)
         .limit(BATCH_LIMIT);
 
+      console.log('[EmailQueue] Queue check:', 'pending emails due:', pendingEmails.length, 'now:', now.toISOString());
+
       if (pendingEmails.length === 0) {
         // Still record a heartbeat so the scheduler monitor knows the poller is alive
         await schedulerMonitoringService.recordHeartbeat("email_queue", {
@@ -639,6 +641,7 @@ export class EmailQueueService {
         }
 
         // Process email - reservation already atomic, no need to track success for counter
+        console.log('[EmailQueue] Selected for send:', email.id, 'scheduledFor:', email.scheduledFor, 'now:', new Date().toISOString());
         const success = await this.processEmail(email);
         processedCount++;
         if (!success) {
