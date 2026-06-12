@@ -721,21 +721,21 @@ router.post("/sequences/:id/steps", authenticate, forbidManager, async (req, res
       return res.status(503).json({ error: "Unable to verify tenant automation status" });
     }
 
-    const { subject, body, stepOrder, delayDays, mailboxId } = req.body;
-    
-    if (!subject || !body) {
-      return res.status(400).json({ error: "Subject and body are required" });
-    }
-    
+    const { subject, body, stepOrder, delayDays, mailboxId, stepType, emailType } = req.body;
+
+    // Allow creating a placeholder step (subject/body filled in later via
+    // /sequences/ai-generate-email, which persists the generated content
+    // back onto this step). subject/body are NOT NULL in the DB, so default
+    // to empty strings when not yet generated.
     const step = await storage.createSequenceStep(req.userContext!, {
       sequenceId: req.params.id,
-      subject,
-      body,
+      subject: subject || "",
+      body: body || "",
       stepOrder: stepOrder || 1,
       delayDays: delayDays || 0,
-      stepType: "email",
+      stepType: stepType || "email",
       aiGenerated: false,
-      variables: null,
+      variables: emailType ? { emailType } : null,
       mailboxId: mailboxId || null,
     });
     
