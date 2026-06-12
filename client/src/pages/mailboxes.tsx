@@ -224,7 +224,7 @@ function EditMailboxDialog({
             </p>
           </div>
 
-          {(mailbox.provider === "smtp" || mailbox.provider === "gmail" || mailbox.provider === "outlook") && (
+          {(mailbox.provider === "smtp" || mailbox.provider === "outlook") && (
             <>
               <div>
                 <Label htmlFor="smtpPassword">SMTP Password (optional)</Label>
@@ -479,7 +479,7 @@ function AddMailboxButton() {
     gmail: {
       host: "smtp.gmail.com",
       port: "465",
-      tip: "Use a Gmail App Password. Go to Google Account → Security → 2-Step Verification → App Passwords"
+      tip: "Connect with Google OAuth below — no app password required."
     },
     outlook: {
       host: "smtp.office365.com", 
@@ -580,7 +580,31 @@ function AddMailboxButton() {
             </p>
           </div>
 
-          {(provider === "smtp" || provider === "gmail" || provider === "outlook") && (
+          {provider === "gmail" && (
+            <div className="space-y-3 pt-2 border-t">
+              <p className="text-sm text-muted-foreground">
+                Connect your Gmail account securely using Google OAuth. No password needed.
+              </p>
+
+              <button
+                type="button"
+                onClick={() => {
+                  window.location.href = "/api/mailboxes/oauth/gmail/connect";
+                }}
+                data-testid="btn-connect-gmail-oauth"
+                className="w-full flex items-center justify-center gap-3 h-10 rounded-md border-2 border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 font-medium text-sm transition-all"
+              >
+                <GoogleIcon className="w-4 h-4" />
+                Connect Gmail with Google
+              </button>
+
+              <p className="text-xs text-muted-foreground">
+                You will be redirected to Google to authorize access.
+              </p>
+            </div>
+          )}
+
+          {(provider === "smtp" || provider === "outlook") && (
             <div className="space-y-4 pt-2 border-t">
               <h4 className="text-sm font-medium text-muted-foreground">Server Settings</h4>
               <div className="grid grid-cols-3 gap-4">
@@ -622,7 +646,7 @@ function AddMailboxButton() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="smtpPassword" className="text-sm">
-                    {provider === "gmail" ? "App Password" : "Password"}
+                    Password
                   </Label>
                   <PasswordInput
                     id="smtpPassword"
@@ -663,6 +687,7 @@ function AddMailboxButton() {
           >
             Cancel
           </Button>
+          {provider !== "gmail" && (
           <Button
             onClick={handleSubmit}
             disabled={!name || !email || createMutation.isPending}
@@ -680,8 +705,32 @@ function AddMailboxButton() {
               </>
             )}
           </Button>
+          )}
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function GoogleIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <path
+        fill="#4285F4"
+        d="M23.52 12.27c0-.79-.07-1.54-.2-2.27H12v4.51h6.47c-.28 1.48-1.13 2.73-2.41 3.58v2.97h3.91c2.29-2.11 3.55-5.21 3.55-8.79z"
+      />
+      <path
+        fill="#34A853"
+        d="M12 24c3.24 0 5.95-1.07 7.93-2.9l-3.91-2.97c-1.07.72-2.43 1.15-4.02 1.15-3.1 0-5.72-2.09-6.66-4.9H1.27v3.07C3.24 21.3 7.31 24 12 24z"
+      />
+      <path
+        fill="#FBBC05"
+        d="M5.34 14.38a7.16 7.16 0 0 1 0-4.76V6.55H1.27a11.99 11.99 0 0 0 0 10.9l4.07-3.07z"
+      />
+      <path
+        fill="#EA4335"
+        d="M12 4.75c1.76 0 3.34.6 4.58 1.79l3.46-3.46C17.94 1.18 15.24 0 12 0 7.31 0 3.24 2.7 1.27 6.55l4.07 3.07c.94-2.81 3.56-4.87 6.66-4.87z"
+      />
+    </svg>
   );
 }
