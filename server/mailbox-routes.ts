@@ -38,32 +38,42 @@ router.get("/mailboxes/oauth/gmail/connect", authenticate, forbidManager, async 
   }
 });
 
-router.get("/mailboxes/oauth/gmail/callback", authenticate, async (req, res) => {
+// NOTE: deliberately NOT behind `authenticate`. The redirect back from
+// accounts.google.com is a cross-site top-level navigation, so with
+// `SameSite=Strict` (used in production) the `auth_token` cookie is not
+// sent here. `authenticate` would respond 401 before we ever get a chance
+// to fall back to the `state` param, breaking the OAuth flow entirely.
+// Instead, the user's identity is derived solely from the signed `state`
+// value we generated in /mailboxes/oauth/gmail/connect.
+router.get("/mailboxes/oauth/gmail/callback", async (req, res) => {
   try {
     const { code, error: oauthError, state } = req.query;
 
     if (oauthError) {
-      return res.redirect("/settings/mailboxes?error=gmail_oauth_denied");
+      return res.redirect("/mailboxes?error=gmail_oauth_denied");
     }
 
     if (!code || typeof code !== "string") {
-      return res.status(400).json({ error: "Missing OAuth authorization code" });
+      return res.redirect("/mailboxes?error=gmail_oauth_failed");
     }
 
-    // Prefer the authenticated session's user; fall back to the user id
-    // encoded in `state` if for some reason the session cookie is missing.
-    let userId = req.userContext?.userId;
-    if (!userId && typeof state === "string") {
+    // Derive the connecting user's id from `state` (set during /connect).
+    let userId: string | undefined;
+    if (typeof state === "string") {
       try {
         const decoded = JSON.parse(Buffer.from(state, "base64url").toString("utf8"));
-        userId = decoded?.userId;
+        // Reject stale state params (older than 10 minutes) to limit replay risk.
+        const MAX_STATE_AGE_MS = 10 * 60 * 1000;
+        if (decoded?.userId && typeof decoded.ts === "number" && Date.now() - decoded.ts <= MAX_STATE_AGE_MS) {
+          userId = decoded.userId;
+        }
       } catch {
         // ignore malformed state
       }
     }
 
     if (!userId) {
-      return res.status(401).json({ error: "Authentication required" });
+      return res.redirect("/mailboxes?error=gmail_oauth_failed");
     }
 
     const { email, accessToken, refreshToken, expiresIn } = await oauthService.handleGmailMailboxCallback(code);
@@ -77,10 +87,10 @@ router.get("/mailboxes/oauth/gmail/callback", authenticate, async (req, res) => 
     });
 
     console.log(`✅ Gmail mailbox connected: ${mailbox.email} (id=${mailbox.id})`);
-    res.redirect("/settings/mailboxes?connected=gmail");
+    res.redirect("/mailboxes?connected=gmail");
   } catch (error) {
     console.error("Gmail mailbox OAuth callback error:", error);
-    res.redirect("/settings/mailboxes?error=gmail_oauth_failed");
+    res.redirect("/mailboxes?error=gmail_oauth_failed");
   }
 });
 
