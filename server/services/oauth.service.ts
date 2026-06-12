@@ -370,6 +370,44 @@ class OAuthService {
       expiresIn: tokens.expires_in,
     };
   }
+
+  /**
+   * Exchange a stored Gmail mailbox refresh token for a fresh access token.
+   * Used by email-sending.service.ts when the cached access token is
+   * expired (or close to expiring).
+   */
+  async refreshGmailAccessToken(refreshToken: string): Promise<{
+    accessToken: string;
+    expiresIn: number;
+  }> {
+    const config = this.getGmailMailboxConfig();
+
+    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: config.clientId,
+        client_secret: config.clientSecret,
+        refresh_token: refreshToken,
+        grant_type: 'refresh_token',
+      }),
+    });
+
+    if (!tokenResponse.ok) {
+      console.error('Gmail mailbox token refresh failed:', await tokenResponse.text());
+      throw new Error('Failed to refresh Gmail access token');
+    }
+
+    const tokens = await tokenResponse.json() as {
+      access_token: string;
+      expires_in: number;
+    };
+
+    return {
+      accessToken: tokens.access_token,
+      expiresIn: tokens.expires_in,
+    };
+  }
 }
 
 export const oauthService = new OAuthService();

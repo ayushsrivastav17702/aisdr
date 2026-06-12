@@ -186,7 +186,7 @@ export class MailboxService {
     }
   }
 
-  private encrypt(text: string): string {
+  encrypt(text: string): string {
     const algorithm = "aes-256-cbc";
     const key = crypto.scryptSync(this.encryptionKey, "salt", 32);
     const iv = crypto.randomBytes(16);

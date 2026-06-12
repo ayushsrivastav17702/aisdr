@@ -4,6 +4,7 @@ import { emailMailboxes, emailSendLog, InsertEmailSendLogEntry } from "@shared/s
 import { eq } from "drizzle-orm";
 import { mailboxService } from "./mailbox.service";
 import { emailTrackingService } from "./email-tracking.service";
+import { oauthService } from "./oauth.service";
 
 export class EmailSendingService {
   async sendEmail(params: {
@@ -134,6 +135,24 @@ export class EmailSendingService {
   private async createTransporter(mailbox: any) {
     const { provider } = mailbox;
 
+    // Gmail mailboxes connected via OAuth (have a refreshToken) authenticate
+    // with OAuth2 instead of an SMTP password.
+    if (provider === "gmail" && mailbox.refreshToken) {
+      const { accessToken, refreshToken } = await this.getGmailOAuthCredentials(mailbox);
+
+      return nodemailer.createTransport({
+        service: "gmail",
+        auth: {
+          type: "OAuth2",
+          user: mailbox.smtpUser || mailbox.email,
+          clientId: process.env.GOOGLE_CLIENT_ID,
+          clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+          refreshToken,
+          accessToken,
+        },
+      });
+    }
+
     if (provider === "smtp" || provider === "gmail" || provider === "outlook") {
       const password = mailbox.smtpPassword
         ? mailboxService.decrypt(mailbox.smtpPassword)
@@ -161,6 +180,40 @@ export class EmailSendingService {
     }
 
     throw new Error(`Unsupported provider: ${provider}`);
+  }
+
+  /**
+   * Decrypt the stored Gmail OAuth tokens for a mailbox, refreshing the
+   * access token first if it is missing or close to expiry (Gmail access
+   * tokens last ~1 hour). The refreshed access token + new expiry are
+   * persisted back to the mailbox row.
+   */
+  private async getGmailOAuthCredentials(mailbox: any): Promise<{ accessToken: string; refreshToken: string }> {
+    const refreshToken = mailboxService.decrypt(mailbox.refreshToken);
+
+    const REFRESH_BUFFER_MS = 10 * 60 * 1000; // refresh if expiring within 10 minutes
+    const needsRefresh =
+      !mailbox.accessToken ||
+      !mailbox.tokenExpiry ||
+      new Date(mailbox.tokenExpiry).getTime() <= Date.now() + REFRESH_BUFFER_MS;
+
+    if (!needsRefresh) {
+      return { accessToken: mailboxService.decrypt(mailbox.accessToken), refreshToken };
+    }
+
+    const { accessToken, expiresIn } = await oauthService.refreshGmailAccessToken(refreshToken);
+    const tokenExpiry = new Date(Date.now() + expiresIn * 1000);
+
+    await db
+      .update(emailMailboxes)
+      .set({
+        accessToken: mailboxService.encrypt(accessToken),
+        tokenExpiry,
+        updatedAt: new Date(),
+      })
+      .where(eq(emailMailboxes.id, mailbox.id));
+
+    return { accessToken, refreshToken };
   }
 
   async testMailbox(mailboxId: string): Promise<boolean> {

@@ -110,7 +110,15 @@ export class ReplyDetectionService {
           : "";
 
         if (!password) {
-          console.log(`⚠️ No password for mailbox ${mailbox.email}`);
+          if (mailbox.provider === "gmail" && mailbox.refreshToken) {
+            // Gmail OAuth mailboxes authenticate via refreshToken, not an
+            // SMTP/IMAP password. IMAP reply detection over OAuth (XOAUTH2)
+            // requires the gmail.readonly scope, which the current OAuth
+            // connect flow does not request, so skip without warning.
+            console.log(`ℹ️ Skipping IMAP reply check for OAuth Gmail mailbox ${mailbox.email} (no IMAP password configured)`);
+          } else {
+            console.log(`⚠️ No credentials for mailbox ${mailbox.email}`);
+          }
           resolve();
           return;
         }
