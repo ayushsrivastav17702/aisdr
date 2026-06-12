@@ -140,6 +140,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
+  // Temporary debug endpoint: check which third-party API keys are loaded
+  // into the running process's environment. Authenticated only — does not
+  // return key values, only presence/length, to help diagnose
+  // "provider not configured" issues without leaking secrets.
+  app.get('/api/debug/providers', authenticate, (req, res) => {
+    res.json({
+      apollo: !!process.env.APOLLO_API_KEY,
+      apolloKeyLength: process.env.APOLLO_API_KEY?.length,
+      groq: !!process.env.GROQ_API_KEY,
+      resend: !!process.env.RESEND_API_KEY,
+      googleClientId: !!process.env.GOOGLE_CLIENT_ID,
+    });
+  });
+
   // Email volume configuration endpoint (SDR-only)
   app.get("/api/email-volume-config", authenticate, forbidManager, async (req, res) => {
     try {
