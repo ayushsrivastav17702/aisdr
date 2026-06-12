@@ -1,10 +1,21 @@
-import nodemailer from "nodemailer";
+import { Resend } from "resend";
 import { db } from "../db";
 import { emailMailboxes, emailSendLog, InsertEmailSendLogEntry } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { mailboxService } from "./mailbox.service";
 import { emailTrackingService } from "./email-tracking.service";
-import { oauthService } from "./oauth.service";
+
+// Render's free tier blocks outbound SMTP on ports 25/465/587, so direct
+// nodemailer/SMTP (and Gmail OAuth2 SMTP) sends time out with
+// "Connection timeout". Resend's API is HTTPS (port 443), which is never
+// blocked, so all outbound mail is sent through Resend regardless of the
+// mailbox's configured provider.
+const resendClient = new Resend(process.env.RESEND_API_KEY);
+
+// Until the sending domain (e.g. b2bleads.co.in) is verified in Resend,
+// emails must be sent "from" Resend's shared sandbox domain. Reply-To is
+// still set to the connected mailbox so replies land in the right inbox.
+const RESEND_FROM_ADDRESS = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
 
 export class EmailSendingService {
   async sendEmail(params: {
@@ -37,8 +48,6 @@ export class EmailSendingService {
         throw new Error("Daily limit reached");
       }
 
-      const transporter = await this.createTransporter(mailbox);
-
       // Convert plain text to properly formatted HTML
       // Split by line breaks and wrap each paragraph in <p> tags for proper spacing
       const paragraphs = params.body
@@ -46,9 +55,9 @@ export class EmailSendingService {
         .filter(p => p.trim().length > 0)  // Remove empty paragraphs
         .map(p => `<p style="margin: 0 0 16px 0;">${p.trim()}</p>`)  // Wrap in <p> tags with spacing
         .join('');
-      
+
       let emailBody = paragraphs;
-      
+
       // Add signature if available
       if (mailbox.signature) {
         console.log(`📝 Appending signature for mailbox ${mailbox.email}:`, mailbox.signature.substring(0, 50) + '...');
@@ -62,41 +71,44 @@ export class EmailSendingService {
       } else {
         console.log(`⚠️ No signature found for mailbox ${mailbox.email}`);
       }
-      
+
       // Add tracking if trackingId is provided
       if (params.trackingId) {
         // Wrap links for click tracking
         emailBody = emailTrackingService.wrapAllUrls(emailBody, params.trackingId);
-        
+
         // Add tracking pixel for open tracking
         const trackingPixelHtml = emailTrackingService.getTrackingPixelHtml(params.trackingId);
         emailBody = emailBody + trackingPixelHtml;
       }
 
-      const mailOptions: any = {
-        from: `"${params.fromName || mailbox.name}" <${mailbox.email}>`,
+      // Threading headers (RFC 5322) so replies/follow-ups stay in the same thread
+      const headers: Record<string, string> = {};
+      if (params.inReplyTo) {
+        headers['In-Reply-To'] = params.inReplyTo;
+      }
+      if (params.references) {
+        headers['References'] = params.references;
+      }
+      if (params.trackingId) {
+        headers['X-Tracking-Id'] = params.trackingId;
+      }
+
+      const { data, error } = await resendClient.emails.send({
+        from: `${params.fromName || mailbox.name} <${RESEND_FROM_ADDRESS}>`,
         to: params.to,
         subject: params.subject,
         html: emailBody,
+        text: params.body,
         replyTo: mailbox.email,
-      };
-      
-      // Add threading headers if provided (for email thread continuity)
-      if (params.inReplyTo) {
-        mailOptions.inReplyTo = params.inReplyTo;
-        mailOptions.headers = {
-          'In-Reply-To': params.inReplyTo,
-        };
+        ...(Object.keys(headers).length > 0 ? { headers } : {}),
+      });
+
+      if (error) {
+        throw new Error(error.message);
       }
-      
-      if (params.references) {
-        if (!mailOptions.headers) {
-          mailOptions.headers = {};
-        }
-        mailOptions.headers['References'] = params.references;
-      }
-      
-      const info = await transporter.sendMail(mailOptions);
+
+      const messageId = data?.id;
 
       await mailboxService.incrementDailySent(params.mailboxId);
 
@@ -104,16 +116,16 @@ export class EmailSendingService {
         mailboxId: params.mailboxId,
         userId: params.userId, // CRITICAL: Multi-tenant security - required field
         status: "success",
-        messageId: info.messageId,
+        messageId,
         sentAt: new Date(),
       });
 
-      console.log(`✅ Email sent: ${info.messageId}`);
+      console.log(`✅ Email sent via Resend: ${messageId}`);
       console.log('[EmailSending] ✅ Sent to:', params.to, 'via', mailbox.email);
 
       return {
         success: true,
-        messageId: info.messageId,
+        messageId,
         finalBody: emailBody, // Return the final HTML body with signature
       };
     } catch (error: any) {
@@ -135,90 +147,6 @@ export class EmailSendingService {
     }
   }
 
-  private async createTransporter(mailbox: any) {
-    const { provider } = mailbox;
-
-    // Gmail mailboxes connected via OAuth (have a refreshToken) authenticate
-    // with OAuth2 instead of an SMTP password.
-    if (provider === "gmail" && mailbox.refreshToken) {
-      const { accessToken, refreshToken } = await this.getGmailOAuthCredentials(mailbox);
-
-      return nodemailer.createTransport({
-        service: "gmail",
-        auth: {
-          type: "OAuth2",
-          user: mailbox.smtpUser || mailbox.email,
-          clientId: process.env.GOOGLE_CLIENT_ID,
-          clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-          refreshToken,
-          accessToken,
-        },
-      });
-    }
-
-    if (provider === "smtp" || provider === "gmail" || provider === "outlook") {
-      const password = mailbox.smtpPassword
-        ? mailboxService.decrypt(mailbox.smtpPassword)
-        : "";
-
-      return nodemailer.createTransport({
-        host: mailbox.smtpHost,
-        port: mailbox.smtpPort,
-        secure: mailbox.smtpSecure,
-        auth: {
-          user: mailbox.smtpUser || mailbox.email,
-          pass: password,
-        },
-      });
-    } else if (provider === "sendgrid") {
-      const apiKey = mailbox.apiKey ? mailboxService.decrypt(mailbox.apiKey) : "";
-      return nodemailer.createTransport({
-        host: "smtp.sendgrid.net",
-        port: 587,
-        auth: {
-          user: "apikey",
-          pass: apiKey,
-        },
-      });
-    }
-
-    throw new Error(`Unsupported provider: ${provider}`);
-  }
-
-  /**
-   * Decrypt the stored Gmail OAuth tokens for a mailbox, refreshing the
-   * access token first if it is missing or close to expiry (Gmail access
-   * tokens last ~1 hour). The refreshed access token + new expiry are
-   * persisted back to the mailbox row.
-   */
-  private async getGmailOAuthCredentials(mailbox: any): Promise<{ accessToken: string; refreshToken: string }> {
-    const refreshToken = mailboxService.decrypt(mailbox.refreshToken);
-
-    const REFRESH_BUFFER_MS = 10 * 60 * 1000; // refresh if expiring within 10 minutes
-    const needsRefresh =
-      !mailbox.accessToken ||
-      !mailbox.tokenExpiry ||
-      new Date(mailbox.tokenExpiry).getTime() <= Date.now() + REFRESH_BUFFER_MS;
-
-    if (!needsRefresh) {
-      return { accessToken: mailboxService.decrypt(mailbox.accessToken), refreshToken };
-    }
-
-    const { accessToken, expiresIn } = await oauthService.refreshGmailAccessToken(refreshToken);
-    const tokenExpiry = new Date(Date.now() + expiresIn * 1000);
-
-    await db
-      .update(emailMailboxes)
-      .set({
-        accessToken: mailboxService.encrypt(accessToken),
-        tokenExpiry,
-        updatedAt: new Date(),
-      })
-      .where(eq(emailMailboxes.id, mailbox.id));
-
-    return { accessToken, refreshToken };
-  }
-
   async testMailbox(mailboxId: string): Promise<boolean> {
     try {
       const [mailbox] = await db
@@ -230,9 +158,11 @@ export class EmailSendingService {
         throw new Error("Mailbox not found");
       }
 
-      const transporter = await this.createTransporter(mailbox);
-      await transporter.verify();
-      console.log(`✅ Mailbox ${mailbox.email} connection verified`);
+      if (!process.env.RESEND_API_KEY) {
+        throw new Error("RESEND_API_KEY is not configured");
+      }
+
+      console.log(`✅ Mailbox ${mailbox.email} configured (sending via Resend)`);
       return true;
     } catch (error) {
       console.error("Mailbox test failed:", error);
