@@ -679,15 +679,17 @@ export class EmailQueueService {
 
   private async processEmail(email: EmailQueueItem): Promise<boolean> {
     let prospect: typeof prospects.$inferSelect | undefined;
+    let queueMailbox: { email: string; refreshToken: string | null; provider: string } | undefined;
 
     console.log('[EmailQueue] Processing email:', email.id);
     if (email.mailboxId) {
       const [debugMailbox] = await db
-        .select({ email: emailMailboxes.email, refreshToken: emailMailboxes.refreshToken })
+        .select({ email: emailMailboxes.email, refreshToken: emailMailboxes.refreshToken, provider: emailMailboxes.provider })
         .from(emailMailboxes)
         .where(eq(emailMailboxes.id, email.mailboxId))
         .limit(1);
       if (debugMailbox) {
+        queueMailbox = debugMailbox;
         console.log('[EmailQueue] Mailbox:', debugMailbox.email);
         console.log('[EmailQueue] Has refresh token:', !!debugMailbox.refreshToken);
       }
@@ -915,6 +917,8 @@ export class EmailQueueService {
           .where(eq(emailQueue.id, email.id));
         return false;
       }
+
+      console.log('[EmailQueue] About to send:', email.id, 'to:', prospect.primaryEmail, 'via:', queueMailbox?.email, 'provider:', queueMailbox?.provider);
 
       const result = await emailSendingService.sendEmail({
         mailboxId: email.mailboxId,
