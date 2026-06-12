@@ -18,8 +18,9 @@ export class EmailSendingService {
     references?: string;
     userId: string; // REQUIRED: User ID for multi-tenant send log tracking
   }): Promise<{ success: boolean; messageId?: string; error?: string; finalBody?: string }> {
+    let mailbox: typeof emailMailboxes.$inferSelect | undefined;
     try {
-      const [mailbox] = await db
+      [mailbox] = await db
         .select()
         .from(emailMailboxes)
         .where(eq(emailMailboxes.id, params.mailboxId));
@@ -108,6 +109,7 @@ export class EmailSendingService {
       });
 
       console.log(`✅ Email sent: ${info.messageId}`);
+      console.log('[EmailSending] ✅ Sent to:', params.to, 'via', mailbox.email);
 
       return {
         success: true,
@@ -116,6 +118,7 @@ export class EmailSendingService {
       };
     } catch (error: any) {
       console.error("Email sending failed:", error);
+      console.error('[EmailSending] ❌ Failed:', error?.message, 'code:', error?.code);
 
       await db.insert(emailSendLog).values({
         mailboxId: params.mailboxId,
