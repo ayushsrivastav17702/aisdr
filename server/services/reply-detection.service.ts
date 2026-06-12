@@ -5,6 +5,7 @@ import { db } from "../db";
 import { emailReplies, emailQueue, emailMailboxes, sequenceProspects, emails, automationRuns, prospects as prospectsTable } from "@shared/schema";
 import { eq, and, sql, desc } from "drizzle-orm";
 import { mailboxService } from "./mailbox.service";
+import { oauthService } from "./oauth.service";
 import sequenceStepService from "./sequence-step.service";
 import { Sentry, isSentryEnabled } from "../sentry";
 import { emailQueueService } from "./email-queue.service";
@@ -102,27 +103,31 @@ export class ReplyDetectionService {
   }
 
   private async checkMailboxReplies(mailbox: any): Promise<void> {
+    // Decrypt password (for non-OAuth mailboxes)
+    const password = mailbox.smtpPassword
+      ? mailboxService.decrypt(mailbox.smtpPassword)
+      : "";
+
+    // For Gmail mailboxes connected via OAuth, build an XOAUTH2 token instead
+    // of using a password. Refresh the access token first if it's missing or
+    // close to expiry, persisting the new token back to the mailbox row.
+    let xoauth2Token: string | undefined;
+    if (mailbox.provider === "gmail" && mailbox.refreshToken) {
+      try {
+        xoauth2Token = await this.getGmailXOAuth2Token(mailbox);
+      } catch (err) {
+        console.error(`❌ Failed to obtain OAuth token for IMAP on ${mailbox.email}:`, err);
+        return;
+      }
+    }
+
+    if (!password && !xoauth2Token) {
+      console.log(`⚠️ No credentials for mailbox ${mailbox.email}`);
+      return;
+    }
+
     return new Promise((resolve) => {
       try {
-        // Decrypt password
-        const password = mailbox.smtpPassword 
-          ? mailboxService.decrypt(mailbox.smtpPassword)
-          : "";
-
-        if (!password) {
-          if (mailbox.provider === "gmail" && mailbox.refreshToken) {
-            // Gmail OAuth mailboxes authenticate via refreshToken, not an
-            // SMTP/IMAP password. IMAP reply detection over OAuth (XOAUTH2)
-            // requires the gmail.readonly scope, which the current OAuth
-            // connect flow does not request, so skip without warning.
-            console.log(`ℹ️ Skipping IMAP reply check for OAuth Gmail mailbox ${mailbox.email} (no IMAP password configured)`);
-          } else {
-            console.log(`⚠️ No credentials for mailbox ${mailbox.email}`);
-          }
-          resolve();
-          return;
-        }
-
         // FIX-4: Determine IMAP host based on provider or stored settings
         let imapHost: string;
         let imapPort: number;
@@ -162,6 +167,9 @@ export class ReplyDetectionService {
           port: imapPort,
           tls: true,
           tlsOptions: { rejectUnauthorized: false },
+          ...(xoauth2Token
+            ? { xoauth2: xoauth2Token, authTimeout: 10000 }
+            : {}),
         };
 
         const imap = new Imap(imapConfig);
@@ -1178,6 +1186,42 @@ export class ReplyDetectionService {
       console.error("Error getting prospect email:", error);
       return null;
     }
+  }
+
+  /**
+   * Build a base64-encoded SASL XOAUTH2 token for IMAP, refreshing the
+   * mailbox's Gmail access token first if it's missing or close to expiry.
+   * Persists the refreshed access token + expiry back to the mailbox row.
+   */
+  private async getGmailXOAuth2Token(mailbox: any): Promise<string> {
+    const refreshToken = mailboxService.decrypt(mailbox.refreshToken);
+
+    const REFRESH_BUFFER_MS = 10 * 60 * 1000; // refresh if expiring within 10 minutes
+    const needsRefresh =
+      !mailbox.accessToken ||
+      !mailbox.tokenExpiry ||
+      new Date(mailbox.tokenExpiry).getTime() <= Date.now() + REFRESH_BUFFER_MS;
+
+    let accessToken: string;
+    if (needsRefresh) {
+      const refreshed = await oauthService.refreshGmailAccessToken(refreshToken);
+      accessToken = refreshed.accessToken;
+      const tokenExpiry = new Date(Date.now() + refreshed.expiresIn * 1000);
+
+      await db
+        .update(emailMailboxes)
+        .set({
+          accessToken: mailboxService.encrypt(accessToken),
+          tokenExpiry,
+          updatedAt: new Date(),
+        })
+        .where(eq(emailMailboxes.id, mailbox.id));
+    } else {
+      accessToken = mailboxService.decrypt(mailbox.accessToken);
+    }
+
+    const user = mailbox.smtpUser || mailbox.email;
+    return Buffer.from(`user=${user}\x01auth=Bearer ${accessToken}\x01\x01`).toString("base64");
   }
 }
 

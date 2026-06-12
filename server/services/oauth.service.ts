@@ -304,7 +304,11 @@ class OAuthService {
       client_id: config.clientId,
       redirect_uri: config.redirectUri,
       response_type: 'code',
+      // https://mail.google.com/ grants full IMAP/SMTP access (send + read),
+      // required so reply-detection.service.ts can open an XOAUTH2 IMAP
+      // session with this mailbox's access token.
       scope: [
+        'https://mail.google.com/',
         'https://www.googleapis.com/auth/gmail.send',
         'https://www.googleapis.com/auth/userinfo.email',
         'openid',

@@ -679,7 +679,20 @@ export class EmailQueueService {
 
   private async processEmail(email: EmailQueueItem): Promise<boolean> {
     let prospect: typeof prospects.$inferSelect | undefined;
-    
+
+    console.log('[EmailQueue] Processing email:', email.id);
+    if (email.mailboxId) {
+      const [debugMailbox] = await db
+        .select({ email: emailMailboxes.email, refreshToken: emailMailboxes.refreshToken })
+        .from(emailMailboxes)
+        .where(eq(emailMailboxes.id, email.mailboxId))
+        .limit(1);
+      if (debugMailbox) {
+        console.log('[EmailQueue] Mailbox:', debugMailbox.email);
+        console.log('[EmailQueue] Has refresh token:', !!debugMailbox.refreshToken);
+      }
+    }
+
     try {
       // ========================================
       // DEFENSIVE SAFEGUARDS: Check pause/limits before processing
