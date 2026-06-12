@@ -923,17 +923,26 @@ export class EmailQueueService {
 
       console.log('[EmailQueue] About to send:', email.id, 'to:', prospect.primaryEmail, 'via:', queueMailbox?.email, 'provider:', queueMailbox?.provider);
 
-      const result = await emailSendingService.sendEmail({
-        mailboxId: email.mailboxId,
-        to: prospect.primaryEmail,
-        subject: renderedSubject,
-        body: renderedBody,
-        fromName: email.fromName || undefined,
-        trackingId: email.id,
-        inReplyTo: email.inReplyTo || undefined,
-        references: email.references || undefined,
-        userId: email.userId, // CRITICAL: Multi-tenant security for send log
-      });
+      let result: Awaited<ReturnType<typeof emailSendingService.sendEmail>>;
+      try {
+        result = await emailSendingService.sendEmail({
+          mailboxId: email.mailboxId,
+          to: prospect.primaryEmail,
+          subject: renderedSubject,
+          body: renderedBody,
+          fromName: email.fromName || undefined,
+          trackingId: email.id,
+          inReplyTo: email.inReplyTo || undefined,
+          references: email.references || undefined,
+          userId: email.userId, // CRITICAL: Multi-tenant security for send log
+        });
+        if (!result.success) {
+          console.error('[EmailQueue] Send returned false for:', email.id, 'error:', result.error);
+        }
+      } catch (err: any) {
+        console.error('[EmailQueue] Send threw error:', err.message, 'code:', err.code, 'response:', err.response);
+        throw err;
+      }
 
       if (result.success) {
         const sentAt = new Date();
