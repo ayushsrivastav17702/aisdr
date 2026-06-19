@@ -183,8 +183,11 @@ export class ReplyDetectionService {
               return;
             }
 
-            // Search for unread emails
-            imap.search(["UNSEEN"], (err, results) => {
+            // Search for unread emails in the last 7 days only.
+            // Without a SINCE bound, IMAP scans the entire inbox history on every poll cycle.
+            const sevenDaysAgo = new Date();
+            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+            imap.search(["UNSEEN", ["SINCE", sevenDaysAgo]], (err, results) => {
               if (err) {
                 console.error(`❌ IMAP search error for ${mailbox.email}:`, err);
                 imap.end();
