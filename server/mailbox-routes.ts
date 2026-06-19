@@ -471,8 +471,7 @@ router.post("/email-queue/:id/cancel", authenticate, forbidManager, async (req, 
       return res.status(401).json({ error: "Authentication required" });
     }
 
-    // TODO: Verify queue item belongs to user before canceling
-    await emailQueueService.cancelEmail(req.params.id);
+    await emailQueueService.cancelEmail(req.params.id, req.userContext.userId);
     res.json({ success: true });
   } catch (error) {
     console.error("Cancel email error:", error);

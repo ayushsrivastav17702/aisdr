@@ -1294,11 +1294,15 @@ export class EmailQueueService {
     return "unknown_error";
   }
 
-  async cancelEmail(emailId: string): Promise<void> {
-    await db
+  async cancelEmail(emailId: string, userId: string): Promise<void> {
+    const result = await db
       .update(emailQueue)
       .set({ status: "failed", lastError: "Cancelled by user" })
-      .where(eq(emailQueue.id, emailId));
+      .where(and(eq(emailQueue.id, emailId), eq(emailQueue.userId, userId)))
+      .returning({ id: emailQueue.id });
+    if (result.length === 0) {
+      throw new Error("Email not found or not owned by user");
+    }
   }
 
   /**
