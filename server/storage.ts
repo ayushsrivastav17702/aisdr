@@ -244,9 +244,17 @@ export class DatabaseStorage implements IStorage {
 
   async createProspect(ctx: RequestContext, prospect: InsertProspect): Promise<Prospect> {
     try {
+      const userId = getEffectiveUserId(ctx);
+      const { resolveCompanyForProspect } = await import("./services/company-resolver.service");
+      const companyId = prospect.companyId ?? await resolveCompanyForProspect({
+        userId,
+        primaryEmail: prospect.primaryEmail,
+        companyDomain: prospect.companyDomain,
+        companyName: prospect.companyName,
+      });
       const [created] = await db
         .insert(prospects)
-        .values({ ...prospect, userId: getEffectiveUserId(ctx), updatedAt: new Date() })
+        .values({ ...prospect, userId, companyId, updatedAt: new Date() })
         .returning();
       return created;
     } catch (error: any) {
@@ -262,16 +270,25 @@ export class DatabaseStorage implements IStorage {
 
   async bulkCreateProspects(ctx: RequestContext, prospectsToCreate: InsertProspect[]): Promise<Prospect[]> {
     if (prospectsToCreate.length === 0) return [];
-    
-    const prospectsWithUpdatedAt = prospectsToCreate.map(p => ({ 
-      ...p,
-      userId: getEffectiveUserId(ctx),
-      updatedAt: new Date() 
-    }));
-    
+
+    const userId = getEffectiveUserId(ctx);
+    const { resolveCompanyForProspect } = await import("./services/company-resolver.service");
+
+    const prospectsWithCompany = await Promise.all(
+      prospectsToCreate.map(async (p) => {
+        const companyId = p.companyId ?? await resolveCompanyForProspect({
+          userId,
+          primaryEmail: p.primaryEmail,
+          companyDomain: p.companyDomain,
+          companyName: p.companyName,
+        });
+        return { ...p, userId, companyId, updatedAt: new Date() };
+      })
+    );
+
     const created = await db
       .insert(prospects)
-      .values(prospectsWithUpdatedAt)
+      .values(prospectsWithCompany)
       .returning();
     return created;
   }

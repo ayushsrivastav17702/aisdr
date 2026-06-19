@@ -8,6 +8,7 @@ import { checkQuota } from "../middleware/quota-enforcement.middleware";
 import { db } from "../db";
 import { prospectSearches, apiUsage, prospects, auditLogs } from "@shared/schema";
 import { eq, desc, and, gte, sql } from "drizzle-orm";
+import { resolveCompanyForProspect } from "../services/company-resolver.service";
 
 async function logAudit(params: {
   userId: string;
@@ -217,8 +218,16 @@ router.post("/search-and-save", authenticate, forbidManager, async (req, res) =>
           }
         }
 
+        const userId = req.userContext!.userId;
+        const companyDomain = prospect.website?.replace(/^https?:\/\//, '');
+        const companyId = await resolveCompanyForProspect({
+          userId,
+          primaryEmail: prospect.email,
+          companyDomain,
+          companyName: prospect.companyName,
+        });
         const [saved] = await db.insert(prospects).values({
-          userId: req.userContext!.userId,
+          userId,
           firstName: prospect.firstName,
           lastName: prospect.lastName,
           fullName: prospect.fullName,
@@ -230,7 +239,8 @@ router.post("/search-and-save", authenticate, forbidManager, async (req, res) =>
           contactLocation: prospect.location,
           companySize: prospect.companySize,
           companyIndustry: prospect.industry,
-          companyDomain: prospect.website?.replace(/^https?:\/\//, ''),
+          companyDomain,
+          companyId,
           tags: tag ? [tag] : [],
           enrichmentStatus: 'new',
           enrichmentData: { source: prospect.source, verified: prospect.verified ?? true }

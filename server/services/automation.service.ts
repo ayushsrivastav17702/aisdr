@@ -241,11 +241,19 @@ class AutomationService {
             console.log(`[Automation ${automationRunId}] Using existing prospect: ${prospectData.primaryEmail}`);
           } else {
             // Save new prospect with userId
+            const { resolveCompanyForProspect } = await import("./company-resolver.service");
+            const companyId = await resolveCompanyForProspect({
+              userId,
+              primaryEmail: prospectData.primaryEmail,
+              companyDomain: prospectData.companyDomain,
+              companyName: prospectData.companyName,
+            });
             const [newProspect] = await db.insert(prospectsTable)
               .values({
                 ...prospectData,
                 userId, // CRITICAL: Set userId for multi-tenancy
                 source: 'automation',
+                companyId,
               })
               .returning();
             prospectId = newProspect.id;

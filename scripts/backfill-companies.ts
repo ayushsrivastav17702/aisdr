@@ -27,43 +27,19 @@ import { db } from "../server/db";
 import { prospects, companies } from "@shared/schema";
 import { eq, isNull, and } from "drizzle-orm";
 import { nanoid } from "nanoid";
+import {
+  PERSONAL_DOMAINS,
+  normalizeDomain,
+  extractDomainFromEmail,
+} from "../server/services/company-resolver.service";
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 
 const DRY_RUN = !process.argv.includes("--execute");
 
-const PERSONAL_DOMAINS = new Set([
-  "gmail.com", "googlemail.com",
-  "yahoo.com", "yahoo.co.uk", "yahoo.in",
-  "hotmail.com", "hotmail.co.uk",
-  "outlook.com", "live.com", "msn.com",
-  "icloud.com", "me.com", "mac.com",
-  "aol.com",
-  "protonmail.com", "proton.me",
-  "tutanota.com",
-  "rediffmail.com",
-  "ymail.com",
-  "mail.com",
-]);
-
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function normalizeDomain(raw: string): string {
-  return raw
-    .toLowerCase()
-    .trim()
-    .replace(/^www\./, "")
-    .replace(/[/:?#].*$/, "")
-    .replace(/\.$/, "");
-}
-
-function extractDomainFromEmail(email: string | null): string | null {
-  if (!email) return null;
-  const match = email.match(/@([^@\s]+)$/);
-  if (!match) return null;
-  return normalizeDomain(match[1]);
-}
-
+// normalizeCompanyName only needed for dry-run display logic — not shared
 function normalizeCompanyName(name: string): string {
   return name
     .toLowerCase()
