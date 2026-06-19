@@ -388,6 +388,30 @@ app.use((req, res, next) => {
     console.error('⚠️ Super admin seed error (non-fatal):', seedErr);
   }
 
+  // ============================================
+  // CRITICAL INFRASTRUCTURE CHECK: REDIS
+  // ============================================
+  try {
+    const { redisReadyPromise } = await import("./queue/redis-connection");
+    await redisReadyPromise;
+    if (process.env.REDIS_DISABLED !== 'true') {
+      console.log('✅ Redis connectivity verified');
+    }
+  } catch (redisErr: any) {
+    console.error('');
+    console.error('❌ FATAL: Redis failed to connect at startup.');
+    console.error('   Error:', redisErr.message);
+    console.error('');
+    console.error('   Redis is required for BullMQ event-driven email processing and');
+    console.error('   scheduled automations. The server will not start without it.');
+    console.error('');
+    console.error('   To fix:');
+    console.error('     1. Set UPSTASH_REDIS_URL (or REDIS_HOST) to a reachable Redis instance.');
+    console.error('     2. OR set REDIS_DISABLED=true to run in degraded/poller-only mode.');
+    console.error('');
+    process.exit(1);
+  }
+
   console.log('📋 Registering routes...');
   const server = await registerRoutes(app);
   console.log('✅ Routes registered');
