@@ -63,6 +63,7 @@ import { checkCredits, deductCredits, initializeUserCredits } from "./services/c
 import creditRoutes from "./credit-routes";
 import { emailQueue, prospectNotes, users } from "@shared/schema";
 import { eq, and, or, sql, desc } from "drizzle-orm";
+import { isRedisConfigured } from "./queue/redis-connection";
 
 const upload = multer({ 
   dest: 'uploads/',
@@ -151,6 +152,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       groq: !!process.env.GROQ_API_KEY,
       resend: !!process.env.RESEND_API_KEY,
       googleClientId: !!process.env.GOOGLE_CLIENT_ID,
+      redisConfigured: isRedisConfigured,
     });
   });
 
