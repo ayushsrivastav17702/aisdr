@@ -52,10 +52,6 @@ export default function CampaignDashboard() {
     queryKey: ["/api/campaigns"],
   });
 
-  const { data: stats } = useQuery({
-    queryKey: ["/api/campaigns/stats"],
-  });
-
   const filteredCampaigns = campaigns.filter(campaign =>
     campaign.name.toLowerCase().includes(searchQuery.toLowerCase())
   );

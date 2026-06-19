@@ -29,20 +29,20 @@ export function ProspectsTab({ sequenceId, prospects, isLoading }: { sequenceId:
   // Fetch quota data for pre-action warning
   const { data: quotaData } = useQuery<{
     emailsUsed: number;
-    emailLimit: number;
+    emailsLimit: number;
     enrollmentsUsed: number;
-    enrollmentLimit: number;
+    enrollmentsLimit: number;
   }>({
-    queryKey: ["/api/sdr/quota"],
+    queryKey: ["/api/sdr/quota-bar"],
     enabled: showEnrollModal,
   });
 
   // Calculate quota percentages (guard against divide-by-zero)
-  const emailQuotaPercent = quotaData && quotaData.emailLimit > 0
-    ? (quotaData.emailsUsed / quotaData.emailLimit) * 100
+  const emailQuotaPercent = quotaData && quotaData.emailsLimit > 0
+    ? (quotaData.emailsUsed / quotaData.emailsLimit) * 100
     : 0;
-  const enrollmentQuotaPercent = quotaData && quotaData.enrollmentLimit > 0
-    ? (quotaData.enrollmentsUsed / quotaData.enrollmentLimit) * 100
+  const enrollmentQuotaPercent = quotaData && quotaData.enrollmentsLimit > 0
+    ? (quotaData.enrollmentsUsed / quotaData.enrollmentsLimit) * 100
     : 0;
   const showQuotaWarning = emailQuotaPercent >= 95 || enrollmentQuotaPercent >= 95;
   const quotaExceeded = emailQuotaPercent >= 100 || enrollmentQuotaPercent >= 100;
@@ -159,8 +159,8 @@ export function ProspectsTab({ sequenceId, prospects, isLoading }: { sequenceId:
                   Daily limit reached
                 </p>
                 <p className="text-sm text-red-600 dark:text-red-400">
-                  {emailQuotaPercent >= 100 && `Email quota: ${quotaData?.emailsUsed}/${quotaData?.emailLimit} used. `}
-                  {enrollmentQuotaPercent >= 100 && `Enrollment quota: ${quotaData?.enrollmentsUsed}/${quotaData?.enrollmentLimit} used.`}
+                  {emailQuotaPercent >= 100 && `Email quota: ${quotaData?.emailsUsed}/${quotaData?.emailsLimit} used. `}
+                  {enrollmentQuotaPercent >= 100 && `Enrollment quota: ${quotaData?.enrollmentsUsed}/${quotaData?.enrollmentsLimit} used.`}
                   {' '}Enrollment is blocked until quota resets.
                 </p>
               </div>
@@ -175,8 +175,8 @@ export function ProspectsTab({ sequenceId, prospects, isLoading }: { sequenceId:
                   Approaching daily limit
                 </p>
                 <p className="text-sm text-amber-600 dark:text-amber-400">
-                  {emailQuotaPercent >= 95 && `Email quota: ${quotaData?.emailsUsed}/${quotaData?.emailLimit} (${Math.round(emailQuotaPercent)}% used). `}
-                  {enrollmentQuotaPercent >= 95 && `Enrollment quota: ${quotaData?.enrollmentsUsed}/${quotaData?.enrollmentLimit} (${Math.round(enrollmentQuotaPercent)}% used).`}
+                  {emailQuotaPercent >= 95 && `Email quota: ${quotaData?.emailsUsed}/${quotaData?.emailsLimit} (${Math.round(emailQuotaPercent)}% used). `}
+                  {enrollmentQuotaPercent >= 95 && `Enrollment quota: ${quotaData?.enrollmentsUsed}/${quotaData?.enrollmentsLimit} (${Math.round(enrollmentQuotaPercent)}% used).`}
                   {' '}Consider limiting your selection.
                 </p>
               </div>

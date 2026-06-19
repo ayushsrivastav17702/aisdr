@@ -216,8 +216,7 @@ export default function AdminPanel() {
 
   const toggleUserMutation = useMutation({
     mutationFn: async ({ userId, enabled }: { userId: string; enabled: boolean }) => {
-      const endpoint = enabled ? `/api/admin/users/${userId}/enable` : `/api/admin/users/${userId}/disable`;
-      const response = await apiRequest('POST', endpoint, {});
+      const response = await apiRequest('POST', `/api/admin/users/${userId}/toggle-status`, {});
       if (!response.ok) {
         const error = await response.json();
         throw new Error(error.error || 'Failed to update user');
@@ -238,7 +237,7 @@ export default function AdminPanel() {
 
   const forcePasswordResetMutation = useMutation({
     mutationFn: async (userId: string) => {
-      const response = await apiRequest('POST', `/api/admin/users/${userId}/force-password-reset`, {});
+      const response = await apiRequest('POST', `/api/admin/users/${userId}/force-password-change`, {});
       if (!response.ok) {
         const error = await response.json();
         throw new Error(error.error || 'Failed to force password reset');
