@@ -4,7 +4,10 @@ import { superAdmins, superAdminSessions } from '@shared/schema';
 import { eq, and, gt } from 'drizzle-orm';
 import jwt from 'jsonwebtoken';
 
-const JWT_SECRET = process.env.SESSION_SECRET || 'super-admin-secret-key';
+if (!process.env.SESSION_SECRET) {
+  throw new Error('FATAL: SESSION_SECRET environment variable is required for super-admin authentication. Set it in your environment.');
+}
+const JWT_SECRET: string = process.env.SESSION_SECRET;
 
 export interface SuperAdminUser {
   id: string;

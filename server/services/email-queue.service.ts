@@ -488,13 +488,31 @@ export class EmailQueueService {
       
       // Backpressure: Limit batch size for controlled processing
       const BATCH_LIMIT = 50;
-      
+
+      // Atomic row claiming: flip status pending→sending in a single UPDATE using
+      // FOR UPDATE SKIP LOCKED so concurrent poller instances (e.g. Render rolling
+      // restarts) never claim the same row. Sets lastAttemptAt so the stuck-email
+      // watchdog can detect rows that never finish (Audit 1 Root Cause A+C fix).
+      const userFilter = userId ? sql`AND user_id = ${userId}` : sql``;
       const pendingEmails = await db
-        .select()
-        .from(emailQueue)
-        .where(and(...whereConditions))
-        .orderBy(emailQueue.priority, emailQueue.scheduledFor)
-        .limit(BATCH_LIMIT);
+        .update(emailQueue)
+        .set({
+          status: "sending",
+          lastAttemptAt: now,
+          attempts: sql`COALESCE(attempts, 0) + 1`,
+        })
+        .where(
+          sql`id IN (
+            SELECT id FROM ${emailQueue}
+            WHERE status = 'pending'
+              AND scheduled_for <= ${now}
+              ${userFilter}
+            ORDER BY priority, scheduled_for
+            LIMIT ${BATCH_LIMIT}
+            FOR UPDATE SKIP LOCKED
+          )`
+        )
+        .returning();
 
       console.log('[EmailQueue] Queue check:', 'pending emails due:', pendingEmails.length, 'now:', now.toISOString());
 
@@ -851,10 +869,8 @@ export class EmailQueueService {
         return false;
       }
 
-      await db
-        .update(emailQueue)
-        .set({ status: "sending" })
-        .where(eq(emailQueue.id, email.id));
+      // status already set to "sending" and lastAttemptAt/attempts already incremented
+      // by the atomic batch claim above — no separate update needed here.
 
       // CRITICAL: Render merge fields before sending
       // Replace {{firstName}}, {{companyName}}, etc. with actual prospect data
@@ -946,36 +962,41 @@ export class EmailQueueService {
 
       if (result.success) {
         const sentAt = new Date();
-        
-        // SECURITY GUARD: Only mark as 'sent' if we have a valid SMTP messageId
-        // This prevents phantom "sent" status without delivery confirmation
+
+        // Guard: Resend must return a message ID to confirm delivery
         if (!result.messageId) {
-          console.error(`[EmailQueue] SMTP returned success but no messageId for email ${email.id} - marking as failed`);
+          console.error(`[EmailQueue] Resend returned success but no messageId for email ${email.id} - marking as failed`);
           await db
             .update(emailQueue)
             .set({
               status: "failed",
-              lastError: "SMTP returned success but no Message-ID - delivery unconfirmed",
+              lastError: "Resend returned success but no message ID - delivery unconfirmed",
             })
             .where(eq(emailQueue.id, email.id));
-          
+
           return false;
         }
-        
-        // Update email queue status with rendered content and Message-ID (reset deferral counter on success)
-        // CRITICAL: Store messageId in emailQueue - this is the authoritative source for threading
+
+        // --- Post-send DB writes ---
+        // CRITICAL: wrap separately from the send call. If Resend already accepted the
+        // message (messageId is set) but a transient DB error prevents us writing
+        // "sent" status, we must NOT fall into the retry path — that would cause a
+        // duplicate send. Log the inconsistency for manual reconciliation and return
+        // true so the outer loop counts this as processed.
+        try {
+        // Update email queue status with rendered content and Message-ID
         await db
           .update(emailQueue)
           .set({
             status: "sent",
             sentAt,
-            lastAttemptAt: sentAt, // Track when last attempt was made
-            subject: renderedSubject, // Store rendered subject
-            body: renderedBody, // Store rendered body
-            messageId: result.messageId, // CRITICAL: Store Message-ID for RFC 5322 threading
-            deferralAttempts: 0, // Reset deferral counter on successful send
-            failureReason: null, // Clear any previous failure reason
-            lastError: null, // Clear any previous error
+            lastAttemptAt: sentAt,
+            subject: renderedSubject,
+            body: renderedBody,
+            messageId: result.messageId,
+            deferralAttempts: 0,
+            failureReason: null,
+            lastError: null,
           })
           .where(eq(emailQueue.id, email.id));
 
@@ -1101,7 +1122,23 @@ export class EmailQueueService {
         }
 
         console.log(`✅ Email sent successfully: ${email.id} to ${prospect.primaryEmail}`);
-        return true; // Success
+        } catch (dbErr: any) {
+          // Resend accepted the email (messageId: ${result.messageId}) but the DB
+          // status-update failed. Do NOT retry — that would send a duplicate.
+          // Log critically so the row can be reconciled manually.
+          console.error(
+            `[EmailQueue] CRITICAL: Email ${email.id} sent via Resend (messageId=${result.messageId}) ` +
+            `but DB status update failed — row is stuck in "sending". Manual reconciliation required.`,
+            dbErr
+          );
+          if (isSentryEnabled()) {
+            Sentry.captureException(dbErr, {
+              tags: { service: 'email-queue', operation: 'post-send-db-update' },
+              extra: { emailId: email.id, messageId: result.messageId, prospectEmail: prospect.primaryEmail },
+            });
+          }
+        }
+        return true; // Email was sent — do not retry regardless of DB write outcome
       } else {
         throw new Error(result.error || "Unknown error");
       }

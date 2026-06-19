@@ -5,8 +5,50 @@ import { emailQueueService } from "./services/email-queue.service";
 import { oauthService } from "./services/oauth.service";
 import { insertEmailMailboxSchema } from "@shared/schema";
 import { z } from "zod";
+import crypto from "crypto";
 import { authenticate, forbidManager, blockSuperAdminFromSDR } from "./middleware/auth.middleware";
 import { checkUserPause, checkDailyEmailLimit } from "./middleware/throttle.middleware";
+
+// HMAC helpers for OAuth state parameter (prevents mailbox-injection IDOR — VULN-002)
+// SESSION_SECRET is validated at startup in index.ts (process.exit if missing),
+// so by the time any route handler runs this value is guaranteed to be a string.
+function signOAuthState(payload: { userId: string; ts: number }): string {
+  const json = JSON.stringify(payload);
+  const encoded = Buffer.from(json).toString("base64url");
+  const sig = crypto
+    .createHmac("sha256", process.env.SESSION_SECRET!)
+    .update(encoded)
+    .digest("base64url");
+  return `${encoded}.${sig}`;
+}
+
+function verifyOAuthState(state: string): { userId: string; ts: number } | null {
+  const dotIdx = state.lastIndexOf(".");
+  if (dotIdx === -1) return null;
+  const encoded = state.slice(0, dotIdx);
+  const sig = state.slice(dotIdx + 1);
+  const expected = crypto
+    .createHmac("sha256", process.env.SESSION_SECRET!)
+    .update(encoded)
+    .digest("base64url");
+  // Constant-time comparison prevents timing-oracle attacks
+  if (sig.length !== expected.length) return null;
+  if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
+  try {
+    const decoded = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8"));
+    const MAX_STATE_AGE_MS = 10 * 60 * 1000;
+    if (
+      decoded?.userId &&
+      typeof decoded.ts === "number" &&
+      Date.now() - decoded.ts <= MAX_STATE_AGE_MS
+    ) {
+      return decoded as { userId: string; ts: number };
+    }
+  } catch {
+    // malformed JSON
+  }
+  return null;
+}
 
 const router = Router();
 
@@ -26,9 +68,9 @@ router.get("/mailboxes/oauth/gmail/connect", authenticate, forbidManager, async 
       return res.status(401).json({ error: "Authentication required" });
     }
 
-    // Encode the requesting user's id in `state` so the callback can be
-    // verified even if the auth cookie isn't sent on the redirect back.
-    const state = Buffer.from(JSON.stringify({ userId, ts: Date.now() })).toString("base64url");
+    // HMAC-sign the state so the callback can verify it wasn't forged by another
+    // authenticated user (VULN-002 fix — previously plain base64, now signed).
+    const state = signOAuthState({ userId, ts: Date.now() });
 
     const authUrl = oauthService.getGmailMailboxAuthUrl(state);
     res.redirect(authUrl);
@@ -43,8 +85,7 @@ router.get("/mailboxes/oauth/gmail/connect", authenticate, forbidManager, async 
 // `SameSite=Strict` (used in production) the `auth_token` cookie is not
 // sent here. `authenticate` would respond 401 before we ever get a chance
 // to fall back to the `state` param, breaking the OAuth flow entirely.
-// Instead, the user's identity is derived solely from the signed `state`
-// value we generated in /mailboxes/oauth/gmail/connect.
+// Identity is derived from the HMAC-signed `state` generated in /connect.
 router.get("/mailboxes/oauth/gmail/callback", async (req, res) => {
   try {
     const { code, error: oauthError, state } = req.query;
@@ -57,18 +98,13 @@ router.get("/mailboxes/oauth/gmail/callback", async (req, res) => {
       return res.redirect("/mailboxes?error=gmail_oauth_failed");
     }
 
-    // Derive the connecting user's id from `state` (set during /connect).
+    // Verify HMAC signature and freshness of the state param (set during /connect).
+    // Rejects forged, tampered, or replayed state values (VULN-002 fix).
     let userId: string | undefined;
     if (typeof state === "string") {
-      try {
-        const decoded = JSON.parse(Buffer.from(state, "base64url").toString("utf8"));
-        // Reject stale state params (older than 10 minutes) to limit replay risk.
-        const MAX_STATE_AGE_MS = 10 * 60 * 1000;
-        if (decoded?.userId && typeof decoded.ts === "number" && Date.now() - decoded.ts <= MAX_STATE_AGE_MS) {
-          userId = decoded.userId;
-        }
-      } catch {
-        // ignore malformed state
+      const verified = verifyOAuthState(state);
+      if (verified) {
+        userId = verified.userId;
       }
     }
 

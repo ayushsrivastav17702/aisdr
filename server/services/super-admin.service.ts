@@ -27,7 +27,10 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 
-const JWT_SECRET = process.env.SESSION_SECRET || 'super-admin-secret-key';
+if (!process.env.SESSION_SECRET) {
+  throw new Error('FATAL: SESSION_SECRET environment variable is required for super-admin authentication. Set it in your environment.');
+}
+const JWT_SECRET: string = process.env.SESSION_SECRET;
 const SALT_ROUNDS = 12;
 const SESSION_DURATION_HOURS = 8;
 

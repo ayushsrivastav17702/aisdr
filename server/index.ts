@@ -42,6 +42,20 @@ console.log('📍 SESSION_SECRET exists:', !!process.env.SESSION_SECRET);
 console.log('📍 LUSHA_API_KEY exists:', !!process.env.LUSHA_API_KEY);
 
 // ============================================
+// CRITICAL SECURITY CHECK: SESSION_SECRET
+// ============================================
+const sessionSecret = process.env.SESSION_SECRET;
+if (!sessionSecret) {
+  console.error('❌ FATAL SECURITY ERROR: SESSION_SECRET is not set.');
+  console.error('   This key signs JWTs and CSRF tokens. Without it the server would use a');
+  console.error('   hardcoded fallback that any attacker can use to forge super-admin tokens.');
+  console.error('   Generate a strong secret with: openssl rand -hex 64');
+  console.error('   Then set SESSION_SECRET in your environment variables.');
+  process.exit(1);
+}
+console.log('✅ SESSION_SECRET validated');
+
+// ============================================
 // CRITICAL SECURITY CHECK: ENCRYPTION_KEY
 // ============================================
 const encryptionKey = process.env.ENCRYPTION_KEY;
@@ -82,7 +96,7 @@ const app = express();
 app.set('trust proxy', true);
 
 const csrfProtection = doubleCsrf({
-  getSecret: () => process.env.SESSION_SECRET || "default-csrf-secret-change-in-production",
+  getSecret: () => sessionSecret,
   cookieName: "x-csrf-token",
   cookieOptions: {
     httpOnly: true,
