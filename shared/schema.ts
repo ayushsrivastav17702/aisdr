@@ -14,6 +14,29 @@ export const mailboxProviderEnum = pgEnum("mailbox_provider", ["gmail", "outlook
 export const emailQueueStatusEnum = pgEnum("email_queue_status", ["pending", "generating", "approved", "sending", "sent", "failed", "scheduled", "cancelled", "preview", "retrying", "paused_failed", "simulated"]);
 export const emailSendStatusEnum = pgEnum("email_send_status", ["success", "failed", "bounced"]);
 
+// Companies table — per-tenant company/account records populated by Phase B backfill
+// Partial unique index (userId, domain) WHERE domain IS NOT NULL must be applied
+// manually in Neon (Drizzle DSL does not support WHERE clauses on unique indexes).
+export const companies = pgTable("companies", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  domain: text("domain"),           // normalized: lowercase, no www, no trailing slash
+  name: text("name").notNull(),
+  apolloId: text("apollo_id"),
+  enrichmentData: jsonb("enrichment_data"),
+  confidence: varchar("confidence", { length: 10 }).default("high"), // 'high'|'medium'|'low'
+  needsReview: boolean("needs_review").default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => ({
+  userIdIdx: index("companies_user_id_idx").on(table.userId),
+  // Note: partial unique index (userId, domain) WHERE domain IS NOT NULL applied via Neon console
+  apolloIdIdx: index("companies_apollo_id_idx").on(table.apolloId),
+}));
+
+export type Company = typeof companies.$inferSelect;
+export type InsertCompany = typeof companies.$inferInsert;
+
 // Prospects table
 export const prospects = pgTable("prospects", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -51,6 +74,8 @@ export const prospects = pgTable("prospects", {
   timezone: text("timezone"), // IANA timezone, e.g. "Asia/Kolkata", "America/New_York"
   leadScore: integer("lead_score").default(0),
   isVip: boolean("is_vip").default(false),
+  // Phase A: companies table FK — null until Phase B backfill runs
+  companyId: varchar("company_id").references(() => companies.id, { onDelete: "set null" }),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
@@ -59,6 +84,7 @@ export const prospects = pgTable("prospects", {
   apolloIdIdx: index("prospects_apollo_id_idx").on(table.apolloId),
   createdAtIdx: index("prospects_created_at_idx").on(table.createdAt),
   sourceIdx: index("prospects_source_idx").on(table.source),
+  companyIdIdx: index("prospects_company_id_idx").on(table.companyId),
 }));
 
 // Searches table

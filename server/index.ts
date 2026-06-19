@@ -337,6 +337,47 @@ app.use((req, res, next) => {
     await db.execute(sql`
       ALTER TABLE sequences ADD COLUMN IF NOT EXISTS max_re_engagements integer DEFAULT 3
     `);
+    // Phase A: companies table + companyId FK on prospects
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS companies (
+        id              VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id         VARCHAR NOT NULL,
+        domain          TEXT,
+        name            TEXT NOT NULL,
+        apollo_id       TEXT,
+        enrichment_data JSONB,
+        confidence      VARCHAR(10) DEFAULT 'high',
+        needs_review    BOOLEAN DEFAULT false,
+        created_at      TIMESTAMPTZ DEFAULT now(),
+        updated_at      TIMESTAMPTZ DEFAULT now()
+      )
+    `);
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS companies_user_id_idx ON companies (user_id)
+    `);
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS companies_apollo_id_idx ON companies (apollo_id)
+    `);
+    try {
+      await db.execute(sql`
+        CREATE UNIQUE INDEX IF NOT EXISTS companies_user_domain_unique_idx
+        ON companies (user_id, domain)
+        WHERE domain IS NOT NULL
+      `);
+    } catch (idxErr) {
+      console.error('⚠️ companies_user_domain_unique_idx creation error (non-fatal):', idxErr);
+    }
+    await db.execute(sql`
+      ALTER TABLE prospects ADD COLUMN IF NOT EXISTS company_id VARCHAR
+        REFERENCES companies(id) ON DELETE SET NULL
+    `);
+    try {
+      await db.execute(sql`
+        CREATE INDEX IF NOT EXISTS prospects_company_id_idx ON prospects (company_id)
+      `);
+    } catch (idxErr) {
+      console.error('⚠️ prospects_company_id_idx creation error (non-fatal):', idxErr);
+    }
     console.log('✅ Schema migrations applied');
   } catch (err) {
     console.error('⚠️ Schema migration error (non-fatal):', err);
