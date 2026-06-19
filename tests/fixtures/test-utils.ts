@@ -1,5 +1,5 @@
 import { db } from "../../server/db";
-import { users, userSessions, organizations, prospects, sequences, emails, auditLogs } from "@shared/schema";
+import { users, userSessions, organizations, prospects, sequences, emails, auditLogs, sequenceProspects, leadEvents, emailReplies, emailQueue } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcrypt";
@@ -116,6 +116,18 @@ export async function deactivateUser(userId: string): Promise<void> {
 }
 
 export async function cleanupTestUser(userId: string): Promise<void> {
+  // Delete child rows before parent rows to respect FK constraints.
+  // prospects.user_id has no FK/cascade, so prospects must be deleted explicitly.
+  const userProspects = await db.select({ id: prospects.id })
+    .from(prospects).where(eq(prospects.userId, userId));
+  for (const p of userProspects) {
+    await db.delete(leadEvents).where(eq(leadEvents.leadId, p.id));
+    await db.delete(emailReplies).where(eq(emailReplies.prospectId, p.id));
+    await db.delete(emailQueue).where(eq(emailQueue.prospectId, p.id));
+    await db.delete(sequenceProspects).where(eq(sequenceProspects.prospectId, p.id));
+    await db.delete(emails).where(eq(emails.prospectId, p.id));
+  }
+  await db.delete(prospects).where(eq(prospects.userId, userId));
   await db.delete(userSessions).where(eq(userSessions.userId, userId));
   await db.delete(users).where(eq(users.id, userId));
 }
