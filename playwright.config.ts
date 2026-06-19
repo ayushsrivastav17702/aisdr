@@ -4,6 +4,19 @@ const PORT = process.env.PORT || '5000';
 const BASE_URL = process.env.E2E_BASE_URL || `http://localhost:${PORT}`;
 const isProductionTarget = !!process.env.E2E_BASE_URL;
 
+// Hard block: prevent E2E tests from running against production unless
+// E2E_ALLOW_PRODUCTION=true is explicitly set. Playwright tests create real
+// DB rows via the HTTP API with no cleanup — running against production
+// permanently pollutes customer data.
+if (isProductionTarget && process.env.E2E_ALLOW_PRODUCTION !== 'true') {
+  console.error('\n❌ BLOCKED: E2E_BASE_URL points to a remote target.');
+  console.error('   Playwright tests create real DB rows with no cleanup.');
+  console.error('   To run against a staging environment, set:');
+  console.error('     E2E_ALLOW_PRODUCTION=true E2E_BASE_URL=<url> npx playwright test');
+  console.error('   Never set E2E_ALLOW_PRODUCTION=true against the production URL.\n');
+  process.exit(1);
+}
+
 export default defineConfig({
   testDir: './tests/e2e-browser',
   timeout: 30_000,
