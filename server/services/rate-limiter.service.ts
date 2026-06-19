@@ -1,65 +1,73 @@
+import { db } from "../db";
+import { apiUsage } from "@shared/schema";
+import { and, eq, gte, count, sum, sql } from "drizzle-orm";
+
 interface RateLimitConfig {
   maxRequests: number;
   windowMs: number;
 }
 
-interface RequestRecord {
-  timestamp: number;
-  endpoint: string;
-}
+// Default Apollo rate limits
+const APOLLO_RATE_LIMITS: Record<string, RateLimitConfig> = {
+  search: { maxRequests: 100, windowMs: 60000 },
+  enrichment: { maxRequests: 50, windowMs: 60000 },
+  bulk_enrichment: { maxRequests: 10, windowMs: 60000 },
+};
 
 class RateLimiterService {
-  private requests: Map<string, RequestRecord[]> = new Map();
-  private quotaUsage: Map<string, number> = new Map();
-
-  // Default Apollo rate limits
-  private readonly APOLLO_RATE_LIMITS: Record<string, RateLimitConfig> = {
-    search: { maxRequests: 100, windowMs: 60000 }, // 100 requests per minute
-    enrichment: { maxRequests: 50, windowMs: 60000 }, // 50 requests per minute
-    bulk_enrichment: { maxRequests: 10, windowMs: 60000 } // 10 requests per minute
-  };
-
   async checkRateLimit(service: string, endpoint: string): Promise<{
     allowed: boolean;
     remaining: number;
     resetAt: Date;
   }> {
-    const config = this.APOLLO_RATE_LIMITS[endpoint] || { maxRequests: 60, windowMs: 60000 };
-    const key = `${service}:${endpoint}`;
-    const now = Date.now();
-    const windowStart = now - config.windowMs;
+    const config = APOLLO_RATE_LIMITS[endpoint] || { maxRequests: 60, windowMs: 60000 };
+    const windowStart = new Date(Date.now() - config.windowMs);
 
-    // Get existing requests for this key
-    let requestsForKey = this.requests.get(key) || [];
+    const [row] = await db
+      .select({ total: count() })
+      .from(apiUsage)
+      .where(
+        and(
+          eq(apiUsage.provider, service),
+          eq(apiUsage.endpoint, endpoint),
+          gte(apiUsage.createdAt, windowStart)
+        )
+      );
 
-    // Filter out requests outside the time window
-    requestsForKey = requestsForKey.filter(req => req.timestamp > windowStart);
-
-    // Check if limit exceeded
-    const allowed = requestsForKey.length < config.maxRequests;
-    const remaining = Math.max(0, config.maxRequests - requestsForKey.length);
-    const resetAt = new Date(now + config.windowMs);
+    const used = Number(row?.total ?? 0);
+    const allowed = used < config.maxRequests;
+    const remaining = Math.max(0, config.maxRequests - used);
+    const resetAt = new Date(Date.now() + config.windowMs);
 
     if (allowed) {
-      // Add new request
-      requestsForKey.push({ timestamp: now, endpoint });
-      this.requests.set(key, requestsForKey);
+      await db.insert(apiUsage).values({
+        provider: service,
+        endpoint,
+        success: true,
+      }).catch((err) => {
+        console.warn("[rate-limiter] Failed to record usage in DB (non-fatal):", err);
+      });
     }
 
     return { allowed, remaining, resetAt };
   }
 
   async trackApiUsage(service: string, creditsUsed: number = 1): Promise<void> {
-    const current = this.quotaUsage.get(service) || 0;
-    this.quotaUsage.set(service, current + creditsUsed);
+    await db.insert(apiUsage).values({
+      provider: service,
+      tokensUsed: creditsUsed,
+      success: true,
+    }).catch((err) => {
+      console.warn("[rate-limiter] Failed to track usage in DB (non-fatal):", err);
+    });
   }
 
-  getQuotaUsage(service: string): number {
-    return this.quotaUsage.get(service) || 0;
-  }
-
-  resetQuota(service: string): void {
-    this.quotaUsage.set(service, 0);
+  async getQuotaUsage(service: string): Promise<number> {
+    const [row] = await db
+      .select({ total: sum(apiUsage.tokensUsed) })
+      .from(apiUsage)
+      .where(eq(apiUsage.provider, service));
+    return Number(row?.total ?? 0);
   }
 
   async getApolloStatistics(): Promise<{
@@ -68,40 +76,30 @@ class RateLimiterService {
     bulkEnrichmentRequests: number;
     totalCreditsUsed: number;
   }> {
+    const windowStart = new Date(Date.now() - 3_600_000);
+
+    const [search, enrichment, bulk, credits] = await Promise.all([
+      db.select({ total: count() }).from(apiUsage).where(
+        and(eq(apiUsage.provider, "apollo"), eq(apiUsage.endpoint, "search"), gte(apiUsage.createdAt, windowStart))
+      ),
+      db.select({ total: count() }).from(apiUsage).where(
+        and(eq(apiUsage.provider, "apollo"), eq(apiUsage.endpoint, "enrichment"), gte(apiUsage.createdAt, windowStart))
+      ),
+      db.select({ total: count() }).from(apiUsage).where(
+        and(eq(apiUsage.provider, "apollo"), eq(apiUsage.endpoint, "bulk_enrichment"), gte(apiUsage.createdAt, windowStart))
+      ),
+      db.select({ total: sum(apiUsage.tokensUsed) }).from(apiUsage).where(
+        eq(apiUsage.provider, "apollo")
+      ),
+    ]);
+
     return {
-      searchRequests: this.getRequestCount('apollo:search'),
-      enrichmentRequests: this.getRequestCount('apollo:enrichment'),
-      bulkEnrichmentRequests: this.getRequestCount('apollo:bulk_enrichment'),
-      totalCreditsUsed: this.getQuotaUsage('apollo')
+      searchRequests: Number(search[0]?.total ?? 0),
+      enrichmentRequests: Number(enrichment[0]?.total ?? 0),
+      bulkEnrichmentRequests: Number(bulk[0]?.total ?? 0),
+      totalCreditsUsed: Number(credits[0]?.total ?? 0),
     };
-  }
-
-  private getRequestCount(key: string): number {
-    const requests = this.requests.get(key) || [];
-    const windowStart = Date.now() - 3600000; // Last hour
-    return requests.filter(req => req.timestamp > windowStart).length;
-  }
-
-  // Cleanup old requests periodically
-  cleanup(): void {
-    const now = Date.now();
-    const maxAge = 3600000; // 1 hour
-
-    const entries = Array.from(this.requests.entries());
-    for (const [key, requests] of entries) {
-      const filtered = requests.filter((req: RequestRecord) => now - req.timestamp < maxAge);
-      if (filtered.length === 0) {
-        this.requests.delete(key);
-      } else {
-        this.requests.set(key, filtered);
-      }
-    }
   }
 }
 
 export const rateLimiterService = new RateLimiterService();
-
-// Cleanup every 5 minutes
-setInterval(() => {
-  rateLimiterService.cleanup();
-}, 300000);

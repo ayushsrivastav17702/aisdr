@@ -344,76 +344,48 @@ app.use((req, res, next) => {
 
   // ── Seed default super admin (idempotent — skipped if email already exists) ──
   try {
-    const SEED_EMAIL = 'ayush@gmail.com';
-    const SEED_PASSWORD = 'Ayush@114988';
-    const [existing] = await db
-      .select({ id: superAdmins.id })
-      .from(superAdmins)
-      .where(eq(superAdmins.email, SEED_EMAIL))
-      .limit(1);
+    const seedEmail = process.env.SUPER_ADMIN_SEED_EMAIL;
+    const seedPassword = process.env.SUPER_ADMIN_SEED_PASSWORD;
 
-    // Clear any lockout for the super admin email
-    await db.delete(accountLockouts).where(eq(accountLockouts.email, SEED_EMAIL)).catch(() => {});
-
-    if (!existing) {
-      const passwordHash = await bcrypt.hash(SEED_PASSWORD, 12);
-      await db.insert(superAdmins).values({
-        email: SEED_EMAIL,
-        passwordHash,
-        firstName: 'Ayush',
-        lastName: '',
-        status: 'active',
-        isMasterAdmin: true,
-        permissions: {
-          canProvisionTenants: true,
-          canManageBilling: true,
-          canImpersonateManagers: true,
-          canSuspendTenants: true,
-          canDeleteTenants: true,
-          canViewAllData: true,
-        },
-      });
-      console.log(`✅ Seeded super admin: ${SEED_EMAIL}`);
+    if (!seedEmail || !seedPassword) {
+      console.warn(
+        '[SECURITY] No SUPER_ADMIN_SEED_EMAIL/PASSWORD set — skipping super admin seed. ' +
+        'Create one manually via /api/super-admin/bootstrap or set these env vars before first deploy.'
+      );
     } else {
-      console.log(`ℹ️  Super admin ${SEED_EMAIL} already exists, skipping seed`);
+      const [existing] = await db
+        .select({ id: superAdmins.id })
+        .from(superAdmins)
+        .where(eq(superAdmins.email, seedEmail))
+        .limit(1);
+
+      await db.delete(accountLockouts).where(eq(accountLockouts.email, seedEmail)).catch(() => {});
+
+      if (!existing) {
+        const passwordHash = await bcrypt.hash(seedPassword, 12);
+        await db.insert(superAdmins).values({
+          email: seedEmail,
+          passwordHash,
+          firstName: 'Admin',
+          lastName: '',
+          status: 'active',
+          isMasterAdmin: true,
+          permissions: {
+            canProvisionTenants: true,
+            canManageBilling: true,
+            canImpersonateManagers: true,
+            canSuspendTenants: true,
+            canDeleteTenants: true,
+            canViewAllData: true,
+          },
+        });
+        console.log(`✅ Seeded super admin: ${seedEmail}`);
+      } else {
+        console.log(`ℹ️  Super admin ${seedEmail} already exists, skipping seed`);
+      }
     }
   } catch (seedErr) {
     console.error('⚠️ Super admin seed error (non-fatal):', seedErr);
-  }
-
-  // ── Seed SDR user ayushsri.17@gmail.com (idempotent) ──
-  try {
-    const SDR_EMAIL = 'ayushsri.17@gmail.com';
-    const SDR_PASSWORD = 'Ayush@12345';
-    const [existingSdr] = await db
-      .select({ id: users.id })
-      .from(users)
-      .where(eq(users.email, SDR_EMAIL))
-      .limit(1);
-
-    // Always clear any lockout for this email (in case of failed pre-deploy attempts)
-    await db.delete(accountLockouts).where(eq(accountLockouts.email, SDR_EMAIL)).catch(() => {});
-
-    if (!existingSdr) {
-      const passwordHash = await bcrypt.hash(SDR_PASSWORD, 12);
-      await db.insert(users).values({
-        email: SDR_EMAIL,
-        passwordHash,
-        authProvider: 'password',
-        passwordLoginEnabled: true,
-        firstName: 'Ayush',
-        lastName: 'Srivastava',
-        role: 'user',
-        status: 'active',
-        isActive: true,
-        emailVerified: true,
-      });
-      console.log(`✅ Seeded SDR user: ${SDR_EMAIL}`);
-    } else {
-      console.log(`ℹ️  SDR user ${SDR_EMAIL} already exists, skipping seed`);
-    }
-  } catch (sdrSeedErr) {
-    console.error('⚠️ SDR user seed error (non-fatal):', sdrSeedErr);
   }
 
   console.log('📋 Registering routes...');
