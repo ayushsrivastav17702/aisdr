@@ -1,14 +1,5 @@
-import OpenAI from "openai";
-import Anthropic from "@anthropic-ai/sdk";
+import { openaiHelper } from "./openai-helper";
 import { storage } from "../storage";
-
-const openai = process.env.OPENAI_API_KEY ? new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-}) : null;
-
-const anthropic = process.env.ANTHROPIC_API_KEY ? new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY,
-}) : null;
 
 export interface LinkedInData {
   profileText?: string;
@@ -36,10 +27,12 @@ export async function generatePersonalizedEmail(
   linkedInData: LinkedInData
 ): Promise<PersonalizationResponse> {
   const prospect = await storage.getProspect(prospectId);
-  
+
   if (!prospect) {
     throw new Error("Prospect not found");
   }
+
+  const systemPrompt = "You are a B2B sales email expert. Generate highly personalized, engaging emails based on LinkedIn data. Be specific, reference real details, and create authentic connection points. Always respond with valid JSON.";
 
   const prompt = `Analyze LinkedIn data and generate a highly personalized B2B sales email:
 
@@ -74,70 +67,33 @@ Format:
 }`;
 
   try {
-    let responseText: string;
-
-    // Try OpenAI first
-    if (openai) {
-      try {
-        const completion = await openai.chat.completions.create({
-          model: "gpt-4o",
+    const response: any = await openaiHelper.callWithFallback(
+      (groqClient) =>
+        groqClient.chat.completions.create({
+          model: "llama-3.3-70b-versatile",
           messages: [
-            {
-              role: "system",
-              content: "You are a B2B sales email expert. Generate highly personalized, engaging emails based on LinkedIn data. Be specific, reference real details, and create authentic connection points. Always respond with valid JSON."
-            },
+            { role: "system", content: systemPrompt },
             { role: "user", content: prompt }
           ],
           response_format: { type: "json_object" },
           temperature: 0.7,
           max_tokens: 1500,
-        });
+        } as any),
+      (client) =>
+        client.chat.completions.create({
+          model: "deepseek-chat",
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: prompt }
+          ],
+          response_format: { type: "json_object" },
+          temperature: 0.7,
+          max_tokens: 1500,
+        })
+    );
 
-        responseText = completion.choices[0].message.content || "{}";
-      } catch (openaiError: any) {
-        console.error("OpenAI error:", openaiError?.message || openaiError);
-        
-        // If OpenAI fails, try Anthropic
-        if (anthropic) {
-          console.log("Falling back to Anthropic Claude...");
-          const completion = await anthropic.messages.create({
-            model: "claude-sonnet-4-20250514",
-            max_tokens: 1500,
-            temperature: 0.7,
-            system: "You are a B2B sales email expert. Generate highly personalized, engaging emails based on LinkedIn data. Be specific, reference real details, and create authentic connection points. Always respond with valid JSON.",
-            messages: [
-              { role: "user", content: prompt }
-            ],
-          });
-
-          responseText = completion.content[0].type === 'text' ? completion.content[0].text : "{}";
-        } else {
-          throw openaiError;
-        }
-      }
-    } else if (anthropic) {
-      // Use Anthropic if OpenAI is not configured
-      const completion = await anthropic.messages.create({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 1500,
-        temperature: 0.7,
-        system: "You are a B2B sales email expert. Generate highly personalized, engaging emails based on LinkedIn data. Be specific, reference real details, and create authentic connection points. Always respond with valid JSON.",
-        messages: [
-          { role: "user", content: prompt }
-        ],
-      });
-
-      responseText = completion.content[0].type === 'text' ? completion.content[0].text : "{}";
-    } else {
-      throw new Error("No AI provider configured. Please set OPENAI_API_KEY or ANTHROPIC_API_KEY.");
-    }
-
+    const responseText = response.choices[0].message.content || "{}";
     const result = JSON.parse(responseText);
-
-    // Note: This function doesn't have RequestContext, but it should be called through routes.ts
-    // which does have userContext. For now, we'll skip storing results here since it's missing ctx.
-    // The intelligentPersonalizationService already stores results with proper userId.
-    // TODO: Refactor this function to accept RequestContext if needed separately
 
     return {
       linkedInAnalysis: result.analysis,

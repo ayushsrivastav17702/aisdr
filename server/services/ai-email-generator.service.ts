@@ -679,68 +679,23 @@ When given an AI Decision Engine recommendation, prioritize its template pattern
           temperature: 0.7,
           max_tokens: 1000
         } as any),
-      // 4. Anthropic fallback
-      (anthropic) =>
-        anthropic.messages.create({
-          model: "claude-sonnet-4-20250514",
-          max_tokens: 1000,
-          temperature: 0.7,
-          system: systemPrompt,
-          messages: [
-            {
-              role: "user",
-              content: `${prompt}\n\nRespond with valid JSON only.`
-            }
-          ]
-        }) as any,
-      // 2. DeepSeek / 3. OpenRouter — OpenAI-compatible API
-      (client) => {
-        // When called for DeepSeek the client baseURL is deepseek.com;
-        // when called for OpenRouter it is openrouter.ai — same request shape.
-        const isOpenRouter = (client as any).baseURL?.includes('openrouter');
-        const model = isOpenRouter
-          ? (process.env.OPENROUTER_MODEL || "openai/gpt-4o")
-          : "deepseek-chat";
-
-        // JSON mode: DeepSeek supports it; OpenRouter only for openai/ or anthropic/ prefixed models
-        const supportsJsonMode = !isOpenRouter ||
-          model.includes('openai/') || model.includes('anthropic/');
-
-        const requestParams: any = {
-          model,
+      // 2. DeepSeek — OpenAI-compatible API
+      (client) =>
+        client.chat.completions.create({
+          model: "deepseek-chat",
           messages: [
             { role: "system", content: systemPrompt },
             { role: "user", content: prompt }
           ],
+          response_format: { type: "json_object" },
           temperature: 0.7,
           max_tokens: 1000
-        };
-
-        if (supportsJsonMode) {
-          requestParams.response_format = { type: "json_object" };
-        }
-
-        return client.chat.completions.create(requestParams);
-      }
+        })
     );
 
-    // Handle both OpenAI and Anthropic response formats
+    const rawContent = (response as any).choices[0].message.content || '{}';
     let result;
-    if ('choices' in response) {
-      // OpenAI format
-      const rawContent = (response as any).choices[0].message.content || '{}';
-      result = JSON.parse(rawContent);
-    } else {
-      // Anthropic format
-      const content = (response as any).content[0];
-      if (content.type === 'text') {
-        const text = content.text;
-        // Strip markdown code blocks if present
-        const jsonMatch = text.match(/```json\s*([\s\S]*?)\s*```/) || text.match(/```\s*([\s\S]*?)\s*```/);
-        const jsonText = jsonMatch ? jsonMatch[1] : text;
-        result = JSON.parse(jsonText.trim());
-      }
-    }
+    result = JSON.parse(rawContent);
     
     const personalizationFactors = [
       'Prospect name and title',

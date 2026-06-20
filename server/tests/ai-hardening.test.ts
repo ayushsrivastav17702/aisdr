@@ -259,13 +259,13 @@ describe('Scale & Concurrency (TC-AI-HARD-01 to TC-AI-HARD-10)', () => {
 
   describe('TC-AI-HARD-06: AI Provider Partial Outage', () => {
     it('should use fallback provider on primary failure', async () => {
-      const providers = ['openai', 'anthropic', 'openrouter'];
+      const providers = ['groq', 'deepseek'];
       let usedProvider = '';
 
       const callWithFallback = async (): Promise<{ provider: string; success: boolean }> => {
         for (const provider of providers) {
           try {
-            if (provider === 'openai') {
+            if (provider === 'groq') {
               throw new Error('Service unavailable');
             }
             usedProvider = provider;
@@ -278,9 +278,9 @@ describe('Scale & Concurrency (TC-AI-HARD-01 to TC-AI-HARD-10)', () => {
       };
 
       const result = await callWithFallback();
-      
+
       expect(result.success).toBe(true);
-      expect(result.provider).toBe('anthropic');
+      expect(result.provider).toBe('deepseek');
     });
 
     it('should not crash campaign on provider failure', async () => {

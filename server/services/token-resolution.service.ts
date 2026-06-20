@@ -207,20 +207,10 @@ Return ONLY the personalized line, no quotes, no explanation.`;
         temperature: 0.7,
         max_tokens: 100
       } as any),
-    // 4. Anthropic
-    (anthropic) =>
-      anthropic.messages.create({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 100,
-        temperature: 0.7,
-        messages: [{ role: "user", content: prompt }]
-      }) as any,
-    // 2. DeepSeek / 3. OpenRouter
+    // 2. DeepSeek
     (client) =>
       client.chat.completions.create({
-        model: (client as any).baseURL?.includes('openrouter')
-          ? (process.env.OPENROUTER_MODEL || "openai/gpt-4o-mini")
-          : "deepseek-chat",
+        model: "deepseek-chat",
         messages: [
           { role: "system", content: systemMsg },
           { role: "user", content: prompt }
@@ -230,12 +220,7 @@ Return ONLY the personalized line, no quotes, no explanation.`;
       })
   );
 
-  if ('choices' in response) {
-    return (response as any).choices[0].message.content?.trim() || generateFallbackAiLine(context);
-  } else {
-    const content = (response as any).content[0];
-    return content.type === 'text' ? content.text.trim() : generateFallbackAiLine(context);
-  }
+  return (response as any).choices[0].message.content?.trim() || generateFallbackAiLine(context);
 }
 
 function generateFallbackAiLine(context: TokenContext): string {

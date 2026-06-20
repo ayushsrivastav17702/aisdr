@@ -136,37 +136,10 @@ Respond in JSON format with this exact structure:
             max_tokens: 2000,
             response_format: { type: "json_object" }
           } as any),
-        // 4. Anthropic fallback
-        async (anthropic) => {
-          const anthropicResponse = await anthropic.messages.create({
-            model: "claude-sonnet-4-20250514",
-            max_tokens: 2000,
-            system: systemPrompt,
-            messages: [
-              { role: "user", content: analysisPrompt }
-            ],
-          });
-
-          const textContent = anthropicResponse.content.find(block => block.type === 'text');
-          if (!textContent || textContent.type !== 'text') {
-            throw new Error('No text response from Anthropic');
-          }
-
-          // Return in OpenAI format for consistency
-          return {
-            choices: [{
-              message: {
-                content: textContent.text
-              }
-            }]
-          } as any;
-        },
-        // 2. DeepSeek / 3. OpenRouter
+        // 2. DeepSeek
         (client) =>
           client.chat.completions.create({
-            model: (client as any).baseURL?.includes('openrouter')
-              ? (process.env.OPENROUTER_MODEL || "openai/gpt-4o")
-              : "deepseek-chat",
+            model: "deepseek-chat",
             messages: [
               { role: "system", content: systemPrompt },
               { role: "user", content: analysisPrompt }

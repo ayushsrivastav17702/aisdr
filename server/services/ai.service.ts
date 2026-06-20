@@ -1,19 +1,8 @@
 import OpenAI from "openai";
-import Anthropic from '@anthropic-ai/sdk';
 import { observability } from './observability.service';
 
 // Use GPT-4o as the default model for optimal performance and availability
 const DEFAULT_OPENAI_MODEL = "gpt-4o";
-
-/*
-The newest Anthropic model is "claude-sonnet-4-20250514", not "claude-3-7-sonnet-20250219", "claude-3-5-sonnet-20241022" nor "claude-3-sonnet-20240229". 
-If the user doesn't specify a model, always prefer using "claude-sonnet-4-20250514" as it is the latest model.
-*/
-const DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-20250514";
-
-// OpenRouter model - can use any OpenRouter-compatible model
-// Popular options: openai/gpt-4o, anthropic/claude-sonnet-4, google/gemini-pro, meta-llama/llama-3.1-405b
-const DEFAULT_OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || "openai/gpt-4o";
 
 interface AIFilters {
   jobTitles?: string[];
@@ -43,30 +32,16 @@ interface ApolloFilters {
 class AIService {
   private openai: OpenAI | null = null;
   private openaiBackup: OpenAI | null = null;
-  private openRouter: OpenAI | null = null;
-  private anthropic: Anthropic | null = null;
   private useBackupKey: boolean = false;
-  
+
   constructor() {
     if (process.env.OPENAI_API_KEY) {
       this.openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     }
-    
+
     if (process.env.OPENAI_API_KEY_BACKUP) {
       this.openaiBackup = new OpenAI({ apiKey: process.env.OPENAI_API_KEY_BACKUP });
       console.log('✅ Backup OpenAI API key configured');
-    }
-    
-    if (process.env.OPEN_ROUTER) {
-      this.openRouter = new OpenAI({ 
-        apiKey: process.env.OPEN_ROUTER,
-        baseURL: 'https://openrouter.ai/api/v1'
-      });
-      console.log('✅ OpenRouter configured for AI processing');
-    }
-    
-    if (process.env.ANTHROPIC_API_KEY) {
-      this.anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     }
   }
 
@@ -102,7 +77,7 @@ class AIService {
   }
 
   private trackAIUsage(
-    provider: 'openai' | 'anthropic' | 'openrouter' | 'perplexity',
+    provider: 'openai',
     model: string,
     usage: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number } | undefined,
     operation: string,
@@ -129,157 +104,30 @@ class AIService {
     aiFilters: AIFilters;
     apolloFilters: ApolloFilters;
   }> {
-    const preferredProvider = process.env.AI_PROVIDER || 'openai';
-    
-    // DETERMINISM FIX: Check if deterministic mode is enabled
-    // In deterministic mode, we ALWAYS use keyword extraction first for consistent results
-    // AI can optionally enhance but never replace the base filters
-    const useDeterministicMode = process.env.SEARCH_MODE === 'deterministic';
-    
-    if (useDeterministicMode) {
+    if (process.env.SEARCH_MODE === 'deterministic') {
       console.log('🔒 DETERMINISTIC MODE: Using rule-based filter extraction (SEARCH_MODE=deterministic)');
       const deterministicResult = this.fallbackKeywordExtraction(query);
-      
-      // Log the deterministic filters for auditability
       console.log('📊 Deterministic filters extracted:', JSON.stringify({
         jobTitles: deterministicResult.aiFilters.jobTitles,
         locations: deterministicResult.aiFilters.locations,
         companies: deterministicResult.aiFilters.companyNames,
         industries: deterministicResult.aiFilters.industries,
       }));
-      
       return deterministicResult;
     }
-    
-    // If AI_PROVIDER is explicitly set to openrouter, try that first
-    if (preferredProvider === 'openrouter' && this.openRouter) {
-      try {
-        console.log('🤖 Using OpenRouter for AI search parsing (AI_PROVIDER=openrouter)...');
-        return await this.parseWithOpenRouter(query);
-      } catch (openRouterError: any) {
-        console.error('OpenRouter parsing failed:', openRouterError?.message || openRouterError);
-        
-        // Try OpenAI as fallback
-        if (this.openai) {
-          try {
-            console.log('🤖 OpenRouter failed, falling back to OpenAI...');
-            return await this.parseWithOpenAI(query);
-          } catch (openaiError) {
-            console.error('OpenAI parsing also failed:', openaiError);
-          }
-        }
-        
-        // Try Anthropic as next fallback
-        if (this.anthropic) {
-          try {
-            console.log('🤖 Falling back to Anthropic...');
-            return await this.parseWithAnthropic(query);
-          } catch (anthropicError) {
-            console.error('Anthropic parsing also failed:', anthropicError);
-          }
-        }
-        
-        console.log('📝 Using keyword extraction fallback...');
-        return this.fallbackKeywordExtraction(query);
-      }
-    }
-    
-    // If AI_PROVIDER is explicitly set to anthropic, try that first
-    if (preferredProvider === 'anthropic' && this.anthropic) {
-      try {
-        console.log('🤖 Using Anthropic for AI search parsing (AI_PROVIDER=anthropic)...');
-        return await this.parseWithAnthropic(query);
-      } catch (anthropicError: any) {
-        console.error('Anthropic parsing failed:', anthropicError?.message || anthropicError);
-        
-        // Try OpenAI as fallback
-        if (this.openai) {
-          try {
-            console.log('🤖 Anthropic failed, falling back to OpenAI...');
-            return await this.parseWithOpenAI(query);
-          } catch (openaiError) {
-            console.error('OpenAI parsing also failed:', openaiError);
-          }
-        }
-        
-        console.log('📝 Using keyword extraction fallback...');
-        return this.fallbackKeywordExtraction(query);
-      }
-    }
-    
-    // Try OpenAI first (default or explicitly set)
+
     if (this.openai) {
       try {
         console.log('🤖 Using OpenAI for AI search parsing...');
         return await this.parseWithOpenAI(query);
       } catch (openaiError: any) {
         console.error('OpenAI parsing failed:', openaiError?.message || openaiError);
-        
-        // If OpenAI fails, try OpenRouter next if available
-        if (this.openRouter) {
-          try {
-            console.log('🤖 OpenAI failed, falling back to OpenRouter...');
-            return await this.parseWithOpenRouter(query);
-          } catch (openRouterError) {
-            console.error('OpenRouter parsing also failed:', openRouterError);
-          }
-        }
-        
-        // Then try Anthropic as final AI fallback
-        if (this.anthropic) {
-          try {
-            console.log('🤖 Falling back to Anthropic...');
-            return await this.parseWithAnthropic(query);
-          } catch (anthropicError) {
-            console.error('Anthropic parsing also failed:', anthropicError);
-          }
-        } else {
-          console.warn('⚠️ Anthropic not configured - cannot fallback. Set ANTHROPIC_API_KEY to enable fallback.');
-        }
-        
-        // If all AI providers fail, use keyword extraction
         console.log('📝 Using keyword extraction fallback...');
         return this.fallbackKeywordExtraction(query);
       }
     }
-    
-    // If OpenAI not available, try OpenRouter
-    if (this.openRouter) {
-      try {
-        console.log('🤖 Using OpenRouter for AI search parsing...');
-        return await this.parseWithOpenRouter(query);
-      } catch (openRouterError) {
-        console.error('OpenRouter parsing failed:', openRouterError);
-        
-        // Try Anthropic as fallback
-        if (this.anthropic) {
-          try {
-            console.log('🤖 OpenRouter failed, falling back to Anthropic...');
-            return await this.parseWithAnthropic(query);
-          } catch (anthropicError) {
-            console.error('Anthropic parsing also failed:', anthropicError);
-          }
-        }
-        
-        console.log('📝 Using keyword extraction fallback...');
-        return this.fallbackKeywordExtraction(query);
-      }
-    }
-    
-    // If OpenRouter not available, try Anthropic
-    if (this.anthropic) {
-      try {
-        console.log('🤖 Using Anthropic for AI search parsing...');
-        return await this.parseWithAnthropic(query);
-      } catch (anthropicError) {
-        console.error('Anthropic parsing failed:', anthropicError);
-        console.log('📝 Using keyword extraction fallback...');
-        return this.fallbackKeywordExtraction(query);
-      }
-    }
-    
-    // No AI providers available - use keyword extraction
-    console.warn('⚠️ No AI providers configured. Using keyword extraction. Set OPENAI_API_KEY, OPEN_ROUTER, or ANTHROPIC_API_KEY for better results.');
+
+    console.warn('⚠️ No AI providers configured. Using keyword extraction. Set OPENAI_API_KEY for better results.');
     return this.fallbackKeywordExtraction(query);
   }
 
@@ -350,162 +198,6 @@ class AIService {
     this.trackAIUsage('openai', DEFAULT_OPENAI_MODEL, response.usage, 'parseNaturalLanguageQuery');
 
     const result = JSON.parse(response.choices[0].message.content || '{}');
-    return {
-      aiFilters: result.aiFilters || {},
-      apolloFilters: this.convertToApolloFilters(result.aiFilters || {})
-    };
-  }
-
-  private async parseWithOpenRouter(query: string): Promise<{
-    aiFilters: AIFilters;
-    apolloFilters: ApolloFilters;
-  }> {
-    if (!this.openRouter) throw new Error('OpenRouter not initialized');
-
-    const systemPrompt = `You are an expert at parsing natural language queries for prospect search. 
-    Convert the user's query into structured filters for finding business prospects.
-    
-    Extract ONLY what the user explicitly mentions:
-    - Job titles and roles (extract EXACTLY as stated, do NOT add variations)
-    - Seniority levels (C-Level, VP, Director, Manager, Senior, Entry)
-    - Departments (Engineering, Marketing, Sales, Operations)
-    - Industries (Fintech, Healthcare, SaaS, Retail)
-    - Company names
-    - Company size (employee ranges)
-    - Locations (cities, states, countries)
-    
-    CRITICAL RULES - STRICT PARSING:
-    1. ONLY extract job titles that are EXPLICITLY mentioned. Do NOT add variations or related titles.
-       - "merchandiser" -> ["merchandiser"] NOT ["merchandiser", "merchandising manager", "visual merchandiser"]
-       - "CEO" -> ["CEO"] NOT ["CEO", "Chief Executive Officer", "Founder"]
-    2. If user says "merchandisers and buyers" -> extract ["merchandiser", "buyer"] exactly as stated
-    3. For locations, extract EXACTLY what is mentioned (e.g., "USA" -> ["United States"])
-    4. Do NOT broaden, expand, or assume additional filters
-    5. If something is not mentioned, leave the array empty - do NOT guess
-    
-    Respond with JSON in this exact format:
-    {
-      "aiFilters": {
-        "jobTitles": ["array of EXACT job titles mentioned"],
-        "seniority": ["array of seniority levels"],
-        "departments": ["array of departments"],
-        "industries": ["array of industries"],
-        "companySize": {"min": number, "max": number},
-        "locations": ["array of locations"],
-        "companyNames": ["array of company names"],
-        "keywords": ["array of keywords"]
-      }
-    }`;
-
-    // JSON Mode Compatibility Check
-    // OpenAI's response_format: { type: "json_object" } is only supported by:
-    // - OpenAI models (gpt-4o, gpt-4, gpt-3.5-turbo)
-    // - Anthropic models (claude-sonnet-4, etc.) via OpenRouter
-    // Models like Gemini, Llama, and most open-source models do NOT support this feature
-    // For unsupported models, we omit response_format and parse markdown code blocks instead
-    // See AI_PROVIDER.md for full compatibility matrix and model recommendations
-    const supportsJsonMode = DEFAULT_OPENROUTER_MODEL.includes('openai/') || 
-                             DEFAULT_OPENROUTER_MODEL.includes('anthropic/');
-    
-    const requestParams: any = {
-      model: DEFAULT_OPENROUTER_MODEL,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: query }
-      ],
-      max_tokens: 2048,
-    };
-    
-    // Only add response_format for models that support it
-    if (supportsJsonMode) {
-      requestParams.response_format = { type: "json_object" };
-    }
-
-    const response = await this.openRouter.chat.completions.create(requestParams);
-
-    // Track AI usage for observability
-    this.trackAIUsage('openrouter', DEFAULT_OPENROUTER_MODEL, response.usage, 'parseNaturalLanguageQuery');
-
-    const rawContent = response.choices[0].message.content || '{}';
-    
-    // Handle potential markdown code blocks for models that don't support JSON mode
-    let jsonText = rawContent;
-    if (!supportsJsonMode) {
-      const jsonMatch = rawContent.match(/```json\s*([\s\S]*?)\s*```/) || rawContent.match(/```\s*([\s\S]*?)\s*```/);
-      if (jsonMatch) {
-        jsonText = jsonMatch[1];
-      }
-    }
-    
-    const result = JSON.parse(jsonText.trim());
-    return {
-      aiFilters: result.aiFilters || {},
-      apolloFilters: this.convertToApolloFilters(result.aiFilters || {})
-    };
-  }
-
-  private async parseWithAnthropic(query: string): Promise<{
-    aiFilters: AIFilters;
-    apolloFilters: ApolloFilters;
-  }> {
-    if (!this.anthropic) throw new Error('Anthropic not initialized');
-
-    const systemPrompt = `You are an expert at parsing natural language queries for prospect search. 
-    Convert the user's query into structured filters for finding business prospects.
-    
-    Extract ONLY what the user explicitly mentions:
-    - Job titles and roles (extract EXACTLY as stated, do NOT add variations)
-    - Seniority levels (C-Level, VP, Director, Manager, Senior, Entry)
-    - Departments (Engineering, Marketing, Sales, Operations)
-    - Industries (Fintech, Healthcare, SaaS, Retail)
-    - Company names
-    - Company size (employee ranges)
-    - Locations (cities, states, countries)
-    
-    CRITICAL RULES - STRICT PARSING:
-    1. ONLY extract job titles that are EXPLICITLY mentioned. Do NOT add variations or related titles.
-       - "merchandiser" -> ["merchandiser"] NOT ["merchandiser", "merchandising manager", "visual merchandiser"]
-       - "CEO" -> ["CEO"] NOT ["CEO", "Chief Executive Officer", "Founder"]
-    2. If user says "merchandisers and buyers" -> extract ["merchandiser", "buyer"] exactly as stated
-    3. For locations, extract EXACTLY what is mentioned (e.g., "USA" -> ["United States"])
-    4. Do NOT broaden, expand, or assume additional filters
-    5. If something is not mentioned, leave the array empty - do NOT guess
-    
-    Respond with JSON in this exact format:
-    {
-      "aiFilters": {
-        "jobTitles": ["array of EXACT job titles mentioned"],
-        "seniority": ["array of seniority levels"],
-        "departments": ["array of departments"],
-        "industries": ["array of industries"],
-        "companySize": {"min": number, "max": number},
-        "locations": ["array of locations"],
-        "companyNames": ["array of company names"],
-        "keywords": ["array of keywords"]
-      }
-    }`;
-
-    const response = await this.anthropic.messages.create({
-      model: DEFAULT_ANTHROPIC_MODEL,
-      max_tokens: 2048,
-      system: systemPrompt,
-      messages: [
-        { role: "user", content: query }
-      ],
-    });
-
-    // Track AI usage for observability (Anthropic uses input_tokens/output_tokens)
-    this.trackAIUsage('anthropic', DEFAULT_ANTHROPIC_MODEL, {
-      prompt_tokens: response.usage?.input_tokens,
-      completion_tokens: response.usage?.output_tokens,
-    }, 'parseNaturalLanguageQuery');
-
-    const textContent = response.content.find(block => block.type === 'text');
-    if (!textContent || textContent.type !== 'text') {
-      throw new Error('No text response from Anthropic');
-    }
-
-    const result = JSON.parse(textContent.text);
     return {
       aiFilters: result.aiFilters || {},
       apolloFilters: this.convertToApolloFilters(result.aiFilters || {})
@@ -783,76 +475,19 @@ class AIService {
     return '1+';
   }
 
-  // Generate text using AI (OpenAI with Anthropic fallback)
   async generateText(prompt: string, maxTokens: number = 1000): Promise<string> {
-    // Try OpenAI first (with automatic backup key fallback)
     if (this.openai || this.openaiBackup) {
-      try {
-        const response = await this.callOpenAI((client) => 
-          client.chat.completions.create({
-            model: DEFAULT_OPENAI_MODEL,
-            messages: [
-              { role: "user", content: prompt }
-            ],
-            max_completion_tokens: maxTokens,
-          })
-        );
-        return response.choices[0].message.content || '';
-      } catch (error: any) {
-        console.error('OpenAI text generation failed:', error?.message || error);
-        
-        // If OpenAI fails (including backup), try Anthropic as fallback
-        if (this.anthropic) {
-          console.log('⚠️ OpenAI failed, falling back to Anthropic for text generation...');
-          try {
-            const anthropicResponse = await this.anthropic.messages.create({
-              model: DEFAULT_ANTHROPIC_MODEL,
-              max_tokens: maxTokens,
-              messages: [
-                { role: "user", content: prompt }
-              ],
-            });
-            
-            const textContent = anthropicResponse.content.find(block => block.type === 'text');
-            if (textContent && textContent.type === 'text') {
-              return textContent.text;
-            }
-            throw new Error('No text response from Anthropic');
-          } catch (anthropicError: any) {
-            console.error('Anthropic text generation also failed:', anthropicError?.message || anthropicError);
-            throw new Error(`AI text generation failed. OpenAI error: ${error?.message}. Anthropic error: ${anthropicError?.message}`);
-          }
-        } else {
-          console.warn('⚠️ Anthropic not configured - cannot fallback. Set ANTHROPIC_API_KEY to enable fallback.');
-          throw error;
-        }
-      }
+      const response = await this.callOpenAI((client) =>
+        client.chat.completions.create({
+          model: DEFAULT_OPENAI_MODEL,
+          messages: [{ role: "user", content: prompt }],
+          max_completion_tokens: maxTokens,
+        })
+      );
+      return response.choices[0].message.content || '';
     }
-    
-    // If no OpenAI available, try Anthropic directly
-    if (this.anthropic) {
-      try {
-        console.log('🤖 Using Anthropic for text generation (OpenAI not configured)...');
-        const response = await this.anthropic.messages.create({
-          model: DEFAULT_ANTHROPIC_MODEL,
-          max_tokens: maxTokens,
-          messages: [
-            { role: "user", content: prompt }
-          ],
-        });
-        
-        const textContent = response.content.find(block => block.type === 'text');
-        if (textContent && textContent.type === 'text') {
-          return textContent.text;
-        }
-        throw new Error('No text response from Anthropic');
-      } catch (error) {
-        console.error('Anthropic text generation failed:', error);
-        throw error;
-      }
-    }
-    
-    throw new Error('No AI provider configured. Please set OPENAI_API_KEY, OPENAI_API_KEY_BACKUP, or ANTHROPIC_API_KEY.');
+
+    throw new Error('No AI provider configured. Please set OPENAI_API_KEY or OPENAI_API_KEY_BACKUP.');
   }
 
   // Generate email sequence with AI
@@ -958,87 +593,11 @@ Return a JSON object with this structure:
         return result;
       } catch (error: any) {
         console.error('OpenAI sequence generation failed:', error?.message || error);
-        
-        // If OpenAI fails (including backup), try Anthropic as fallback
-        if (this.anthropic) {
-          console.log('⚠️ OpenAI failed, falling back to Anthropic for sequence generation...');
-          try {
-            const anthropicResponse = await this.anthropic.messages.create({
-              model: DEFAULT_ANTHROPIC_MODEL,
-              max_tokens: method === 'auto-ai' ? 2000 : 800,
-              messages: [
-                { role: "user", content: `${systemPrompt}\n\n${userPrompt}` }
-              ],
-            });
-            
-            const textContent = anthropicResponse.content.find(block => block.type === 'text');
-            if (!textContent || textContent.type !== 'text') {
-              throw new Error('No text response from Anthropic');
-            }
-            
-            // Extract JSON from the response (Anthropic might include extra text)
-            const jsonMatch = textContent.text.match(/\{[\s\S]*\}/);
-            if (!jsonMatch) {
-              throw new Error('Could not extract JSON from Anthropic response');
-            }
-            
-            const result = JSON.parse(jsonMatch[0]);
-            
-            // Validate the response
-            if (!result.steps || !Array.isArray(result.steps) || result.steps.length === 0) {
-              throw new Error('Invalid AI response: missing or empty steps array');
-            }
-            
-            return result;
-          } catch (anthropicError: any) {
-            console.error('Anthropic sequence generation also failed:', anthropicError?.message || anthropicError);
-            throw new Error(`AI sequence generation failed. OpenAI error: ${error?.message}. Anthropic error: ${anthropicError?.message}`);
-          }
-        } else {
-          console.warn('⚠️ Anthropic not configured - cannot fallback. Set ANTHROPIC_API_KEY to enable fallback.');
-          throw error;
-        }
-      }
-    }
-    
-    // If no OpenAI available, try Anthropic directly
-    if (this.anthropic) {
-      try {
-        console.log('🤖 Using Anthropic for sequence generation (OpenAI not configured)...');
-        const response = await this.anthropic.messages.create({
-          model: DEFAULT_ANTHROPIC_MODEL,
-          max_tokens: method === 'auto-ai' ? 2000 : 800,
-          messages: [
-            { role: "user", content: `${systemPrompt}\n\n${userPrompt}` }
-          ],
-        });
-        
-        const textContent = response.content.find(block => block.type === 'text');
-        if (!textContent || textContent.type !== 'text') {
-          throw new Error('No text response from Anthropic');
-        }
-        
-        // Extract JSON from the response (Anthropic might include extra text)
-        const jsonMatch = textContent.text.match(/\{[\s\S]*\}/);
-        if (!jsonMatch) {
-          throw new Error('Could not extract JSON from Anthropic response');
-        }
-        
-        const result = JSON.parse(jsonMatch[0]);
-        
-        // Validate the response
-        if (!result.steps || !Array.isArray(result.steps) || result.steps.length === 0) {
-          throw new Error('Invalid AI response: missing or empty steps array');
-        }
-        
-        return result;
-      } catch (error: any) {
-        console.error('Anthropic sequence generation failed:', error);
         throw error;
       }
     }
-    
-    throw new Error('No AI provider configured. Please set OPENAI_API_KEY, OPENAI_API_KEY_BACKUP, or ANTHROPIC_API_KEY.');
+
+    throw new Error('No AI provider configured. Please set OPENAI_API_KEY or OPENAI_API_KEY_BACKUP.');
   }
 }
 

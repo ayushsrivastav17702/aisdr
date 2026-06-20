@@ -93,9 +93,9 @@ describe('CHAOS-AI: AI Personalisation Chaos Tests (CHAOS-AI-01 to CHAOS-AI-10)'
 
   describe('CHAOS-AI-02: LLM Provider Outage', () => {
     it('should use fallback provider', async () => {
-      const providers = ['openai', 'anthropic', 'openrouter'];
-      const disabledProvider = 'openai';
-      
+      const providers = ['groq', 'deepseek'];
+      const disabledProvider = 'groq';
+
       const callProvider = async (provider: string): Promise<{ success: boolean; provider: string }> => {
         if (provider === disabledProvider) {
           throw new Error('Provider unavailable');
@@ -114,7 +114,7 @@ describe('CHAOS-AI: AI Personalisation Chaos Tests (CHAOS-AI-01 to CHAOS-AI-10)'
       }
 
       expect(result?.success).toBe(true);
-      expect(result?.provider).toBe('anthropic');
+      expect(result?.provider).toBe('deepseek');
     });
 
     it('should preserve prompt parity across providers', () => {
@@ -124,10 +124,10 @@ describe('CHAOS-AI: AI Personalisation Chaos Tests (CHAOS-AI-01 to CHAOS-AI-10)'
         return basePrompt;
       };
 
-      const openaiPrompt = buildPromptForProvider('openai', prompt);
-      const anthropicPrompt = buildPromptForProvider('anthropic', prompt);
+      const groqPrompt = buildPromptForProvider('groq', prompt);
+      const deepseekPrompt = buildPromptForProvider('deepseek', prompt);
 
-      expect(openaiPrompt).toBe(anthropicPrompt);
+      expect(groqPrompt).toBe(deepseekPrompt);
     });
   });
 

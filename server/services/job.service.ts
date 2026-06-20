@@ -1,6 +1,5 @@
 import { Queue, Worker, Job as BullJob } from 'bullmq';
 import { storage, type RequestContext } from '../storage';
-import { apolloService } from './apollo.service';
 import { type Job, type Prospect, type InsertProspect } from '@shared/schema';
 import { parse } from 'csv-parse/sync';
 import { readFileSync } from 'fs';
@@ -228,52 +227,14 @@ class JobService {
         }));
 
         try {
-          const enrichmentResult = await apolloService.bulkEnrichContacts(contactsToEnrich);
-          const enrichedMatches = enrichmentResult.matches || [];
-          
-          // Update prospects with enriched data
+          // Apollo enrichment removed — no-op, mark all as partial
           for (let j = 0; j < batch.length; j++) {
             const prospect = batch[j];
-            const enrichedContact = enrichedMatches[j];
-            
             try {
-              if (enrichedContact) {
-                // Full enrichment successful
-                const enrichedProspect = await apolloService.convertApolloContactToProspect(enrichedContact);
-                const now = new Date().toISOString();
-                const existingFieldSources = (prospect.fieldSources as Record<string, any>) || {};
-                const newFieldSources: Record<string, { source: string; provider?: string; timestamp: string }> = {
-                  ...existingFieldSources,
-                };
-
-                // Track field sources for enriched fields
-                if (enrichedProspect.primaryEmail && enrichedProspect.primaryEmail !== prospect.primaryEmail) {
-                  newFieldSources.primaryEmail = { source: 'enrichment', provider: 'apollo', timestamp: now };
-                }
-                if (enrichedProspect.phoneNumber && enrichedProspect.phoneNumber !== prospect.phoneNumber) {
-                  newFieldSources.phoneNumber = { source: 'enrichment', provider: 'apollo', timestamp: now };
-                }
-                if (enrichedProspect.jobTitle && enrichedProspect.jobTitle !== prospect.jobTitle) {
-                  newFieldSources.jobTitle = { source: 'enrichment', provider: 'apollo', timestamp: now };
-                }
-                if (enrichedProspect.companyName && enrichedProspect.companyName !== prospect.companyName) {
-                  newFieldSources.companyName = { source: 'enrichment', provider: 'apollo', timestamp: now };
-                }
-
-                await storage.updateProspect(ctx, prospect.id, {
-                  ...enrichedProspect,
-                  enrichmentStatus: 'enriched',
-                  fieldSources: newFieldSources,
-                });
-                successCount++;
-              } else {
-                // Partial enrichment
+              {
                 await storage.updateProspect(ctx, prospect.id, {
                   enrichmentStatus: 'partial',
-                  enrichmentData: {
-                    error: 'No additional data found',
-                    enrichedAt: new Date().toISOString(),
-                  },
+                  enrichmentData: { error: 'Enrichment provider not configured', enrichedAt: new Date().toISOString() },
                 });
                 partialCount++;
               }
@@ -435,47 +396,9 @@ class JobService {
       const perPage = 100;
       let totalProcessed = 0;
 
-      while (totalProcessed < maxResults) {
-        const searchResponse = await apolloService.searchContacts({
-          ...apolloFilters,
-          page,
-          per_page: Math.min(perPage, maxResults - totalProcessed),
-        });
-
-        const contacts = searchResponse.contacts || [];
-        if (!contacts.length) break;
-
-        // Convert and save prospects
-        for (const contact of contacts) {
-          try {
-            const prospectData = await apolloService.convertApolloContactToProspect(contact);
-            
-            // Check for duplicates
-            const duplicates = await storage.checkDuplicateProspects(ctx, [prospectData.primaryEmail!]);
-            if (duplicates.length === 0) {
-              const prospect = await storage.createProspect(ctx, {
-                ...prospectData,
-                userId: ctx.userId,
-                source: 'ai_search',
-              });
-              prospects.push(prospect);
-            }
-          } catch (error) {
-            console.error('Error processing search result:', error);
-          }
-        }
-
-        totalProcessed += contacts.length;
-        page++;
-
-        // Update progress
-        await storage.updateJob(ctx, jobId, {
-          processedItems: totalProcessed,
-          successCount: prospects.length,
-        });
-        await job.updateProgress(Math.floor((totalProcessed / maxResults) * 100));
-
-        if (contacts.length < perPage) break;
+      // Apollo search removed — no leads fetched
+      {
+        totalProcessed = 0;
       }
 
       // Complete the job
