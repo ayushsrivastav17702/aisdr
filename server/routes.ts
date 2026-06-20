@@ -151,8 +151,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       apolloKeyLength: process.env.APOLLO_API_KEY?.length,
       groq: !!process.env.GROQ_API_KEY,
       resend: !!process.env.RESEND_API_KEY,
+      resendFromEmail: !!process.env.RESEND_FROM_EMAIL,
       googleClientId: !!process.env.GOOGLE_CLIENT_ID,
       redisConfigured: isRedisConfigured,
+      perplexity: !!process.env.PERPLEXITY_API_KEY,
+      openrouter: !!process.env.OPEN_ROUTER,
+      anthropic: !!process.env.ANTHROPIC_API_KEY,
+      lusha: !!process.env.LUSHA_API_KEY,
+      deepseek: !!process.env.DEEPSEEK_API_KEY,
     });
   });
 
