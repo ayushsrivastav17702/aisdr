@@ -2,7 +2,7 @@ import Imap from "imap";
 // @ts-ignore - mailparser doesn't have types
 import { simpleParser } from "mailparser";
 import { db } from "../db";
-import { emailReplies, emailQueue, emailMailboxes, sequenceProspects, emails, automationRuns, prospects as prospectsTable } from "@shared/schema";
+import { emailReplies, emailQueue, emailMailboxes, sequenceProspects, emails, automationRuns, prospects as prospectsTable, users } from "@shared/schema";
 import { eq, and, sql, desc } from "drizzle-orm";
 import { mailboxService } from "./mailbox.service";
 import { oauthService } from "./oauth.service";
@@ -11,6 +11,20 @@ import { Sentry, isSentryEnabled } from "../sentry";
 import { emailQueueService } from "./email-queue.service";
 import { hardeningService } from "./hardening.service";
 import { verificationLogger } from "./verification-logging.service";
+import { flags } from "../config/feature-flags";
+import { emailEvidenceTap } from "./email-evidence-tap.service";
+
+// Evidence taps need tenantId, but prospects/emails are scoped by userId only —
+// resolve organizationId here rather than touching the existing query shapes above.
+async function resolveTenantId(userId: string | null | undefined): Promise<string | null> {
+  if (!userId) return null;
+  try {
+    const [row] = await db.select({ organizationId: users.organizationId }).from(users).where(eq(users.id, userId)).limit(1);
+    return row?.organizationId ?? null;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Comprehensive reply classification result
@@ -980,6 +994,24 @@ export class ReplyDetectionService {
           .update(emails)
           .set({ repliedAt: replyReceivedAt })
           .where(eq(emails.id, emailRecord.id));
+      }
+
+      if (flags.EVIDENCE_INGESTION_ENABLED) {
+        const replyProspect = await db.query.prospects.findFirst({
+          where: eq(prospectsTable.id, matchedEmail.prospectId)
+        }).catch(() => null);
+        const tenantId = await resolveTenantId(replyProspect?.userId);
+        if (tenantId) {
+          await emailEvidenceTap.onReply({
+            tenantId,
+            prospectId: matchedEmail.prospectId,
+            messageId:  emailRecord?.id ?? `unmatched_${matchedEmail.prospectId}_${replyReceivedAt.getTime()}`,
+            sequenceId: matchedEmail.sequenceId ?? undefined,
+            timestamp:  replyReceivedAt,
+          }).catch(console.error);
+        } else {
+          console.warn(`[EmailEvidenceTap] Skipping onReply for prospect ${matchedEmail.prospectId} — no tenantId resolved`);
+        }
       }
 
       // Handle bounces - mark prospect email as bounced and cancel future sends

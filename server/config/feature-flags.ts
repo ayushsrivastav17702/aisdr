@@ -8,6 +8,8 @@
 //   if (flags.INTENT_ENGINE_ENABLED) { ... } else { /* legacy path */ }
 
 export interface FeatureFlags {
+  // ── Phase 1 flags ──────────────────────────────────────────────────────────
+
   /**
    * Master switch for the Intent Definition Engine.
    * When true:
@@ -37,6 +39,37 @@ export interface FeatureFlags {
    * Set via env: FEATURE_EXCLUSION_SHADOW_MODE=true
    */
   EXCLUSION_SHADOW_MODE: boolean;
+
+  // ── Phase 2 flags ──────────────────────────────────────────────────────────
+
+  /**
+   * Enables evidence ingestion from email webhooks → evidence_items table.
+   * Safe to enable independently — purely additive, no existing logic touched.
+   * Set: FEATURE_EVIDENCE_INGESTION=true
+   */
+  EVIDENCE_INGESTION_ENABLED: boolean;
+
+  /**
+   * Enables the rule engine scoring path alongside legacy ICP scoring.
+   * Both run; legacy score is used as source of truth.
+   * Discrepancies logged to auditLogs with module='intent_engine_scoring'.
+   * Set: FEATURE_INTENT_ENGINE_SCORING=true
+   */
+  INTENT_ENGINE_SCORING_ENABLED: boolean;
+
+  /**
+   * Shadow mode for scoring: run both engines, log diffs, return legacy score.
+   * Requires INTENT_ENGINE_SCORING_ENABLED=true.
+   * Set: FEATURE_INTENT_ENGINE_SCORING_SHADOW=true
+   */
+  INTENT_ENGINE_SCORING_SHADOW: boolean;
+
+  /**
+   * Full cutover: use intent engine score as source of truth.
+   * Only flip after shadow mode shows <5% discrepancy rate over 7+ days.
+   * Set: FEATURE_INTENT_ENGINE_SCORING_ONLY=true
+   */
+  INTENT_ENGINE_SCORING_ONLY: boolean;
 }
 
 function readBoolEnv(key: string, fallback: boolean): boolean {
@@ -46,15 +79,25 @@ function readBoolEnv(key: string, fallback: boolean): boolean {
 }
 
 export const flags: FeatureFlags = {
+  // Phase 1
   INTENT_ENGINE_ENABLED:          readBoolEnv("FEATURE_INTENT_ENGINE", false),
   LEGACY_EXCLUSION_RULES_ENABLED: readBoolEnv("FEATURE_LEGACY_EXCLUSION_RULES", true),
   EXCLUSION_SHADOW_MODE:          readBoolEnv("FEATURE_EXCLUSION_SHADOW_MODE", false),
+
+  // Phase 2
+  EVIDENCE_INGESTION_ENABLED:     readBoolEnv("FEATURE_EVIDENCE_INGESTION", false),
+  INTENT_ENGINE_SCORING_ENABLED:  readBoolEnv("FEATURE_INTENT_ENGINE_SCORING", false),
+  INTENT_ENGINE_SCORING_SHADOW:   readBoolEnv("FEATURE_INTENT_ENGINE_SCORING_SHADOW", false),
+  INTENT_ENGINE_SCORING_ONLY:     readBoolEnv("FEATURE_INTENT_ENGINE_SCORING_ONLY", false),
 };
 
-// Enforce invariant: if Intent Engine is on and shadow mode is off,
-// disable legacy path automatically.
+// Enforce invariants
 if (flags.INTENT_ENGINE_ENABLED && !flags.EXCLUSION_SHADOW_MODE) {
   flags.LEGACY_EXCLUSION_RULES_ENABLED = false;
+}
+if (flags.INTENT_ENGINE_SCORING_ONLY) {
+  // Can't be scoring-only without the engine enabled
+  flags.INTENT_ENGINE_SCORING_ENABLED = true;
 }
 
 // Log active flags on startup (visible in server logs)
