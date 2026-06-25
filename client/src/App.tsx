@@ -50,6 +50,9 @@ import StatusPage from "@/pages/status-page";
 import InboxPage from "@/pages/inbox";
 import UserGuidePage from "@/pages/user-guide";
 import HealthDashboard from "@/pages/health-dashboard";
+import IntentRegistry from "@/pages/IntentRegistry";
+import IntentStudio from "@/pages/IntentStudio";
+import EvidenceExplorer from "@/pages/EvidenceExplorer";
 import NotFound from "@/pages/not-found";
 import { ImpersonationBanner } from "@/components/impersonation-banner";
 
@@ -241,6 +244,27 @@ function Router() {
       <Route path="/user-guide">
         <ProtectedRoute>
           <UserGuidePage />
+        </ProtectedRoute>
+      </Route>
+      {/* Intent Definition Engine (Phase 4) - gated server-side behind FEATURE_INTENT_ENGINE */}
+      <Route path="/intents/new">
+        <ProtectedRoute requireRole="user">
+          <IntentStudio />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/intents/:id">
+        <ProtectedRoute requireRole="user">
+          <IntentStudio />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/intents">
+        <ProtectedRoute requireRole="user">
+          <IntentRegistry />
+        </ProtectedRoute>
+      </Route>
+      <Route path="/evidence">
+        <ProtectedRoute requireRole="user">
+          <EvidenceExplorer />
         </ProtectedRoute>
       </Route>
       <Route component={NotFound} />
