@@ -1,0 +1,1 @@
+ALTER TABLE "intent_definitions" ADD COLUMN "scope" text DEFAULT 'account' NOT NULL;

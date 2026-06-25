@@ -4192,6 +4192,9 @@ export const intentDefinitions = pgTable(
     description:  text("description"),
     tags:         text("tags").array().default(sql`'{}'`),
     status:       intentStatusEnum("status").notNull().default("draft"),
+    // Phase 4: what kind of entity this intent matches against — mirrors
+    // evidenceItems.entityType ('account' | 'contact').
+    scope:        text("scope").notNull().default("account"),
     activeVersionId: varchar("active_version_id"),                        // FK → intent_versions.id (set after first publish)
     createdBy:    varchar("created_by").notNull(),                        // FK → users.id
     createdAt:    timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
