@@ -274,6 +274,11 @@ export const sequences = pgTable("sequences", {
   dailyEmailLimit: integer("daily_email_limit").default(50),
   reEngagementDays: integer("re_engagement_days").default(30),
   maxReEngagements: integer("max_re_engagements").default(3),
+  // Intent Definition Engine (Phase 3): optional link to the intent version
+  // that gates enrollment for this sequence. Nullable — no impact on existing
+  // sequences. FK → intent_versions.id (not enforced at the DB level, same
+  // convention as intentDefinitions.activeVersionId above).
+  intentVersionId: varchar("intent_version_id"),
 }, (table) => ({
   userIdStatusCreatedAtIdx: index("sequences_user_id_status_created_at_idx").on(table.userId, table.status, table.createdAt),
   userIdCreatedAtIdx: index("sequences_user_id_created_at_idx").on(table.userId, table.createdAt),

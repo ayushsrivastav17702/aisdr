@@ -8,6 +8,13 @@
       "when": 1782380947999,
       "tag": "0000_simple_ultimates",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1782387485150,
+      "tag": "0001_stale_bill_hollister",
+      "breakpoints": true
     }
   ]
 }

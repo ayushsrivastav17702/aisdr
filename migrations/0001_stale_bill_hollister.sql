@@ -1,0 +1,1 @@
+ALTER TABLE "sequences" ADD COLUMN "intent_version_id" varchar;

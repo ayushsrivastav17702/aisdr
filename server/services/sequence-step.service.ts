@@ -1,8 +1,11 @@
 import { db } from "../db";
-import { 
-  prospects, 
-  sequenceSteps, 
+import {
+  prospects,
+  sequenceSteps,
+  sequences,
   personalizationResults,
+  auditLogs,
+  users,
   type Prospect,
   type SequenceStep
 } from "@shared/schema";
@@ -12,6 +15,20 @@ import { intelligentPersonalizationService } from "./intelligent-personalization
 import { generateEmail } from "./ai-email-generator.service";
 import { resolveTokens, type TokenContext } from "./token-resolution.service";
 import type { RequestContext } from "../storage";
+import { flags } from "../config/feature-flags";
+import { ruleEngineService } from "./rule-engine.service";
+
+// Intent engine gate needs tenantId, but sequences/prospects are scoped by
+// userId only — resolve organizationId here (same pattern as the Phase 2
+// email-evidence taps in email-tracking.service.ts / reply-detection.service.ts).
+async function resolveTenantId(userId: string): Promise<string | null> {
+  try {
+    const [row] = await db.select({ organizationId: users.organizationId }).from(users).where(eq(users.id, userId)).limit(1);
+    return row?.organizationId ?? null;
+  } catch {
+    return null;
+  }
+}
 
 interface ScheduleFirstEmailParams {
   sequenceProspectId: string;
@@ -49,7 +66,7 @@ class SequenceStepService {
       // =====================================
       // Note: We query for first email step (not just stepOrder=1) because
       // sequences might start with manual/task steps
-      const [prospect, allSteps] = await Promise.all([
+      const [prospect, allSteps, sequence] = await Promise.all([
         db.query.prospects.findFirst({
           where: and(
             eq(prospects.id, prospectId),
@@ -62,6 +79,9 @@ class SequenceStepService {
             eq(sequenceSteps.stepType, 'email')
           ),
           orderBy: (steps, { asc }) => [asc(steps.stepOrder)]
+        }),
+        db.query.sequences.findFirst({
+          where: eq(sequences.id, sequenceId)
         })
       ]);
 
@@ -97,6 +117,61 @@ class SequenceStepService {
           .where(eq(sequenceProspectsTable.id, sequenceProspectId));
         
         return; // No email steps in sequence
+      }
+
+      // =====================================
+      // STEP 1.5: Intent Engine Gate
+      // =====================================
+      // Gradual rollout: only a percentage of calls actually evaluate the
+      // rule engine, controlled by FEATURE_INTENT_ENGINE_ROLLOUT_PCT (0-100).
+      // Matches the existing skip pattern above: terminal sequenceProspects
+      // status + return; (not a loop, so no `continue` here).
+      if (flags.INTENT_ENGINE_SCORING_ENABLED && sequence?.intentVersionId) {
+        const rolloutPct = parseInt(process.env.FEATURE_INTENT_ENGINE_ROLLOUT_PCT || "0");
+        const shouldEvaluate = Math.random() * 100 < rolloutPct;
+
+        if (shouldEvaluate) {
+          const tenantId = await resolveTenantId(userId);
+
+          if (tenantId) {
+            const result = await ruleEngineService.evaluate(
+              tenantId,
+              prospect.id,
+              sequence.intentVersionId
+            );
+
+            if (!result.matched) {
+              console.warn(`[SequenceStep] Intent engine excluded prospect ${prospectId} from sequence ${sequenceId} (score: ${result.score})`);
+
+              await db.insert(auditLogs).values({
+                userId,
+                action: 'intent_engine_skipped_prospect',
+                module: 'intent_engine_scoring',
+                details: {
+                  tenantId,
+                  prospectId: prospect.id,
+                  sequenceId,
+                  intentVersionId: sequence.intentVersionId,
+                  score: result.score,
+                  trace: result.trace.slice(0, 5), // sample trace
+                },
+              }).catch((err) => console.error('[SequenceStep] Failed to log intent_engine_skipped_prospect (non-fatal):', err));
+
+              // Mark as excluded so automation doesn't retry repeatedly
+              const { sequenceProspects: sequenceProspectsTable } = await import("@shared/schema");
+              await db.update(sequenceProspectsTable)
+                .set({
+                  status: "excluded",
+                  completedAt: new Date()
+                })
+                .where(eq(sequenceProspectsTable.id, sequenceProspectId));
+
+              return; // Skip this prospect - did not match required intent
+            }
+          } else {
+            console.warn(`[SequenceStep] Intent engine gate skipped for prospect ${prospectId} — no tenantId resolved for user ${userId}`);
+          }
+        }
       }
 
       // Start with default content from sequence step
