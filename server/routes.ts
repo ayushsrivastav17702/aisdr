@@ -54,6 +54,7 @@ import { aiTrackingService } from "./services/ai-tracking.service";
 import { getTemplateForContext, EMAIL_TEMPLATE_LIBRARY, AI_DECISION_ENGINE_RULES } from "./services/ai-prompt-templates";
 import { inboxRouter } from "./inbox-routes";
 import { intentsRouter, evidenceRouter } from "./routes/intents.routes";
+import { prospectsRouter } from "./routes/prospects.routes";
 import { requireIntentEngine } from "./middleware/intent-engine-gate.middleware";
 import { authenticate, forbidManager, blockSuperAdminFromSDR, requireManager } from "./middleware/auth.middleware";
 import { emailVolumeConfig, getCapacityReport, getEstimatedTimeForEmails, EMAIL_VOLUME_PRESETS } from "./config/email-volume.config";
@@ -1246,6 +1247,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use("/v1/intents", requireIntentEngine, intentsRouter);
   // Evidence vault read API (Phase 4) — same feature gate, separate prefix
   app.use("/v1/evidence", requireIntentEngine, evidenceRouter);
+  // Prospect lookup (Phase 5) — generic resource, not gated behind the intent
+  // engine flag; auth is enforced per-route inside prospectsRouter itself
+  // (same pattern as intentsRouter/evidenceRouter above).
+  app.use("/v1/prospects", prospectsRouter);
 
   // Credit control routes
   app.use(creditRoutes);

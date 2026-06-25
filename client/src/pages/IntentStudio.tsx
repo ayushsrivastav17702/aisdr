@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import Editor from "@monaco-editor/react";
 import { Layout } from "@/components/layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -12,6 +12,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
@@ -27,6 +30,7 @@ import {
   PlayCircle,
   GitCompare,
   RotateCcw,
+  Loader2,
 } from "lucide-react";
 
 // ─── Types (mirror server/routes/intents.routes.ts response shapes) ─────────
@@ -320,13 +324,23 @@ export default function IntentStudio() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <Textarea
-                  value={dslText}
-                  onChange={(e) => setDslText(e.target.value)}
-                  rows={18}
-                  className="font-mono text-sm"
-                  data-testid="textarea-dsl-editor"
-                />
+                <div className="border rounded-md overflow-hidden" data-testid="editor-dsl">
+                  <Editor
+                    height="400px"
+                    defaultLanguage="plaintext"
+                    value={dslText}
+                    onChange={(value) => setDslText(value || "")}
+                    theme="vs-dark"
+                    options={{
+                      minimap: { enabled: false },
+                      fontSize: 14,
+                      tabSize: 2,
+                      lineNumbers: "on",
+                      scrollBeyondLastLine: false,
+                      automaticLayout: true,
+                    }}
+                  />
+                </div>
 
                 <div className="mt-3 space-y-2">
                   {validateMutation.isPending && (
@@ -376,24 +390,48 @@ export default function IntentStudio() {
 // prospects active in a date range" into an id list, so this is a prospect-ID
 // input plus a single "since" date, not a from/to range picker.
 
+interface SimulationProspect {
+  id: string;
+  email: string | null;
+  company: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  createdAt: string;
+}
+
 function SimulationPanel({ intentId, defaultVersionId }: { intentId: string; defaultVersionId: string }) {
   const { toast } = useToast();
-  const [prospectIdsRaw, setProspectIdsRaw] = useState("");
   const [since, setSince] = useState("");
+  const [selectedProspectIds, setSelectedProspectIds] = useState<string[]>([]);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [expandedTrace, setExpandedTrace] = useState<string | null>(null);
+
+  // Pull a recent batch of this tenant's prospects to populate the picker —
+  // GET /v1/prospects (Phase 5), tenant-scoped server-side via req.user.id.
+  const { data: prospectsData, isLoading: prospectsLoading } = useQuery<
+    { data: { prospects: SimulationProspect[] } },
+    Error,
+    { prospects: SimulationProspect[] }
+  >({
+    queryKey: ["/v1/prospects", { since: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(), limit: 100 }],
+    select: (res) => res.data,
+  });
+
+  const prospects = prospectsData?.prospects ?? [];
+
+  const toggleProspect = (id: string) => {
+    setSelectedProspectIds((prev) =>
+      prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]
+    );
+  };
 
   const simulateMutation = useMutation({
     mutationFn: async () => {
-      const prospectIds = prospectIdsRaw
-        .split(/[\n,]/)
-        .map((s) => s.trim())
-        .filter(Boolean);
-
-      if (prospectIds.length === 0) {
-        throw new Error("Enter at least one prospect ID to simulate against");
+      if (selectedProspectIds.length === 0) {
+        throw new Error("Select at least one prospect to simulate against");
       }
 
-      const body: Record<string, unknown> = { intentVersionId: defaultVersionId, prospectIds };
+      const body: Record<string, unknown> = { intentVersionId: defaultVersionId, prospectIds: selectedProspectIds };
       if (since) body.since = new Date(since).toISOString();
 
       const res = await apiRequest("POST", `/v1/intents/${intentId}/simulate`, body);
@@ -415,15 +453,57 @@ function SimulationPanel({ intentId, defaultVersionId }: { intentId: string; def
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="space-y-2">
-            <Label htmlFor="sim-prospect-ids">Prospect IDs (comma or newline separated)</Label>
-            <Textarea
-              id="sim-prospect-ids"
-              rows={4}
-              value={prospectIdsRaw}
-              onChange={(e) => setProspectIdsRaw(e.target.value)}
-              placeholder="prospect-id-1, prospect-id-2, ..."
-              data-testid="textarea-simulate-prospect-ids"
-            />
+            <Label>Prospects</Label>
+            <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
+              <PopoverTrigger asChild>
+                <Button
+                  variant="outline"
+                  className="w-full justify-between"
+                  disabled={prospectsLoading}
+                  data-testid="button-select-prospects"
+                >
+                  {prospectsLoading ? (
+                    <span className="flex items-center gap-2 text-muted-foreground">
+                      <Loader2 className="w-4 h-4 animate-spin" /> Loading prospects...
+                    </span>
+                  ) : selectedProspectIds.length > 0 ? (
+                    <Badge variant="secondary" data-testid="badge-selected-count">
+                      {selectedProspectIds.length} prospect{selectedProspectIds.length === 1 ? "" : "s"} selected
+                    </Badge>
+                  ) : (
+                    <span className="text-muted-foreground">Select prospects...</span>
+                  )}
+                  <ChevronDown className="w-4 h-4 opacity-50" />
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[400px] p-0" align="start">
+                {!prospectsLoading && prospects.length === 0 ? (
+                  <div className="p-4 text-sm text-muted-foreground text-center" data-testid="text-no-prospects">
+                    No recent prospects found. Try adjusting the date range.
+                  </div>
+                ) : (
+                  <ScrollArea className="h-72">
+                    <div className="p-2">
+                      {prospects.map((p) => (
+                        <label
+                          key={p.id}
+                          className="flex items-center gap-2 p-2 rounded-md hover:bg-muted/50 cursor-pointer text-sm"
+                          data-testid={`option-prospect-${p.id}`}
+                        >
+                          <Checkbox
+                            checked={selectedProspectIds.includes(p.id)}
+                            onCheckedChange={() => toggleProspect(p.id)}
+                          />
+                          <span className="truncate">
+                            {p.email ?? "(no email)"} ({p.company || "No company"})
+                          </span>
+                        </label>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                )}
+              </PopoverContent>
+            </Popover>
           </div>
           <div className="space-y-2 max-w-xs">
             <Label htmlFor="sim-since">Since (optional)</Label>
