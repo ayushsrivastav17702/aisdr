@@ -3108,7 +3108,7 @@ Respond in JSON format:
         }
         
         // Record the click asynchronously after validation passes
-        emailTrackingService.recordClick(trackingId).catch(err => {
+        emailTrackingService.recordClick(trackingId, decodedUrl).catch(err => {
           console.error("Error recording email click:", err);
         });
         

@@ -1,9 +1,22 @@
 import { db } from "../db";
-import { emails, emailQueue, prospects, sequences, emailReplies, leadEvents } from "@shared/schema";
+import { emails, emailQueue, prospects, sequences, emailReplies, leadEvents, users } from "@shared/schema";
 import { eq, and, sql, gte, count, desc } from "drizzle-orm";
 import { Sentry, isSentryEnabled } from "../sentry";
 import { nanoid } from "nanoid";
 import crypto from "crypto";
+import { flags } from "../config/feature-flags";
+import { emailEvidenceTap } from "./email-evidence-tap.service";
+
+// Evidence taps need tenantId, but emails/prospects are scoped by userId only —
+// resolve organizationId here rather than touching the existing query shapes above.
+async function resolveTenantId(userId: string): Promise<string | null> {
+  try {
+    const [row] = await db.select({ organizationId: users.organizationId }).from(users).where(eq(users.id, userId)).limit(1);
+    return row?.organizationId ?? null;
+  } catch {
+    return null;
+  }
+}
 
 const TRACKING_SECRET = process.env.SESSION_SECRET || "email-tracking-secret-key";
 
@@ -199,6 +212,23 @@ export class EmailTrackingService {
             console.warn('[lead_events] Failed to insert opened event (non-fatal):', leErr);
           }
         }
+
+        if (flags.EVIDENCE_INGESTION_ENABLED) {
+          const tenantId = await resolveTenantId(email.userId);
+          if (tenantId) {
+            await emailEvidenceTap.onOpen({
+              tenantId,
+              prospectId: email.prospectId,
+              messageId:  email.id,
+              sequenceId: email.sequenceId ?? undefined,
+              emailId:    email.id,
+              subject:    email.subject,
+              timestamp:  new Date(),
+            }).catch(console.error);
+          } else {
+            console.warn(`[EmailEvidenceTap] Skipping onOpen for email ${email.id} — no tenantId resolved for user ${email.userId}`);
+          }
+        }
       }
 
       return true;
@@ -216,7 +246,7 @@ export class EmailTrackingService {
   /**
    * Record an email click event
    */
-  async recordClick(trackingId: string): Promise<string | null> {
+  async recordClick(trackingId: string, url?: string): Promise<string | null> {
     try {
       // Find the email by tracking ID (we store the main tracking ID)
       const [email] = await db
@@ -248,6 +278,22 @@ export class EmailTrackingService {
               }).onConflictDoNothing();
             } catch (leErr) {
               console.warn('[lead_events] Failed to insert clicked event (non-fatal):', leErr);
+            }
+          }
+
+          if (flags.EVIDENCE_INGESTION_ENABLED) {
+            const tenantId = await resolveTenantId(email.userId);
+            if (tenantId) {
+              await emailEvidenceTap.onClick({
+                tenantId,
+                prospectId: email.prospectId,
+                messageId:  email.id,
+                sequenceId: email.sequenceId ?? undefined,
+                url:        url,
+                timestamp:  new Date(),
+              }).catch(console.error);
+            } else {
+              console.warn(`[EmailEvidenceTap] Skipping onClick for email ${email.id} — no tenantId resolved for user ${email.userId}`);
             }
           }
         }
