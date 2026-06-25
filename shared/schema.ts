@@ -4152,3 +4152,166 @@ export const insertProspectNoteSchema = createInsertSchema(prospectNotes).omit({
   createdAt: true,
   updatedAt: true,
 });
+
+// ============================================================================
+// INTENT DEFINITION ENGINE — Phase 1 tables
+// id/tenantId/createdBy columns use varchar + gen_random_uuid() to match the
+// convention used by every other table in this schema (organizations.id,
+// users.id are varchar, not native pg uuid).
+// ============================================================================
+
+export const intentStatusEnum = pgEnum("intent_status", [
+  "draft",
+  "testing",
+  "approved",
+  "production",
+  "deprecated",
+  "archived",
+]);
+
+export const matchResultEnum = pgEnum("match_result", [
+  "matched",
+  "unmatched",
+  "error",
+]);
+
+// ─── intent_definitions ───────────────────────────────────────────────────────
+// One record per named intent. Tenant-scoped. Immutable identity row.
+
+export const intentDefinitions = pgTable(
+  "intent_definitions",
+  {
+    id:           varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    tenantId:     varchar("tenant_id").notNull(),                          // FK → organizations.id
+    name:         text("name").notNull(),
+    description:  text("description"),
+    tags:         text("tags").array().default(sql`'{}'`),
+    status:       intentStatusEnum("status").notNull().default("draft"),
+    activeVersionId: varchar("active_version_id"),                        // FK → intent_versions.id (set after first publish)
+    createdBy:    varchar("created_by").notNull(),                        // FK → users.id
+    createdAt:    timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+    updatedAt:    timestamp("updated_at", { withTimezone: true }).notNull().default(sql`now()`),
+    deletedAt:    timestamp("deleted_at", { withTimezone: true }),     // soft delete
+  },
+  (t) => ({
+    tenantIdx:    index("intent_definitions_tenant_idx").on(t.tenantId),
+    statusIdx:    index("intent_definitions_status_idx").on(t.status),
+    tenantNameIdx: index("intent_definitions_tenant_name_idx").on(t.tenantId, t.name),
+  })
+);
+
+// ─── intent_versions ─────────────────────────────────────────────────────────
+// Immutable snapshot of DSL + compiled AST per edit.
+// Every save creates a new row; published versions are never mutated.
+
+export const intentVersions = pgTable(
+  "intent_versions",
+  {
+    id:             varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    intentId:       varchar("intent_id").notNull().references(() => intentDefinitions.id, { onDelete: "cascade" }),
+    tenantId:       varchar("tenant_id").notNull(),
+    versionNumber:  integer("version_number").notNull(),               // monotonic per intent
+    dslSource:      text("dsl_source").notNull(),                     // raw DSL text authored by user
+    compiledAst:    jsonb("compiled_ast"),                            // parsed + validated AST; null if invalid
+    complexityScore: integer("complexity_score").default(0),
+    validationErrors: jsonb("validation_errors").default(sql`'[]'`),  // array of {field, message}
+    isValid:        boolean("is_valid").notNull().default(false),
+    publishedAt:    timestamp("published_at", { withTimezone: true }),
+    publishedBy:    varchar("published_by"),
+    createdBy:      varchar("created_by").notNull(),
+    createdAt:      timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => ({
+    intentIdx:      index("intent_versions_intent_idx").on(t.intentId),
+    tenantIdx:      index("intent_versions_tenant_idx").on(t.tenantId),
+    // Enforce unique version numbers per intent at DB level
+    versionUniq:    uniqueIndex("intent_versions_intent_version_uniq").on(t.intentId, t.versionNumber),
+  })
+);
+
+// ─── evidence_items ───────────────────────────────────────────────────────────
+// Canonical, validated signals attached to an entity.
+// Rule engine reads from here; never from raw source tables directly.
+
+export const evidenceItems = pgTable(
+  "evidence_items",
+  {
+    id:             varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    tenantId:       varchar("tenant_id").notNull(),
+    entityId:       varchar("entity_id").notNull(),                      // canonical account/contact id
+    entityType:     text("entity_type").notNull(),                    // 'account' | 'contact'
+    signalType:     text("signal_type").notNull(),                    // e.g. 'hiring', 'funding', 'tech_adoption'
+    sourceType:     text("source_type").notNull(),                    // e.g. 'linkedin', 'crunchbase', 'webhook'
+    sourceEventId:  text("source_event_id"),                         // dedup key from upstream
+    sourceTimestamp: timestamp("source_timestamp", { withTimezone: true }).notNull(),
+    payload:        jsonb("payload").notNull(),                       // structured evidence data
+    trustScore:     integer("trust_score").notNull().default(50),    // 0–100
+    freshnessScore: integer("freshness_score").notNull().default(100), // decays over time
+    isValid:        boolean("is_valid").notNull().default(true),
+    // GDPR
+    redactedAt:     timestamp("redacted_at", { withTimezone: true }),
+    redactedBy:     varchar("redacted_by"),
+    // Metadata
+    createdAt:      timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+    expiresAt:      timestamp("expires_at", { withTimezone: true }), // TTL for stale evidence
+  },
+  (t) => ({
+    tenantEntityIdx:  index("evidence_items_tenant_entity_idx").on(t.tenantId, t.entityId),
+    signalTypeIdx:    index("evidence_items_signal_type_idx").on(t.signalType),
+    sourceEventIdx:   index("evidence_items_source_event_idx").on(t.tenantId, t.sourceEventId),
+    expiresIdx:       index("evidence_items_expires_idx").on(t.expiresAt),
+  })
+);
+
+// ─── intent_matches ───────────────────────────────────────────────────────────
+// One row per (intent_version × entity × evaluation run).
+// Append-only. Never updated after write.
+
+export const intentMatches = pgTable(
+  "intent_matches",
+  {
+    id:             varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    tenantId:       varchar("tenant_id").notNull(),
+    intentId:       varchar("intent_id").notNull().references(() => intentDefinitions.id),
+    intentVersionId: varchar("intent_version_id").notNull().references(() => intentVersions.id),
+    entityId:       varchar("entity_id").notNull(),
+    entityType:     text("entity_type").notNull(),
+    result:         matchResultEnum("result").notNull(),
+    score:          integer("score"),                                 // 0–100 when matched
+    scoreBreakdown: jsonb("score_breakdown").default(sql`'{}'`),     // per-signal score components
+    isReplay:       boolean("is_replay").notNull().default(false),   // true = sandbox/simulation run
+    evaluatedAt:    timestamp("evaluated_at", { withTimezone: true }).notNull().default(sql`now()`),
+    errorMessage:   text("error_message"),                           // populated if result = 'error'
+  },
+  (t) => ({
+    tenantIntentIdx:  index("intent_matches_tenant_intent_idx").on(t.tenantId, t.intentId),
+    entityIdx:        index("intent_matches_entity_idx").on(t.entityId),
+    evaluatedAtIdx:   index("intent_matches_evaluated_at_idx").on(t.evaluatedAt),
+    replayIdx:        index("intent_matches_replay_idx").on(t.isReplay),
+  })
+);
+
+// ─── rule_execution_logs ──────────────────────────────────────────────────────
+// Per-rule pass/fail trace for every evaluation. Powers the explainability layer.
+// Linked to an intent_match. Immutable.
+
+export const ruleExecutionLogs = pgTable(
+  "rule_execution_logs",
+  {
+    id:             varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    tenantId:       varchar("tenant_id").notNull(),
+    matchId:        varchar("match_id").notNull().references(() => intentMatches.id, { onDelete: "cascade" }),
+    ruleId:         text("rule_id").notNull(),                       // identifier from DSL AST node
+    ruleLabel:      text("rule_label"),                              // human-readable rule name
+    passed:         boolean("passed").notNull(),
+    evidenceIds:    text("evidence_ids").array().default(sql`'{}'`), // which evidence_items contributed
+    evaluatedValue: jsonb("evaluated_value"),                        // what the rule actually saw
+    expectedValue:  jsonb("expected_value"),                         // what it needed to pass
+    executionMs:    integer("execution_ms"),                         // rule evaluation latency
+    createdAt:      timestamp("created_at", { withTimezone: true }).notNull().default(sql`now()`),
+  },
+  (t) => ({
+    matchIdx:   index("rule_execution_logs_match_idx").on(t.matchId),
+    ruleIdx:    index("rule_execution_logs_rule_idx").on(t.ruleId),
+  })
+);
