@@ -614,9 +614,10 @@ intentsRouter.post("/:id/publish", authenticate, async (req: Request, res: Respo
       .set({ isValid: true, publishedAt, publishedBy: userId })
       .where(eq(intentVersions.id, version.id));
 
-    // The newly published version becomes the active version for evaluation
+    // The newly published version becomes the active version for evaluation,
+    // and the intent itself moves to "production" status.
     await db.update(intentDefinitions)
-      .set({ activeVersionId: version.id, updatedAt: publishedAt })
+      .set({ activeVersionId: version.id, status: "production", updatedAt: publishedAt })
       .where(eq(intentDefinitions.id, intent.id));
 
     return ok(res, { versionId: version.id, publishedAt });
