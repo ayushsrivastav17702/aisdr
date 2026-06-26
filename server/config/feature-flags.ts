@@ -70,6 +70,13 @@ export interface FeatureFlags {
    * Set: FEATURE_INTENT_ENGINE_SCORING_ONLY=true
    */
   INTENT_ENGINE_SCORING_ONLY: boolean;
+
+  /**
+   * Enables the Apify LinkedIn job-postings extractor (hiring_signal evidence).
+   * Checked in addition to EVIDENCE_INGESTION_ENABLED — both must be true.
+   * Set: FEATURE_APIFY_EXTRACTION=true
+   */
+  APIFY_EXTRACTION_ENABLED: boolean;
 }
 
 function readBoolEnv(key: string, fallback: boolean): boolean {
@@ -89,6 +96,8 @@ export const flags: FeatureFlags = {
   INTENT_ENGINE_SCORING_ENABLED:  readBoolEnv("FEATURE_INTENT_ENGINE_SCORING", false),
   INTENT_ENGINE_SCORING_SHADOW:   readBoolEnv("FEATURE_INTENT_ENGINE_SCORING_SHADOW", false),
   INTENT_ENGINE_SCORING_ONLY:     readBoolEnv("FEATURE_INTENT_ENGINE_SCORING_ONLY", false),
+
+  APIFY_EXTRACTION_ENABLED:       readBoolEnv("FEATURE_APIFY_EXTRACTION", false),
 };
 
 // Enforce invariants

@@ -55,6 +55,7 @@ import { getTemplateForContext, EMAIL_TEMPLATE_LIBRARY, AI_DECISION_ENGINE_RULES
 import { inboxRouter } from "./inbox-routes";
 import { intentsRouter, evidenceRouter } from "./routes/intents.routes";
 import { prospectsRouter } from "./routes/prospects.routes";
+import { extractorsRouter } from "./routes/extractors.routes";
 import { requireIntentEngine } from "./middleware/intent-engine-gate.middleware";
 import { authenticate, forbidManager, blockSuperAdminFromSDR, requireManager } from "./middleware/auth.middleware";
 import { emailVolumeConfig, getCapacityReport, getEstimatedTimeForEmails, EMAIL_VOLUME_PRESETS } from "./config/email-volume.config";
@@ -1251,6 +1252,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // engine flag; auth is enforced per-route inside prospectsRouter itself
   // (same pattern as intentsRouter/evidenceRouter above).
   app.use("/v1/prospects", prospectsRouter);
+  // Evidence extractors (Phase 6) — manual trigger endpoints, same feature gate
+  app.use("/v1/extractors", requireIntentEngine, extractorsRouter);
 
   // Credit control routes
   app.use(creditRoutes);

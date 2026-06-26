@@ -4323,3 +4323,22 @@ export const ruleExecutionLogs = pgTable(
     ruleIdx:    index("rule_execution_logs_rule_idx").on(t.ruleId),
   })
 );
+
+// ─── target_accounts ──────────────────────────────────────────────────────────
+// Phase 6: tenant-scoped accounts queued/tracked for evidence extraction
+// (e.g. Apify LinkedIn job postings). One row per (tenant, domain).
+
+export const targetAccounts = pgTable(
+  "target_accounts",
+  {
+    id:           varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+    tenantId:     varchar("tenant_id").notNull(),
+    domain:       text("domain").notNull(),
+    name:         text("name"),
+    addedAt:      timestamp("added_at", { withTimezone: true }).default(sql`now()`),
+    processedAt:  timestamp("processed_at", { withTimezone: true }),
+  },
+  (t) => ({
+    tenantDomainUniq: uniqueIndex("target_accounts_tenant_domain_uniq").on(t.tenantId, t.domain),
+  })
+);
